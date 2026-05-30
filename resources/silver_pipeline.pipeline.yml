@@ -1,7 +1,8 @@
 resources:
   pipelines:
-    silver_pipeline:
-      name: "[${bundle.target}] Connected Plant — Silver"
+    # 1. Fast Operational Silver Pipeline (Continuous)
+    silver_fast_pipeline:
+      name: "[${bundle.target}] Connected Plant — Silver Fast"
       catalog: ${var.catalog}
       schema: ${var.schema}
 
@@ -16,13 +17,77 @@ resources:
         source_schema: ${var.source_schema}
 
       libraries:
-        - glob:
-            include: ../silver/*.py
+        - file:
+            path: ../silver/dlt_silver_fast.py
 
       # Daily restart window — low-traffic period (UTC)
       restart_window:
         start_hour: 2
         time_zone_id: UTC
+
+      notifications:
+        - email_recipients:
+            - ${var.notification_email}
+          alerts:
+            - on-update-failure
+            - on-update-fatal-failure
+            - on-flow-failure
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users
+
+    # 2. Reference/Slow Silver Pipeline (Triggered Batch)
+    silver_slow_pipeline:
+      name: "[${bundle.target}] Connected Plant — Silver Reference"
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+
+      serverless: true
+      continuous: false
+      photon: true
+      channel: CURRENT
+      development: false
+
+      configuration:
+        source_catalog: ${var.source_catalog}
+        source_schema: ${var.source_schema}
+
+      libraries:
+        - file:
+            path: ../silver/dlt_silver_slow.py
+
+      notifications:
+        - email_recipients:
+            - ${var.notification_email}
+          alerts:
+            - on-update-failure
+            - on-update-fatal-failure
+            - on-flow-failure
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users
+
+    # 3. Quality Silver Pipeline (Triggered Hourly Batch)
+    silver_quality_pipeline:
+      name: "[${bundle.target}] Connected Plant — Silver Quality"
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+
+      serverless: true
+      continuous: false
+      photon: true
+      channel: CURRENT
+      development: false
+
+      configuration:
+        source_catalog: ${var.source_catalog}
+        source_schema: ${var.source_schema}
+
+      libraries:
+        - file:
+            path: ../silver/dlt_silver_quality.py
 
       notifications:
         - email_recipients:
