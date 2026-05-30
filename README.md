@@ -22,7 +22,7 @@ Aecorsoft replicates SAP data incrementally into bronze. This bundle transforms 
                       ▼ (Triggered Batch Pipeline)
                   [Gold Layer]
               connected_plant.gold
-   gold_shift_output_summary · gold_order_otif_metrics · gold_plant_oee_kpis
+   gold_shift_output_summary · gold_order_otif_metrics · gold_plant_production_quality_summary
 ```
 
 Silver tables use SCD Type 1 (`apply_changes`) with liquid clustering and Unity Catalog Row Filters for plant-level access control. Gold tables aggregate Silver conformed data into Materialized Views with native row filters.

@@ -1,5 +1,5 @@
 [project]
-name = "connected-plant-silver"
+name = "connected-plant-reporting"
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]

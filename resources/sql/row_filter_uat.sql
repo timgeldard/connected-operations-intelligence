@@ -1,5 +1,5 @@
--- Unity Catalog Row Filter — plant-level access control for silver tables.
--- Run once as a Unity Catalog admin after the first prod deploy.
+-- Unity Catalog Row Filter — plant-level access control for silver tables (UAT).
+-- Run once as a Unity Catalog admin after the first UAT deploy.
 -- Requires: CREATE FUNCTION privilege on connected_plant_uat.silver.
 
 CREATE OR REPLACE FUNCTION connected_plant_uat.silver.plant_access_filter(plant_code STRING)
@@ -13,7 +13,6 @@ RETURN CASE
 END;
 
 -- Apply to all silver tables with a plant_code column.
--- Re-run if tables are dropped and recreated (e.g. after full refresh with schema change).
 
 ALTER TABLE connected_plant_uat.silver.process_order
   SET ROW FILTER connected_plant_uat.silver.plant_access_filter ON (plant_code);
@@ -53,6 +52,3 @@ ALTER TABLE connected_plant_uat.silver.work_centre
 
 ALTER TABLE connected_plant_uat.silver.capacity_utilisation
   SET ROW FILTER connected_plant_uat.silver.plant_access_filter ON (plant_code);
-
--- storage_bin uses warehouse_number rather than plant_code — excluded from plant filter.
--- Apply a separate warehouse-level filter if required.

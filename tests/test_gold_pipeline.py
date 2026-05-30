@@ -9,7 +9,7 @@ from tests.conftest import all_rows
 from gold.dlt_gold_pipeline import (
     gold_shift_output_summary,
     gold_order_otif_metrics,
-    gold_plant_oee_kpis,
+    gold_plant_production_quality_summary,
 )
 
 @pytest.fixture(scope="module", autouse=True)
@@ -91,7 +91,7 @@ def test_gold_order_otif_metrics(spark: SparkSession):
     assert otif_map["4"]["is_in_full"] == 1
 
 
-def test_gold_plant_oee_kpis(spark: SparkSession):
+def test_gold_plant_production_quality_summary(spark: SparkSession):
     # Mock data for process_order
     process_order_data = [
         Row(plant_code="1000", order_quantity=100.0, confirmed_yield_quantity=90.0, total_scrap_quantity=10.0),
@@ -112,7 +112,7 @@ def test_gold_plant_oee_kpis(spark: SparkSession):
     df_dt = spark.createDataFrame(downtime_data)
     df_dt.write.mode("overwrite").saveAsTable("silver.downtime_event")
     
-    res_df = gold_plant_oee_kpis()
+    res_df = gold_plant_production_quality_summary()
     results = all_rows(res_df)
     
     assert len(results) == 2

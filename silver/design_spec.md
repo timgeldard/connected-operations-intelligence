@@ -1,9 +1,9 @@
 # Silver Layer Design Specification
 
-**Schema:** `connected_plant_uat.silver`  
+**Schema:** `${var.catalog}.${var.schema}`  
 **Data product:** Integrated Operations — Warehouse & Manufacturing  
 **Primary personas:** Warehouse Operative, Warehouse Supervisor, Plant Manager  
-**SAP source:** PP-PI (Process Industries) via Aecorsoft → `connected_plant_uat.sap` (parameterized — see Deployment)  
+**SAP source:** PP-PI (Process Industries) via Aecorsoft → `${var.source_catalog}.${var.source_schema}` (parameterized — see Deployment)  
 **Scale:** 100+ plants
 
 ---
@@ -11,13 +11,13 @@
 ## Architecture
 
 ```
-connected_plant_uat.sap          (Bronze — Aecorsoft Delta replication)
+${var.source_catalog}.${var.source_schema} (Bronze — Aecorsoft Delta replication)
          │
          │  AEDATTM / RecordActivity watermarking
          ▼
-  Delta Live Tables Pipeline
+  Delta Live Tables Pipeline (silver_pipeline)
   Mode: Continuous (near real-time)
-  Target catalog: connected_plant_uat
+  Target catalog: ${var.catalog}
          │
          ├─ Staging views  (@dlt.view)
          │   • Column rename + type cast
@@ -30,7 +30,7 @@ connected_plant_uat.sap          (Bronze — Aecorsoft Delta replication)
               Unity Catalog Row Filter for plant-level access
          │
          ▼
-  connected_plant_uat.silver
+  ${var.catalog}.${var.schema}
 ```
 
 ### Key design decisions
@@ -53,22 +53,13 @@ connected_plant_uat.sap          (Bronze — Aecorsoft Delta replication)
 
 Managed via Declarative Automation Bundle (DAB). See `docs/adr/001-dab-bundle-deployment.md`.
 
-```
-databricks.yml                      # Bundle root — dev/prod targets, variables
-resources/
-  silver_pipeline.pipeline.yml      # Continuous serverless pipeline definition
-silver/
-  dlt_silver_pipeline.py            # All 14 table definitions
-```
+### Environment Target Matrix
 
-| Variable | Dev default | Prod default | Purpose |
-|---|---|---|---|
-| `catalog` | `connected_plant_uat` | `connected_plant_uat` | Silver output catalog |
-| `schema` | `silver_dev` | `silver` | Silver output schema |
-| `source_catalog` | `connected_plant_uat` | `connected_plant_uat` | Bronze source catalog |
-| `source_schema` | `sap` | `sap` | Bronze source schema |
-
-Override `source_catalog`/`source_schema` in the `dev` target once a dev bronze exists.
+| Target | Output Catalog (`${var.catalog}`) | Silver Schema (`${var.schema}`) | Source Catalog (`${var.source_catalog}`) | Source Schema (`${var.source_schema}`) |
+| :--- | :--- | :--- | :--- | :--- |
+| **dev** | `connected_plant_dev` | `silver_dev` | `connected_plant_uat` (Compromise) | `sap` |
+| **uat** | `connected_plant_uat` | `silver` | `connected_plant_uat` | `sap` |
+| **prod** | `connected_plant_prod` | `silver` | `connected_plant_prod` | `sap` |
 
 ---
 
@@ -102,14 +93,6 @@ Current checks by table:
 
 ---
 
-## TODO
-
-- [ ] **Confirm PP-PI process order types** with plant teams before filtering.  
-  Common types: `PI01`, `PI02`, custom `Z`-types.  
-  Pipeline currently loads all order categories. See constant `PP_PI_ORDER_TYPES` in `dlt_silver_pipeline.py`.
-
----
-
 ## Table Catalogue
 
 | Silver Table | Granularity | Primary SAP Sources | Personas |
@@ -133,9 +116,12 @@ Current checks by table:
 
 ## Unity Catalog Row Filter
 
+Environment-specific Row Filter scripts are maintained under `resources/sql/`.
+
+Example for Production:
 ```sql
 -- Create once per catalog; apply to every silver table
-CREATE FUNCTION connected_plant_uat.silver.plant_access_filter(plant_code STRING)
+CREATE FUNCTION connected_plant_prod.silver.plant_access_filter(plant_code STRING)
 RETURNS BOOLEAN
 RETURN CASE
   WHEN IS_ACCOUNT_GROUP_MEMBER('silver_admin') THEN TRUE
@@ -146,8 +132,8 @@ RETURN CASE
 END;
 
 -- Apply to each table (example)
-ALTER TABLE connected_plant_uat.silver.process_order
-SET ROW FILTER connected_plant_uat.silver.plant_access_filter ON (plant_code);
+ALTER TABLE connected_plant_prod.silver.process_order
+SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
 ```
 
 ---
@@ -167,7 +153,7 @@ SET ROW FILTER connected_plant_uat.silver.plant_access_filter ON (plant_code);
 ## What belongs in Gold (not Silver)
 
 - Shift-level aggregations (shift boundaries vary per plant)
-- OEE / utilisation KPIs
+- Production quality & downtime summaries
 - On-time-in-full metrics
 - Cross-plant comparisons and rankings
 - Period-over-period trending

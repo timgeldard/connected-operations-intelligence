@@ -1,37 +1,37 @@
 # Gold Layer Design Specification
 
-**Schema:** `connected_plant_uat.gold`  
+**Schema:** `${var.catalog}.${var.gold_schema}`  
 **Data product:** Integrated Operations — Business Aggregations & KPIs  
 **Primary personas:** Plant Manager, Supervisor, Operations Analyst  
-**Source:** `connected_plant_uat.silver` (parameterized — see Deployment)
+**Source:** `${var.catalog}.${var.schema}` (parameterized — see Deployment)
 
 ---
 
 ## Architecture
 
 ```
-connected_plant_uat.silver (Silver — clean operational state tables)
+${var.catalog}.${var.schema} (Silver — clean conformed tables)
           │
           │  Batch / Triggered read (spark.read.table)
           ▼
    Delta Live Tables Pipeline (gold_pipeline)
    Mode: Triggered (batch)
-   Target catalog: connected_plant_uat
-   Target schema: gold
+   Target catalog: ${var.catalog}
+   Target schema: ${var.gold_schema}
           │
           └─ Gold tables (Materialized Views)
                Liquid clustering by plant_code + date dimensions
                Change Data Feed enabled
           │
           ▼
-   connected_plant_uat.gold
+   ${var.catalog}.${var.gold_schema}
 ```
 
 ### Key design decisions
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Pipeline mode | **Triggered (batch)** | More cost-effective for business-level aggregations; near-real-time is not required for OEE/OTIF KPIs |
+| Pipeline mode | **Triggered (batch)** | More cost-effective for business-level aggregations; near-real-time is not required for KPIs |
 | Dataset types | **Materialized Views** | Auto-recomputes aggregations to stay correct as Silver tables receive updates |
 | Read strategy | **Batch read** (`spark.read.table`) | Prevents streaming state-management overhead for aggregations on streaming tables |
 | Clustering | **Liquid clustering** on `plant_code` + dates | Ensures fast retrieval for dashboard queries filtering by plant or time periods |
@@ -42,12 +42,13 @@ connected_plant_uat.silver (Silver — clean operational state tables)
 
 Managed via Declarative Automation Bundle (DAB).
 
-```
-resources/
-  gold_pipeline.pipeline.yml      # Triggered serverless pipeline definition
-gold/
-  dlt_gold_pipeline.py            # All gold table definitions
-```
+### Environment Target Matrix
+
+| Target | Output Catalog (`${var.catalog}`) | Silver Schema (`${var.schema}`) | Gold Schema (`${var.gold_schema}`) | Source Catalog (`${var.source_catalog}`) | Source Schema (`${var.source_schema}`) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **dev** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_uat` (Compromise) | `sap` |
+| **uat** | `connected_plant_uat` | `silver` | `gold` | `connected_plant_uat` | `sap` |
+| **prod** | `connected_plant_prod` | `silver` | `gold` | `connected_plant_prod` | `sap` |
 
 ---
 
@@ -61,6 +62,6 @@ gold/
 - **Granularity:** 1 row per process order.
 - **Description:** On-Time-In-Full performance metrics, comparing actual vs scheduled completion dates and ordered vs yield quantities.
 
-### `gold_plant_oee_kpis`
+### `gold_plant_production_quality_summary`
 - **Granularity:** 1 row per plant.
-- **Description:** Summarizes production volumes, scrap, total downtime, and computes overall quality rate.
+- **Description:** Summarizes production volumes, scrap, total downtime, and computes overall quality rate (yield / (yield + scrap)).
