@@ -19,6 +19,16 @@ def setup_databases(spark: SparkSession):
     spark.conf.set("silver_schema", "silver")
     
     spark.sql("CREATE DATABASE IF NOT EXISTS silver")
+    
+    # Mock data for conformed movement type classification
+    classification_data = [
+        Row(movement_type_code="101", movement_category="PRODUCTION_RECEIPT", is_production_receipt=True, is_receipt_reversal=False, is_scrap=False, is_scrap_reversal=False),
+        Row(movement_type_code="102", movement_category="PRODUCTION_REVERSAL", is_production_receipt=False, is_receipt_reversal=True, is_scrap=False, is_scrap_reversal=False),
+        Row(movement_type_code="551", movement_category="SCRAP", is_production_receipt=False, is_receipt_reversal=False, is_scrap=True, is_scrap_reversal=False),
+        Row(movement_type_code="552", movement_category="SCRAP_REVERSAL", is_production_receipt=False, is_receipt_reversal=False, is_scrap=False, is_scrap_reversal=True),
+    ]
+    spark.createDataFrame(classification_data).write.mode("overwrite").saveAsTable("silver.movement_type_classification")
+    
     yield
     spark.sql("DROP DATABASE IF EXISTS silver CASCADE")
 

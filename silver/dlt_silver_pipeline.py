@@ -17,7 +17,7 @@ Source tables are in the Aecorsoft Delta replication schema.
 """
 
 import dlt
-from pyspark.sql import Column
+from pyspark.sql import Column, Row
 from pyspark.sql import functions as F
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -598,6 +598,19 @@ def warehouse_plant_mapping():
     )
 
 
+@dlt.view(
+    name="warehouse_plant_mapping_validation",
+    comment="Validation view to audit warehouses mapped to multiple plants (ambiguous scopes)",
+)
+def warehouse_plant_mapping_validation():
+    return (
+        dlt.read("warehouse_plant_mapping")
+        .groupBy("warehouse_number")
+        .agg(F.count_distinct("plant_code").alias("plant_count"))
+        .filter(F.col("plant_count") > 1)
+    )
+
+
 # ── 9. STORAGE BIN ────────────────────────────────────────────────────────────
 #    Sources: storagebin_lagp (bin master) + quant_lqua (current occupancy)
 #             + warehouse_plant_mapping (T320 fallback plant mapping)
@@ -612,6 +625,12 @@ def stg_storage_bin():
     lqua = spark.read.table(f"{BRONZE}.quant_lqua")
     t320 = dlt.read("warehouse_plant_mapping")
 
+    # Aggregate T320 to resolve a single primary plant per warehouse to prevent key instability/row duplication
+    t320_agg = (
+        t320.groupBy("warehouse_number")
+        .agg(F.min("plant_code").alias("primary_plant_code"))
+    )
+
     bins_with_quants = (
         lagp.alias("b")
         .join(lqua.alias("q"),
@@ -624,15 +643,15 @@ def stg_storage_bin():
 
     return (
         bins_with_quants
-        .join(t320.alias("m"),
+        .join(t320_agg.alias("m"),
               F.col("b.LGNUM") == F.col("m.warehouse_number"),
               "left")
         .select(
-            # ── Natural key (bin + plant)
+            # ── Natural key (physical bin identity)
             F.col("b.LGNUM").alias("warehouse_number"),
             F.col("b.LGTYP").alias("storage_type"),
             F.col("b.LGPLA").alias("bin_code"),
-            F.coalesce(F.col("q.WERKS"), F.col("m.plant_code")).alias("plant_code"),
+            F.coalesce(F.col("q.WERKS"), F.col("m.primary_plant_code")).alias("plant_code"),
 
             # ── Bin attributes
             F.col("b.LGBER").alias("storage_section"),
@@ -673,10 +692,10 @@ def stg_storage_bin():
 dlt.apply_changes(
     target="storage_bin",
     source="stg_storage_bin",
-    keys=["warehouse_number", "storage_type", "bin_code", "plant_code"],
+    keys=["warehouse_number", "storage_type", "bin_code"],
     sequence_by=F.col("_replicated_at"),
     stored_as_scd_type=1,
-    cluster_by=["warehouse_number", "storage_type", "plant_code"],
+    cluster_by=["warehouse_number", "storage_type"],
 )
 
 
@@ -977,3 +996,51 @@ dlt.apply_changes(
     stored_as_scd_type=1,
     cluster_by=["plant_code", "valid_from_date"],
 )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ── 15. MOVEMENT TYPE CLASSIFICATION (reference) ──────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dlt.table(
+    name="movement_type_classification",
+    comment="Classification of SAP movement types for production and scrap reporting",
+    table_properties={"delta.enableChangeDataFeed": "true"}
+)
+def movement_type_classification():
+    # Conformed classification seed mapping
+    data = [
+        Row(
+            movement_type_code="101",
+            movement_category="PRODUCTION_RECEIPT",
+            is_production_receipt=True,
+            is_receipt_reversal=False,
+            is_scrap=False,
+            is_scrap_reversal=False
+        ),
+        Row(
+            movement_type_code="102",
+            movement_category="PRODUCTION_REVERSAL",
+            is_production_receipt=False,
+            is_receipt_reversal=True,
+            is_scrap=False,
+            is_scrap_reversal=False
+        ),
+        Row(
+            movement_type_code="551",
+            movement_category="SCRAP",
+            is_production_receipt=False,
+            is_receipt_reversal=False,
+            is_scrap=True,
+            is_scrap_reversal=False
+        ),
+        Row(
+            movement_type_code="552",
+            movement_category="SCRAP_REVERSAL",
+            is_production_receipt=False,
+            is_receipt_reversal=False,
+            is_scrap=False,
+            is_scrap_reversal=True
+        ),
+    ]
+    return spark.createDataFrame(data)
