@@ -66,23 +66,23 @@ def gold_shift_output_summary():
     silver_schema = get_silver_schema(spark)
     # Read from Silver layer
     goods_mov = spark.read.table(f"{silver_schema}.goods_movement")
+    classification = spark.read.table(f"{silver_schema}.movement_type_classification")
     
-    # Filter only relevant movement types before grouping to optimize performance and reduce shuffle size
-    filtered_movs = goods_mov.filter(F.col("movement_type_code").isin("101", "102", "551", "552"))
+    # Join with conformed classification metadata to decouple hardcoded SAP codes
+    joined_movs = goods_mov.join(classification, "movement_type_code", "inner")
     
-    # Aggregate output quantities based on standard movement types (101 receipt, 102 receipt reversal)
-    # Scrap movement types are typically 551 (scrap) and 552 (scrap reversal)
+    # Aggregate output quantities based on semantic categories (receipts minus reversals)
     return (
-        filtered_movs.groupBy("plant_code", "posting_date", "material_code", "base_uom")
+        joined_movs.groupBy("plant_code", "posting_date", "material_code", "base_uom")
         .agg(
             F.sum(
-                F.when(F.col("movement_type_code") == "101", F.col("quantity"))
-                .when(F.col("movement_type_code") == "102", -F.col("quantity"))
+                F.when(F.col("is_production_receipt") == True, F.col("quantity"))
+                .when(F.col("is_receipt_reversal") == True, -F.col("quantity"))
                 .otherwise(0.0)
             ).alias("produced_quantity"),
             F.sum(
-                F.when(F.col("movement_type_code") == "551", F.col("quantity"))
-                .when(F.col("movement_type_code") == "552", -F.col("quantity"))
+                F.when(F.col("is_scrap") == True, F.col("quantity"))
+                .when(F.col("is_scrap_reversal") == True, -F.col("quantity"))
                 .otherwise(0.0)
             ).alias("scrap_quantity")
         )

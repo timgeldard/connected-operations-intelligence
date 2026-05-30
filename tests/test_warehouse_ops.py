@@ -218,11 +218,15 @@ def apply_storage_bin_transform(
     lqua = spark.createDataFrame(lqua_rows, _LQUA_SCHEMA)
     if t320_rows is None:
         t320_rows = []
-    t320 = spark.createDataFrame(t320_rows, _T320_SCHEMA).select(
+    t320_raw = spark.createDataFrame(t320_rows, _T320_SCHEMA).select(
         F.col("LGNUM").alias("warehouse_number"),
         F.col("WERKS").alias("plant_code"),
         F.col("LGORT").alias("storage_location_code"),
         F.col("AEDATTM").alias("_replicated_at"),
+    )
+    t320 = (
+        t320_raw.groupBy("warehouse_number")
+        .agg(F.min("plant_code").alias("primary_plant_code"))
     )
 
     bins_with_quants = (
@@ -248,7 +252,7 @@ def apply_storage_bin_transform(
             F.col("b.LGNUM").alias("warehouse_number"),
             F.col("b.LGTYP").alias("storage_type"),
             F.col("b.LGPLA").alias("bin_code"),
-            F.coalesce(F.col("q.WERKS"), F.col("m.plant_code")).alias("plant_code"),
+            F.coalesce(F.col("q.WERKS"), F.col("m.primary_plant_code")).alias("plant_code"),
             F.col("b.LGBER").alias("storage_section"),
             F.col("b.MAXGW").alias("maximum_weight"),
             sap_flag("b.SPGRU").alias("is_blocked"),
@@ -589,21 +593,20 @@ class TestStorageBin:
         assert row["bin_code"] == "BIN-OCCUPIED"
         assert row["plant_code"] == "2000"
 
-    def test_shared_warehouse_duplicates_empty_bin_for_each_plant(self, spark):
-        # A shared warehouse (001 mapped to plants 1000 and 1100) duplicates the bin row for each plant scope
+    def test_shared_warehouse_resolves_primary_plant(self, spark):
+        # A shared warehouse (001 mapped to plants 1000 and 1100) resolves to the min (1000) primary plant
         df = apply_storage_bin_transform(
             spark,
             [make_lagp(LGNUM="001", LGTYP="001", LGPLA="BIN-SHARED")],
             [],  # empty bin (no quant)
             [
-                make_t320(LGNUM="001", WERKS="1000"),
                 make_t320(LGNUM="001", WERKS="1100"),
+                make_t320(LGNUM="001", WERKS="1000"),
             ],
         )
         results = all_rows(df)
-        assert len(results) == 2
-        plant_codes = {r["plant_code"] for r in results}
-        assert plant_codes == {"1000", "1100"}
+        assert len(results) == 1
+        assert results[0]["plant_code"] == "1000"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
