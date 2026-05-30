@@ -26,11 +26,38 @@ def get_silver_schema(spark: SparkSession) -> str:
     except Exception:
         return "connected_plant_uat.silver"
 
-@dlt.table(
+# ── Dynamic Row Filter Security & Test Detection ──────────────────────────────
+try:
+    spark = get_spark_session()
+    SILVER_CATALOG = spark.conf.get('silver_catalog', 'connected_plant_uat')
+    SILVER_SCHEMA = spark.conf.get('silver_schema', 'silver')
+    ROW_FILTER_FN = f"{SILVER_CATALOG}.{SILVER_SCHEMA}.plant_access_filter"
+    IS_TEST = spark.sparkContext.master.startswith("local")
+except Exception:
+    ROW_FILTER_FN = "connected_plant_uat.silver.plant_access_filter"
+    IS_TEST = True
+
+def gold_table_args(comment: str, cluster_by: list) -> dict:
+    """Return common decorator arguments, applying the row filter if not in test mode."""
+    args = {
+        "comment": comment,
+        "table_properties": {"delta.enableChangeDataFeed": "true"},
+        "cluster_by": cluster_by
+    }
+    if not IS_TEST:
+        args["row_filter"] = f"ROW FILTER {ROW_FILTER_FN} ON (plant_code)"
+    return args
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ── Gold Tables ──────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
     comment="Shift-level production output summary. Aggregates quantity and scrap by posting date and plant.",
-    table_properties={"delta.enableChangeDataFeed": "true"},
     cluster_by=["plant_code", "posting_date"]
-)
+))
+@dlt.expect("produced_quantity non-negative", "produced_quantity >= 0.0")
+@dlt.expect("scrap_quantity non-negative",    "scrap_quantity >= 0.0")
 def gold_shift_output_summary():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
@@ -55,11 +82,11 @@ def gold_shift_output_summary():
         )
     )
 
-@dlt.table(
+@dlt.table(**gold_table_args(
     comment="On-Time-In-Full (OTIF) metrics comparing scheduled vs actual process order completions.",
-    table_properties={"delta.enableChangeDataFeed": "true"},
     cluster_by=["plant_code", "actual_finish_date"]
-)
+))
+@dlt.expect("order_quantity non-negative", "order_quantity >= 0.0")
 def gold_order_otif_metrics():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
@@ -77,25 +104,34 @@ def gold_order_otif_metrics():
             "confirmed_yield_quantity",
             "scheduled_finish_date",
             "actual_finish_date",
-            F.when(F.col("actual_finish_date") <= F.col("scheduled_finish_date"), 1)
-            .otherwise(0).alias("is_on_time"),
-            F.when(F.col("confirmed_yield_quantity") >= F.col("order_quantity"), 1)
-            .otherwise(0).alias("is_in_full")
+            # Null-safe Date/OTIF comparisons
+            F.when(
+                F.col("actual_finish_date").isNull() | F.col("scheduled_finish_date").isNull(),
+                F.lit(None)
+            ).when(
+                F.col("actual_finish_date") <= F.col("scheduled_finish_date"),
+                F.lit(1)
+            ).otherwise(F.lit(0)).alias("is_on_time"),
+            F.when(
+                F.col("confirmed_yield_quantity").isNull() | F.col("order_quantity").isNull(),
+                F.lit(None)
+            ).when(
+                F.col("confirmed_yield_quantity") >= F.col("order_quantity"),
+                F.lit(1)
+            ).otherwise(F.lit(0)).alias("is_in_full")
         )
     )
 
-@dlt.table(
+@dlt.table(**gold_table_args(
     comment="Plant-level OEE / utilisation KPIs including available hours, operating hours, and performance index.",
-    table_properties={"delta.enableChangeDataFeed": "true"},
     cluster_by=["plant_code"]
-)
+))
+@dlt.expect("quality_rate valid range", "quality_rate >= 0.0 AND quality_rate <= 1.0")
 def gold_plant_oee_kpis():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
     orders = spark.read.table(f"{silver_schema}.process_order")
     downtime = spark.read.table(f"{silver_schema}.downtime_event")
-
-
     
     # Sum of downtime hours per plant
     plant_downtime = (

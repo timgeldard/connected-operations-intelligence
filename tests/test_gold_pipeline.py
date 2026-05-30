@@ -62,6 +62,9 @@ def test_gold_order_otif_metrics(spark: SparkSession):
         # Incomplete order (should be filtered out)
         Row(order_number="3", plant_code="1000", material_code="MAT01", order_quantity=100.0, confirmed_yield_quantity=0.0,
             scheduled_finish_date=date(2026, 5, 30), actual_finish_date=None, is_completed=False, is_closed=False),
+        # Completed, but missing scheduled date (should yield None for is_on_time)
+        Row(order_number="4", plant_code="1000", material_code="MAT01", order_quantity=100.0, confirmed_yield_quantity=100.0,
+            scheduled_finish_date=None, actual_finish_date=date(2026, 5, 29), is_completed=True, is_closed=False),
     ]
     
     df_po = spark.createDataFrame(process_order_data)
@@ -70,8 +73,8 @@ def test_gold_order_otif_metrics(spark: SparkSession):
     res_df = gold_order_otif_metrics()
     results = all_rows(res_df)
     
-    # Should only have completed/closed orders
-    assert len(results) == 2
+    # Should only have completed/closed orders (1, 2, 4)
+    assert len(results) == 3
     
     otif_map = {r["order_number"]: r for r in results}
     
@@ -82,6 +85,11 @@ def test_gold_order_otif_metrics(spark: SparkSession):
     # Order 2: Late and Not In Full
     assert otif_map["2"]["is_on_time"] == 0
     assert otif_map["2"]["is_in_full"] == 0
+
+    # Order 4: Missing Date (is_on_time is None) and In Full (is_in_full is 1)
+    assert otif_map["4"]["is_on_time"] is None
+    assert otif_map["4"]["is_in_full"] == 1
+
 
 def test_gold_plant_oee_kpis(spark: SparkSession):
     # Mock data for process_order
