@@ -1,0 +1,16 @@
+[project]
+name = "connected-plant-silver"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+# E501 line length — long SAP column lists are intentional
+ignore = ["E501"]

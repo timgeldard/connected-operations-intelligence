@@ -1,0 +1,38 @@
+bundle:
+  name: connected-plant
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    default: connected_plant_uat
+  schema:
+    default: silver
+  gold_schema:
+    default: gold
+  source_catalog:
+    default: connected_plant_uat
+  source_schema:
+    default: sap
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      profile: DEFAULT
+    variables:
+      schema: silver_dev
+      gold_schema: gold_dev
+    resources:
+      pipelines:
+        silver_pipeline:
+          development: true
+        gold_pipeline:
+          development: true
+
+  prod:
+    mode: production
+    workspace:
+      profile: DEFAULT

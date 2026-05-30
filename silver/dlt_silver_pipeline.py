@@ -1,24 +1,33 @@
 """
-Delta Live Tables pipeline — connected_plant_uat.silver
+Lakeflow Spark Declarative Pipeline — connected_plant_uat.silver
 
-Pipeline settings (configure in DLT UI / Terraform):
-  target catalog  : connected_plant_uat
-  target schema   : silver
+Deployed via DAB bundle: databricks.yml / resources/silver_pipeline.pipeline.yml
+  target catalog  : controlled by var.catalog   (default: connected_plant_uat)
+  target schema   : controlled by var.schema    (default: silver)
+  source catalog  : spark.conf source_catalog   (default: connected_plant_uat)
+  source schema   : spark.conf source_schema    (default: sap)
   pipeline mode   : Continuous
-  channel         : Current (DBR 15.x+)
+  channel         : Current
 
 All silver tables use SCD Type 1 (apply_changes) with liquid clustering.
-Source tables are in connected_plant_uat.sap (Aecorsoft Delta replication).
+Source tables are in the Aecorsoft Delta replication schema.
 """
 
 import dlt
+from pyspark.sql import Column
 from pyspark.sql import functions as F
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
 
-BRONZE = "connected_plant_uat.sap"
+try:
+    BRONZE = (
+        f"{spark.conf.get('source_catalog', 'connected_plant_uat')}"
+        f".{spark.conf.get('source_schema', 'sap')}"
+    )
+except NameError:
+    BRONZE = "connected_plant_uat.sap"
 
 # TODO: Confirm PP-PI process order types with plant operations teams.
 # Once confirmed, populate this list, e.g. ["PI01", "PI02", "ZPI1"].
@@ -29,22 +38,22 @@ PP_PI_ORDER_TYPES = None
 # Helper functions
 # ─────────────────────────────────────────────────────────────────────────────
 
-def strip_zeros(col_name):
+def strip_zeros(col_name: str) -> Column:
     """Remove SAP database-level leading zeros from key identifier fields."""
     return F.regexp_replace(F.col(col_name), r"^0+", "")
 
-def sap_date(col_name):
-    """Cast SAP YYYYMMDD string to DATE."""
-    return F.to_date(F.col(col_name), "yyyyMMdd")
+def sap_date(col_name: str) -> Column:
+    """Cast SAP YYYYMMDD string to DATE. Returns NULL for SAP sentinel '00000000' or blank."""
+    return F.try_to_date(F.col(col_name), "yyyyMMdd")
 
-def sap_datetime(date_col, time_col):
-    """Combine SAP YYYYMMDD date + HHMMSS time strings into TIMESTAMP."""
-    return F.to_timestamp(
+def sap_datetime(date_col: str, time_col: str) -> Column:
+    """Combine SAP YYYYMMDD date + HHMMSS time strings into TIMESTAMP. Returns NULL if either part is blank."""
+    return F.try_to_timestamp(
         F.concat(F.col(date_col), F.lpad(F.col(time_col), 6, "0")),
-        "yyyyMMddHHmmss",
+        F.lit("yyyyMMddHHmmss"),
     )
 
-def sap_flag(col_name):
+def sap_flag(col_name: str) -> Column:
     """Convert SAP 'X' / blank flag to boolean."""
     return F.when(F.col(col_name) == "X", True).otherwise(False)
 
@@ -55,9 +64,11 @@ def sap_flag(col_name):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dlt.view(name="stg_process_order")
-@dlt.expect_or_drop("order_number present",   "AUFNR IS NOT NULL")
-@dlt.expect_or_drop("plant_code present",     "plant_code IS NOT NULL")
-@dlt.expect(        "quantity non-negative",  "order_quantity >= 0")
+@dlt.expect_or_drop("order_number present",      "order_number IS NOT NULL")
+@dlt.expect_or_drop("plant_code present",        "plant_code IS NOT NULL")
+@dlt.expect(        "quantity non-negative",     "order_quantity >= 0")
+@dlt.expect(        "scheduled dates ordered",   "scheduled_start_date <= scheduled_finish_date OR scheduled_start_date IS NULL OR scheduled_finish_date IS NULL")
+@dlt.expect(        "actual dates ordered",      "actual_start_date <= actual_finish_date OR actual_start_date IS NULL OR actual_finish_date IS NULL")
 def stg_process_order():
     aufk = spark.readStream.table(f"{BRONZE}.ordermaster_aufk")
     afko = spark.read.table(f"{BRONZE}.productionorderobject_afko")
@@ -152,8 +163,10 @@ dlt.apply_changes(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dlt.view(name="stg_process_order_operation")
-@dlt.expect_or_drop("order_number present",    "order_number IS NOT NULL")
-@dlt.expect_or_drop("operation_number present","operation_number IS NOT NULL")
+@dlt.expect_or_drop("order_number present",     "order_number IS NOT NULL")
+@dlt.expect_or_drop("operation_number present", "operation_number IS NOT NULL")
+@dlt.expect(        "plant_code present",       "plant_code IS NOT NULL")
+@dlt.expect(        "scheduled dates ordered",  "scheduled_start_datetime <= scheduled_finish_datetime OR scheduled_start_datetime IS NULL OR scheduled_finish_datetime IS NULL")
 def stg_process_order_operation():
     afvc = spark.readStream.table(f"{BRONZE}.processorderobject_afvc")
     afvv = spark.read.table(f"{BRONZE}.dbstructureoperationquantitydatevalues_afvv")
@@ -275,8 +288,9 @@ dlt.apply_changes(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dlt.view(name="stg_goods_movement")
-@dlt.expect_or_drop("document_number present", "material_document_number IS NOT NULL")
-@dlt.expect_or_drop("plant_code present",      "plant_code IS NOT NULL")
+@dlt.expect_or_drop("document_number present",    "material_document_number IS NOT NULL")
+@dlt.expect_or_drop("plant_code present",         "plant_code IS NOT NULL")
+@dlt.expect(        "movement_type_code present", "movement_type_code IS NOT NULL")
 def stg_goods_movement():
     mseg = spark.readStream.table(f"{BRONZE}.inventorymovement_mseg")
     mkpf = spark.read.table(f"{BRONZE}.materialdocument_mkpf").select(
@@ -348,8 +362,9 @@ dlt.apply_changes(
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dlt.view(name="stg_batch_stock")
-@dlt.expect_or_drop("material_code present", "material_code IS NOT NULL")
-@dlt.expect_or_drop("plant_code present",    "plant_code IS NOT NULL")
+@dlt.expect_or_drop("material_code present",              "material_code IS NOT NULL")
+@dlt.expect_or_drop("plant_code present",                 "plant_code IS NOT NULL")
+@dlt.expect(        "unrestricted quantity non-negative", "unrestricted_quantity >= 0")
 def stg_batch_stock():
     src = spark.readStream.table(f"{BRONZE}.batchstock_mchb")
     return src.select(
@@ -401,8 +416,8 @@ def stg_warehouse_transfer_order():
     ltap = spark.read.table(f"{BRONZE}.transferorderobjects_ltap")
 
     return (
-        ltap.alias("i")
-        .join(ltak.alias("h"), ["LGNUM", "TANUM", "MANDT"], "left")
+        ltak.alias("h")
+        .join(ltap.alias("i"), ["LGNUM", "TANUM", "MANDT"], "left")
         .select(
             # ── Natural key
             F.col("i.LGNUM").alias("warehouse_number"),
@@ -486,13 +501,14 @@ dlt.apply_changes(
 @dlt.view(name="stg_warehouse_transfer_requirement")
 @dlt.expect_or_drop("warehouse_number present",            "warehouse_number IS NOT NULL")
 @dlt.expect_or_drop("transfer_requirement_number present", "transfer_requirement_number IS NOT NULL")
+@dlt.expect(        "required quantity positive",          "required_quantity > 0")
 def stg_warehouse_transfer_requirement():
     ltbk = spark.readStream.table(f"{BRONZE}.transferrequirementobjects_ltbk")
     ltbp = spark.read.table(f"{BRONZE}.transferrequirementobjects_ltbp")
 
     return (
-        ltbp.alias("i")
-        .join(ltbk.alias("h"), ["LGNUM", "TBNUM", "MANDT"], "left")
+        ltbk.alias("h")
+        .join(ltbp.alias("i"), ["LGNUM", "TBNUM", "MANDT"], "left")
         .select(
             # ── Natural key
             F.col("i.LGNUM").alias("warehouse_number"),
@@ -644,7 +660,7 @@ dlt.apply_changes(
 def stg_downtime_event():
     src = spark.readStream.table(f"{BRONZE}.downtime_zpexpm_dwnt")
     return (
-        src.filter(F.col("ZDEL") != "X")   # exclude soft-deleted rows
+        src.filter(F.col("ZDEL").isNull() | (F.col("ZDEL") != "X"))   # exclude soft-deleted rows
         .select(
             # ── Natural key (composite — no single surrogate in Z-table)
             strip_zeros("AUFNR").alias("order_number"),
@@ -701,6 +717,8 @@ dlt.apply_changes(
 @dlt.view(name="stg_quality_inspection_lot")
 @dlt.expect_or_drop("inspection_lot_number present", "inspection_lot_number IS NOT NULL")
 @dlt.expect_or_drop("plant_code present",            "plant_code IS NOT NULL")
+@dlt.expect(        "material_code present",         "material_code IS NOT NULL")
+@dlt.expect(        "inspection dates ordered",      "inspection_start_date <= inspection_end_date OR inspection_start_date IS NULL OR inspection_end_date IS NULL")
 def stg_quality_inspection_lot():
     qals = spark.readStream.table(f"{BRONZE}.inspection_qals")
     qmih = spark.read.table(f"{BRONZE}.qualitymessage_qmih").select(
@@ -708,7 +726,7 @@ def stg_quality_inspection_lot():
     )
     return (
         qals.alias("l")
-        .join(qmih.alias("m"), F.col("l.PRUEFLOS") == F.col("m.PRUEFLOS"), "left")
+        .join(qmih.alias("m"), (F.col("l.PRUEFLOS") == F.col("m.PRUEFLOS")) & (F.col("l.MANDT") == F.col("m.MANDT")), "left")
         .select(
             F.col("l.PRUEFLOS").alias("inspection_lot_number"),
             F.col("l.WERKS").alias("plant_code"),
@@ -763,6 +781,8 @@ dlt.apply_changes(
 )
 @dlt.expect_or_drop("material_code present", "material_code IS NOT NULL")
 @dlt.expect_or_drop("plant_code present",    "plant_code IS NOT NULL")
+@dlt.expect(        "base_uom present",      "base_uom IS NOT NULL")
+@dlt.expect(        "material_type present", "material_type IS NOT NULL")
 def material():
     mara  = spark.read.table(f"{BRONZE}.materialmaster_mara")
     marc  = spark.read.table(f"{BRONZE}.materialforplant_marc")
@@ -833,6 +853,8 @@ def material():
     comment="Storage locations — one row per storage location per plant",
     table_properties={"delta.enableChangeDataFeed": "true"},
 )
+@dlt.expect_or_drop("plant_code present",            "plant_code IS NOT NULL")
+@dlt.expect_or_drop("storage_location_code present", "storage_location_code IS NOT NULL")
 def storage_location():
     src = spark.read.table(f"{BRONZE}.storagelocation_t001l")
     return src.select(
@@ -852,6 +874,8 @@ def storage_location():
     comment="Work centres — one row per work centre per plant, with descriptions",
     table_properties={"delta.enableChangeDataFeed": "true"},
 )
+@dlt.expect_or_drop("work_centre_code present", "work_centre_code IS NOT NULL")
+@dlt.expect_or_drop("plant_code present",       "plant_code IS NOT NULL")
 def work_centre():
     crhd = spark.read.table(f"{BRONZE}.workcenterheader_crhd")
     crtx = spark.read.table(f"{BRONZE}.workcentertext_crtx").filter(

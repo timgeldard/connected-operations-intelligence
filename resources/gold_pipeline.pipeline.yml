@@ -1,0 +1,34 @@
+resources:
+  pipelines:
+    gold_pipeline:
+      name: "[${bundle.target}] Connected Plant — Gold"
+      catalog: ${var.catalog}
+      schema: ${var.gold_schema}
+
+      serverless: true
+      continuous: false
+      photon: true
+      channel: CURRENT
+      development: false
+
+      configuration:
+        silver_catalog: ${var.catalog}
+        silver_schema: ${var.schema}
+
+      libraries:
+        - glob:
+            include: ../gold/*.py
+
+      # Triggered pipeline, no restart_window needed as it runs to completion
+
+      notifications:
+        - email_recipients:
+            - timgeldard@gmail.com
+          alerts:
+            - on-update-failure
+            - on-update-fatal-failure
+            - on-flow-failure
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users

@@ -3,7 +3,7 @@
 **Schema:** `connected_plant_uat.silver`  
 **Data product:** Integrated Operations — Warehouse & Manufacturing  
 **Primary personas:** Warehouse Operative, Warehouse Supervisor, Plant Manager  
-**SAP source:** PP-PI (Process Industries) via Aecorsoft → `connected_plant_uat.sap`  
+**SAP source:** PP-PI (Process Industries) via Aecorsoft → `connected_plant_uat.sap` (parameterized — see Deployment)  
 **Scale:** 100+ plants
 
 ---
@@ -46,6 +46,59 @@ connected_plant_uat.sap          (Bronze — Aecorsoft Delta replication)
 | Descriptions | Denormalised at silver | Eliminates joins in BI / Gold layer |
 | Multi-plant access | Unity Catalog Row Filter function on `plant_code` | One table set; access enforced at query time |
 | Shift structure | **Gold layer** | Shift boundaries vary per plant; aggregation belongs in Gold |
+
+---
+
+## Deployment
+
+Managed via Declarative Automation Bundle (DAB). See `docs/adr/001-dab-bundle-deployment.md`.
+
+```
+databricks.yml                      # Bundle root — dev/prod targets, variables
+resources/
+  silver_pipeline.pipeline.yml      # Continuous serverless pipeline definition
+silver/
+  dlt_silver_pipeline.py            # All 14 table definitions
+```
+
+| Variable | Dev default | Prod default | Purpose |
+|---|---|---|---|
+| `catalog` | `connected_plant_uat` | `connected_plant_uat` | Silver output catalog |
+| `schema` | `silver_dev` | `silver` | Silver output schema |
+| `source_catalog` | `connected_plant_uat` | `connected_plant_uat` | Bronze source catalog |
+| `source_schema` | `sap` | `sap` | Bronze source schema |
+
+Override `source_catalog`/`source_schema` in the `dev` target once a dev bronze exists.
+
+---
+
+## Data Quality
+
+Expectations are applied to staging views (before `apply_changes`). See `docs/adr/003-data-quality-expectations-strategy.md`.
+
+| Severity | When used | Effect |
+|---|---|---|
+| `expect_or_drop` | Missing primary key components | Row excluded from target table |
+| `expect` (warn) | Business logic violations (date ordering, sign checks) | Row passes through; violation counted in pipeline metrics |
+
+Current checks by table:
+
+| Table | Drop checks | Warn checks |
+|---|---|---|
+| `process_order` | order_number, plant_code | quantity ≥ 0, scheduled dates ordered, actual dates ordered |
+| `process_order_operation` | order_number, operation_number | plant_code present, scheduled dates ordered |
+| `pi_sheet_execution` | order_number, operation_number | start ≤ end |
+| `goods_movement` | document_number, plant_code | movement_type_code present |
+| `batch_stock` | material_code, plant_code | unrestricted_quantity ≥ 0 |
+| `warehouse_transfer_order` | warehouse_number, transfer_order_number | — |
+| `warehouse_transfer_requirement` | warehouse_number, transfer_requirement_number | required_quantity > 0 |
+| `storage_bin` | warehouse_number, bin_code | — |
+| `downtime_event` | plant_code, start_datetime | duration ≥ 0 |
+| `quality_inspection_lot` | inspection_lot_number, plant_code | material_code present, inspection dates ordered |
+| `material` | material_code, plant_code | base_uom present, material_type present |
+| `storage_location` | plant_code, storage_location_code | — |
+| `work_centre` | work_centre_code, plant_code | — |
+| `capacity_utilisation` | plant_code, capacity_id | — |
 
 ---
 

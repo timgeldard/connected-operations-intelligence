@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "skills": {
+    "databricks-apps": {
+      "source": "databricks/databricks-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/databricks-apps/SKILL.md",
+      "computedHash": "1652debe2d7476a38c99d7b5e36c06356842bfb1668fa9a1d26fbdfb43828d74"
+    },
+    "databricks-core": {
+      "source": "databricks/databricks-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/databricks-core/SKILL.md",
+      "computedHash": "451b516edc4af7d99a29d97045c2f2c86ff1ec6ab80b3f860432d8c696498c42"
+    },
+    "databricks-dabs": {
+      "source": "databricks/databricks-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/databricks-dabs/SKILL.md",
+      "computedHash": "7e3137d68f3564674b296b1197eddff79235777e2a6c8964e2c491b0bcdf1abb"
+    },
+    "databricks-jobs": {
+      "source": "databricks/databricks-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/databricks-jobs/SKILL.md",
+      "computedHash": "78f5d0d7d7ed76cdc2e26095944ea4237f7e4eb5b7ca6999a3b3e9e3fa780cb7"
+    },
+    "databricks-lakebase": {
+      "source": "databricks/databricks-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/databricks-lakebase/SKILL.md",
+      "computedHash": "d952f620403b4b22e71dd2a69106e18b2ae055f285c4ed0d3595dffa67bf4dd3"
+    },
+    "databricks-model-serving": {
+      "source": "databricks/databricks-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/databricks-model-serving/SKILL.md",
+      "computedHash": "20ed3bae2d90aa7516dfe69e3efb36af65619a1a15eae02e7d3419e048550f8d"
+    },
+    "databricks-pipelines": {
+      "source": "databricks/databricks-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/databricks-pipelines/SKILL.md",
+      "computedHash": "20cee03404268555ad59c1e7a4d68f884926272b5ea8b69e10bcf278b5bc63d9"
+    },
+    "databricks-serverless-migration": {
+      "source": "databricks/databricks-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/databricks-serverless-migration/SKILL.md",
+      "computedHash": "69c2d1f86462162c2e21ec31c7ae8e4ebee9508196a9bee3219f91f7c16ed373"
+    }
+  }
+}
