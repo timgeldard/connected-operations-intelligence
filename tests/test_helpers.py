@@ -7,9 +7,7 @@ propagates to all 14 tables, so every edge case is covered explicitly.
 
 from datetime import date, datetime
 
-import pytest
 from pyspark.sql import Row
-from pyspark.sql import functions as F
 
 from silver.dlt_silver_pipeline import sap_date, sap_datetime, sap_flag, strip_zeros
 

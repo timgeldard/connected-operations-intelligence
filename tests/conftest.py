@@ -23,6 +23,7 @@ _session = (
     .master("local[2]")
     .config("spark.sql.shuffle.partitions", "4")
     .config("spark.sql.session.timeZone", "UTC")
+    .config("gold_apply_row_filter", "false")
     .getOrCreate()
 )
 _session.sparkContext.setLogLevel("ERROR")

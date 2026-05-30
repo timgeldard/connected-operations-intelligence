@@ -27,24 +27,26 @@ def get_silver_schema(spark: SparkSession) -> str:
         return "connected_plant_uat.silver"
 
 # ── Dynamic Row Filter Security & Test Detection ──────────────────────────────
+# ── Dynamic Row Filter Security & Test Detection ──────────────────────────────
 try:
     spark = get_spark_session()
     SILVER_CATALOG = spark.conf.get('silver_catalog', 'connected_plant_uat')
     SILVER_SCHEMA = spark.conf.get('silver_schema', 'silver')
     ROW_FILTER_FN = f"{SILVER_CATALOG}.{SILVER_SCHEMA}.plant_access_filter"
-    IS_TEST = spark.sparkContext.master.startswith("local")
+    # Row filter is enabled by default, but can be explicitly disabled via Spark config (e.g. in unit tests)
+    APPLY_ROW_FILTER = spark.conf.get("gold_apply_row_filter", "true").lower() == "true"
 except Exception:
     ROW_FILTER_FN = "connected_plant_uat.silver.plant_access_filter"
-    IS_TEST = True
+    APPLY_ROW_FILTER = False
 
 def gold_table_args(comment: str, cluster_by: list) -> dict:
-    """Return common decorator arguments, applying the row filter if not in test mode."""
+    """Return common decorator arguments, applying the row filter if configured."""
     args = {
         "comment": comment,
         "table_properties": {"delta.enableChangeDataFeed": "true"},
         "cluster_by": cluster_by
     }
-    if not IS_TEST:
+    if APPLY_ROW_FILTER:
         args["row_filter"] = f"ROW FILTER {ROW_FILTER_FN} ON (plant_code)"
     return args
 
@@ -164,6 +166,6 @@ def gold_plant_oee_kpis():
             F.when(
                 F.col("total_yield_qty") + F.col("total_scrap_qty") > 0,
                 F.col("total_yield_qty") / (F.col("total_yield_qty") + F.col("total_scrap_qty"))
-            ).otherwise(1.0).alias("quality_rate")
+            ).otherwise(F.lit(None).cast("double")).alias("quality_rate")
         )
     )

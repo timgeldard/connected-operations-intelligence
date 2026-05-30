@@ -14,7 +14,6 @@ Business rules under test:
 from datetime import date, datetime
 from typing import List
 
-import pytest
 from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql import functions as F
 

@@ -96,11 +96,14 @@ def test_gold_plant_oee_kpis(spark: SparkSession):
     process_order_data = [
         Row(plant_code="1000", order_quantity=100.0, confirmed_yield_quantity=90.0, total_scrap_quantity=10.0),
         Row(plant_code="1000", order_quantity=200.0, confirmed_yield_quantity=180.0, total_scrap_quantity=20.0),
+        # Plant 2000 with zero production
+        Row(plant_code="2000", order_quantity=0.0, confirmed_yield_quantity=0.0, total_scrap_quantity=0.0),
     ]
     # Mock data for downtime_event
     downtime_data = [
         Row(plant_code="1000", duration_minutes=120.0),
         Row(plant_code="1000", duration_minutes=60.0),
+        Row(plant_code="2000", duration_minutes=0.0),
     ]
     
     df_po = spark.createDataFrame(process_order_data)
@@ -112,12 +115,22 @@ def test_gold_plant_oee_kpis(spark: SparkSession):
     res_df = gold_plant_oee_kpis()
     results = all_rows(res_df)
     
-    assert len(results) == 1
-    row = results[0]
-    assert row["plant_code"] == "1000"
-    assert row["total_ordered_qty"] == 300.0
-    assert row["total_yield_qty"] == 270.0
-    assert row["total_scrap_qty"] == 30.0
-    assert row["total_downtime_minutes"] == 180.0
+    assert len(results) == 2
+    oee_map = {r["plant_code"]: r for r in results}
+    
+    # Plant 1000
+    row_1000 = oee_map["1000"]
+    assert row_1000["total_ordered_qty"] == 300.0
+    assert row_1000["total_yield_qty"] == 270.0
+    assert row_1000["total_scrap_qty"] == 30.0
+    assert row_1000["total_downtime_minutes"] == 180.0
     # quality_rate = yield / (yield + scrap) = 270 / 300 = 0.9
-    assert abs(row["quality_rate"] - 0.9) < 0.0001
+    assert abs(row_1000["quality_rate"] - 0.9) < 0.0001
+
+    # Plant 2000
+    row_2000 = oee_map["2000"]
+    assert row_2000["total_ordered_qty"] == 0.0
+    assert row_2000["total_yield_qty"] == 0.0
+    assert row_2000["total_scrap_qty"] == 0.0
+    assert row_2000["quality_rate"] is None
+
