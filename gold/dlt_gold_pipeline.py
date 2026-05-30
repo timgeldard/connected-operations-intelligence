@@ -128,11 +128,11 @@ def gold_order_otif_metrics():
     )
 
 @dlt.table(**gold_table_args(
-    comment="Plant-level OEE / utilisation KPIs including available hours, operating hours, and performance index.",
+    comment="Plant-level production quality & downtime summary.",
     cluster_by=["plant_code"]
 ))
 @dlt.expect("quality_rate valid range", "quality_rate >= 0.0 AND quality_rate <= 1.0")
-def gold_plant_oee_kpis():
+def gold_plant_production_quality_summary():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
     orders = spark.read.table(f"{silver_schema}.process_order")

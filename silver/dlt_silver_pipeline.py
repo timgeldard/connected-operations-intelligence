@@ -1,13 +1,16 @@
 """
-Lakeflow Spark Declarative Pipeline — connected_plant_uat.silver
+Lakeflow Spark Declarative Pipeline — Silver Layer
 
 Deployed via DAB bundle: databricks.yml / resources/silver_pipeline.pipeline.yml
-  target catalog  : controlled by var.catalog   (default: connected_plant_uat)
+  target catalog  : controlled by var.catalog   (default: connected_plant_prod)
   target schema   : controlled by var.schema    (default: silver)
-  source catalog  : spark.conf source_catalog   (default: connected_plant_uat)
+  source catalog  : spark.conf source_catalog   (default: connected_plant_prod)
   source schema   : spark.conf source_schema    (default: sap)
   pipeline mode   : Continuous
   channel         : Current
+
+Actual target and source catalogs are controlled dynamically via Databricks Asset Bundle target variables.
+Fallback defaults point to production.
 
 All silver tables use SCD Type 1 (apply_changes) with liquid clustering.
 Source tables are in the Aecorsoft Delta replication schema.

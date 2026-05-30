@@ -1,13 +1,22 @@
 # Operational Runbook — Connected Plant Pipelines (Silver & Gold)
 
-## Pipeline identity
+## Pipeline Identity
 
 | Item | Silver Pipeline | Gold Pipeline |
 |---|---|---|
 | Bundle name | `connected-plant` | `connected-plant` |
-| Target schema (prod) | `connected_plant_uat.silver` | `connected_plant_uat.gold` |
+| Target Catalog (Prod) | `connected_plant_prod` | `connected_plant_prod` |
+| Target Schema (Prod) | `silver` | `gold` |
 | Mode | Continuous | Triggered (Batch) |
 | Notifications | Configure in `resources/silver_pipeline.pipeline.yml` | Configure in `resources/gold_pipeline.pipeline.yml` |
+
+### Environment Target Matrix
+
+| Environment Target | Catalog (`${var.catalog}`) | Silver Schema (`${var.schema}`) | Gold Schema (`${var.gold_schema}`) | Source Catalog (`${var.source_catalog}`) |
+| :--- | :--- | :--- | :--- | :--- |
+| **dev** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_uat` |
+| **uat** | `connected_plant_uat` | `silver` | `gold` | `connected_plant_uat` |
+| **prod** | `connected_plant_prod` | `silver` | `gold` | `connected_plant_prod` |
 
 ---
 
@@ -73,23 +82,35 @@ Streaming Tables cannot evolve incompatibly without a full refresh. Signs: pipel
 
 ## 5. Dev schema isolation
 
-The dev target writes to `silver_dev` and `gold_dev` schemas respectively to prevent production database impacts.
+The dev target writes to `connected_plant_dev` to prevent production database impacts. 
+*Note:* As a temporary compromise, the `dev` target reads from the `connected_plant_uat` bronze source until a dedicated dev bronze source is provisioned.
 
-To add dev bronze isolation once available:
-1. Add `source_catalog` / `source_schema` overrides to the `dev` target in `databricks.yml`.
-2. Deploy dev: `databricks bundle deploy -t dev`.
+To isolate dev bronze once available:
+1. Update `source_catalog` / `source_schema` variables for the `dev` target in `databricks.yml`.
+2. Re-deploy dev: `databricks bundle deploy -t dev`.
 
 ---
 
 ## 6. Plant access row filter
 
 ### Silver Layer
-The Unity Catalog row filter (`plant_access_filter`) must be applied after the first prod deploy. Run `resources/row_filter.sql` once as a Unity Catalog admin:
+The Unity Catalog row filter (`plant_access_filter`) must be applied after the first deployment to each environment target. Run the target-specific SQL script once as a Unity Catalog admin:
 
-```bash
-databricks sql execute --warehouse-id <warehouse-id> \
-  --statement "$(cat resources/row_filter.sql)" --profile DEFAULT
-```
+- **Development**:
+  ```bash
+  databricks sql execute --warehouse-id <warehouse-id> \
+    --statement "$(cat resources/sql/row_filter_dev.sql)" --profile DEFAULT
+  ```
+- **UAT**:
+  ```bash
+  databricks sql execute --warehouse-id <warehouse-id> \
+    --statement "$(cat resources/sql/row_filter_uat.sql)" --profile DEFAULT
+  ```
+- **Production**:
+  ```bash
+  databricks sql execute --warehouse-id <warehouse-id> \
+    --statement "$(cat resources/sql/row_filter_prod.sql)" --profile DEFAULT
+  ```
 
 ### Gold Layer
 No manual SQL script is required for the Gold tables. The row filter is **automatically applied at deploy/refresh time** via the `@dlt.table` configuration properties pointing to `{silver_schema}.plant_access_filter` dynamically.
