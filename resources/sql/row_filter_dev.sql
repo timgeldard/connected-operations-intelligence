@@ -53,3 +53,6 @@ ALTER TABLE connected_plant_dev.silver_dev.work_centre
 
 ALTER TABLE connected_plant_dev.silver_dev.capacity_utilisation
   SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_dev.silver_dev.storage_bin
+  SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);
