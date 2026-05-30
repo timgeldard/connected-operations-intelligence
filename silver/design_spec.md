@@ -136,6 +136,11 @@ ALTER TABLE connected_plant_prod.silver.process_order
 SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
 ```
 
+### Storage Bin Row-Level Security
+* **Current Status:** Not filtered by the plant-level row filter because the grain of `storage_bin` is warehouse/bin level (does not naturally contain `plant_code`).
+* **Risk:** Users with table access to `storage_bin` may see bins for warehouses outside their plant scope.
+* **Mitigation:** In future iterations, derive `plant_code` into `storage_bin` via warehouse/storage-location mappings or implement a dedicated warehouse-level filter (`warehouse_access_filter`).
+
 ---
 
 ## Data Conventions Inherited from Bronze

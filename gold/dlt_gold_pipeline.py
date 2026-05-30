@@ -1,11 +1,11 @@
 """
-Lakeflow Spark Declarative Pipeline — connected_plant_uat.gold
+Lakeflow Spark Declarative Pipeline — Gold Layer
 
 Deployed via DAB bundle: databricks.yml / resources/gold_pipeline.pipeline.yml
-  target catalog  : controlled by var.catalog   (default: connected_plant_uat)
-  target schema   : controlled by var.gold_schema(default: gold)
-  silver catalog  : spark.conf silver_catalog   (default: connected_plant_uat)
-  silver schema   : spark.conf silver_schema    (default: silver)
+  target catalog  : controlled by var.catalog
+  target schema   : controlled by var.gold_schema
+  silver catalog  : spark.conf silver_catalog
+  silver schema   : spark.conf silver_schema
   pipeline mode   : Triggered
 """
 
@@ -24,19 +24,20 @@ def get_silver_schema(spark: SparkSession) -> str:
             return f"{catalog}.{schema}"
         return schema
     except Exception:
-        return "connected_plant_uat.silver"
+        # Local/manual fallback default only (points to production)
+        return "connected_plant_prod.silver"
 
-# ── Dynamic Row Filter Security & Test Detection ──────────────────────────────
 # ── Dynamic Row Filter Security & Test Detection ──────────────────────────────
 try:
     spark = get_spark_session()
-    SILVER_CATALOG = spark.conf.get('silver_catalog', 'connected_plant_uat')
+    SILVER_CATALOG = spark.conf.get('silver_catalog', 'connected_plant_prod')
     SILVER_SCHEMA = spark.conf.get('silver_schema', 'silver')
     ROW_FILTER_FN = f"{SILVER_CATALOG}.{SILVER_SCHEMA}.plant_access_filter"
     # Row filter is enabled by default, but can be explicitly disabled via Spark config (e.g. in unit tests)
     APPLY_ROW_FILTER = spark.conf.get("gold_apply_row_filter", "true").lower() == "true"
 except Exception:
-    ROW_FILTER_FN = "connected_plant_uat.silver.plant_access_filter"
+    # Local/manual fallback default only (points to production)
+    ROW_FILTER_FN = "connected_plant_prod.silver.plant_access_filter"
     APPLY_ROW_FILTER = False
 
 def gold_table_args(comment: str, cluster_by: list) -> dict:
