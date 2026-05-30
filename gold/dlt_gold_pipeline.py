@@ -10,15 +10,21 @@ Deployed via DAB bundle: databricks.yml / resources/gold_pipeline.pipeline.yml
 """
 
 import dlt
-from pyspark.sql import functions as F
+from pyspark.sql import SparkSession, functions as F
 
-try:
-    SILVER = (
-        f"{spark.conf.get('silver_catalog', 'connected_plant_uat')}"
-        f".{spark.conf.get('silver_schema', 'silver')}"
-    )
-except NameError:
-    SILVER = "connected_plant_uat.silver"
+def get_spark_session() -> SparkSession:
+    return SparkSession.builder.getOrCreate()
+
+def get_silver_schema(spark: SparkSession) -> str:
+    try:
+        catalog = spark.conf.get('silver_catalog')
+        schema = spark.conf.get('silver_schema', 'silver')
+        # Local Spark (spark_catalog) requires single-part namespace (database.table)
+        if catalog and catalog != "spark_catalog":
+            return f"{catalog}.{schema}"
+        return schema
+    except Exception:
+        return "connected_plant_uat.silver"
 
 @dlt.table(
     comment="Shift-level production output summary. Aggregates quantity and scrap by posting date and plant.",
@@ -26,8 +32,10 @@ except NameError:
     cluster_by=["plant_code", "posting_date"]
 )
 def gold_shift_output_summary():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
     # Read from Silver layer
-    goods_mov = spark.read.table(f"{SILVER}.goods_movement")
+    goods_mov = spark.read.table(f"{silver_schema}.goods_movement")
     
     # Aggregate output quantities based on standard movement types (101 receipt, 102 receipt reversal)
     # Scrap movement types are typically 551 (scrap) and 552 (scrap reversal)
@@ -53,7 +61,9 @@ def gold_shift_output_summary():
     cluster_by=["plant_code", "actual_finish_date"]
 )
 def gold_order_otif_metrics():
-    orders = spark.read.table(f"{SILVER}.process_order")
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    orders = spark.read.table(f"{silver_schema}.process_order")
     
     # Filter completed or closed orders
     completed_orders = orders.filter("is_completed = true OR is_closed = true")
@@ -80,8 +90,12 @@ def gold_order_otif_metrics():
     cluster_by=["plant_code"]
 )
 def gold_plant_oee_kpis():
-    orders = spark.read.table(f"{SILVER}.process_order")
-    downtime = spark.read.table(f"{SILVER}.downtime_event")
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    orders = spark.read.table(f"{silver_schema}.process_order")
+    downtime = spark.read.table(f"{silver_schema}.downtime_event")
+
+
     
     # Sum of downtime hours per plant
     plant_downtime = (
