@@ -1,24 +1,31 @@
-# Connected Plant — Silver Pipeline
+# Connected Plant — Integrated Operations Reporting Pipelines
 
-SAP ECC 6.0 → silver layer for Integrated Operations (Warehouse & Manufacturing).
+Bronze SAP replicas → Silver operational state → Gold reporting aggregates.
 
-Aecorsoft replicates SAP data incrementally into `connected_plant_uat.sap` (bronze). This pipeline transforms it into 14 clean silver tables in `connected_plant_uat.silver`, covering process orders, warehouse operations, quality, and reference data.
+Aecorsoft replicates SAP data incrementally into bronze. This bundle transforms it into 14 clean silver tables and computes downstream Gold aggregates for OEE, OTIF, and production output.
 
 ## Architecture
 
 ```
-connected_plant_uat.sap  (Bronze — Aecorsoft Delta replication)
-         │
-         ▼  Continuous Lakeflow Pipeline
-connected_plant_uat.silver
-  process_order · process_order_operation · pi_sheet_execution
-  goods_movement · batch_stock · warehouse_transfer_order
-  warehouse_transfer_requirement · storage_bin · downtime_event
-  quality_inspection_lot · material · storage_location
-  work_centre · capacity_utilisation
+                 [Bronze Layer]
+             connected_plant.sap
+                      │
+                      ▼ (Continuous Lakeflow Pipeline)
+                 [Silver Layer]
+             connected_plant.silver
+   process_order · process_order_operation · pi_sheet_execution
+   goods_movement · batch_stock · warehouse_transfer_order
+   warehouse_transfer_requirement · storage_bin · downtime_event
+   quality_inspection_lot · material · storage_location
+   work_centre · capacity_utilisation
+                      │
+                      ▼ (Triggered Batch Pipeline)
+                  [Gold Layer]
+              connected_plant.gold
+   gold_shift_output_summary · gold_order_otif_metrics · gold_plant_oee_kpis
 ```
 
-All tables use SCD Type 1 (`apply_changes`) with liquid clustering. Plant-level row security is enforced via Unity Catalog Row Filter.
+Silver tables use SCD Type 1 (`apply_changes`) with liquid clustering and Unity Catalog Row Filters for plant-level access control. Gold tables aggregate Silver conformed data into Materialized Views with native row filters.
 
 ## Quick start
 
@@ -31,17 +38,18 @@ brew tap databricks/tap && brew install databricks
 # Authenticate
 databricks auth login --profile DEFAULT
 
-# Validate bundle
+# Validate bundle configurations for targets
 databricks bundle validate -t dev --profile DEFAULT
+databricks bundle validate -t uat --profile DEFAULT
+databricks bundle validate -t prod --profile DEFAULT
 
-# Deploy to dev (writes to connected_plant_uat.silver_dev)
+# Deploy to specific targets (writes to target catalogs)
 databricks bundle deploy -t dev --profile DEFAULT
-
-# Deploy to prod
+databricks bundle deploy -t uat --profile DEFAULT
 databricks bundle deploy -t prod --profile DEFAULT
 ```
 
-Start the pipeline once after deploy (it runs continuously):
+Start the pipelines once after deploy:
 
 ```bash
 databricks pipelines start-update <pipeline-id> --profile DEFAULT
@@ -51,14 +59,16 @@ databricks pipelines start-update <pipeline-id> --profile DEFAULT
 
 ```bash
 # Install test dependencies
-pip install pytest pyspark
+pip install -r tests/requirements-test.txt
 
 # Run tests
-pytest
+PYTHONPATH=. pytest
 ```
 
 ## Docs
 
-- [`silver/design_spec.md`](silver/design_spec.md) — architecture, table catalogue, data quality strategy
-- [`docs/adr/`](docs/adr/) — architecture decision records
-- [`docs/runbook.md`](docs/runbook.md) — operational runbook
+- [`silver/design_spec.md`](silver/design_spec.md) — Silver architecture, table catalogue, and expectations strategy
+- [`gold/design_spec.md`](gold/design_spec.md) — Gold architecture and KPI calculations
+- [`docs/adr/`](docs/adr/) — Architecture decision records
+- [`docs/runbook.md`](docs/runbook.md) — Operational runbook for Silver & Gold pipelines
+
