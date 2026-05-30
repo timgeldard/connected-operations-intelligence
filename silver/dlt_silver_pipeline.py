@@ -26,11 +26,11 @@ from pyspark.sql import functions as F
 
 try:
     BRONZE = (
-        f"{spark.conf.get('source_catalog', 'connected_plant_uat')}"
+        f"{spark.conf.get('source_catalog', 'connected_plant_prod')}"
         f".{spark.conf.get('source_schema', 'sap')}"
     )
 except NameError:
-    BRONZE = "connected_plant_uat.sap"
+    BRONZE = "connected_plant_prod.sap"
 
 # TODO: Confirm PP-PI process order types with plant operations teams.
 # Once confirmed, populate this list, e.g. ["PI01", "PI02", "ZPI1"].
