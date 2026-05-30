@@ -46,6 +46,9 @@ _LQUA_SCHEMA = (
     "LQNUM STRING, MATNR STRING, WERKS STRING, CHARG STRING, "
     "GESME DOUBLE, VERME DOUBLE"
 )
+_T320_SCHEMA = (
+    "LGNUM STRING, WERKS STRING, LGORT STRING, AEDATTM STRING"
+)
 _MCHB_SCHEMA = (
     "MATNR STRING, WERKS STRING, LGORT STRING, CHARG STRING, "
     "CLABS DOUBLE, CINSM DOUBLE, CSPEM DOUBLE, CEINM DOUBLE, "
@@ -209,11 +212,20 @@ def apply_storage_bin_transform(
     spark: SparkSession,
     lagp_rows: List[Row],
     lqua_rows: List[Row],
+    t320_rows: List[Row] = None,
 ) -> DataFrame:
     lagp = spark.createDataFrame(lagp_rows, _LAGP_SCHEMA)
     lqua = spark.createDataFrame(lqua_rows, _LQUA_SCHEMA)
+    if t320_rows is None:
+        t320_rows = []
+    t320 = spark.createDataFrame(t320_rows, _T320_SCHEMA).select(
+        F.col("LGNUM").alias("warehouse_number"),
+        F.col("WERKS").alias("plant_code"),
+        F.col("LGORT").alias("storage_location_code"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )
 
-    return (
+    bins_with_quants = (
         lagp.alias("b")
         .join(
             lqua.alias("q"),
@@ -223,22 +235,45 @@ def apply_storage_bin_transform(
             (F.col("b.MANDT") == F.col("q.MANDT")),
             "left",
         )
+    )
+
+    return (
+        bins_with_quants
+        .join(
+            t320.alias("m"),
+            F.col("b.LGNUM") == F.col("m.warehouse_number"),
+            "left",
+        )
         .select(
             F.col("b.LGNUM").alias("warehouse_number"),
             F.col("b.LGTYP").alias("storage_type"),
             F.col("b.LGPLA").alias("bin_code"),
+            F.coalesce(F.col("q.WERKS"), F.col("m.plant_code")).alias("plant_code"),
             F.col("b.LGBER").alias("storage_section"),
             F.col("b.MAXGW").alias("maximum_weight"),
             sap_flag("b.SPGRU").alias("is_blocked"),
             F.col("b.SPGRU").alias("blocking_reason_code"),
             F.col("q.LQNUM").alias("quant_number"),
             strip_zeros("q.MATNR").alias("material_code"),
-            F.col("q.WERKS").alias("plant_code"),
             strip_zeros("q.CHARG").alias("batch_number"),
             F.col("q.GESME").alias("total_quantity"),
             F.col("q.VERME").alias("available_quantity"),
             F.col("b.AEDATTM").alias("_replicated_at"),
         )
+    )
+
+
+def make_t320(
+    LGNUM="001",
+    WERKS="1000",
+    LGORT="0001",
+    AEDATTM="2024-12-01T10:00:00",
+):
+    return Row(
+        LGNUM=LGNUM,
+        WERKS=WERKS,
+        LGORT=LGORT,
+        AEDATTM=AEDATTM,
     )
 
 
@@ -530,6 +565,45 @@ class TestStorageBin:
         )
         bins = {r["bin_code"] for r in all_rows(df)}
         assert bins == {"BIN-001", "BIN-002"}
+
+    def test_empty_bin_resolves_plant_from_t320(self, spark):
+        df = apply_storage_bin_transform(
+            spark,
+            [make_lagp(LGNUM="001", LGTYP="001", LGPLA="BIN-EMPTY")],
+            [],  # empty bin (no quant)
+            [make_t320(LGNUM="001", WERKS="1000")],
+        )
+        row = first_row(df)
+        assert row["bin_code"] == "BIN-EMPTY"
+        assert row["plant_code"] == "1000"
+
+    def test_occupied_bin_retains_quant_plant_override(self, spark):
+        # Even if warehouse maps to plant 1000, if quant lists plant 2000, quant plant takes precedence
+        df = apply_storage_bin_transform(
+            spark,
+            [make_lagp(LGNUM="001", LGTYP="001", LGPLA="BIN-OCCUPIED")],
+            [make_lqua(LGNUM="001", LGTYP="001", LGPLA="BIN-OCCUPIED", WERKS="2000")],
+            [make_t320(LGNUM="001", WERKS="1000")],
+        )
+        row = first_row(df)
+        assert row["bin_code"] == "BIN-OCCUPIED"
+        assert row["plant_code"] == "2000"
+
+    def test_shared_warehouse_duplicates_empty_bin_for_each_plant(self, spark):
+        # A shared warehouse (001 mapped to plants 1000 and 1100) duplicates the bin row for each plant scope
+        df = apply_storage_bin_transform(
+            spark,
+            [make_lagp(LGNUM="001", LGTYP="001", LGPLA="BIN-SHARED")],
+            [],  # empty bin (no quant)
+            [
+                make_t320(LGNUM="001", WERKS="1000"),
+                make_t320(LGNUM="001", WERKS="1100"),
+            ],
+        )
+        results = all_rows(df)
+        assert len(results) == 2
+        plant_codes = {r["plant_code"] for r in results}
+        assert plant_codes == {"1000", "1100"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

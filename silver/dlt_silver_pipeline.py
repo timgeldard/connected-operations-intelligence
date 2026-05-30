@@ -577,8 +577,30 @@ dlt.apply_changes(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ── 8. STORAGE BIN ────────────────────────────────────────────────────────────
+# ── 8. WAREHOUSE PLANT MAPPING (reference) ───────────────────────────────────
+#    Source: warehouseforplant_t320
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dlt.table(
+    name="warehouse_plant_mapping",
+    comment="Warehouse to Plant mapping (SAP T320)",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_or_drop("warehouse_number present", "warehouse_number IS NOT NULL")
+@dlt.expect_or_drop("plant_code present",       "plant_code IS NOT NULL")
+def warehouse_plant_mapping():
+    src = spark.read.table(f"{BRONZE}.warehouseforplant_t320")
+    return src.select(
+        F.col("LGNUM").alias("warehouse_number"),
+        F.col("WERKS").alias("plant_code"),
+        F.col("LGORT").alias("storage_location_code"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )
+
+
+# ── 9. STORAGE BIN ────────────────────────────────────────────────────────────
 #    Sources: storagebin_lagp (bin master) + quant_lqua (current occupancy)
+#             + warehouse_plant_mapping (T320 fallback plant mapping)
 #    All bins are included; bins with no quant show NULL occupancy fields.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -588,8 +610,9 @@ dlt.apply_changes(
 def stg_storage_bin():
     lagp = spark.readStream.table(f"{BRONZE}.storagebin_lagp")
     lqua = spark.read.table(f"{BRONZE}.quant_lqua")
+    t320 = dlt.read("warehouse_plant_mapping")
 
-    return (
+    bins_with_quants = (
         lagp.alias("b")
         .join(lqua.alias("q"),
               (F.col("b.LGNUM") == F.col("q.LGNUM")) &
@@ -597,11 +620,19 @@ def stg_storage_bin():
               (F.col("b.LGPLA") == F.col("q.LGPLA")) &
               (F.col("b.MANDT") == F.col("q.MANDT")),
               "left")
+    )
+
+    return (
+        bins_with_quants
+        .join(t320.alias("m"),
+              F.col("b.LGNUM") == F.col("m.warehouse_number"),
+              "left")
         .select(
-            # ── Natural key (bin)
+            # ── Natural key (bin + plant)
             F.col("b.LGNUM").alias("warehouse_number"),
             F.col("b.LGTYP").alias("storage_type"),
             F.col("b.LGPLA").alias("bin_code"),
+            F.coalesce(F.col("q.WERKS"), F.col("m.plant_code")).alias("plant_code"),
 
             # ── Bin attributes
             F.col("b.LGBER").alias("storage_section"),
@@ -619,7 +650,6 @@ def stg_storage_bin():
             # ── Current quant (NULL if bin is empty)
             F.col("q.LQNUM").alias("quant_number"),
             strip_zeros("q.MATNR").alias("material_code"),
-            F.col("q.WERKS").alias("plant_code"),
             strip_zeros("q.CHARG").alias("batch_number"),
             F.col("q.BESTQ").alias("stock_category_code"),
             F.col("q.GESME").alias("total_quantity"),
@@ -643,10 +673,10 @@ def stg_storage_bin():
 dlt.apply_changes(
     target="storage_bin",
     source="stg_storage_bin",
-    keys=["warehouse_number", "storage_type", "bin_code"],
+    keys=["warehouse_number", "storage_type", "bin_code", "plant_code"],
     sequence_by=F.col("_replicated_at"),
     stored_as_scd_type=1,
-    cluster_by=["warehouse_number", "storage_type"],
+    cluster_by=["warehouse_number", "storage_type", "plant_code"],
 )
 
 

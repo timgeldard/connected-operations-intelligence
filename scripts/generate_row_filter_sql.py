@@ -28,7 +28,6 @@ ENVIRONMENTS = {
 }
 
 # All silver tables that have a plant_code column to apply the row filter to.
-# Note: storage_bin uses warehouse_number rather than plant_code and is excluded.
 TABLES = [
     "process_order",
     "process_order_operation",
@@ -42,7 +41,8 @@ TABLES = [
     "material",
     "storage_location",
     "work_centre",
-    "capacity_utilisation"
+    "capacity_utilisation",
+    "storage_bin"
 ]
 
 TEMPLATE = """-- Unity Catalog Row Filter — plant-level access control for silver tables ({env_upper}).
