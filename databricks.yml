@@ -19,7 +19,7 @@ variables:
     default: connected-plant-dataops@company.com
 
 targets:
-  dev:
+  dev_uat_source:
     default: true
     mode: development
     workspace:
@@ -30,6 +30,23 @@ targets:
       gold_schema: gold_dev
       source_catalog: connected_plant_uat
       source_schema: sap
+    resources:
+      pipelines:
+        silver_pipeline:
+          development: true
+        gold_pipeline:
+          development: true
+
+  dev_sample:
+    mode: development
+    workspace:
+      profile: DEFAULT
+    variables:
+      catalog: connected_plant_dev
+      schema: silver_dev
+      gold_schema: gold_dev
+      source_catalog: connected_plant_dev
+      source_schema: sap_sample
     resources:
       pipelines:
         silver_pipeline:

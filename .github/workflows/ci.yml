@@ -18,7 +18,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install pytest pyspark ruff
+        run: pip install -r tests/requirements-test.txt
 
       - name: Lint
         run: ruff check silver/ gold/ tests/
@@ -36,11 +36,17 @@ jobs:
 
       - uses: databricks/setup-cli@main
 
-      - name: Validate dev bundle
+      - name: Validate dev_uat_source bundle
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-        run: databricks bundle validate -t dev
+        run: databricks bundle validate -t dev_uat_source
+
+      - name: Validate dev_sample bundle
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: databricks bundle validate -t dev_sample
 
       - name: Validate uat bundle
         env:
