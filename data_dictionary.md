@@ -5,6 +5,49 @@
 
 ---
 
+## Data Source
+
+Data is replicated from **SAP ECC 6.0** into BigQuery by **Aecorsoft** at the database table level. Values are stored exactly as SAP holds them internally — not formatted for display as in the SAP GUI.
+
+### Field Conventions
+
+Because extraction is at the database level, key identifier fields are **zero-padded** to their full SAP storage length. Apply `LTRIM(col, '0')` or equivalent when comparing with external systems or displaying to users.
+
+| SAP Field | Description | Padded Length | Example |
+|-----------|-------------|:-------------:|---------|
+| `MATNR` | Material Number | 18 | `000000000000012345` |
+| `AUFNR` | Order Number | 12 | `000000123456` |
+| `VBELN` | Sales / Delivery Document | 10 | `0000012345` |
+| `EBELN` | Purchasing Document | 10 | `0000012345` |
+| `KUNNR` | Customer Number | 10 | `0000012345` |
+| `LIFNR` | Vendor Number | 10 | `0000012345` |
+| `CHARG` | Batch Number | 10 | `0000000123` |
+
+**Date fields** (`DATS` type in SAP) are stored as `STRING` in `YYYYMMDD` format.
+
+### Aecorsoft System Columns
+
+The following columns are added by Aecorsoft and are **not** SAP data fields:
+
+| Column | Type | Meaning |
+|--------|------|---------|
+| `AEDATTM` | `STRING` | Timestamp of last replication to BigQuery |
+| `AERUNID` | `INT` | Aecorsoft replication run ID |
+| `AERECNO` | `INT` | Record sequence number within replication run |
+
+### SAP Metadata Tables
+
+The following BC tables are imported specifically to support **data enrichment** — resolving domain value descriptions, field labels, and table structures programmatically rather than hard-coding them in reports:
+
+| SAP Table | BigQuery Table | Purpose |
+|-----------|---------------|---------|
+| `DD02L` | `metadata_saptable_dd02l` | Table definitions |
+| `DD03L` | `datadictionaryfields_dd03l` | Field definitions per table |
+| `DD04L` | `metadata_dataelement_dd04l` | Data element definitions |
+| `DD07T` | `domaintext_dd07t` | Domain fixed-value descriptions |
+
+---
+
 ## Overview
 
 | Schema | Tables |
@@ -735,7 +778,7 @@
 | 8 | `ZDUR` | `DECIMAL` | Duration |
 | 9 | `ZUSERSTART` | `STRING` | Started by |
 | 10 | `ZUSEREND` | `STRING` | Ended by |
-| 11 | `AEDATTM` | `STRING` | — |
+| 11 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -752,10 +795,10 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
 | 3 | `LGORT` | `STRING` | Storage Location |
-| 4 | `CHARG` | `STRING` | Batch Number |
+| 4 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 5 | `LVORM` | `STRING` | Deletion Flag for All Data on a Batch Stock |
 | 6 | `ERSDA` | `STRING` | Created On |
 | 7 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
@@ -794,7 +837,7 @@
 | 40 | `FSH_COLLECTION` | `STRING` | Fashion Collection |
 | 41 | `FSH_THEME` | `STRING` | Fashion Theme |
 | 42 | `FSH_SALLOC_QTY` | `DECIMAL` | Allocated Stock Quantity |
-| 43 | `AEDATTM` | `STRING` | — |
+| 43 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -813,11 +856,11 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `XZUGA` | `STRING` | No receipt |
 | 2 | `WERKS` | `STRING` | Plant |
-| 3 | `MATNR` | `STRING` | Material Number |
-| 4 | `CHARG` | `STRING` | Batch Number |
-| 5 | `AUFNR` | `STRING` | Order Number |
+| 3 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
+| 4 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
+| 5 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 6 | `AUFPS` | `STRING` | Order item number |
-| 7 | `EBELN` | `STRING` | Purchasing Document Number |
+| 7 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 8 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 9 | `KDAUF` | `STRING` | Sales Order Number |
 | 10 | `KDPOS` | `STRING` | Item Number in Sales Order |
@@ -839,15 +882,15 @@
 | 26 | `UMWRK` | `STRING` | Receiving plant/issuing plant |
 | 27 | `UMMAT` | `STRING` | Receiving/Issuing Material |
 | 28 | `UMCHA` | `STRING` | Receiving/Issuing Batch |
-| 29 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 29 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 30 | `LICHA` | `STRING` | Vendor Batch Number |
-| 31 | `KUNNR` | `STRING` | Customer Number |
+| 31 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 32 | `PSTYP` | `STRING` | Item category in purchasing document |
 | 33 | `AUTYP` | `STRING` | Order category |
-| 34 | `VBELN` | `STRING` | Delivery |
+| 34 | `VBELN` | `STRING` | Delivery _10-char zero-padded_ |
 | 35 | `POSNR` | `STRING` | Delivery Item |
 | 36 | `DUMMY` | `STRING` | Dummy function in length 1 |
-| 37 | `AEDATTM` | `STRING` | — |
+| 37 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -870,7 +913,7 @@
 | 4 | `ZZ_BIN_RESTRICTION` | `STRING` | Bin Restrictions |
 | 5 | `ZZ_BIN_ALLOWED_DISP_PICK` | `STRING` | Allowable Bin for Dispensary |
 | 6 | `ZZ_REPL_ALLOWED` | `STRING` | Replenishment Allowed |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -886,11 +929,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `AUFNR` | `STRING` | Order Number |
+| 4 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 5 | `ZZ_BULK_DROP_STATUS` | `STRING` | Bulk Drop Status |
 | 6 | `ZZ_TBNUM` | `STRING` | Transfer Requirement Number |
 | 7 | `RecordActivity` | `STRING` | Operational Flag (I/U/D) |
@@ -909,9 +952,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `ZBDAUFNR` | `STRING` | Order Number |
 | 4 | `ZBDMATNR` | `STRING` | Material Number |
 | 5 | `ZBDWERKS` | `STRING` | Plant |
@@ -1066,7 +1109,7 @@
 | 73 | `PP_BUCKET_SCHEMA` | `STRING` | PP/DS Bucket Schema |
 | 74 | `PP_BUCKET_FACT` | `STRING` | Factor: Relation. of Avl. Bucket Cap. to Avl. Time-Cont Cap. |
 | 75 | `MIX_PLAN_TYPE` | `STRING` | Finite Capacity of a Mixed Resource |
-| 76 | `AEDATTM` | `STRING` | — |
+| 76 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -1082,12 +1125,12 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `MATNR` | `STRING` | Material Number |
-| 5 | `CHARG` | `STRING` | Batch Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
+| 5 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 6 | `LVORM` | `STRING` | Deletion Flag for All Data in a Batch |
 | 7 | `ERSDA` | `STRING` | Created On |
 | 8 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
@@ -1098,7 +1141,7 @@
 | 13 | `ZUSCH` | `STRING` | Batch status key |
 | 14 | `ZUSTD` | `STRING` | Batch in Restricted-Use Stock |
 | 15 | `ZAEDT` | `STRING` | Date of last status change |
-| 16 | `LIFNR` | `STRING` | Suppliers Account Number |
+| 16 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
 | 17 | `LICHA` | `STRING` | Vendor Batch Number |
 | 18 | `VLCHA` | `STRING` | Original batch number (deactivated) |
 | 19 | `VLWRK` | `STRING` | Original plant  (deactivated) |
@@ -1148,7 +1191,7 @@
 | 1 | `ZMAGRV` | `STRING` | Material Group : Packaging Materials(8 Characters) |
 | 2 | `ZDESC` | `STRING` | Description |
 | 3 | `ZMAGRV_XAB` | `STRING` | XAB Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -1179,7 +1222,7 @@
 | 12 | `SRSID` | `STRING` | Source of Data |
 | 13 | `OWNID` | `STRING` | Data Provider |
 | 14 | `RECNROOT` | `STRING` | Sequential Number of Data Record |
-| 15 | `MATNR` | `STRING` | Material or Product (Internal Key) |
+| 15 | `MATNR` | `STRING` | Material or Product (Internal Key) _18-char zero-padded_ |
 | 16 | `MOT` | `STRING` | Dangerous Goods - Mode-of-Transport Category |
 | 17 | `RVLID` | `STRING` | Validity Area |
 | 18 | `DGNHM` | `STRING` | Non-Dangerous Goods Full Transport |
@@ -1330,7 +1373,7 @@
 | 163 | `DGREMP` | `STRING` | Hazard-inducing substance (marine pollutant) |
 | 164 | `DGRERQ` | `STRING` | Hazard-inducing substance (reportable quantity) |
 | 165 | `EIMDG` | `STRING` | Regulation Edition |
-| 166 | `AEDATTM` | `STRING` | — |
+| 166 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -1528,7 +1571,7 @@
 | 179 | `OPRZ1` | `DECIMAL` | Remaining quantity for business process |
 | 180 | `OPRE1` | `STRING` | Unit for remaining quantity of business process |
 | 181 | `PSPM_INDICATOR` | `STRING` | Indicates PMCS date influence activity scheduling |
-| 182 | `AEDATTM` | `STRING` | — |
+| 182 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -1544,9 +1587,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `AUFPL` | `STRING` | Routing number of operations in the order |
 | 5 | `APLZL` | `STRING` | General counter for order |
@@ -1595,11 +1638,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Delivery |
+| 4 | `VBELN` | `STRING` | Delivery _10-char zero-padded_ |
 | 5 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
 | 6 | `ERZET` | `STRING` | Entry time |
 | 7 | `ERDAT` | `STRING` | Record Creation Date |
@@ -1627,7 +1670,7 @@
 | 29 | `TPGRP` | `STRING` | not currently in use |
 | 30 | `LPRIO` | `STRING` | Delivery Priority |
 | 31 | `VSBED` | `STRING` | Shipping Conditions |
-| 32 | `KUNNR` | `STRING` | Ship-To Party |
+| 32 | `KUNNR` | `STRING` | Ship-To Party _10-char zero-padded_ |
 | 33 | `KUNAG` | `STRING` | Sold-To Party |
 | 34 | `KDGRP` | `STRING` | Customer group |
 | 35 | `STZKL` | `DECIMAL` | Not Currently in Use |
@@ -1678,7 +1721,7 @@
 | 80 | `CMWAE` | `STRING` | Currency key of credit control area |
 | 81 | `AMTBL` | `DECIMAL` | Released credit value of the document |
 | 82 | `BOLNR` | `STRING` | Bill of lading |
-| 83 | `LIFNR` | `STRING` | Suppliers Account Number |
+| 83 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
 | 84 | `TRATY` | `STRING` | Means of Transport Type |
 | 85 | `TRAID` | `STRING` | Means of Transport ID |
 | 86 | `CMFRE` | `STRING` | Release date of the document determined by credit management |
@@ -1836,22 +1879,22 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Delivery |
+| 4 | `VBELN` | `STRING` | Delivery _10-char zero-padded_ |
 | 5 | `POSNR` | `STRING` | Delivery Item |
 | 6 | `PSTYV` | `STRING` | Delivery item category |
 | 7 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
 | 8 | `ERZET` | `STRING` | Entry time |
 | 9 | `ERDAT` | `STRING` | Record Creation Date |
-| 10 | `MATNR` | `STRING` | Material Number |
+| 10 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 11 | `MATWA` | `STRING` | Material entered |
 | 12 | `MATKL` | `STRING` | Material Group |
 | 13 | `WERKS` | `STRING` | Plant |
 | 14 | `LGORT` | `STRING` | Storage Location |
-| 15 | `CHARG` | `STRING` | Batch Number |
+| 15 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 16 | `LICHN` | `STRING` | Vendor Batch Number |
 | 17 | `KDMAT` | `STRING` | Material belonging to the customer |
 | 18 | `PRODH` | `STRING` | Product Hierarchy |
@@ -1945,7 +1988,7 @@
 | 106 | `PAOBJNR` | `STRING` | Profitability Segment Number (CO-PA) |
 | 107 | `PRCTR` | `STRING` | Profit Center |
 | 108 | `PS_PSP_PNR` | `STRING` | Work Breakdown Structure Element (WBS Element) |
-| 109 | `AUFNR` | `STRING` | Order Number |
+| 109 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 110 | `POSNR_PP` | `STRING` | Order item number |
 | 111 | `KDAUF` | `STRING` | Sales Order Number |
 | 112 | `KDPOS` | `STRING` | Item Number in Sales Order |
@@ -2181,22 +2224,22 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Delivery |
+| 4 | `VBELN` | `STRING` | Delivery _10-char zero-padded_ |
 | 5 | `POSNR` | `STRING` | Delivery Item |
 | 6 | `PSTYV` | `STRING` | Delivery item category |
 | 7 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
 | 8 | `ERZET` | `STRING` | Entry time |
 | 9 | `ERDAT` | `STRING` | Date on Which Record Was Created |
-| 10 | `MATNR` | `STRING` | Material Number |
+| 10 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 11 | `MATWA` | `STRING` | Material entered |
 | 12 | `MATKL` | `STRING` | Material Group |
 | 13 | `WERKS` | `STRING` | Plant |
 | 14 | `LGORT` | `STRING` | Storage Location |
-| 15 | `CHARG` | `STRING` | Batch Number |
+| 15 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 16 | `LICHN` | `STRING` | Vendor Batch Number |
 | 17 | `KDMAT` | `STRING` | Material belonging to the customer |
 | 18 | `PRODH` | `STRING` | Product Hierarchy |
@@ -2290,7 +2333,7 @@
 | 106 | `PAOBJNR` | `STRING` | Profitability Segment Number (CO-PA) |
 | 107 | `PRCTR` | `STRING` | Profit Center |
 | 108 | `PS_PSP_PNR` | `STRING` | Work Breakdown Structure Element (WBS Element) |
-| 109 | `AUFNR` | `STRING` | Order Number |
+| 109 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 110 | `POSNR_PP` | `STRING` | Order item number |
 | 111 | `KDAUF` | `STRING` | Sales Order Number |
 | 112 | `KDPOS` | `STRING` | Item number in Sales Order |
@@ -2525,11 +2568,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Delivery |
+| 4 | `VBELN` | `STRING` | Delivery _10-char zero-padded_ |
 | 5 | `VSTEL` | `STRING` | Shipping Point/Receiving Point |
 | 6 | `ROUTE` | `STRING` | Route |
 | 7 | `KODAT` | `STRING` | Picking Date |
@@ -2539,7 +2582,7 @@
 | 11 | `LFDAT` | `STRING` | Delivery Date |
 | 12 | `LIFSK` | `STRING` | Delivery block (document header) |
 | 13 | `LSTEL` | `STRING` | Loading Point |
-| 14 | `KUNNR` | `STRING` | Ship-To Party |
+| 14 | `KUNNR` | `STRING` | Ship-To Party _10-char zero-padded_ |
 | 15 | `ANZPK` | `STRING` | Total number of packages in delivery |
 | 16 | `KOSTK` | `STRING` | Overall picking / putaway status |
 | 17 | `LVSTK` | `STRING` | Overall status of warehouse management activities |
@@ -2560,9 +2603,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `VSTEL` | `STRING` | Shipping Point/Receiving Point |
 | 5 | `LEDAT` | `STRING` | Delivery Creation Date |
@@ -2571,9 +2614,9 @@
 | 8 | `SPDNR` | `STRING` | Forwarding agent |
 | 9 | `WADAT` | `STRING` | Goods Issue Date |
 | 10 | `KUNWE` | `STRING` | Ship-To Party |
-| 11 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 11 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 12 | `LIFSP` | `STRING` | Delivery block for header or schedule line |
-| 13 | `KUNNR` | `STRING` | Sold-To Party |
+| 13 | `KUNNR` | `STRING` | Sold-To Party _10-char zero-padded_ |
 | 14 | `VKORG` | `STRING` | Sales Organization |
 | 15 | `VTWEG` | `STRING` | Distribution Channel |
 | 16 | `SPART` | `STRING` | Division |
@@ -2605,9 +2648,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `VSTEL` | `STRING` | Shipping Point/Receiving Point |
 | 5 | `LEDAT` | `STRING` | Delivery Creation Date |
@@ -2616,8 +2659,8 @@
 | 8 | `SPDNR` | `STRING` | Forwarding agent |
 | 9 | `WADAT` | `STRING` | Goods Issue Date |
 | 10 | `KUNWE` | `STRING` | Ship-To Party |
-| 11 | `VBELN` | `STRING` | Purchasing Document Number |
-| 12 | `KUNNR` | `STRING` | Sold-To Party |
+| 11 | `VBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
+| 12 | `KUNNR` | `STRING` | Sold-To Party _10-char zero-padded_ |
 | 13 | `VKORG` | `STRING` | Sales Organization |
 | 14 | `VTWEG` | `STRING` | Distribution Channel |
 | 15 | `SPART` | `STRING` | Division |
@@ -2649,10 +2692,10 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
-| 3 | `VBELN` | `STRING` | Delivery |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
+| 3 | `VBELN` | `STRING` | Delivery _10-char zero-padded_ |
 | 4 | `ZACTDATE` | `STRING` | Data Element for Actual Delivery Date |
 | 5 | `ERDAT` | `STRING` | Record Creation Date |
 | 6 | `ERZET` | `STRING` | Entry time |
@@ -2675,9 +2718,9 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `AUFNR` | `STRING` | Order Number |
+| 1 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
-| 3 | `MATNR` | `STRING` | Material Number |
+| 3 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 4 | `VORNR` | `STRING` | Activity Number |
 | 5 | `ZITEM` | `STRING` | Item |
 | 6 | `LTXA1` | `STRING` | Operation Short Text |
@@ -2700,7 +2743,7 @@
 | 23 | `ZSRTXT` | `STRING` | Sub-Reason Description |
 | 24 | `Z2_QMNUM` | `STRING` | Z2 Notification No. |
 | 25 | `PRO_LINE_DES` | `STRING` | Process line description |
-| 26 | `AEDATTM` | `STRING` | — |
+| 26 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -2723,7 +2766,7 @@
 | 4 | `ZPM` | `STRING` | Relevant for Maintenance |
 | 5 | `ZTY` | `STRING` | Notification Type |
 | 6 | `ZPLAN` | `STRING` | Planned Downtime |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -2741,7 +2784,7 @@
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `STEUS` | `STRING` | Control Key |
-| 2 | `AEDATTM` | `STRING` | — |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -2757,9 +2800,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `OBJNR` | `STRING` | Object number |
 | 5 | `STAT` | `STRING` | Object status |
@@ -2911,7 +2954,7 @@
 | 126 | `CHAORIG_GUID` | `STRING` | Reference to Characteristic That Was Adopted |
 | 127 | `NO_INSPECTION` | `STRING` | Do Not Copy Inspection Characteristic to Inspection Lot |
 | 128 | `QP_CHAORIG_ID` | `STRING` | Original Identification for Characteristic |
-| 129 | `AEDATTM` | `STRING` | — |
+| 129 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -3016,20 +3059,20 @@
 | 86 | `SELKUNNR` | `STRING` | Account number of customer |
 | 87 | `SELPPLVERW` | `STRING` | Task list usage |
 | 88 | `GUELTIGAB` | `STRING` | Key Date for Selecting Records or Changing Task Lists |
-| 89 | `AUFNR` | `STRING` | Order Number |
+| 89 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 90 | `AUFPL` | `STRING` | Routing number of operations in the order |
 | 91 | `CUOBJ` | `STRING` | Configuration (internal object number) |
 | 92 | `CUOBJ_CH` | `STRING` | Internal object number of the batch classification |
 | 93 | `VERID` | `STRING` | Production Version |
 | 94 | `SA_AUFNR` | `STRING` | Run schedule header number |
-| 95 | `KUNNR` | `STRING` | Customer (Ship-To Party) |
-| 96 | `LIFNR` | `STRING` | Suppliers Account Number |
+| 95 | `KUNNR` | `STRING` | Customer (Ship-To Party) _10-char zero-padded_ |
+| 96 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
 | 97 | `HERSTELLER` | `STRING` | Number of Manufacturer |
 | 98 | `EMATNR` | `STRING` | Material Number Corresponding to Manufacturer Part Number |
-| 99 | `MATNR` | `STRING` | Material Number |
+| 99 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 100 | `REVLV` | `STRING` | Revision Level |
 | 101 | `XCHPF` | `STRING` | Batch management requirement indicator |
-| 102 | `CHARG` | `STRING` | Batch Number |
+| 102 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 103 | `LAGORTCHRG` | `STRING` | Storage Location |
 | 104 | `ZEUGNISBIS` | `STRING` | Valid-To Date for The Batch Certificate |
 | 105 | `VFDAT` | `STRING` | Shelf Life Expiration or Best-Before Date |
@@ -3039,7 +3082,7 @@
 | 109 | `KDAUF` | `STRING` | Sales order number of valuated sales order stock |
 | 110 | `KDPOS` | `STRING` | Sales Order Item of Valuated Sales Order Stock |
 | 111 | `EKORG` | `STRING` | Purchasing Organization |
-| 112 | `EBELN` | `STRING` | Purchasing Document Number |
+| 112 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 113 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 114 | `ETENR` | `STRING` | Delivery Schedule Line Counter |
 | 115 | `BLART` | `STRING` | Document Type |
@@ -3192,7 +3235,7 @@
 | 262 | `ZEQUNR` | `STRING` | Equipment Number |
 | 263 | `ZRAUMNR` | `STRING` | Room |
 | 264 | `ZEQFNR` | `STRING` | Sort field |
-| 265 | `AEDATTM` | `STRING` | — |
+| 265 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -3293,7 +3336,7 @@
 | 82 | `INPPROC_READY` | `STRING` | Input Processing Successfully Completed |
 | 83 | `SIGN_ID` | `STRING` | Digital Signature for Process |
 | 84 | `SIGN_STATE` | `STRING` | Status of Signature Process |
-| 85 | `AEDATTM` | `STRING` | — |
+| 85 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -3448,7 +3491,7 @@
 | 136 | `INPPROC` | `STRING` | Parameters for Input Processing in QM Results Recording |
 | 137 | `CHAORIG` | `STRING` | Inspection Characteristic Origin |
 | 138 | `QP_CHAORIG_ID` | `STRING` | Original Identification for Characteristic |
-| 139 | `AEDATTM` | `STRING` | — |
+| 139 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -3515,7 +3558,7 @@
 | 48 | `AENDERER` | `STRING` | Name of Person Who Changed Object |
 | 49 | `AENDERDAT` | `STRING` | Last Changed On |
 | 50 | `AENDERZEIT` | `STRING` | Time at which data record was last changed |
-| 51 | `AEDATTM` | `STRING` | — |
+| 51 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -3586,7 +3629,7 @@
 | 52 | `ORIGINAL_INPUT` | `STRING` | Original Value Before Input Processing |
 | 53 | `DIFF_DEC_PLACES` | `SHORT` | Different Number of Decimal Places |
 | 54 | `INPPROC_READY` | `STRING` | Input Processing Successfully Completed |
-| 55 | `AEDATTM` | `STRING` | — |
+| 55 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -3683,7 +3726,7 @@
 | 78 | `INPPROC_READY` | `STRING` | Input Processing Successfully Completed |
 | 79 | `SIGN_ID` | `STRING` | Digital Signature for Process |
 | 80 | `SIGN_STATE` | `STRING` | Status of Signature Process |
-| 81 | `AEDATTM` | `STRING` | — |
+| 81 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -3724,7 +3767,7 @@
 | 22 | `STAFO` | `STRING` | Update group for statistics update |
 | 23 | `TEILLOS` | `STRING` | Partial lot number |
 | 24 | `VORGLFNR` | `STRING` | Current Node Number from Order Counter APLZL |
-| 25 | `AEDATTM` | `STRING` | — |
+| 25 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -3826,7 +3869,7 @@
 | 7 | `VERWENDUNG` | `STRING` | Data Record Is Used |
 | 8 | `INAKTIV` | `STRING` | Status of Code Group or Code Record |
 | 9 | `STATUS` | `STRING` | Status of Master Record |
-| 10 | `AEDATTM` | `STRING` | — |
+| 10 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -3842,9 +3885,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `MBLNR` | `STRING` | Number of Material Document |
 | 5 | `MJAHR` | `STRING` | Material Document Year |
@@ -3855,16 +3898,16 @@
 | 10 | `MAA_URZEI` | `STRING` | Original Line for Account Assignment Item in Material Doc. |
 | 11 | `BWART` | `STRING` | Movement Type (Inventory Management) |
 | 12 | `XAUTO` | `STRING` | Item automatically created |
-| 13 | `MATNR` | `STRING` | Material Number |
+| 13 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 14 | `WERKS` | `STRING` | Plant |
 | 15 | `LGORT` | `STRING` | Storage Location |
-| 16 | `CHARG` | `STRING` | Batch Number |
+| 16 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 17 | `INSMK` | `STRING` | Stock Type |
 | 18 | `ZUSCH` | `STRING` | Batch status key |
 | 19 | `ZUSTD` | `STRING` | Batch in Restricted-Use Stock |
 | 20 | `SOBKZ` | `STRING` | Special Stock Indicator |
-| 21 | `LIFNR` | `STRING` | Vendors account number |
-| 22 | `KUNNR` | `STRING` | Account number of customer |
+| 21 | `LIFNR` | `STRING` | Vendors account number _10-char zero-padded_ |
+| 22 | `KUNNR` | `STRING` | Account number of customer _10-char zero-padded_ |
 | 23 | `KDAUF` | `STRING` | Sales Order Number |
 | 24 | `KDPOS` | `STRING` | Item number in Sales Order |
 | 25 | `KDEIN` | `STRING` | Delivery schedule for sales order |
@@ -3883,7 +3926,7 @@
 | 38 | `ERFME` | `STRING` | Unit of entry |
 | 39 | `BPMNG` | `DECIMAL` | Quantity in Purchase Order Price Unit |
 | 40 | `BPRME` | `STRING` | Order Price Unit (Purchasing) |
-| 41 | `EBELN` | `STRING` | Purchase order number |
+| 41 | `EBELN` | `STRING` | Purchase order number _10-char zero-padded_ |
 | 42 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 43 | `LFBJA` | `STRING` | Fiscal Year of a Reference Document |
 | 44 | `LFBNR` | `STRING` | Document No. of a Reference Document |
@@ -3902,7 +3945,7 @@
 | 57 | `PARBU` | `STRING` | Clearing company code |
 | 58 | `KOSTL` | `STRING` | Cost Center |
 | 59 | `PROJN` | `STRING` | Old: Project number : No longer used --> PS_POSNR |
-| 60 | `AUFNR` | `STRING` | Order Number |
+| 60 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 61 | `ANLN1` | `STRING` | Main Asset Number |
 | 62 | `ANLN2` | `STRING` | Asset Subnumber |
 | 63 | `XSKST` | `STRING` | Indicator: Statistical Posting to Cost Center |
@@ -4072,7 +4115,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `STORCOND` | `STRING` | Storage Conditions |
 | 3 | `KOSHERSUIT` | `STRING` | Kosher Suitable |
 | 4 | `KOSHERAPP` | `STRING` | Kosher Approved |
@@ -4095,7 +4138,7 @@
 | 21 | `LEGALDEC` | `STRING` | Legal Declaration |
 | 22 | `VKORG` | `STRING` | Sales Organization |
 | 23 | `VTWEG` | `STRING` | Distribution Channel |
-| 24 | `KUNNR` | `STRING` | Sold-To Party |
+| 24 | `KUNNR` | `STRING` | Sold-To Party _10-char zero-padded_ |
 | 25 | `ZKUNNR` | `STRING` | Customer Number |
 | 26 | `SAMPLE_DESC` | `STRING` | Sample description |
 | 27 | `Z3PL_PART` | `STRING` | 3PL PartCode |
@@ -4117,7 +4160,7 @@
 | 43 | `ZZ_TLSS_UOM` | `STRING` | Sample Size UOM |
 | 44 | `ZZ_PVSS_UOM` | `STRING` | Per Volume qunatity UOM |
 | 45 | `ZGMO_CODE` | `STRING` | Genetically Modified Organisms |
-| 46 | `AEDATTM` | `STRING` | — |
+| 46 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -4134,7 +4177,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `MEINH` | `STRING` | Alternative Unit of Measure for Stockkeeping Unit |
 | 3 | `UMREZ` | `DECIMAL` | Numerator for Conversion to Base Units of Measure |
 | 4 | `UMREN` | `DECIMAL` | Denominator for conversion to base units of measure |
@@ -4166,7 +4209,7 @@
 | 30 | `NTGEW` | `DECIMAL` | Net Weight |
 | 31 | `ZZINNER` | `STRING` | Inner for UOM |
 | 32 | `ZZPACKH` | `STRING` | Packing Hierarchy |
-| 33 | `AEDATTM` | `STRING` | — |
+| 33 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -4183,11 +4226,11 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `SPRAS` | `STRING` | Language Key |
 | 3 | `MAKTX` | `STRING` | Material Description |
 | 4 | `MAKTG` | `STRING` | Material Description in Uppercase for Matchcodes |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -4203,9 +4246,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `MBLNR` | `STRING` | Number of Material Document |
 | 5 | `MJAHR` | `STRING` | Material Document Year |
@@ -4256,7 +4299,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
 | 3 | `PSTAT` | `STRING` | Maintenance status |
 | 4 | `LVORM` | `STRING` | Flag Material for Deletion at Plant Level |
@@ -4510,7 +4553,7 @@
 | 252 | `ZZMAT_CLASS` | `STRING` | Material Classification |
 | 253 | `ZSS_EXCL` | `STRING` | Exclude from calculation Safety Stock |
 | 254 | `ZAUMNG` | `DECIMAL` | Minimum order quantity in base unit of measure |
-| 255 | `AEDATTM` | `STRING` | — |
+| 255 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -4526,11 +4569,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `WERKS` | `STRING` | Plant |
 | 6 | `PSTAT` | `STRING` | Maintenance status |
 | 7 | `LVORM` | `STRING` | Flag Material for Deletion at Plant Level |
@@ -4799,11 +4842,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `WERKS` | `STRING` | Plant |
 | 6 | `PSTAT` | `STRING` | Maintenance status |
 | 7 | `LVORM` | `STRING` | Flag Material for Deletion at Plant Level |
@@ -5073,7 +5116,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 3 | `LVORM` | `STRING` | Deletion flag for all material data of a warehouse number |
 | 4 | `LGBKZ` | `STRING` | Storage Section Indicators |
@@ -5098,7 +5141,7 @@
 | 23 | `PLKPT` | `STRING` | Picking storage type for rough-cut and detailed planning |
 | 24 | `VOMEM` | `STRING` | Default for unit of measure from material master record |
 | 25 | `L2SKR` | `STRING` | Material relevance for 2-step picking |
-| 26 | `AEDATTM` | `STRING` | — |
+| 26 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -5115,7 +5158,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `ERSDA` | `STRING` | Created On |
 | 3 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
 | 4 | `LAEDA` | `STRING` | Date of Last Change |
@@ -5155,7 +5198,7 @@
 | 38 | `TRAGR` | `STRING` | Transportation Group |
 | 39 | `STOFF` | `STRING` | Hazardous material number |
 | 40 | `SPART` | `STRING` | Division |
-| 41 | `KUNNR` | `STRING` | Competitor |
+| 41 | `KUNNR` | `STRING` | Competitor _10-char zero-padded_ |
 | 42 | `EANNR` | `STRING` | European Article Number (EAN) - obsolete!!!!! |
 | 43 | `WESCH` | `DECIMAL` | Quantity: Number of GR/GI slips to be printed |
 | 44 | `BWVOR` | `STRING` | Procurement rule |
@@ -5388,7 +5431,7 @@
 | 271 | `ZZCARBSUGAR` | `DECIMAL` | Carbohydrates as Sugars |
 | 272 | `ZZUSFDA_FTL` | `STRING` | Identify as US FDA FTL |
 | 273 | `ZZUSFDA_FTL_CON` | `STRING` | Contains US FDA FTL |
-| 274 | `AEDATTM` | `STRING` | — |
+| 274 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -5405,7 +5448,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `BWKEY` | `STRING` | Valuation Area |
 | 3 | `BWTAR` | `STRING` | Valuation Type |
 | 4 | `LVORM` | `STRING` | Deletion flag for all material data of a valuation type |
@@ -5513,7 +5556,7 @@
 | 106 | `MBRUE` | `STRING` | MBEWH rec. already exists for per. before last of MBEW per. |
 | 107 | `OKLAS` | `STRING` | Valuation Class for Special Stock at the Vendor |
 | 108 | `OIPPINV` | `STRING` | Prepaid Inventory Flag for Material Valuation Type Segment |
-| 109 | `AEDATTM` | `STRING` | — |
+| 109 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -5552,7 +5595,7 @@
 | 20 | `WIP` | `STRING` | Control of WIP Batch |
 | 21 | `WIPB_GR_CTRL` | `STRING` | Control Goods Receipt WIP Batch |
 | 22 | `NOT_MES_REL` | `STRING` | Not Relevant for External Manufacturing Execution System |
-| 23 | `AEDATTM` | `STRING` | — |
+| 23 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -5568,11 +5611,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `AUFNR` | `STRING` | Order Number |
+| 4 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 5 | `AUART` | `STRING` | Order Type |
 | 6 | `AUTYP` | `STRING` | Order category |
 | 7 | `REFNR` | `STRING` | Reference order number |
@@ -5699,7 +5742,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 1 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 2 | `EKORG` | `STRING` | Purchasing Organization |
 | 3 | `LTSNR` | `STRING` | Vendor Subrange |
 | 4 | `WERKS` | `STRING` | Plant |
@@ -5733,7 +5776,7 @@
 | 3 | `LGTYP` | `STRING` | Storage Type |
 | 4 | `KOBER` | `STRING` | Picking Area |
 | 5 | `KBERT` | `STRING` | Picking area name |
-| 6 | `AEDATTM` | `STRING` | — |
+| 6 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -5756,7 +5799,7 @@
 | 4 | `EHTBG` | `STRING` | Relative Start Date Unit |
 | 5 | `TAGEN` | `STRING` | Relative End Date for Task/Notification in Days |
 | 6 | `EHTEN` | `STRING` | Relative End Date Unit |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -5777,7 +5820,7 @@
 | 2 | `ARTPR` | `STRING` | Priority Type |
 | 3 | `PRIOK` | `STRING` | Priority |
 | 4 | `PRIOKX` | `STRING` | Priority Text |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -5793,9 +5836,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `AUFPL` | `STRING` | Routing number of operations in the order |
 | 5 | `APLZL` | `STRING` | General counter for order |
@@ -5849,7 +5892,7 @@
 | 53 | `RSTRA` | `STRING` | Reduction Strategy per Operation |
 | 54 | `SUMNR` | `STRING` | Node number of the superior operation |
 | 55 | `SORTL` | `STRING` | Sort Term for Non-Stock Info Records |
-| 56 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 56 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 57 | `PREIS` | `DECIMAL` | Price |
 | 58 | `PEINH` | `DECIMAL` | Price unit |
 | 59 | `SAKTO` | `STRING` | Cost Element |
@@ -5935,7 +5978,7 @@
 | 139 | `WERKI` | `STRING` | Actual plant |
 | 140 | `CY_SEQNRV` | `STRING` | Sequence number operation |
 | 141 | `KAPT_PUFFR` | `INT` | Operation floats after finite scheduling (in seconds) |
-| 142 | `EBELN` | `STRING` | Purchasing Document Number |
+| 142 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 143 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 144 | `WEMPF` | `STRING` | Goods recipient |
 | 145 | `ABLAD` | `STRING` | Unloading Point |
@@ -6000,11 +6043,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `AUFNR` | `STRING` | Order Number |
+| 4 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 5 | `GLTRP` | `STRING` | Basic finish date |
 | 6 | `GSTRP` | `STRING` | Basic Start Date |
 | 7 | `FTRMS` | `STRING` | Scheduled release date |
@@ -6186,11 +6229,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `AUFNR` | `STRING` | Order Number |
+| 4 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 5 | `POSNR` | `STRING` | Order item number |
 | 6 | `PSOBS` | `STRING` | Special procurement type |
 | 7 | `QUNUM` | `STRING` | Number of quota arrangement |
@@ -6209,7 +6252,7 @@
 | 20 | `IAMNG` | `DECIMAL` | Expected surplus/deficit for goods receipt |
 | 21 | `AMEIN` | `STRING` | Unit of measure for in-house production |
 | 22 | `MEINS` | `STRING` | Base Unit of Measure |
-| 23 | `MATNR` | `STRING` | Material Number for Order |
+| 23 | `MATNR` | `STRING` | Material Number for Order _18-char zero-padded_ |
 | 24 | `PAMNG` | `DECIMAL` | Fixed quantity of scrap from production |
 | 25 | `PGMNG` | `DECIMAL` | Total planned order quantity |
 | 26 | `KNTTP` | `STRING` | Account Assignment Category |
@@ -6248,7 +6291,7 @@
 | 59 | `WEUNB` | `STRING` | Goods Receipt Non-Valuated |
 | 60 | `ABLAD` | `STRING` | Unloading Point |
 | 61 | `WEMPF` | `STRING` | Goods recipient |
-| 62 | `CHARG` | `STRING` | Batch Number |
+| 62 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 63 | `GSBER` | `STRING` | Business Area |
 | 64 | `WEAED` | `STRING` | Indicator: Goods receipt indicator can be changed |
 | 65 | `CUOBJ` | `STRING` | Configuration (internal object number) |
@@ -6305,9 +6348,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `AUFPL` | `STRING` | Routing number of operations in the order |
 | 5 | `APLZL` | `STRING` | General counter for order |
@@ -6361,7 +6404,7 @@
 | 53 | `RSTRA` | `STRING` | Reduction Strategy per Operation |
 | 54 | `SUMNR` | `STRING` | Node number of the superior operation |
 | 55 | `SORTL` | `STRING` | Sort Term for Non-Stock Info Records |
-| 56 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 56 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 57 | `PREIS` | `DECIMAL` | Price |
 | 58 | `PEINH` | `DECIMAL` | Price unit |
 | 59 | `SAKTO` | `STRING` | Cost Element |
@@ -6447,7 +6490,7 @@
 | 139 | `WERKI` | `STRING` | Actual plant |
 | 140 | `CY_SEQNRV` | `STRING` | Sequence number operation |
 | 141 | `KAPT_PUFFR` | `INT` | Operation floats after finite scheduling (in seconds) |
-| 142 | `EBELN` | `STRING` | Purchasing Document Number |
+| 142 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 143 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 144 | `WEMPF` | `STRING` | Goods recipient |
 | 145 | `ABLAD` | `STRING` | Unloading Point |
@@ -6527,7 +6570,7 @@
 | 11 | `ZREWORKSLOC` | `STRING` | Rework Storage Location Flag |
 | 12 | `ZAPOTRANSFER` | `STRING` | Exclude APO Transfer |
 | 13 | `ZEXCLUDELOT` | `STRING` | Exclude Lot |
-| 14 | `AEDATTM` | `STRING` | — |
+| 14 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -6591,7 +6634,7 @@
 | 45 | `PAMS_AUFNR` | `STRING` | PAM Order Number |
 | 46 | `PAMS_PROID` | `STRING` | Work Breakdown Structure Element (WBS Element) |
 | 47 | `PAMS_KOKRS` | `STRING` | Controlling Area |
-| 48 | `AEDATTM` | `STRING` | — |
+| 48 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -6607,9 +6650,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `QMNUM` | `STRING` | Notification No |
 | 5 | `QMART` | `STRING` | Notification Type |
@@ -6628,12 +6671,12 @@
 | 18 | `LTRMN` | `STRING` | Required End Date |
 | 19 | `LTRUR` | `STRING` | Requested End Time |
 | 20 | `WAERS` | `STRING` | Currency Key |
-| 21 | `AUFNR` | `STRING` | Order Number |
+| 21 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 22 | `VERID` | `STRING` | Production Version |
 | 23 | `RM_MATNR` | `STRING` | Material number of the production version |
 | 24 | `RM_WERKS` | `STRING` | Plant of production version |
 | 25 | `SA_AUFNR` | `STRING` | Run schedule header number |
-| 26 | `MATNR` | `STRING` | Material Number |
+| 26 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 27 | `REVLV` | `STRING` | Revision Level |
 | 28 | `MATKL` | `STRING` | Material Group |
 | 29 | `PRDHA` | `STRING` | Product Hierarchy |
@@ -6654,7 +6697,7 @@
 | 44 | `BEZUR` | `STRING` | Notification Reference Time |
 | 45 | `LIFNUM` | `STRING` | Vendor Account Number |
 | 46 | `BUNAME` | `STRING` | Author of a Q/PM Notification |
-| 47 | `VBELN` | `STRING` | Sales Order Number |
+| 47 | `VBELN` | `STRING` | Sales Order Number _10-char zero-padded_ |
 | 48 | `BSTNK` | `STRING` | Customer Purchase Order Number |
 | 49 | `BSTDK` | `STRING` | Customer Purchase Order Date |
 | 50 | `SPART` | `STRING` | Division |
@@ -6670,7 +6713,7 @@
 | 60 | `AUSWIRK` | `STRING` | Key for a Scenario |
 | 61 | `TEILEV` | `STRING` | Usage of Parts |
 | 62 | `PRUEFLOS` | `STRING` | Inspection Lot Number |
-| 63 | `CHARG` | `STRING` | Batch Number |
+| 63 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 64 | `LGORTCHARG` | `STRING` | Storage Location of Batch |
 | 65 | `LICHN` | `STRING` | Vendor Batch Number |
 | 66 | `HERSTELLER` | `STRING` | Number of Manufacturer |
@@ -6680,7 +6723,7 @@
 | 70 | `LGORTVORG` | `STRING` | Storage Location for Inspection Lot Stock |
 | 71 | `FERTAUFNR` | `STRING` | Order Number (Production Order) |
 | 72 | `FERTAUFPL` | `STRING` | Plan Number for Operations in Order (Production Order) |
-| 73 | `EBELN` | `STRING` | Purchasing Document Number |
+| 73 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 74 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 75 | `MJAHR` | `STRING` | Material Document Year |
 | 76 | `MBLNR` | `STRING` | Number of Material Document |
@@ -6814,9 +6857,9 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 2 | `LQNUM` | `STRING` | Quant |
-| 3 | `MATNR` | `STRING` | Material Number |
+| 3 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 4 | `WERKS` | `STRING` | Plant |
-| 5 | `CHARG` | `STRING` | Batch Number |
+| 5 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 6 | `BESTQ` | `STRING` | Stock Category in the Warehouse Management System |
 | 7 | `SOBKZ` | `STRING` | Special Stock Indicator |
 | 8 | `SONUM` | `STRING` | Special Stock Number |
@@ -6864,12 +6907,12 @@
 | 50 | `VIRGO` | `STRING` | Quant does not contain GR data |
 | 51 | `TRAME` | `DECIMAL` | Open Transfer Quantity |
 | 52 | `KZHUQ` | `STRING` | Indicator: Quant is on a handling unit |
-| 53 | `VBELN` | `STRING` | Delivery |
+| 53 | `VBELN` | `STRING` | Delivery _10-char zero-padded_ |
 | 54 | `POSNR` | `STRING` | Delivery Item |
 | 55 | `IDATU` | `STRING` | Date of last inventory of quant |
 | 56 | `MSR_INSP_GUID` | `STRING` | Inspection GUID |
 | 57 | `SGT_SCAT` | `STRING` | Stock Segment |
-| 58 | `AEDATTM` | `STRING` | — |
+| 58 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -6909,7 +6952,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `BWART` | `STRING` | Movement Type (Inventory Management) |
 | 2 | `GRUND` | `STRING` | Reason for Movement |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -6925,9 +6968,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `RSNUM` | `STRING` | Number of reservation/dependent requirements |
 | 5 | `RSPOS` | `STRING` | Item Number of Reservation / Dependent Requirements |
@@ -6938,11 +6981,11 @@
 | 10 | `XWAOK` | `STRING` | Goods movement for reservation allowed |
 | 11 | `KZEAR` | `STRING` | Final issue for this reservation |
 | 12 | `XFEHL` | `STRING` | Missing Part |
-| 13 | `MATNR` | `STRING` | Material Number |
+| 13 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 14 | `WERKS` | `STRING` | Plant |
 | 15 | `LGORT` | `STRING` | Storage Location |
 | 16 | `PRVBE` | `STRING` | Production Supply Area |
-| 17 | `CHARG` | `STRING` | Batch Number |
+| 17 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 18 | `PLPLA` | `STRING` | Distribution of Differences |
 | 19 | `SOBKZ` | `STRING` | Special Stock Indicator |
 | 20 | `BDTER` | `STRING` | Requirements date for the component |
@@ -6958,7 +7001,7 @@
 | 30 | `PLNUM` | `STRING` | Planned order number |
 | 31 | `BANFN` | `STRING` | Purchase Requisition Number |
 | 32 | `BNFPO` | `STRING` | Item number of purchase requisition |
-| 33 | `AUFNR` | `STRING` | Order Number |
+| 33 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 34 | `BAUGR` | `STRING` | Material number of higher-level assembly |
 | 35 | `SERNR` | `STRING` | BOM explosion number |
 | 36 | `KDAUF` | `STRING` | Sales Order Number |
@@ -7018,7 +7061,7 @@
 | 90 | `BAUST` | `STRING` | Assembly order level |
 | 91 | `BAUWG` | `STRING` | Assembly order path |
 | 92 | `AUFPS` | `STRING` | Order item number |
-| 93 | `EBELN` | `STRING` | Purchasing Document Number |
+| 93 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 94 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 95 | `EBELE` | `STRING` | Delivery Schedule Line Counter |
 | 96 | `KNTTP` | `STRING` | Account Assignment Category |
@@ -7082,7 +7125,7 @@
 | 154 | `CLAKZ` | `STRING` | Indicator: classification exists |
 | 155 | `INPOS` | `STRING` | Indicator: intra material |
 | 156 | `WEBAZ` | `DECIMAL` | Goods receipt processing time in days |
-| 157 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 157 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 158 | `FLGEX` | `STRING` | Indicator: External procurement |
 | 159 | `FUNCT` | `STRING` | Distribution function |
 | 160 | `GPREIS_2` | `DECIMAL` | Total Price in Local Currency |
@@ -7144,11 +7187,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Sales Document |
+| 4 | `VBELN` | `STRING` | Sales Document _10-char zero-padded_ |
 | 5 | `ERDAT` | `STRING` | Date on Which Record Was Created |
 | 6 | `ERZET` | `STRING` | Entry time |
 | 7 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
@@ -7194,7 +7237,7 @@
 | 47 | `TELF1` | `STRING` | Telephone Number |
 | 48 | `MAHZA` | `DECIMAL` | Number of contacts from the customer |
 | 49 | `MAHDT` | `STRING` | Last customer contact date |
-| 50 | `KUNNR` | `STRING` | Sold-To Party |
+| 50 | `KUNNR` | `STRING` | Sold-To Party _10-char zero-padded_ |
 | 51 | `KOSTL` | `STRING` | Cost Center |
 | 52 | `STAFO` | `STRING` | Update group for statistics update |
 | 53 | `STWAE` | `STRING` | Statistics currency |
@@ -7238,7 +7281,7 @@
 | 91 | `VGTYP` | `STRING` | Document category of preceding SD document |
 | 92 | `KALSM_CH` | `STRING` | Search procedure for batch determination |
 | 93 | `AGRZR` | `STRING` | Accrual period for order-related billing docs.to be accrued |
-| 94 | `AUFNR` | `STRING` | Order Number |
+| 94 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 95 | `QMNUM` | `STRING` | Notification No |
 | 96 | `VBELN_GRP` | `STRING` | Mster contract number |
 | 97 | `SCHEME_GRP` | `STRING` | Referencing requirement: Procedure |
@@ -7334,16 +7377,16 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Sales Document |
+| 4 | `VBELN` | `STRING` | Sales Document _10-char zero-padded_ |
 | 5 | `POSNR` | `STRING` | Sales Document Item |
-| 6 | `MATNR` | `STRING` | Material Number |
+| 6 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 7 | `MATWA` | `STRING` | Material entered |
 | 8 | `PMATN` | `STRING` | Pricing Reference Material |
-| 9 | `CHARG` | `STRING` | Batch Number |
+| 9 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 10 | `MATKL` | `STRING` | Material Group |
 | 11 | `ARKTX` | `STRING` | Short text for sales order item |
 | 12 | `PSTYV` | `STRING` | Sales Document Item Category |
@@ -7471,7 +7514,7 @@
 | 134 | `VPZUO` | `STRING` | Allocation Indicator |
 | 135 | `PAOBJNR` | `STRING` | Profitability Segment Number (CO-PA) |
 | 136 | `PS_PSP_PNR` | `STRING` | Work Breakdown Structure Element (WBS Element) |
-| 137 | `AUFNR` | `STRING` | Order Number |
+| 137 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 138 | `VPMAT` | `STRING` | Planning material |
 | 139 | `VPWRK` | `STRING` | Planning plant |
 | 140 | `PRBME` | `STRING` | Base unit of measure for product group |
@@ -7666,11 +7709,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Sales Document |
+| 4 | `VBELN` | `STRING` | Sales Document _10-char zero-padded_ |
 | 5 | `POSNR` | `STRING` | Sales Document Item |
 | 6 | `ETENR` | `STRING` | Schedule Line Number |
 | 7 | `ETTYP` | `STRING` | Schedule line category |
@@ -7717,7 +7760,7 @@
 | 48 | `BWART` | `STRING` | Movement Type (Inventory Management) |
 | 49 | `BNFPO` | `STRING` | Item number of purchase requisition |
 | 50 | `ETART` | `STRING` | Schedule line type EDI |
-| 51 | `AUFNR` | `STRING` | Order Number |
+| 51 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 52 | `PLNUM` | `STRING` | Planned order number |
 | 53 | `SERNR` | `STRING` | BOM explosion number |
 | 54 | `AESKD` | `STRING` | Customer Engineering Change Status |
@@ -7751,13 +7794,13 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `VBELV` | `STRING` | Preceding sales and distribution document |
 | 5 | `POSNV` | `STRING` | Preceding item of an SD document |
-| 6 | `VBELN` | `STRING` | Subsequent sales and distribution document |
+| 6 | `VBELN` | `STRING` | Subsequent sales and distribution document _10-char zero-padded_ |
 | 7 | `POSNN` | `STRING` | Subsequent item of an SD document |
 | 8 | `VBTYP_N` | `STRING` | Document category of subsequent document |
 | 9 | `RFMNG` | `DECIMAL` | Referenced quantity in base unit of measure |
@@ -7769,7 +7812,7 @@
 | 15 | `TAQUI` | `STRING` | ID: MM-WM transfer order confirmed |
 | 16 | `ERDAT` | `STRING` | Date on Which Record Was Created |
 | 17 | `ERZET` | `STRING` | Entry time |
-| 18 | `MATNR` | `STRING` | Material Number |
+| 18 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 19 | `BWART` | `STRING` | Movement Type (Inventory Management) |
 | 20 | `BDART` | `STRING` | Requirement type |
 | 21 | `PLART` | `STRING` | Planning type |
@@ -7813,11 +7856,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 5 | `POSNR` | `STRING` | Item number of the SD document |
 | 6 | `KONDA` | `STRING` | Price group (customer) |
 | 7 | `KDGRP` | `STRING` | Customer group |
@@ -7933,15 +7976,15 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 5 | `POSNR` | `STRING` | Item number of the SD document |
 | 6 | `PARVW` | `STRING` | Partner Function |
-| 7 | `KUNNR` | `STRING` | Customer Number |
-| 8 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 7 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
+| 8 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 9 | `PERNR` | `STRING` | Personnel Number |
 | 10 | `PARNR` | `STRING` | Number of contact person |
 | 11 | `ADRNR` | `STRING` | Address |
@@ -7976,11 +8019,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 5 | `RFSTK` | `STRING` | Reference document header status |
 | 6 | `RFGSK` | `STRING` | Total reference status of all items |
 | 7 | `BESTK` | `STRING` | Confirmation status |
@@ -8079,11 +8122,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 5 | `POSNR` | `STRING` | Item number of the SD document |
 | 6 | `RFSTA` | `STRING` | Reference status |
 | 7 | `RFGSA` | `STRING` | Overall status of reference |
@@ -8142,11 +8185,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 5 | `POSNR` | `STRING` | Item number of the SD document |
 | 6 | `ETENR` | `STRING` | Schedule Line Number |
 | 7 | `PARVW` | `STRING` | Partner Function |
@@ -8240,7 +8283,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `WERKS` | `STRING` | Plant |
 | 2 | `RFGRP` | `STRING` | Setup group category |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -8274,7 +8317,7 @@
 | 15 | `WOTAG` | `SHORT` | Factory calendar weekday |
 | 16 | `ANG_MIN` | `DECIMAL` | Minimum capacity in volume unit or unit of measure |
 | 17 | `ANG_MAX` | `DECIMAL` | Maximum capacity in volume unit or unit of measure |
-| 18 | `AEDATTM` | `STRING` | — |
+| 18 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -8290,9 +8333,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `FKNUM` | `STRING` | Shipment Cost Number |
 | 5 | `VBTYP` | `STRING` | SD document category |
@@ -8327,9 +8370,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `FKNUM` | `STRING` | Shipment Cost Number |
 | 5 | `FKPOS` | `STRING` | Shipment costs item |
@@ -8350,7 +8393,7 @@
 | 20 | `WERKS` | `STRING` | Plant |
 | 21 | `EKORG` | `STRING` | Purchasing Organization |
 | 22 | `EKGRP` | `STRING` | Purchasing Group |
-| 23 | `EBELN` | `STRING` | Purchasing Document Number |
+| 23 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 24 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 25 | `LBLNI` | `STRING` | Entry Sheet Number |
 | 26 | `PARVW` | `STRING` | Partner Function |
@@ -8410,9 +8453,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `TKNUM` | `STRING` | Shipment Number |
 | 5 | `VBTYP` | `STRING` | SD document category |
@@ -8577,13 +8620,13 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `TKNUM` | `STRING` | Shipment Number |
 | 5 | `TPNUM` | `STRING` | Shipment item |
-| 6 | `VBELN` | `STRING` | Delivery |
+| 6 | `VBELN` | `STRING` | Delivery _10-char zero-padded_ |
 | 7 | `TPRFO` | `STRING` | Itinerary of shipment items |
 | 8 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
 | 9 | `ERDAT` | `STRING` | Record Creation Date |
@@ -8606,9 +8649,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `TKNUM` | `STRING` | Shipment Number |
 | 5 | `TSNUM` | `STRING` | Stage of transport number |
@@ -8716,7 +8759,7 @@
 | 13 | `Z_LABEL_LAYOUT4` | `STRING` | Label Layout |
 | 14 | `Z_LABEL_PER_UNIT4` | `STRING` | Label Unit |
 | 15 | `Z_LABEL_INST` | `STRING` | Label Instruction |
-| 16 | `AEDATTM` | `STRING` | — |
+| 16 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -8732,9 +8775,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 5 | `LGTYP` | `STRING` | Storage Type |
@@ -8813,14 +8856,14 @@
 | 12 | `VKORG` | `STRING` | Sales Organization |
 | 13 | `VTWEG` | `STRING` | Distribution Channel |
 | 14 | `VSTEL` | `STRING` | Shipping Point/Receiving Point |
-| 15 | `LIFNR` | `STRING` | Suppliers Account Number |
-| 16 | `KUNNR` | `STRING` | Account number of customer |
+| 15 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
+| 16 | `KUNNR` | `STRING` | Account number of customer _10-char zero-padded_ |
 | 17 | `MESBS` | `STRING` | Business System of MES |
 | 18 | `MESST` | `STRING` | Type of inventory management for production storage location |
 | 19 | `OIH_LICNO` | `STRING` | License number for untaxed stock |
 | 20 | `OIG_ITRFL` | `STRING` | TD in-transit flag |
 | 21 | `OIB_TNKASSIGN` | `STRING` | Silo Managament: Tank assignment indicator |
-| 22 | `AEDATTM` | `STRING` | — |
+| 22 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -8837,7 +8880,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
 | 3 | `LGORT` | `STRING` | Storage Location |
 | 4 | `PSTAT` | `STRING` | Maintenance status |
@@ -8887,7 +8930,7 @@
 | 48 | `MDRUE` | `STRING` | MARDH rec. already exists for per. before last of MARD per. |
 | 49 | `MDJIN` | `STRING` | Fiscal year of current physical inventory indicator |
 | 50 | `FSH_SALLOC_QTY_S` | `DECIMAL` | Allocated Stock Quantity |
-| 51 | `AEDATTM` | `STRING` | — |
+| 51 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -8907,7 +8950,7 @@
 | 1 | `WOTNR` | `STRING` | Calendar: Number of day |
 | 2 | `KURZT` | `STRING` | Calendar: Day Short Text |
 | 3 | `LANGT` | `STRING` | Day |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -8923,9 +8966,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `PLNTY` | `STRING` | Task List Type |
 | 5 | `PLNNR` | `STRING` | Key for Task List Group |
@@ -8958,9 +9001,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `PLNTY` | `STRING` | Task List Type |
 | 5 | `PLNNR` | `STRING` | Key for Task List Group |
@@ -9055,9 +9098,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `PLNTY` | `STRING` | Task List Type |
 | 5 | `PLNNR` | `STRING` | Key for Task List Group |
@@ -9157,7 +9200,7 @@
 | 99 | `OFFSTE` | `DECIMAL` | Offset to sub-operation finish |
 | 100 | `EHOFFE` | `STRING` | Unit for offset to finish |
 | 101 | `SORTL` | `STRING` | Sort Term for Non-Stock Info Records |
-| 102 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 102 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 103 | `PLIFZ` | `DECIMAL` | Planned Delivery Time in Days |
 | 104 | `PREIS` | `DECIMAL` | Net Price in Purchasing Info Record |
 | 105 | `PEINH` | `DECIMAL` | Price Unit |
@@ -9253,7 +9296,7 @@
 | 195 | `KRIT1` | `STRING` | Planning object |
 | 196 | `CLASSID` | `STRING` | Internal Class Number |
 | 197 | `PACKNO` | `STRING` | Package number |
-| 198 | `EBELN` | `STRING` | Purchasing Document Number |
+| 198 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 199 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 200 | `CAPOC` | `STRING` | Type of CAPP calculation at order creation |
 | 201 | `FLG_CAPTXT` | `STRING` | Ind: CAPP text exists |
@@ -9484,9 +9527,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `ERNAM` | `STRING` | — |
@@ -9727,9 +9770,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -10073,9 +10116,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -10419,9 +10462,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -11194,9 +11237,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `MBLNR` | `STRING` | — |
 | 5 | `MJAHR` | `STRING` | — |
@@ -11425,9 +11468,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `MBLNR` | `STRING` | — |
 | 5 | `MJAHR` | `STRING` | — |
@@ -11555,9 +11598,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `RSNUM` | `STRING` | — |
 | 5 | `RSPOS` | `STRING` | — |
@@ -11776,9 +11819,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -12110,9 +12153,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -12444,9 +12487,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -12778,9 +12821,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -13112,9 +13155,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -13446,9 +13489,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -13780,9 +13823,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -14114,9 +14157,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -14448,9 +14491,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -14782,9 +14825,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -15116,9 +15159,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -15450,9 +15493,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELN` | `STRING` | — |
 | 5 | `POSNR` | `STRING` | — |
@@ -15784,9 +15827,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `VBELV` | `STRING` | — |
 | 5 | `POSNV` | `STRING` | — |
@@ -15848,9 +15891,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `LGNUM` | `STRING` | — |
 | 5 | `TANUM` | `STRING` | — |
@@ -16030,9 +16073,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | — |
-| 1 | `AERECNO` | `INT` | — |
-| 2 | `AEDATTM` | `STRING` | — |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | — |
 | 4 | `LGNUM` | `STRING` | — |
 | 5 | `TANUM` | `STRING` | — |
@@ -16211,9 +16254,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 5 | `TANUM` | `STRING` | Transfer Order Number |
@@ -16227,7 +16270,7 @@
 | 13 | `REFNR` | `STRING` | Group |
 | 14 | `TBNUM` | `STRING` | Transfer Requirement Number |
 | 15 | `UBNUM` | `STRING` | Posting Change Number |
-| 16 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 16 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 17 | `KQUIT` | `STRING` | Indicator: Confirmation |
 | 18 | `QDATU` | `STRING` | Date of Confirmation |
 | 19 | `MBLNR` | `STRING` | Number of Material Document |
@@ -16295,18 +16338,18 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 5 | `TANUM` | `STRING` | Transfer Order Number |
 | 6 | `TAPOS` | `STRING` | Transfer order item |
 | 7 | `TBPOS` | `STRING` | Transfer Requirement Item |
 | 8 | `POSNR` | `STRING` | Item number of the SD document |
-| 9 | `MATNR` | `STRING` | Material Number |
+| 9 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 10 | `WERKS` | `STRING` | Plant |
-| 11 | `CHARG` | `STRING` | Batch Number |
+| 11 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 12 | `BESTQ` | `STRING` | Stock Category in the Warehouse Management System |
 | 13 | `SOBKZ` | `STRING` | Special Stock Indicator |
 | 14 | `SONUM` | `STRING` | Special Stock Number |
@@ -16448,7 +16491,7 @@
 | 150 | `PCKPF` | `STRING` | Packing control |
 | 151 | `KZTRM` | `STRING` | TRM Interface Active |
 | 152 | `PASSD` | `STRING` | Confirmation Data Transferred To Delivery |
-| 153 | `VBELN` | `STRING` | Delivery |
+| 153 | `VBELN` | `STRING` | Delivery _10-char zero-padded_ |
 | 154 | `KZXDK` | `STRING` | Cross dock interface |
 | 155 | `KZVAS` | `STRING` | Value added service interface |
 | 156 | `FROM_INSP_GUID` | `STRING` | Inspection GUID |
@@ -16476,9 +16519,9 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `AESID` | `STRING` | Source System ID |
-| 1 | `AERUNID` | `INT` | Run ID |
-| 2 | `AERECNO` | `INT` | Record Number |
-| 3 | `AEDATTM` | `STRING` | Timestamp |
+| 1 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 2 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 4 | `MANDT` | `STRING` | Client |
 | 5 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 6 | `TBNUM` | `STRING` | Transfer Requirement Number |
@@ -16543,18 +16586,18 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `AESID` | `STRING` | Source System ID |
-| 1 | `AERUNID` | `INT` | Run ID |
-| 2 | `AERECNO` | `INT` | Record Number |
-| 3 | `AEDATTM` | `STRING` | Timestamp |
+| 1 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 2 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 4 | `MANDT` | `STRING` | Client |
 | 5 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 6 | `TBNUM` | `STRING` | Transfer Requirement Number |
 | 7 | `TBPOS` | `STRING` | Transfer Requirement Item |
 | 8 | `ELIKZ` | `STRING` | Indicator: Processing Complete |
-| 9 | `MATNR` | `STRING` | Material Number |
+| 9 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 10 | `WERKS` | `STRING` | Plant |
 | 11 | `BESTQ` | `STRING` | Stock Category in the Warehouse Management System |
-| 12 | `CHARG` | `STRING` | Batch Number |
+| 12 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 13 | `SOBKZ` | `STRING` | Special Stock Indicator |
 | 14 | `SONUM` | `STRING` | Special Stock Number |
 | 15 | `MENGE` | `DECIMAL` | Transfer requirement quantity in stockkeeping unit |
@@ -16632,7 +16675,7 @@
 | 20 | `FAMUNIT` | `STRING` | Unit of measurement family |
 | 21 | `PRESS_VAL` | `DOUBLE` | Pressure Value |
 | 22 | `PRESS_UNIT` | `STRING` | Unit of Pressure |
-| 23 | `AEDATTM` | `STRING` | — |
+| 23 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -16650,7 +16693,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `VBELN` | `STRING` | Sales Document |
+| 1 | `VBELN` | `STRING` | Sales Document _10-char zero-padded_ |
 | 2 | `ERDAT` | `STRING` | Record Creation Date |
 | 3 | `ERZET` | `STRING` | Entry time |
 | 4 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
@@ -16696,7 +16739,7 @@
 | 44 | `TELF1` | `STRING` | Telephone Number |
 | 45 | `MAHZA` | `DECIMAL` | Number of contacts from the customer |
 | 46 | `MAHDT` | `STRING` | Last customer contact date |
-| 47 | `KUNNR` | `STRING` | Sold-To Party |
+| 47 | `KUNNR` | `STRING` | Sold-To Party _10-char zero-padded_ |
 | 48 | `KOSTL` | `STRING` | Cost Center |
 | 49 | `STAFO` | `STRING` | Update group for statistics update |
 | 50 | `STWAE` | `STRING` | Statistics currency |
@@ -16740,7 +16783,7 @@
 | 88 | `VGTYP` | `STRING` | Document category of preceding SD document |
 | 89 | `KALSM_CH` | `STRING` | Search procedure for batch determination |
 | 90 | `AGRZR` | `STRING` | Accrual period for order-related billing docs.to be accrued |
-| 91 | `AUFNR` | `STRING` | Order Number |
+| 91 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 92 | `QMNUM` | `STRING` | Notification No |
 | 93 | `VBELN_GRP` | `STRING` | Mster contract number |
 | 94 | `SCHEME_GRP` | `STRING` | Referencing requirement: Procedure |
@@ -16837,7 +16880,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `VBELN` | `STRING` | Sales Document |
+| 1 | `VBELN` | `STRING` | Sales Document _10-char zero-padded_ |
 | 2 | `ERDAT` | `STRING` | Record Creation Date |
 | 3 | `ERZET` | `STRING` | Entry time |
 | 4 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
@@ -16883,7 +16926,7 @@
 | 44 | `TELF1` | `STRING` | Telephone Number |
 | 45 | `MAHZA` | `DECIMAL` | Number of contacts from the customer |
 | 46 | `MAHDT` | `STRING` | Last customer contact date |
-| 47 | `KUNNR` | `STRING` | Sold-To Party |
+| 47 | `KUNNR` | `STRING` | Sold-To Party _10-char zero-padded_ |
 | 48 | `KOSTL` | `STRING` | Cost Center |
 | 49 | `STAFO` | `STRING` | Update group for statistics update |
 | 50 | `STWAE` | `STRING` | Statistics currency |
@@ -16927,7 +16970,7 @@
 | 88 | `VGTYP` | `STRING` | Document category of preceding SD document |
 | 89 | `KALSM_CH` | `STRING` | Search procedure for batch determination |
 | 90 | `AGRZR` | `STRING` | Accrual period for order-related billing docs.to be accrued |
-| 91 | `AUFNR` | `STRING` | Order Number |
+| 91 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 92 | `QMNUM` | `STRING` | Notification No |
 | 93 | `VBELN_GRP` | `STRING` | Mster contract number |
 | 94 | `SCHEME_GRP` | `STRING` | Referencing requirement: Procedure |
@@ -17022,9 +17065,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `DOC_NUM` | `STRING` | Document Number of an Accounting Document |
 | 5 | `FISCAL_YEAR` | `STRING` | Fiscal Year |
@@ -17076,7 +17119,7 @@
 | 7 | `WGFKL` | `STRING` | Consideration of water pollution class |
 | 8 | `BWREF` | `STRING` | Consideration of reference to movement type |
 | 9 | `LGREF` | `STRING` | Consideration of storage location reference |
-| 10 | `AEDATTM` | `STRING` | — |
+| 10 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17098,7 +17141,7 @@
 | 3 | `LPTYP` | `STRING` | Storage bin type |
 | 4 | `LETYP` | `STRING` | Storage Unit Type |
 | 5 | `PLAUF` | `STRING` | Section of a storage bin |
-| 6 | `AEDATTM` | `STRING` | — |
+| 6 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17117,7 +17160,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 2 | `SPGRU` | `STRING` | Blocking reason |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17138,7 +17181,7 @@
 | 2 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 3 | `SPGRU` | `STRING` | Blocking reason |
 | 4 | `SPGTX` | `STRING` | Text for blocking reason |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17157,7 +17200,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 2 | `BLOCK` | `STRING` | Bulk storage indicator |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17178,7 +17221,7 @@
 | 2 | `BLOCK` | `STRING` | Bulk storage indicator |
 | 3 | `SPRAS` | `STRING` | Language Key |
 | 4 | `BTEXT` | `STRING` | Description of bulk storage indicator |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17203,7 +17246,7 @@
 | 6 | `ANZSA` | `DECIMAL` | Maximum number of stacks in a block |
 | 7 | `MAXST` | `DECIMAL` | Maximum stack height in the block |
 | 8 | `MAXLE` | `DECIMAL` | Maximum number of storage units in the block |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17323,7 +17366,7 @@
 | 101 | `POS97` | `STRING` | Position in storage bin |
 | 102 | `POS98` | `STRING` | Position in storage bin |
 | 103 | `POS99` | `STRING` | Position in storage bin |
-| 104 | `AEDATTM` | `STRING` | — |
+| 104 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17379,7 +17422,7 @@
 | 37 | `PIKTA` | `STRING` | Control for HU pick |
 | 38 | `WMMUE` | `STRING` | Post WM quantity as delivery quantity and goods movement |
 | 39 | `XDREL` | `STRING` | Relevant for Cross-Docking |
-| 40 | `AEDATTM` | `STRING` | — |
+| 40 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17400,7 +17443,7 @@
 | 2 | `LGTYP` | `STRING` | Storage Type |
 | 3 | `KOBER` | `STRING` | Picking Area |
 | 4 | `LDEST` | `STRING` | Name of printer |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17429,7 +17472,7 @@
 | 10 | `STE08` | `STRING` | Certain position of storage bin in the index |
 | 11 | `STE09` | `STRING` | Certain position of storage bin in the index |
 | 12 | `STE10` | `STRING` | Certain position of storage bin in the index |
-| 13 | `AEDATTM` | `STRING` | — |
+| 13 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17461,7 +17504,7 @@
 | 13 | `BRAND` | `STRING` | Fire-containment section |
 | 14 | `LKAPV` | `DECIMAL` | Total capacity of storage bin |
 | 15 | `KOBER` | `STRING` | Picking Area |
-| 16 | `AEDATTM` | `STRING` | — |
+| 16 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17480,7 +17523,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 2 | `LPTYP` | `STRING` | Storage bin type |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17501,7 +17544,7 @@
 | 2 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 3 | `LPTYP` | `STRING` | Storage bin type |
 | 4 | `PTYPT` | `STRING` | Description of storage bin type |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17550,7 +17593,7 @@
 | 30 | `LPT27` | `STRING` | Storage bin type |
 | 31 | `LPT28` | `STRING` | Storage bin type |
 | 32 | `LPT29` | `STRING` | Storage bin type |
-| 33 | `AEDATTM` | `STRING` | — |
+| 33 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17572,7 +17615,7 @@
 | 3 | `LGTYP` | `STRING` | Storage Type |
 | 4 | `LGBER` | `STRING` | Storage Section |
 | 5 | `LBERT` | `STRING` | Name of storage area |
-| 6 | `AEDATTM` | `STRING` | — |
+| 6 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17591,7 +17634,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 2 | `LGBKZ` | `STRING` | Storage Section Indicators |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17612,7 +17655,7 @@
 | 2 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 3 | `LGBKZ` | `STRING` | Storage Section Indicators |
 | 4 | `LBKZT` | `STRING` | Description storage section indicator |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17632,7 +17675,7 @@
 | 1 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 2 | `LGTYP` | `STRING` | Storage Type |
 | 3 | `LGBER` | `STRING` | Storage Section |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17684,7 +17727,7 @@
 | 33 | `LGB27` | `STRING` | Storage Section |
 | 34 | `LGB28` | `STRING` | Storage Section |
 | 35 | `LGB29` | `STRING` | Storage Section |
-| 36 | `AEDATTM` | `STRING` | — |
+| 36 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17760,7 +17803,7 @@
 | 57 | `XCORD` | `DECIMAL` | X Coordinate |
 | 58 | `YCORD` | `DECIMAL` | Y Coordinate |
 | 59 | `ZCORD` | `DECIMAL` | Z Coordinate |
-| 60 | `AEDATTM` | `STRING` | — |
+| 60 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17779,7 +17822,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 2 | `LGTKZ` | `STRING` | Storage Type Indicator |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17800,7 +17843,7 @@
 | 2 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 3 | `LGTKZ` | `STRING` | Storage Type Indicator |
 | 4 | `LTKZT` | `STRING` | Description of Storage Type Indicator |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17820,7 +17863,7 @@
 | 1 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 2 | `LGTYP` | `STRING` | Storage Type |
 | 3 | `GLCGR` | `STRING` | Location Group |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17841,7 +17884,7 @@
 | 2 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 3 | `LGTYP` | `STRING` | Storage Type |
 | 4 | `LTYPT` | `STRING` | Name of storage type |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17898,7 +17941,7 @@
 | 38 | `LGT28` | `STRING` | Storage Type |
 | 39 | `LGT29` | `STRING` | Storage Type |
 | 40 | `QMSTE` | `STRING` | Indicator: Control for WM-QM interface |
-| 41 | `AEDATTM` | `STRING` | — |
+| 41 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17919,7 +17962,7 @@
 | 2 | `LETYP` | `STRING` | Storage Unit Type |
 | 3 | `KKAPV` | `DECIMAL` | Capacity usage of storage unit type |
 | 4 | `METYP` | `STRING` | Unit-of-measure load category according to workload criteria |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17968,7 +18011,7 @@
 | 30 | `LET27` | `STRING` | Storage Unit Type |
 | 31 | `LET28` | `STRING` | Storage Unit Type |
 | 32 | `LET29` | `STRING` | Storage Unit Type |
-| 33 | `AEDATTM` | `STRING` | — |
+| 33 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -17989,7 +18032,7 @@
 | 2 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 3 | `LETYP` | `STRING` | Storage Unit Type |
 | 4 | `LETYT` | `STRING` | Name of storage unit type |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -18011,9 +18054,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `BUKRS` | `STRING` | Company Code |
 | 5 | `BELNR` | `STRING` | Document Number of an Accounting Document |
@@ -18152,9 +18195,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `BUKRS` | `STRING` | Company Code |
 | 5 | `BELNR` | `STRING` | Document Number of an Accounting Document |
@@ -18169,18 +18212,18 @@
 | 14 | `ZUONR` | `STRING` | Assignment number |
 | 15 | `SGTXT` | `STRING` | Item Text |
 | 16 | `HKONT` | `STRING` | General Ledger Account |
-| 17 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 17 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 18 | `ZFBDT` | `STRING` | Baseline Date for Due Date Calculation |
 | 19 | `ZTERM` | `STRING` | Terms of Payment Key |
 | 20 | `ZLSCH` | `STRING` | Payment Method |
 | 21 | `ZLSPR` | `STRING` | Payment Block Key |
-| 22 | `MATNR` | `STRING` | Material Number |
+| 22 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 23 | `WERKS` | `STRING` | Plant |
 | 24 | `MENGE` | `DECIMAL` | Quantity |
 | 25 | `MEINS` | `STRING` | Base Unit of Measure |
 | 26 | `BPMNG` | `DECIMAL` | Quantity in Purchase Order Price Unit |
 | 27 | `BPRME` | `STRING` | Order Price Unit (Purchasing) |
-| 28 | `EBELN` | `STRING` | Purchasing Document Number |
+| 28 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 29 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 30 | `SPGRP` | `STRING` | Blocking Reason: Price |
 | 31 | `SPGRM` | `STRING` | Blocking Reason: Quantity |
@@ -18206,7 +18249,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `ID` | `STRING` | ID of a History Object |
 | 2 | `AUDAT` | `STRING` | Document Date (Date Received/Sent) |
-| 3 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 3 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 4 | `VBELN_VB` | `STRING` | SD Document+: Document Number |
 | 5 | `DOC_TYPE` | `STRING` | Sales Document Type |
 | 6 | `DLV_BLOCK` | `STRING` | Delivery block (document header) |
@@ -18258,7 +18301,7 @@
 | 52 | `Z_KEG_CASE_OWNER` | `STRING` | KEG: Case Owner |
 | 53 | `Z_KEG_CASE_DATE` | `STRING` | KEG: Case date |
 | 54 | `Z_KEG_SIM_NET_VALUE` | `DECIMAL` | Simulated netvalue |
-| 55 | `AEDATTM` | `STRING` | — |
+| 55 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -18333,7 +18376,7 @@
 | 56 | `Z_KEG_CASE_OWNER` | `STRING` | KEG: Case Owner |
 | 57 | `Z_KEG_CASE_DATE` | `STRING` | KEG: Case date |
 | 58 | `Z_KEG_SUPPLIER_ID` | `STRING` | KEG: Supplier legal entity |
-| 59 | `AEDATTM` | `STRING` | — |
+| 59 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -18443,7 +18486,7 @@
 | 91 | `CREATE_USER` | `STRING` | Task Processor |
 | 92 | `LAST_USER_NAME_SEARCH` | `STRING` | Name of last user to change search field |
 | 93 | `WF_USER_NAME_SEARCH` | `STRING` | Current workflow participant name search field |
-| 94 | `AEDATTM` | `STRING` | — |
+| 94 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -18486,7 +18529,7 @@
 | 24 | `AP_FON` | `STRING` | Order+: Contact Person Telephone |
 | 25 | `AP_FAX` | `STRING` | Order+: Contact Person Fax |
 | 26 | `TRANSPZONE` | `STRING` | Transportation zone to or from which the goods are delivered |
-| 27 | `AEDATTM` | `STRING` | — |
+| 27 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -18567,7 +18610,7 @@
 | 62 | `BON_ENH_CTYP` | `STRING` | Contract Type |
 | 63 | `BON_ENH_CNO` | `STRING` | Contract Number |
 | 64 | `BON_ENH_TTYP` | `STRING` | Flow Type |
-| 65 | `AEDATTM` | `STRING` | — |
+| 65 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -18738,7 +18781,7 @@
 | 96 | `CREATEUTC` | `DECIMAL` | Date and Time at Which Object Was Created |
 | 97 | `CHANGEUSER` | `STRING` | Name of Person Who Changed Object |
 | 98 | `CHANGEUTC` | `DECIMAL` | Date and Time at Which Object Was Last Changed |
-| 99 | `AEDATTM` | `STRING` | — |
+| 99 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -18953,7 +18996,7 @@
 | 196 | `CREATEUTC` | `DECIMAL` | Date and Time at Which Object Was Created |
 | 197 | `CHANGEUSER` | `STRING` | Name of Person Who Changed Object |
 | 198 | `CHANGEUTC` | `DECIMAL` | Date and Time at Which Object Was Last Changed |
-| 199 | `AEDATTM` | `STRING` | — |
+| 199 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -18970,7 +19013,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client (APO Conversion to Client-Dependency) |
-| 1 | `MATNR` | `STRING` | Product Number |
+| 1 | `MATNR` | `STRING` | Product Number _18-char zero-padded_ |
 | 2 | `LOCNO` | `STRING` | Location |
 | 3 | `MATID` | `STRING` | Internal Number (UID) for Product |
 | 4 | `LOCID` | `STRING` | Internal Location Number (Customer Supplier or Plant) |
@@ -19103,7 +19146,7 @@
 | 131 | `ATDDM` | `STRING` | Category Group for ATD Quantity (Issues) |
 | 132 | `MAABC` | `STRING` | ABC indicator |
 | 133 | `TDFIELDS` | `STRING` | Indicator: Whether Time-Dependent Attributes Are Used |
-| 134 | `AEDATTM` | `STRING` | — |
+| 134 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -19152,7 +19195,7 @@
 | 30 | `SL_LSZ_PERI` | `STRING` | Period Lot Size |
 | 31 | `SL_LSZ_REORD` | `STRING` | Reorder Point Method |
 | 32 | `CATGRP` | `STRING` | Category Group |
-| 33 | `AEDATTM` | `STRING` | — |
+| 33 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -19170,7 +19213,7 @@
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client (APO Conversion to Client-Dependency) |
 | 1 | `MATID` | `STRING` | Internal Number (UID) for Product |
-| 2 | `MATNR` | `STRING` | Product Number |
+| 2 | `MATNR` | `STRING` | Product Number _18-char zero-padded_ |
 | 3 | `PRODUCT_TYPE` | `STRING` | Product Type |
 | 4 | `LVORM` | `STRING` | Deletion flag |
 | 5 | `FLAGCLASS` | `STRING` | Configuration Relevance of Product |
@@ -19256,7 +19299,7 @@
 | 85 | `CREATEUTC` | `DECIMAL` | Date and Time at Which Object Was Created |
 | 86 | `CHANGEUSER` | `STRING` | Name of Person Who Changed Object |
 | 87 | `CHANGEUTC` | `DECIMAL` | Date and Time at Which Object Was Last Changed |
-| 88 | `AEDATTM` | `STRING` | — |
+| 88 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -19312,7 +19355,7 @@
 | 37 | `FIXPEG_PROD_SET` | `STRING` | Retain Fixed Pegging for Product on Document Change |
 | 38 | `TOLPRPL` | `DECIMAL` | Plus Percentage Tolerance |
 | 39 | `TOLPRMI` | `DECIMAL` | Minus Percentage Tolerance |
-| 40 | `AEDATTM` | `STRING` | — |
+| 40 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -19341,7 +19384,7 @@
 | 10 | `PRMTY` | `DECIMAL` | VMI Promotion Lead Time |
 | 11 | `FCCONSUM` | `STRING` | Take Into Account Forecast Horizon in Past |
 | 12 | `PSPLIPROF` | `STRING` | Period Split Profile |
-| 13 | `AEDATTM` | `STRING` | — |
+| 13 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -19366,7 +19409,7 @@
 | 6 | `DPLPU` | `STRING` | Indicator: Push Distribution |
 | 7 | `DPLFS_SO` | `STRING` | Deployment: Consider Sales Orders in Source Location |
 | 8 | `DPLFS_FC` | `STRING` | Deployment: Consider Forecasts in Source Location |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -19400,7 +19443,7 @@
 | 15 | `PKZPRODH` | `STRING` | Period Type for SNP Production Horizon |
 | 16 | `PKZSHIPH` | `STRING` | Period Type for SNP Stock Transfer Horizon |
 | 17 | `PROPTERM` | `STRING` | SNP Propagation: Method for Building Up Stock |
-| 18 | `AEDATTM` | `STRING` | — |
+| 18 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -19421,7 +19464,7 @@
 | 3 | `FISCPER` | `STRING` | Fiscal year/period |
 | 4 | `FISCVARNT` | `STRING` | Fiscal Year Variant |
 | 5 | `LOCNO` | `STRING` | APO Location |
-| 6 | `MATNR` | `STRING` | APO Product |
+| 6 | `MATNR` | `STRING` | APO Product _18-char zero-padded_ |
 | 7 | `VERSION` | `STRING` | APO Planning Version |
 | 8 | `AFCST` | `STRING` | Forecast (addition.) |
 | 9 | `ATDAB` | `STRING` | ATD Issues |
@@ -19482,7 +19525,7 @@
 | 3 | `FISCPER` | `STRING` | Fiscal year/period |
 | 4 | `FISCVARNT` | `STRING` | Fiscal Year Variant |
 | 5 | `LOCNO` | `STRING` | APO Location |
-| 6 | `MATNR` | `STRING` | APO Product |
+| 6 | `MATNR` | `STRING` | APO Product _18-char zero-padded_ |
 | 7 | `VERSION` | `STRING` | APO Planning Version |
 | 8 | `AFCST` | `STRING` | Forecast (addition.) |
 | 9 | `ATDAB` | `STRING` | ATD Issues |
@@ -19543,7 +19586,7 @@
 | 3 | `FISCPER` | `STRING` | Fiscal year/period |
 | 4 | `FISCVARNT` | `STRING` | Fiscal Year Variant |
 | 5 | `LOCNO` | `STRING` | APO Location |
-| 6 | `MATNR` | `STRING` | APO Product |
+| 6 | `MATNR` | `STRING` | APO Product _18-char zero-padded_ |
 | 7 | `VERSION` | `STRING` | APO Planning Version |
 | 8 | `AFCST` | `STRING` | Forecast (addition.) |
 | 9 | `ATDAB` | `STRING` | ATD Issues |
@@ -19604,7 +19647,7 @@
 | 3 | `FISCPER` | `STRING` | Fiscal year/period |
 | 4 | `FISCVARNT` | `STRING` | Fiscal Year Variant |
 | 5 | `LOCNO` | `STRING` | APO Location |
-| 6 | `MATNR` | `STRING` | APO Product |
+| 6 | `MATNR` | `STRING` | APO Product _18-char zero-padded_ |
 | 7 | `VERSION` | `STRING` | APO Planning Version |
 | 8 | `AFCST` | `STRING` | Forecast (addition.) |
 | 9 | `ATDAB` | `STRING` | ATD Issues |
@@ -19665,7 +19708,7 @@
 | 3 | `FISCPER` | `STRING` | Fiscal year/period |
 | 4 | `FISCVARNT` | `STRING` | Fiscal Year Variant |
 | 5 | `LOCNO` | `STRING` | APO Location |
-| 6 | `MATNR` | `STRING` | APO Product |
+| 6 | `MATNR` | `STRING` | APO Product _18-char zero-padded_ |
 | 7 | `VERSION` | `STRING` | APO Planning Version |
 | 8 | `AFCST` | `STRING` | Forecast (addition.) |
 | 9 | `ATDAB` | `STRING` | ATD Issues |
@@ -19726,7 +19769,7 @@
 | 3 | `FISCPER` | `STRING` | Fiscal year/period |
 | 4 | `FISCVARNT` | `STRING` | Fiscal Year Variant |
 | 5 | `LOCNO` | `STRING` | APO Location |
-| 6 | `MATNR` | `STRING` | APO Product |
+| 6 | `MATNR` | `STRING` | APO Product _18-char zero-padded_ |
 | 7 | `VERSION` | `STRING` | APO Planning Version |
 | 8 | `AFCST` | `STRING` | Forecast (addition.) |
 | 9 | `ATDAB` | `STRING` | ATD Issues |
@@ -19796,7 +19839,7 @@
 | 11 | `CORR_FPER` | `DECIMAL` | Correction of Freeze Period |
 | 12 | `PROMO_RND` | `STRING` | Special Promotion Rounding Rule |
 | 13 | `SSD_PRF_ID_H` | `STRING` | Profile ID: Supplier Shutdown |
-| 14 | `AEDATTM` | `STRING` | — |
+| 14 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -19858,7 +19901,7 @@
 | 43 | `TDD_LT_PUSH` | `DECIMAL` | Total Procurement Lead Time (Push) |
 | 44 | `TSS_LT_PULL` | `DECIMAL` | Total Stock Transfer Time (Pull) |
 | 45 | `TSS_LT_PUSH` | `DECIMAL` | Total Stock Transfer Time (Push) |
-| 46 | `AEDATTM` | `STRING` | — |
+| 46 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -19909,7 +19952,7 @@
 | 32 | `XIBAN` | `STRING` | IBAN or SWIFT Code Are Required |
 | 33 | `XNO_ACCNO` | `STRING` | Indicator: No Account Number Required |
 | 34 | `XSEPA` | `STRING` | Indicator: SEPA Mandate Required |
-| 35 | `AEDATTM` | `STRING` | — |
+| 35 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -19926,9 +19969,9 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
-| 3 | `CHARG` | `STRING` | Batch Number |
+| 3 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 4 | `LVORM` | `STRING` | Deletion Flag for All Data on a Batch at a Plant |
 | 5 | `ERSDA` | `STRING` | Created On |
 | 6 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
@@ -19939,7 +19982,7 @@
 | 11 | `ZUSCH` | `STRING` | Batch status key |
 | 12 | `ZUSTD` | `STRING` | Batch in Restricted-Use Stock |
 | 13 | `ZAEDT` | `STRING` | Date of last status change |
-| 14 | `LIFNR` | `STRING` | Suppliers Account Number |
+| 14 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
 | 15 | `LICHA` | `STRING` | Vendor Batch Number |
 | 16 | `VLCHA` | `STRING` | Original batch number (deactivated) |
 | 17 | `VLWRK` | `STRING` | Original plant  (deactivated) |
@@ -19971,7 +20014,7 @@
 | 43 | `FSH_COLLECTION` | `STRING` | Fashion Collection |
 | 44 | `FSH_THEME` | `STRING` | Fashion Theme |
 | 45 | `OPFLAG` | `STRING` | Operational Flag (I/U/D) |
-| 46 | `AEDATTM` | `STRING` | — |
+| 46 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -20162,7 +20205,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `FAKSP` | `STRING` | Block |
 | 3 | `VTEXT` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -20182,7 +20225,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `FKART` | `STRING` | Billing Type |
 | 3 | `VTEXT` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -20202,7 +20245,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `ZAHLS` | `STRING` | Block Key for Payment |
 | 3 | `TEXTL` | `STRING` | Explanation of the Reason for Payment Block |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -20372,7 +20415,7 @@
 | 96 | `MC_COUNTY` | `STRING` | County name in upper case for search help |
 | 97 | `MC_TOWNSHIP` | `STRING` | Township name in upper case for search help |
 | 98 | `XPCPT` | `STRING` | Business Purpose Completed Flag |
-| 99 | `AEDATTM` | `STRING` | — |
+| 99 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -23686,7 +23729,7 @@
 | 58 | `/BIC/ZMGWIAET` | `STRING` | Work Item End Time (original) |
 | 59 | `/BIC/ZMGWIASD` | `STRING` | Work Item Start Date (original) |
 | 60 | `/BIC/ZMGWIAST` | `STRING` | Work Item Start Time (original) |
-| 61 | `AEDATTM` | `STRING` | — |
+| 61 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -25746,7 +25789,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `ZLABEL` | `STRING` | Key field describing content of Value field |
 | 2 | `ZVALUE` | `STRING` | Value of Label |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -25808,7 +25851,7 @@
 | 2 | `PROFILE_ID` | `STRING` | Case: Status Profile |
 | 3 | `STAT_ORDERNO` | `STRING` | Case: Status |
 | 4 | `STAT_ORDNO_DESCR` | `STRING` | Case: Status Description |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -25850,7 +25893,7 @@
 | 23 | `STAT_LINE` | `STRING` | Case: System Status Description (Central Status Management) |
 | 24 | `STAT_USER_LINE` | `STRING` | Case: User Status Description (Central Status Management) |
 | 25 | `REASON_CODE` | `STRING` | Reason for Case |
-| 26 | `AEDATTM` | `STRING` | — |
+| 26 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -25871,7 +25914,7 @@
 | 2 | `CASE_TYPE` | `STRING` | Case Type |
 | 3 | `REASON_CODE` | `STRING` | Reason for Case |
 | 4 | `DESCRIPTION` | `STRING` | Text Field of Length 60 |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -25892,7 +25935,7 @@
 | 2 | `CASE_TYPE` | `STRING` | Case Type |
 | 3 | `CATEGORY` | `STRING` | Category |
 | 4 | `DESCRIPTION` | `STRING` | Text Field of Length 60 |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -25937,7 +25980,7 @@
 | 26 | `ADBFORM` | `STRING` | PDF-Based Forms: Form Name |
 | 27 | `QKZ_USEADB` | `STRING` | Use Adobe Form |
 | 28 | `CHAR_FIELD_CONF` | `STRING` | Configuration of Characteristics Field |
-| 29 | `AEDATTM` | `STRING` | — |
+| 29 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -25953,9 +25996,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDANT` | `STRING` | Client |
 | 4 | `OBJECTCLAS` | `STRING` | Object class |
 | 5 | `OBJECTID` | `STRING` | Object Value |
@@ -26030,7 +26073,7 @@
 | 9 | `INACT` | `STRING` | Indicator: Status Is Inactive |
 | 10 | `CHIND` | `STRING` | Change Indicator |
 | 11 | `_DATAAGING` | `STRING` | Data Filter Value for Data Aging |
-| 12 | `AEDATTM` | `STRING` | — |
+| 12 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26046,9 +26089,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `ATINN` | `STRING` | Internal characteristic |
 | 5 | `ADZHL` | `STRING` | Internal Counter for Archiving Objects by ECM |
@@ -26135,9 +26178,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `ATINN` | `STRING` | Internal characteristic |
 | 5 | `SPRAS` | `STRING` | Language Key |
@@ -26165,9 +26208,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `ATINN` | `STRING` | Internal characteristic |
 | 5 | `ATZHL` | `STRING` | Int counter |
@@ -26214,9 +26257,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `ATINN` | `STRING` | Internal characteristic |
 | 5 | `ATZHL` | `STRING` | Int counter |
@@ -26249,7 +26292,7 @@
 | 3 | `RSTGR` | `STRING` | Reason Code for Payments |
 | 4 | `TXT20` | `STRING` | Reason Code Short Text |
 | 5 | `TXT40` | `STRING` | Reason Code Long Text |
-| 6 | `AEDATTM` | `STRING` | — |
+| 6 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26272,7 +26315,7 @@
 | 4 | `RFKNT` | `STRING` | Account assignment number of reference document |
 | 5 | `RFTRM` | `STRING` | Deadline item of reference document |
 | 6 | `RFART` | `STRING` | Reference document type |
-| 7 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 7 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 8 | `LEDNR` | `STRING` | Ledger for Controlling objects |
 | 9 | `OBJNR` | `STRING` | Object number |
 | 10 | `HRKFT` | `STRING` | CO key subnumber |
@@ -26294,7 +26337,7 @@
 | 26 | `PERIO` | `STRING` | Period |
 | 27 | `BUKRS` | `STRING` | Company Code |
 | 28 | `KOKRS` | `STRING` | Controlling Area |
-| 29 | `MATNR` | `STRING` | Material Number |
+| 29 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 30 | `MATKL` | `STRING` | Material Group |
 | 31 | `SGTXT` | `STRING` | Segment text |
 | 32 | `GESMNG` | `DECIMAL` | Planned quantity |
@@ -26316,7 +26359,7 @@
 | 48 | `LOEKZ` | `STRING` | Deletion Indicator in Purchasing Document |
 | 49 | `DABRZ` | `STRING` | Reference date for settlement |
 | 50 | `TIMESTMP` | `DECIMAL` | Seconds since 1.1.19900:00 GMT * 10000 |
-| 51 | `AEDATTM` | `STRING` | — |
+| 51 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26412,7 +26455,7 @@
 | 77 | `XBBSC` | `STRING` | G/L account authorization check in shopping cart |
 | 78 | `F_OBSOLETE` | `STRING` | Hide Entry in Value Help |
 | 79 | `FM_DERIVE_ACC` | `STRING` | Activate Account Assignment Derivation in Funds Management |
-| 80 | `AEDATTM` | `STRING` | — |
+| 80 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26444,7 +26487,7 @@
 | 13 | `LOEVM_KO` | `STRING` | Deletion Indicator for Condition Item |
 | 14 | `CHVSK` | `STRING` | Selection type at start of batch determination |
 | 15 | `CHVLL` | `STRING` | Overdelivery allowed in batch determination |
-| 16 | `AEDATTM` | `STRING` | — |
+| 16 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26467,7 +26510,7 @@
 | 4 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 5 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 6 | `KNUMH` | `STRING` | Condition record number |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26486,11 +26529,11 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `KAPPL` | `STRING` | Application |
 | 2 | `KSCHL` | `STRING` | Batches: Search strategy type |
-| 3 | `MATNR` | `STRING` | Material Number |
+| 3 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 4 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 5 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 6 | `KNUMH` | `STRING` | Condition record number |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26514,7 +26557,7 @@
 | 5 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 6 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 7 | `KNUMH` | `STRING` | Condition record number |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26537,7 +26580,7 @@
 | 4 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 5 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 6 | `KNUMH` | `STRING` | Condition record number |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26557,12 +26600,12 @@
 | 1 | `KAPPL` | `STRING` | Application |
 | 2 | `KSCHL` | `STRING` | Batches: Search strategy type |
 | 3 | `WERKS` | `STRING` | Plant |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `LAND1` | `STRING` | Country of Destination |
 | 6 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 7 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 8 | `KNUMH` | `STRING` | Condition record number |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26586,7 +26629,7 @@
 | 5 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 6 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 7 | `KNUMH` | `STRING` | Condition record number |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26607,11 +26650,11 @@
 | 2 | `KSCHL` | `STRING` | Batches: Search strategy type |
 | 3 | `VKORG` | `STRING` | Sales Organization |
 | 4 | `KNDNR` | `STRING` | Customer number |
-| 5 | `MATNR` | `STRING` | Material Number |
+| 5 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 6 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 7 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 8 | `KNUMH` | `STRING` | Condition record number |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26635,7 +26678,7 @@
 | 5 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 6 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 7 | `KNUMH` | `STRING` | Condition record number |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26660,7 +26703,7 @@
 | 6 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 7 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 8 | `KNUMH` | `STRING` | Condition record number |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26680,11 +26723,11 @@
 | 1 | `KAPPL` | `STRING` | Application |
 | 2 | `KSCHL` | `STRING` | Batches: Search strategy type |
 | 3 | `VKORG` | `STRING` | Sales Organization |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 6 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 7 | `KNUMH` | `STRING` | Condition record number |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26704,11 +26747,11 @@
 | 1 | `KAPPL` | `STRING` | Application |
 | 2 | `KSCHL` | `STRING` | Batches: Search strategy type |
 | 3 | `KUNWE` | `STRING` | Ship-To Party |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 6 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 7 | `KNUMH` | `STRING` | Condition record number |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26732,7 +26775,7 @@
 | 5 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 6 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 7 | `KNUMH` | `STRING` | Condition record number |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26753,11 +26796,11 @@
 | 2 | `KSCHL` | `STRING` | Batches: Search strategy type |
 | 3 | `KUNWE` | `STRING` | Ship-To Party |
 | 4 | `WERKS` | `STRING` | Plant |
-| 5 | `MATNR` | `STRING` | Material Number |
+| 5 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 6 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 7 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 8 | `KNUMH` | `STRING` | Condition record number |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26777,11 +26820,11 @@
 | 1 | `KAPPL` | `STRING` | Application |
 | 2 | `KSCHL` | `STRING` | Batches: Search strategy type |
 | 3 | `KNDNR` | `STRING` | Customer number |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 6 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 7 | `KNUMH` | `STRING` | Condition record number |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26805,7 +26848,7 @@
 | 5 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 6 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 7 | `KNUMH` | `STRING` | Condition record number |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26826,11 +26869,11 @@
 | 2 | `KSCHL` | `STRING` | Batches: Search strategy type |
 | 3 | `KNDNR` | `STRING` | Customer number |
 | 4 | `WERKS` | `STRING` | Plant |
-| 5 | `MATNR` | `STRING` | Material Number |
+| 5 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 6 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 7 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 8 | `KNUMH` | `STRING` | Condition record number |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -26846,14 +26889,14 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `KAPPL` | `STRING` | Application |
 | 5 | `KSCHL` | `STRING` | Condition Type |
 | 6 | `WERKS` | `STRING` | Plant |
-| 7 | `MATNR` | `STRING` | Material Number |
+| 7 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 8 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 9 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 10 | `KNUMH` | `STRING` | Condition record number |
@@ -26873,9 +26916,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `KNUMH` | `STRING` | Condition record number |
 | 5 | `KOPOS` | `STRING` | Sequential number of the condition |
@@ -26905,8 +26948,8 @@
 | 29 | `KWAEH` | `STRING` | Condition Currency (for Cumulation Fields) |
 | 30 | `UKBAS` | `DECIMAL` | Planned condition basis |
 | 31 | `KZNEP` | `STRING` | Condition exclusion indicator |
-| 32 | `KUNNR` | `STRING` | Customer Number |
-| 33 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 32 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
+| 33 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 34 | `MWSK1` | `STRING` | Tax on Sales/Purchases Code |
 | 35 | `LOEVM_KO` | `STRING` | Deletion Indicator for Condition Item |
 | 36 | `ZAEHK_IND` | `STRING` | Condition item index |
@@ -26962,7 +27005,7 @@
 | 4 | `MEINS` | `STRING` | Substitute unit of measure |
 | 5 | `PSDSP` | `STRING` | MRP indicator for alternative material in product selection |
 | 6 | `LSTACS` | `STRING` | Cross-selling delivery control |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27012,8 +27055,8 @@
 | 31 | `KVSL2` | `STRING` | Account key - accruals / provisions |
 | 32 | `SAKN2` | `STRING` | Number of Provision Account |
 | 33 | `MWSK2` | `STRING` | Withholding tax code |
-| 34 | `LIFNR` | `STRING` | Account Number of Supplier |
-| 35 | `KUNNR` | `STRING` | Customer number (rebate recipient) |
+| 34 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
+| 35 | `KUNNR` | `STRING` | Customer number (rebate recipient) _10-char zero-padded_ |
 | 36 | `KDIFF` | `DECIMAL` | Rounding-off difference of the condition |
 | 37 | `KWERT` | `DECIMAL` | Condition value |
 | 38 | `KSTEU` | `STRING` | Condition control |
@@ -27070,9 +27113,9 @@
 | 6 | `BUDAT` | `STRING` | Posting Date in the Document |
 | 7 | `BUKRS` | `STRING` | Company Code |
 | 8 | `SOBKZ` | `STRING` | Special Stock Indicator |
-| 9 | `LIFNR` | `STRING` | Suppliers Account Number |
+| 9 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
 | 10 | `WERKS` | `STRING` | Plant |
-| 11 | `MATNR` | `STRING` | Material Number |
+| 11 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 12 | `SHKZG` | `STRING` | Debit/Credit Indicator |
 | 13 | `GSBER` | `STRING` | Business Area |
 | 14 | `BWAER` | `STRING` | Currency Key |
@@ -27086,7 +27129,7 @@
 | 22 | `BUZEI` | `STRING` | Document Item in Invoice Document |
 | 23 | `NAVNW` | `DECIMAL` | Non-deductible input tax |
 | 24 | `PRCTR` | `STRING` | Profit Center |
-| 25 | `AEDATTM` | `STRING` | — |
+| 25 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27107,7 +27150,7 @@
 | 2 | `ORGLEV` | `STRING` | Generic Data Element for storing org levels |
 | 3 | `KEYFIELD` | `STRING` | Key field for constants table |
 | 4 | `VALUE` | `STRING` | Value field for constants table |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27131,7 +27174,7 @@
 | 5 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 6 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 7 | `KNUMH` | `STRING` | Condition record number |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27156,7 +27199,7 @@
 | 6 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 7 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 8 | `KNUMH` | `STRING` | Condition record number |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27181,7 +27224,7 @@
 | 6 | `ZAHKZ` | `STRING` | Cost element affecting payment |
 | 7 | `KSTSN` | `STRING` | Cost element |
 | 8 | `FUNC_AREA` | `STRING` | Functional Area |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27210,13 +27253,13 @@
 | 10 | `PLAOR` | `STRING` | Indicator for the planning location |
 | 11 | `PLAUS` | `STRING` | Indicators for planning user |
 | 12 | `KOSTL` | `STRING` | Cost Center |
-| 13 | `AUFNR` | `STRING` | Order Number |
+| 13 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 14 | `MGEFL` | `STRING` | Indicator for Recording Consumption Quantities |
 | 15 | `MSEHI` | `STRING` | Unit of Measurement |
 | 16 | `DEAKT` | `STRING` | Indicator: Cost element deactivated |
 | 17 | `LOEVM` | `STRING` | Indicator: Cost element is flagged for deletion |
 | 18 | `RECID` | `STRING` | Recovery Indicator |
-| 19 | `AEDATTM` | `STRING` | — |
+| 19 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27308,7 +27351,7 @@
 | 73 | `JV_JIBCL` | `STRING` | JIB/JIBE Class |
 | 74 | `JV_JIBSA` | `STRING` | JIB/JIBE Subclass A |
 | 75 | `FERC_IND` | `STRING` | Regulatory indicator |
-| 76 | `AEDATTM` | `STRING` | — |
+| 76 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27390,7 +27433,7 @@
 | 63 | `XGCCV` | `STRING` | Indicator: GCC Countries Member? |
 | 64 | `SUREG` | `STRING` | Super region per country |
 | 65 | `LANDGRP_VP` | `STRING` | Country grouping for shipping schedule |
-| 66 | `AEDATTM` | `STRING` | — |
+| 66 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27414,7 +27457,7 @@
 | 5 | `LANDX50` | `STRING` | Country Name (Max. 50 Characters) |
 | 6 | `NATIO50` | `STRING` | Nationality (Max. 50 Characters) |
 | 7 | `PRQ_SPREGT` | `STRING` | Super region per country text |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27448,7 +27491,7 @@
 | 15 | `MARW1` | `STRING` | Maximum range of coverage for the period 01 |
 | 16 | `MARW2` | `STRING` | Maximum range of coverage for the period 02 |
 | 17 | `MARW3` | `STRING` | Maximum range of coverage in the rest of the horizon |
-| 18 | `AEDATTM` | `STRING` | — |
+| 18 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27473,7 +27516,7 @@
 | 6 | `KLIMK` | `DECIMAL` | Credit limit (default setting unless maintained by cust.) |
 | 7 | `SBGRP` | `STRING` | Credit management representatives group for new customers |
 | 8 | `ALLCC` | `STRING` | Indicator: Is posting possible for all company codes? |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27509,7 +27552,7 @@
 | 17 | `REQ_DATE` | `STRING` | Request Date |
 | 18 | `ITEM_ERROR` | `STRING` | Error Occurred in Liability Update |
 | 19 | `LOG_HNDL` | `STRING` | Application Log: Log Handle |
-| 20 | `AEDATTM` | `STRING` | — |
+| 20 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27530,7 +27573,7 @@
 | 2 | `KKBER` | `STRING` | Credit Control Area |
 | 3 | `STEXT` | `STRING` | Name of the credit representative group |
 | 4 | `SMAIL` | `STRING` | R/MAIL user name |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27551,7 +27594,7 @@
 | 2 | `CTLPC` | `STRING` | Credit management: Risk category |
 | 3 | `KKBER` | `STRING` | Credit Control Area |
 | 4 | `RTEXT` | `STRING` | Name of the risk class |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27567,9 +27610,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `CLIENT` | `STRING` | Client |
 | 4 | `CREDIT_SGMNT` | `STRING` | Credit Segment |
 | 5 | `CURRENCY` | `STRING` | Credit Segment Currency |
@@ -27602,7 +27645,7 @@
 | 6 | `TFACT` | `DECIMAL` | Ratio for the "to" currency units |
 | 7 | `ABWCT` | `STRING` | Alternative Exchange Rate Type |
 | 8 | `ABWGA` | `STRING` | Date from which the alternative exchange rate type is valid |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27623,7 +27666,7 @@
 | 2 | `WAERS` | `STRING` | Currency Key |
 | 3 | `LTEXT` | `STRING` | Long Text |
 | 4 | `KTEXT` | `STRING` | Short text |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27641,7 +27684,7 @@
 |--:|--------|------|-------------|
 | 0 | `CURRKEY` | `STRING` | Currency Key |
 | 1 | `CURRDEC` | `SHORT` | Number of decimal places |
-| 2 | `AEDATTM` | `STRING` | — |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27661,7 +27704,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `KUKLA` | `STRING` | Customer Classification |
 | 3 | `VTEXT` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27677,11 +27720,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 5 | `POSNR` | `STRING` | Item number of the SD document |
 | 6 | `ETENR` | `STRING` | Schedule Line Number |
 | 7 | `ZCUS_COM_SEQNR` | `STRING` | Sequence Number |
@@ -27720,11 +27763,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 5 | `ZCUS_COM_SEQNR` | `STRING` | Sequence Number |
 | 6 | `POSNR` | `STRING` | Item number of the SD document |
 | 7 | `ZREAS_LINE` | `STRING` | Reassignment Item number |
@@ -27761,7 +27804,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `KUNNR` | `STRING` | Customer Number |
+| 1 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 2 | `BUKRS` | `STRING` | Company Code |
 | 3 | `PERNR` | `STRING` | Personnel Number |
 | 4 | `ERDAT` | `STRING` | Date on which the Record Was Created |
@@ -27840,7 +27883,7 @@
 | 77 | `CIIUCODE` | `STRING` | Main economic activity |
 | 78 | `GMVKZD` | `STRING` | Customer is in execution |
 | 79 | `ZZRDC` | `STRING` | Redistribution Flag |
-| 80 | `AEDATTM` | `STRING` | — |
+| 80 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -27856,12 +27899,12 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `HITYP` | `STRING` | Customer hierarchy type |
-| 5 | `KUNNR` | `STRING` | Customer |
+| 5 | `KUNNR` | `STRING` | Customer _10-char zero-padded_ |
 | 6 | `VKORG` | `STRING` | Sales Organization |
 | 7 | `VTWEG` | `STRING` | Distribution Channel |
 | 8 | `SPART` | `STRING` | Division |
@@ -27891,11 +27934,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `KUNNR` | `STRING` | Customer Number |
+| 4 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 5 | `LAND1` | `STRING` | Country Key |
 | 6 | `NAME1` | `STRING` | Name 1 |
 | 7 | `NAME2` | `STRING` | Name 2 |
@@ -27931,7 +27974,7 @@
 | 37 | `KONZS` | `STRING` | Group key |
 | 38 | `KTOKD` | `STRING` | Customer Account Group |
 | 39 | `KUKLA` | `STRING` | Customer Classification |
-| 40 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 40 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 41 | `LIFSD` | `STRING` | Central delivery block for the customer |
 | 42 | `LOCCO` | `STRING` | City Coordinates |
 | 43 | `LOEVM` | `STRING` | Central Deletion Flag for Master Record |
@@ -28115,12 +28158,12 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `PARNR` | `STRING` | Number of contact person |
-| 5 | `KUNNR` | `STRING` | Customer Number |
+| 5 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 6 | `NAMEV` | `STRING` | First name |
 | 7 | `NAME1` | `STRING` | Name 1 |
 | 8 | `ORT01` | `STRING` | City |
@@ -28187,7 +28230,7 @@
 | 69 | `ERDAT` | `STRING` | Date on which the Record Was Created |
 | 70 | `ERNAM` | `STRING` | Name of Person who Created the Object |
 | 71 | `DUEFL` | `STRING` | Status of Data Transfer into Subsequent Release |
-| 72 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 72 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 73 | `LOEVM` | `STRING` | Central Deletion Flag for Master Record |
 | 74 | `KZHERK` | `STRING` | Internal indicator for origin of the CP: Customer or Vendor |
 | 75 | `ADRNP_2` | `STRING` | Address Number |
@@ -28210,7 +28253,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `KUNNR` | `STRING` | Customer Number |
+| 1 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 2 | `KKBER` | `STRING` | Credit Control Area |
 | 3 | `KLIMK` | `DECIMAL` | Customers credit limit |
 | 4 | `KNKLI` | `STRING` | Customers account number with credit limit reference |
@@ -28245,7 +28288,7 @@
 | 33 | `DBWAE` | `STRING` | Currency of recommended credit limit |
 | 34 | `DBMON` | `STRING` | Date Monitoring |
 | 35 | `ABSBT` | `DECIMAL` | Total Secured Receivables |
-| 36 | `AEDATTM` | `STRING` | — |
+| 36 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28261,11 +28304,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `KUNNR` | `STRING` | Customer Number |
+| 4 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 5 | `VKORG` | `STRING` | Sales Organization |
 | 6 | `VTWEG` | `STRING` | Distribution Channel |
 | 7 | `SPART` | `STRING` | Division |
@@ -28381,8 +28424,8 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `VKORG` | `STRING` | Sales Organization |
 | 2 | `VTWEG` | `STRING` | Distribution Channel |
-| 3 | `KUNNR` | `STRING` | Customer number |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 3 | `KUNNR` | `STRING` | Customer number _10-char zero-padded_ |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
 | 6 | `ERDAT` | `STRING` | Record Creation Date |
 | 7 | `SORTL` | `STRING` | Sort field |
@@ -28406,7 +28449,7 @@
 | 25 | `UMVKN_T` | `DECIMAL` | Denominator (Divisor) for Conversion of Sales Qty into SKU |
 | 26 | `UMVKZ_T` | `DECIMAL` | Numerator (factor) for conversion of sales quantity into SKU |
 | 27 | `GUID` | `STRING` | 16 Byte UUID in 16 Bytes (Raw Format) |
-| 28 | `AEDATTM` | `STRING` | — |
+| 28 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28422,18 +28465,18 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `KUNNR` | `STRING` | Customer Number |
+| 4 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 5 | `VKORG` | `STRING` | Sales Organization |
 | 6 | `VTWEG` | `STRING` | Distribution Channel |
 | 7 | `SPART` | `STRING` | Division |
 | 8 | `PARVW` | `STRING` | Partner Function |
 | 9 | `PARZA` | `STRING` | Partner counter |
 | 10 | `KUNN2` | `STRING` | Customer number of business partner |
-| 11 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 11 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 12 | `PERNR` | `STRING` | Personnel Number |
 | 13 | `PARNR` | `STRING` | Number of contact person |
 | 14 | `KNREF` | `STRING` | Customer description of partner (plant storage location) |
@@ -28458,7 +28501,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `ZTERM` | `STRING` | Terms of Payment Key |
 | 3 | `VTEXT` | `STRING` | Description of terms of payment |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28483,7 +28526,7 @@
 | 6 | `CHANGE_DATE` | `STRING` | Date |
 | 7 | `CHANGE_TIME` | `STRING` | Time |
 | 8 | `MASSIVE` | `STRING` | Massive upload |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28508,7 +28551,7 @@
 | 6 | `CHANGE_UNAME` | `STRING` | User Name |
 | 7 | `CHANGE_DATE` | `STRING` | Date |
 | 8 | `CHANGE_TIME` | `STRING` | Time |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28554,7 +28597,7 @@
 | 27 | `DBPOSITION` | `STRING` | Position of the field in the table |
 | 28 | `ANONYMOUS` | `STRING` | Anonymization Indicator (for User Fields) |
 | 29 | `OUTPUTSTYLE` | `STRING` | DD: Output Style (Output Style) for Decfloat Types |
-| 30 | `AEDATTM` | `STRING` | — |
+| 30 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28607,7 +28650,7 @@
 | 9 | `SPEVI` | `STRING` | Delivery due list block |
 | 10 | `MBDIF` | `STRING` | Deferment period for material provision in days |
 | 11 | `PREQ_BLOCK` | `STRING` | Block the Creation of Purchase Requisitions |
-| 12 | `AEDATTM` | `STRING` | — |
+| 12 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28627,7 +28670,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `LIFSP` | `STRING` | Default delivery block |
 | 3 | `VTEXT` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28643,11 +28686,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Delivery |
+| 4 | `VBELN` | `STRING` | Delivery _10-char zero-padded_ |
 | 5 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
 | 6 | `ERZET` | `STRING` | Entry time |
 | 7 | `ERDAT` | `STRING` | Record Creation Date |
@@ -28675,7 +28718,7 @@
 | 29 | `TPGRP` | `STRING` | not currently in use |
 | 30 | `LPRIO` | `STRING` | Delivery Priority |
 | 31 | `VSBED` | `STRING` | Shipping Conditions |
-| 32 | `KUNNR` | `STRING` | Ship-To Party |
+| 32 | `KUNNR` | `STRING` | Ship-To Party _10-char zero-padded_ |
 | 33 | `KUNAG` | `STRING` | Sold-To Party |
 | 34 | `KDGRP` | `STRING` | Customer group |
 | 35 | `STZKL` | `DECIMAL` | Not Currently in Use |
@@ -28770,7 +28813,7 @@
 | 9 | `MSSIE` | `STRING` | SI unit |
 | 10 | `TEMP_DEP` | `STRING` | Indicator: Dimension has Unit with Temperature Specification |
 | 11 | `PRESS_DEP` | `STRING` | Indicator: Dimension has Units with Pressure Specification |
-| 12 | `AEDATTM` | `STRING` | — |
+| 12 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28844,7 +28887,7 @@
 | 55 | `ZZ_EXISTING_DISP` | `STRING` | Existing disputes linked to the billing document? |
 | 56 | `ZZ_CUST_COMP` | `STRING` | Cust. Complaint No. |
 | 57 | `ZZ_RES_DESC` | `STRING` | Resolution description |
-| 58 | `AEDATTM` | `STRING` | — |
+| 58 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28869,7 +28912,7 @@
 | 6 | `CLASSIFICATION` | `STRING` | Object Classification |
 | 7 | `IS_CONFIRMED` | `STRING` | Data element for domain BOOLE: TRUE (=X) and FALSE (= ) |
 | 8 | `IS_VOIDED` | `STRING` | Data element for domain BOOLE: TRUE (=X) and FALSE (= ) |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28889,7 +28932,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `VTWEG` | `STRING` | Distribution Channel |
 | 3 | `VTEXT` | `STRING` | Name |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28923,7 +28966,7 @@
 | 15 | `LONGTEXT_ID` | `STRING` | DMS: GUID for allocation of long texts |
 | 16 | `CAD_POS` | `STRING` | CAD: Assignment document  <-> material |
 | 17 | `CM_FIXED` | `STRING` | Document fixed |
-| 18 | `AEDATTM` | `STRING` | — |
+| 18 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28943,7 +28986,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `BLART` | `STRING` | Document Type |
 | 3 | `LTEXT` | `STRING` | Document Type Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -28968,7 +29011,7 @@
 | 6 | `DOMVAL_LD` | `STRING` | Language-specific values for domains lower limit |
 | 7 | `DOMVAL_HD` | `STRING` | Language-specific values for domains upper limit |
 | 8 | `DOMVALUE_L` | `STRING` | Values for Domains: Single Value / Upper Limit |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29038,7 +29081,7 @@
 | 1 | `EKORG` | `STRING` | Purchasing Organization |
 | 2 | `PSTYP` | `STRING` | Item category in purchasing document |
 | 3 | `KNTTP` | `STRING` | Account Assignment Category |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29069,7 +29112,7 @@
 | 12 | `ZPO_MSGTY` | `STRING` | Purchase Order Message Type for EPIR Approvers |
 | 13 | `ZCO_MSGTY` | `STRING` | Contract Message Type for EPIR Approvers |
 | 14 | `ZCO_EXIST` | `STRING` | Contract Exist Error Indicator |
-| 15 | `AEDATTM` | `STRING` | — |
+| 15 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29088,7 +29131,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `MATKL` | `STRING` | Material Group |
 | 2 | `EKORG` | `STRING` | Purchasing Organization |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29107,7 +29150,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `EKORG` | `STRING` | Purchasing Organization |
 | 2 | `MTART` | `STRING` | Material Type |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29124,9 +29167,9 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 1 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 2 | `ZGS_LIFNR` | `STRING` | Initial GS Vendor |
-| 3 | `MATNR` | `STRING` | Material Number |
+| 3 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 4 | `EKORG` | `STRING` | Purchasing Organization |
 | 5 | `NAME1` | `STRING` | Name 1 |
 | 6 | `ZGS_NAME1` | `STRING` | GS Vendor Name |
@@ -29150,7 +29193,7 @@
 | 24 | `MTART` | `STRING` | Material Type |
 | 25 | `ZLAST_APPROVEBY` | `STRING` | Approved by |
 | 26 | `ZZFSA` | `STRING` | FSA |
-| 27 | `AEDATTM` | `STRING` | — |
+| 27 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29179,7 +29222,7 @@
 | 10 | `CHANGED_ON` | `STRING` | Change Date |
 | 11 | `CHANGED_BY` | `STRING` | Last Changed By |
 | 12 | `IS_BUDGETRELEVANT` | `STRING` | Is Budget Relevant |
-| 13 | `AEDATTM` | `STRING` | — |
+| 13 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29199,7 +29242,7 @@
 | 1 | `LANGU` | `STRING` | Language Key |
 | 2 | `ESCAL_REASON` | `STRING` | Reason for Escalation |
 | 3 | `DESCRIPTION` | `STRING` | Text Field of Length 60 |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29223,7 +29266,7 @@
 | 5 | `UKURS` | `DECIMAL` | Exchange Rate |
 | 6 | `FFACT` | `DECIMAL` | Ratio for the "from" currency units |
 | 7 | `TFACT` | `DECIMAL` | Ratio for the "to" currency units |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29248,7 +29291,7 @@
 | 6 | `BKUZU` | `STRING` | Exch.rate type of av. rate used to determine selling rate |
 | 7 | `XFIXD` | `STRING` | Indicator: Exchange rate type uses fixed exchange rates |
 | 8 | `XEURO` | `STRING` | Indicator: Exchange rate type uses special translation model |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29268,7 +29311,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `KURST` | `STRING` | Exchange Rate Type |
 | 3 | `CURVW` | `STRING` | Exchange rate type usage |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29304,7 +29347,7 @@
 | 17 | `INTERV` | `STRING` | Calendar: Termination flag |
 | 18 | `AKTVJAHR` | `STRING` | Year from which calendar is in buffer |
 | 19 | `AKTBJAHR` | `STRING` | Year until which calendar is in buffer |
-| 20 | `AEDATTM` | `STRING` | — |
+| 20 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29338,7 +29381,7 @@
 | 15 | `FENUM` | `STRING` | Number of days in year |
 | 16 | `WENUM` | `STRING` | Number of workdays in the year |
 | 17 | `LOAD` | `STRING` | Load year in buffer flag (X = Yes) |
-| 18 | `AEDATTM` | `STRING` | — |
+| 18 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29361,7 +29404,7 @@
 | 4 | `BUTAG` | `STRING` | Calendar day from the posting date |
 | 5 | `POPER` | `STRING` | Posting Period |
 | 6 | `RELJR` | `STRING` | Year shift relative to the current year |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29386,7 +29429,7 @@
 | 6 | `FIXKZ` | `STRING` | Indicator: consumption value is fixed |
 | 7 | `EXPRW` | `DECIMAL` | Ex-post forecast value |
 | 8 | `FLGCV` | `STRING` | Indicator: Correct outlier |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29472,7 +29515,7 @@
 | 67 | `MABSD` | `STRING` | Selection date for periodic declarations |
 | 68 | `BFMAR` | `STRING` | Foreign Trade: Type of means of transport |
 | 69 | `CUDCL` | `STRING` | Customs declaration type for customs processing in FT |
-| 70 | `AEDATTM` | `STRING` | — |
+| 70 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29674,7 +29717,7 @@
 | 120 | `MSL15` | `DECIMAL` | Total of the transactions of period in units of measure |
 | 121 | `MSL16` | `DECIMAL` | Total of the transactions of period in units of measure |
 | 122 | `TIMESTAMP` | `DECIMAL` | UTC Time Stamp in Short Form (YYYYMMDDhhmmss) |
-| 123 | `AEDATTM` | `STRING` | — |
+| 123 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29708,7 +29751,7 @@
 | 15 | `ADDRGUID` | `STRING` | Address guid |
 | 16 | `DELETED` | `DECIMAL` | UTC Time Stamp in Short Form (YYYYMMDDhhmmss) |
 | 17 | `DELETEDBY` | `STRING` | User Name |
-| 18 | `AEDATTM` | `STRING` | — |
+| 18 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29742,7 +29785,7 @@
 | 15 | `XSPEP` | `STRING` | Indicator: account blocked for planning ? |
 | 16 | `MCOD1` | `STRING` | Search Term for Using Matchcode |
 | 17 | `FUNC_AREA` | `STRING` | Functional Area |
-| 18 | `AEDATTM` | `STRING` | — |
+| 18 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29800,7 +29843,7 @@
 | 39 | `TOGRU` | `STRING` | Tolerance Group for G/L Accounts |
 | 40 | `XLGCLR` | `STRING` | Clearing Specific to Ledger Groups |
 | 41 | `MCAKEY` | `STRING` | MCA Key |
-| 42 | `AEDATTM` | `STRING` | — |
+| 42 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29823,7 +29866,7 @@
 | 4 | `TXT20` | `STRING` | G/L Account Short Text |
 | 5 | `TXT50` | `STRING` | G/L Account Long Text |
 | 6 | `MCOD1` | `STRING` | Search Term for Matchcode Search |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -29959,12 +30002,12 @@
 | 4 | `BLDAT` | `STRING` | Document Date in Document |
 | 5 | `BUDAT` | `STRING` | Posting Date in the Document |
 | 6 | `BWART` | `STRING` | Movement Type (Inventory Management) |
-| 7 | `MATNR` | `STRING` | Material Number |
+| 7 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 8 | `WERKS` | `STRING` | Plant |
 | 9 | `LGORT` | `STRING` | Storage Location |
-| 10 | `CHARG` | `STRING` | Batch Number |
+| 10 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 11 | `SOBKZ` | `STRING` | Special Stock Indicator |
-| 12 | `LIFNR` | `STRING` | Suppliers Account Number |
+| 12 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
 | 13 | `KDAUF` | `STRING` | Sales Order Number |
 | 14 | `KDPOS` | `STRING` | Item Number in Sales Order |
 | 15 | `SHKZG` | `STRING` | Debit/Credit Indicator |
@@ -29975,12 +30018,12 @@
 | 20 | `MEINS` | `STRING` | Base Unit of Measure |
 | 21 | `ERFMG` | `DECIMAL` | Quantity in unit of entry |
 | 22 | `ERFME` | `STRING` | Unit of entry |
-| 23 | `EBELN` | `STRING` | Purchase order number |
+| 23 | `EBELN` | `STRING` | Purchase order number _10-char zero-padded_ |
 | 24 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 25 | `ELIKZ` | `STRING` | "Delivery Completed" Indicator |
 | 26 | `WEMPF` | `STRING` | Goods recipient |
 | 27 | `ABLAD` | `STRING` | Unloading Point |
-| 28 | `AUFNR` | `STRING` | Order Number |
+| 28 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 29 | `RSNUM` | `STRING` | Number of reservation/dependent requirements |
 | 30 | `RSPOS` | `STRING` | Item Number of Reservation / Dependent Requirements |
 | 31 | `RSART` | `STRING` | Record type |
@@ -29994,7 +30037,7 @@
 | 39 | `SAKTO` | `STRING` | G/L Account Number |
 | 40 | `KOKRS` | `STRING` | Controlling Area |
 | 41 | `WTY_IND` | `STRING` | Warranty indicator |
-| 42 | `AEDATTM` | `STRING` | — |
+| 42 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -30155,7 +30198,7 @@
 | 142 | `SIGNI` | `STRING` | Container ID |
 | 143 | `LTEXT` | `STRING` | Text |
 | 144 | `ZZBAG_LBL` | `STRING` | No of Bag Labels to be sent to loftware |
-| 145 | `AEDATTM` | `STRING` | — |
+| 145 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -30175,7 +30218,7 @@
 | 1 | `VENUM` | `STRING` | Internal Handling Unit Number |
 | 2 | `VEPOS` | `STRING` | Handling Unit Item |
 | 3 | `VELIN` | `STRING` | Type of Handling-unit Item Content |
-| 4 | `VBELN` | `STRING` | Delivery |
+| 4 | `VBELN` | `STRING` | Delivery _10-char zero-padded_ |
 | 5 | `POSNR` | `STRING` | Delivery Item |
 | 6 | `VBTYP` | `STRING` | SD document category |
 | 7 | `UNVEL` | `STRING` | Lower-level handling unit |
@@ -30185,8 +30228,8 @@
 | 11 | `ALTME` | `STRING` | Alternative unit of measure for stock unit of measure |
 | 12 | `VEANZ` | `INT` | Number of Auxiliary Packaging Materials in the HU Item |
 | 13 | `KZBEI` | `STRING` | Indicator: Supplementary item |
-| 14 | `MATNR` | `STRING` | Material Number |
-| 15 | `CHARG` | `STRING` | Batch Number |
+| 14 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
+| 15 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 16 | `WERKS` | `STRING` | Plant |
 | 17 | `LGORT` | `STRING` | Storage Location |
 | 18 | `CUOBJ` | `STRING` | Configuration (internal object number) |
@@ -30208,7 +30251,7 @@
 | 34 | `WRF_CHARSTC1` | `STRING` | Characteristic Value 1 |
 | 35 | `WRF_CHARSTC2` | `STRING` | Characteristic Value 2 |
 | 36 | `WRF_CHARSTC3` | `STRING` | Characteristic Value 3 |
-| 37 | `AEDATTM` | `STRING` | — |
+| 37 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -30249,7 +30292,7 @@
 | 22 | `IBLTXT` | `STRING` | Description of Physical Inventory Document |
 | 23 | `INVART` | `STRING` | Physical Inventory Type |
 | 24 | `WSTI_BSTAT` | `STRING` | Status of Calculation of Inventory Balance at Count Time |
-| 25 | `AEDATTM` | `STRING` | — |
+| 25 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -30286,7 +30329,7 @@
 | 18 | `TRMER` | `STRING` | Scheduling error |
 | 19 | `TRMHK` | `STRING` | Scheduling source |
 | 20 | `PLAUF` | `STRING` | Date for Routing Explosion |
-| 21 | `AEDATTM` | `STRING` | — |
+| 21 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -30306,7 +30349,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `INCO1` | `STRING` | Incoterms (Part 1) |
 | 3 | `BEZEI` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -30351,7 +30394,7 @@
 | 26 | `FSH_SEASON` | `STRING` | Season |
 | 27 | `FSH_COLLECTION` | `STRING` | Fashion Collection |
 | 28 | `FSH_THEME` | `STRING` | Fashion Theme |
-| 29 | `AEDATTM` | `STRING` | — |
+| 29 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -30368,7 +30411,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
 | 3 | `BEDAE` | `STRING` | Requirements type |
 | 4 | `VERSB` | `STRING` | Version Number for Independent Requirements |
@@ -30402,7 +30445,7 @@
 | 32 | `KZBWS` | `STRING` | Valuation of Special Stock |
 | 33 | `PBDNR_EXT` | `STRING` | External Requirements Plan ID |
 | 34 | `SGT_RCAT` | `STRING` | Requirement Segment |
-| 35 | `AEDATTM` | `STRING` | — |
+| 35 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -30427,7 +30470,7 @@
 | 6 | `ZEILE` | `STRING` | Item in Material Document |
 | 7 | `CPUDT` | `STRING` | Day On Which Accounting Document Was Entered |
 | 8 | `CPUTM` | `STRING` | Time of Entry |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -30443,9 +30486,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `CUOBJ` | `STRING` | Configuration (internal object number) |
 | 5 | `KLART` | `STRING` | Class Type |
@@ -30459,7 +30502,7 @@
 | 13 | `PARENT` | `STRING` | Configuration (internal object number) |
 | 14 | `ROOT` | `STRING` | Configuration (internal object number) |
 | 15 | `EXPERTE` | `STRING` | User as expert |
-| 16 | `MATNR` | `STRING` | Material Number |
+| 16 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 17 | `DATUV` | `STRING` | Valid-From Date |
 | 18 | `TECHS` | `STRING` | Parameter Variant/Standard Variant |
 | 19 | `RecordActivity` | `STRING` | Operational Flag (I/U/D) |
@@ -30478,17 +30521,17 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `BELNR` | `STRING` | Document Number of an Accounting Document |
 | 5 | `GJAHR` | `STRING` | Fiscal Year |
 | 6 | `BUZEI` | `STRING` | Document Item in Invoice Document |
-| 7 | `EBELN` | `STRING` | Purchasing Document Number |
+| 7 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 8 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 9 | `ZEKKN` | `STRING` | Sequential Number of Account Assignment |
-| 10 | `MATNR` | `STRING` | Material Number |
+| 10 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 11 | `BWKEY` | `STRING` | Valuation Area |
 | 12 | `BWTAR` | `STRING` | Valuation Type |
 | 13 | `BUKRS` | `STRING` | Company Code |
@@ -30551,7 +30594,7 @@
 | 70 | `STOCK_POSTING_PP` | `DECIMAL` | Stock Posting of Line from an Incoming Invoice Prev. Period |
 | 71 | `STOCK_POSTING_PY` | `DECIMAL` | Stock Posting of Line from an Incoming Invoice Prev. Year |
 | 72 | `WEREC` | `STRING` | Clearing Indicator for GR/IR Posting for External Services |
-| 73 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 73 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 74 | `FRBNR` | `STRING` | Number of Bill of Lading at Time of Goods Receipt |
 | 75 | `XHISTMA` | `STRING` | Update Multiple Account Assignment EKBE_MA EKBZ_MA |
 | 76 | `COMPLAINT_REASON` | `STRING` | Complaints Reason in an Invoice |
@@ -30566,7 +30609,7 @@
 | 85 | `SRM_CONTRACT_ITM` | `STRING` | Central Contract Item Number |
 | 86 | `CONT_PSTYP` | `STRING` | Item category in purchasing document |
 | 87 | `SRVMAPKEY` | `STRING` | Item Key for eSOA Messages |
-| 88 | `CHARG` | `STRING` | Batch Number |
+| 88 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 89 | `INV_ITM_ORIGIN` | `STRING` | Origin of an Invoice Item |
 | 90 | `INVREL` | `STRING` | Grouping Characteristic for Invoice Verification |
 | 91 | `XDINV` | `STRING` | Indicator for Differential Invoicing |
@@ -30613,7 +30656,7 @@
 | 10 | `VGART` | `STRING` | Transaction Type in AG08 (Internal Document Type) |
 | 11 | `XBLNR` | `STRING` | Reference Document Number |
 | 12 | `BUKRS` | `STRING` | Company Code |
-| 13 | `LIFNR` | `STRING` | Different Invoicing Party |
+| 13 | `LIFNR` | `STRING` | Different Invoicing Party _10-char zero-padded_ |
 | 14 | `WAERS` | `STRING` | Currency Key |
 | 15 | `KURSF` | `DECIMAL` | Exchange rate |
 | 16 | `RMWWR` | `DECIMAL` | Gross invoice amount in document currency |
@@ -30760,7 +30803,7 @@
 | 157 | `PYIBAN` | `STRING` | IBAN (International Bank Account Number) |
 | 158 | `INWARDNO_HD` | `STRING` | Incoming Document Number |
 | 159 | `INWARDDT_HD` | `STRING` | Incoming Document Date |
-| 160 | `AEDATTM` | `STRING` | — |
+| 160 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -30897,7 +30940,7 @@
 | 44 | `NETPR` | `DECIMAL` | Net price |
 | 45 | `WAERS` | `STRING` | Currency Key |
 | 46 | `SAKTO` | `STRING` | Cost Element |
-| 47 | `AUFNR` | `STRING` | Settlement order |
+| 47 | `AUFNR` | `STRING` | Settlement order _12-char zero-padded_ |
 | 48 | `APFKT` | `DECIMAL` | Execution factor for whole task list |
 | 49 | `SCRRENTY` | `STRING` | SCREEN TYPE: for order-order category (see domain) |
 | 50 | `SERIALNR` | `STRING` | Serial Number |
@@ -30922,7 +30965,7 @@
 | 69 | `IND_MPOS_API` | `STRING` | Maintenance Item Was Created/Changed by API |
 | 70 | `RBNR` | `STRING` | Catalog Profile |
 | 71 | `RBNRI` | `STRING` | Origin of catalog profile |
-| 72 | `AEDATTM` | `STRING` | — |
+| 72 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -30939,7 +30982,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `AUFNR` | `STRING` | Order Number |
+| 1 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 2 | `ARTPR` | `STRING` | Priority Type |
 | 3 | `PRIOK` | `STRING` | Priority |
 | 4 | `EQUNR` | `STRING` | Equipment Number |
@@ -30988,7 +31031,7 @@
 | 47 | `ISDFPSMHIO_ADTIME` | `STRING` | Completion Time for Call Object |
 | 48 | `ISDFPSUSERMODE` | `STRING` | Scheduling determined by user |
 | 49 | `UII` | `STRING` | Unique Item Identifier |
-| 50 | `AEDATTM` | `STRING` | — |
+| 50 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31068,7 +31111,7 @@
 | 61 | `SETREPEATIND` | `STRING` | Repeat Factor for Cycle Set Sequence |
 | 62 | `IND_MPLA_API` | `STRING` | Maintenance Plan Was Created/Changed by API |
 | 63 | `DUE_DATE_TIME` | `STRING` | Start Time for Scheduling |
-| 64 | `AEDATTM` | `STRING` | — |
+| 64 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31133,7 +31176,7 @@
 | 46 | `MCP_SF` | `STRING` | Shift Factor for Multiple Counter Plan |
 | 47 | `ENDDT_FOR_SCHED` | `STRING` | End Date for Scheduling |
 | 48 | `END_COUNTER` | `STRING` | End Counter for Scheduling |
-| 49 | `AEDATTM` | `STRING` | — |
+| 49 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31280,7 +31323,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
 | 3 | `PLNTY` | `STRING` | Task List Type |
 | 4 | `PLNNR` | `STRING` | Key for Task List Group |
@@ -31296,15 +31339,15 @@
 | 14 | `ANNAM` | `STRING` | User who created record |
 | 15 | `AEDAT` | `STRING` | Last Changed On |
 | 16 | `AENAM` | `STRING` | Name of Person Who Changed Object |
-| 17 | `LIFNR` | `STRING` | Suppliers Account Number |
+| 17 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
 | 18 | `KUNR` | `STRING` | Account number of customer |
 | 19 | `SUCHFELD` | `STRING` | Search Field for Customer-Specific Task List Selection |
-| 20 | `VBELN` | `STRING` | Sales Document |
+| 20 | `VBELN` | `STRING` | Sales Document _10-char zero-padded_ |
 | 21 | `POSNR` | `STRING` | Sales Document Item |
 | 22 | `PSPNR` | `STRING` | Work breakdown structure element (WBS element) |
 | 23 | `MS_OBJECT` | `STRING` | Object for Multiple Specifications |
 | 24 | `MS_OBJTYPE` | `STRING` | Type of Object for Multiple Specifications |
-| 25 | `AEDATTM` | `STRING` | — |
+| 25 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31321,7 +31364,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 3 | `LGTYP` | `STRING` | Storage Type |
 | 4 | `LVORM` | `STRING` | Deletion flag for all material data of a storage type |
@@ -31332,7 +31375,7 @@
 | 9 | `NSMNG` | `DECIMAL` | Replenishment quantity |
 | 10 | `KOBER` | `STRING` | Picking Area |
 | 11 | `RDMNG` | `DECIMAL` | Rounding qty |
-| 12 | `AEDATTM` | `STRING` | — |
+| 12 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31350,13 +31393,13 @@
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `WERKS` | `STRING` | Plant |
-| 2 | `MATNR` | `STRING` | Material Number |
+| 2 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 3 | `PNUM1` | `STRING` | Pointer: forecast parameters |
 | 4 | `PERKZ` | `STRING` | Period Indicator |
 | 5 | `PERIV` | `STRING` | Fiscal Year Variant |
 | 6 | `DATUM` | `STRING` | System Date |
 | 7 | `UZEIT` | `STRING` | System Time |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31375,15 +31418,15 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `KAPPL` | `STRING` | Application |
 | 2 | `KSCHL` | `STRING` | Condition Type |
-| 3 | `LIFNR` | `STRING` | Suppliers Account Number |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 3 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `EKORG` | `STRING` | Purchasing Organization |
 | 6 | `WERKS` | `STRING` | Plant |
 | 7 | `ESOKZ` | `STRING` | Purchasing info record category |
 | 8 | `DATBI` | `STRING` | Validity end date of the condition record |
 | 9 | `DATAB` | `STRING` | Validity start date of the condition record |
 | 10 | `KNUMH` | `STRING` | Condition record number |
-| 11 | `AEDATTM` | `STRING` | — |
+| 11 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31400,10 +31443,10 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `ZZBB_SUBREG` | `STRING` | Building Block Sub Region |
 | 3 | `ZZBLDG_BLOCK` | `STRING` | Building Block |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31419,11 +31462,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `WERKS` | `STRING` | Plant |
 | 6 | `PSTAT` | `STRING` | Maintenance status |
 | 7 | `LVORM` | `STRING` | Flag Material for Deletion at Plant Level |
@@ -31697,7 +31740,7 @@
 | 2 | `MATKL` | `STRING` | Material Group |
 | 3 | `WGBEZ` | `STRING` | Material Group Description |
 | 4 | `WGBEZ60` | `STRING` | Long text describing the material group |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31714,7 +31757,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
 | 3 | `VERID` | `STRING` | Production Version |
 | 4 | `BDATU` | `STRING` | Valid-To Date of Production Version |
@@ -31755,7 +31798,7 @@
 | 39 | `PRFG_S` | `STRING` | BOM - check status of production version |
 | 40 | `UCMAT` | `STRING` | Reference Material for Original Batches |
 | 41 | `PPEGUID` | `STRING` | Internal Identification for PVS Objects |
-| 42 | `AEDATTM` | `STRING` | — |
+| 42 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31775,7 +31818,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `MTART` | `STRING` | Material Type |
 | 3 | `MTBEZ` | `STRING` | Description of material type |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31792,7 +31835,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `BWKEY` | `STRING` | Valuation Area |
 | 3 | `BWTAR` | `STRING` | Valuation Type |
 | 4 | `LFGJA` | `STRING` | Fiscal Year of Current Period |
@@ -31806,7 +31849,7 @@
 | 12 | `BKLAS` | `STRING` | Valuation Class |
 | 13 | `SALKV` | `DECIMAL` | Value based on moving average price (only with price ctrl S) |
 | 14 | `VKSAL` | `DECIMAL` | Value of Total Valuated Stock at Sales Price |
-| 15 | `AEDATTM` | `STRING` | — |
+| 15 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31823,13 +31866,13 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `APMEA_DATE` | `STRING` | APMEA Date |
 | 3 | `EUROPE_DATE` | `STRING` | Europe Date |
 | 4 | `LATAM_DATE` | `STRING` | LATAM Date |
 | 5 | `KNA_DATE` | `STRING` | KNA Date |
 | 6 | `COMM_DATE` | `STRING` | Commercialization Date |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -31985,7 +32028,7 @@
 | 96 | `MC_COUNTY` | `STRING` | County name in upper case for search help |
 | 97 | `MC_TOWNSHIP` | `STRING` | Township name in upper case for search help |
 | 98 | `XPCPT` | `STRING` | Business Purpose Completed Flag |
-| 99 | `AEDATTM` | `STRING` | — |
+| 99 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -32002,7 +32045,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `KUNNR` | `STRING` | Customer Number |
+| 1 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 2 | `LAND1` | `STRING` | Country Key |
 | 3 | `NAME1` | `STRING` | Name 1 |
 | 4 | `NAME2` | `STRING` | Name 2 |
@@ -32038,7 +32081,7 @@
 | 34 | `KONZS` | `STRING` | Group key |
 | 35 | `KTOKD` | `STRING` | Customer Account Group |
 | 36 | `KUKLA` | `STRING` | Customer Classification |
-| 37 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 37 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 38 | `LIFSD` | `STRING` | Central delivery block for the customer |
 | 39 | `LOCCO` | `STRING` | City Coordinates |
 | 40 | `LOEVM` | `STRING` | Central Deletion Flag for Master Record |
@@ -32223,7 +32266,7 @@
 | 219 | `ZZGPO` | `STRING` | GPO/Buying Group |
 | 220 | `ZZACQUI` | `STRING` | Acquisition |
 | 221 | `ZZREASON` | `STRING` | SFDC Reason |
-| 222 | `AEDATTM` | `STRING` | — |
+| 222 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -32240,14 +32283,14 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `MEINH` | `STRING` | Unit of Measure for Display |
 | 3 | `LFNUM` | `STRING` | Consecutive Number |
 | 4 | `EAN11` | `STRING` | International Article Number (EAN/UPC) |
 | 5 | `EANTP` | `STRING` | Category of International Article Number (EAN) |
 | 6 | `HPEAN` | `STRING` | Indicator: Main EAN |
 | 7 | `SGT_CATV` | `STRING` | Segmentation Value |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -32266,7 +32309,7 @@
 | 0 | `SPRAS` | `STRING` | Language Key |
 | 1 | `SPRSL` | `STRING` | Language Key |
 | 2 | `SPTXT` | `STRING` | Name of Language |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -32283,7 +32326,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `MEINH` | `STRING` | Alternative Unit of Measure for Stockkeeping Unit |
 | 3 | `UMREZ` | `DECIMAL` | Numerator for Conversion to Base Units of Measure |
 | 4 | `UMREN` | `DECIMAL` | Denominator for conversion to base units of measure |
@@ -32315,7 +32358,7 @@
 | 30 | `NTGEW` | `DECIMAL` | Net Weight |
 | 31 | `ZZINNER` | `STRING` | Inner for UOM |
 | 32 | `ZZPACKH` | `STRING` | Packing Hierarchy |
-| 33 | `AEDATTM` | `STRING` | — |
+| 33 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -32331,11 +32374,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `SPRAS` | `STRING` | Language Key |
 | 6 | `MAKTX` | `STRING` | Material Description |
 | 7 | `MAKTG` | `STRING` | Material Description in Uppercase for Matchcodes |
@@ -32360,7 +32403,7 @@
 | 2 | `MATKL` | `STRING` | Material Group |
 | 3 | `WGBEZ` | `STRING` | Material Group Description |
 | 4 | `WGBEZ60` | `STRING` | Long text describing the material group |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -32376,11 +32419,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `ERSDA` | `STRING` | Created On |
 | 6 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
 | 7 | `LAEDA` | `STRING` | Date of Last Change |
@@ -32420,7 +32463,7 @@
 | 41 | `TRAGR` | `STRING` | Transportation Group |
 | 42 | `STOFF` | `STRING` | Hazardous material number |
 | 43 | `SPART` | `STRING` | Division |
-| 44 | `KUNNR` | `STRING` | Competitor |
+| 44 | `KUNNR` | `STRING` | Competitor _10-char zero-padded_ |
 | 45 | `EANNR` | `STRING` | European Article Number (EAN) - obsolete!!!!! |
 | 46 | `WESCH` | `DECIMAL` | Quantity: Number of GR/GI slips to be printed |
 | 47 | `BWVOR` | `STRING` | Procurement rule |
@@ -32730,7 +32773,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `BWKEY` | `STRING` | Valuation Area |
 | 3 | `BWTAR` | `STRING` | Valuation Type |
 | 4 | `LVORM` | `STRING` | Deletion flag for all material data of a valuation type |
@@ -32838,7 +32881,7 @@
 | 106 | `MBRUE` | `STRING` | MBEWH rec. already exists for per. before last of MBEW per. |
 | 107 | `OKLAS` | `STRING` | Valuation Class for Special Stock at the Vendor |
 | 108 | `OIPPINV` | `STRING` | Prepaid Inventory Flag for Material Valuation Type Segment |
-| 109 | `AEDATTM` | `STRING` | — |
+| 109 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -32858,8 +32901,8 @@
 | 1 | `WERKS` | `STRING` | Plant |
 | 2 | `NAME1` | `STRING` | Name |
 | 3 | `BWKEY` | `STRING` | Valuation Area |
-| 4 | `KUNNR` | `STRING` | Customer number of plant |
-| 5 | `LIFNR` | `STRING` | Vendor number of plant |
+| 4 | `KUNNR` | `STRING` | Customer number of plant _10-char zero-padded_ |
+| 5 | `LIFNR` | `STRING` | Vendor number of plant _10-char zero-padded_ |
 | 6 | `FABKL` | `STRING` | Factory calendar key |
 | 7 | `NAME2` | `STRING` | Name 2 |
 | 8 | `STRAS` | `STRING` | Street and House Number |
@@ -32920,7 +32963,7 @@
 | 63 | `OIHCREDIPI` | `STRING` | IPI credit allowed |
 | 64 | `STORETYPE` | `STRING` | Store Category to Differentiate Store Dep. Store Shop |
 | 65 | `DEP_STORE` | `STRING` | Superior Department Store |
-| 66 | `AEDATTM` | `STRING` | — |
+| 66 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -32937,7 +32980,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
 | 3 | `PSTAT` | `STRING` | Maintenance status |
 | 4 | `LVORM` | `STRING` | Flag Material for Deletion at Plant Level |
@@ -33191,7 +33234,7 @@
 | 252 | `ZZMAT_CLASS` | `STRING` | Material Classification |
 | 253 | `ZZINDPRI` | `DECIMAL` | Indicative Price |
 | 254 | `ZZINDPCU` | `STRING` | Indicative Price Currency |
-| 255 | `AEDATTM` | `STRING` | — |
+| 255 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33207,12 +33250,12 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `MATNR` | `STRING` | Material Number |
+| 0 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 1 | `ZSUBREG` | `STRING` | Product Collection Subregion |
 | 2 | `ZPRDCOL` | `STRING` | Product collection flag |
 | 3 | `ZCHANGEDATE` | `STRING` | Date Changed |
 | 4 | `ZCHANGEBY` | `STRING` | Changed by |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33237,7 +33280,7 @@
 | 6 | `DOMVAL_LD` | `STRING` | Language-specific values for domains lower limit |
 | 7 | `DOMVAL_HD` | `STRING` | Language-specific values for domains upper limit |
 | 8 | `DOMVALUE_L` | `STRING` | Values for Domains: Single Value / Upper Limit |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33257,7 +33300,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `PRODH` | `STRING` | Product Hierarchy |
 | 3 | `VTEXT` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33274,7 +33317,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `VKORG` | `STRING` | Sales Organization |
 | 3 | `VTWEG` | `STRING` | Distribution Channel |
 | 4 | `LVORM` | `STRING` | Ind.: Flag material for deletion at distribution chain level |
@@ -33344,7 +33387,7 @@
 | 68 | `ZZWERKS_MVKE` | `STRING` | Site of Manufacture for KIF |
 | 69 | `ZZPRCTR_MVKE` | `STRING` | Profit Centre (Revenue) |
 | 70 | `ZZASSBL2_MVKE` | `STRING` | Tech Unit (previously Asset base level 2) |
-| 71 | `AEDATTM` | `STRING` | — |
+| 71 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33367,7 +33410,7 @@
 | 4 | `ZZGR_EMPLO` | `STRING` | Employee Number |
 | 5 | `ZZUDATE` | `STRING` | Date of Last Change |
 | 6 | `ZZUNAME` | `STRING` | Name of Person Who Changed Object |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33384,7 +33427,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `ALAND` | `STRING` | Departure country (country from which the goods are sent) |
 | 3 | `TAXM1` | `STRING` | Tax classification material |
 | 4 | `TAXM2` | `STRING` | Tax classification material |
@@ -33396,7 +33439,7 @@
 | 10 | `TAXM8` | `STRING` | Tax classification material |
 | 11 | `TAXM9` | `STRING` | Tax classification material |
 | 12 | `TAXIM` | `STRING` | Tax indicator for material (Purchasing) |
-| 13 | `AEDATTM` | `STRING` | — |
+| 13 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33432,7 +33475,7 @@
 | 17 | `MC_CITY1` | `STRING` | City name in Uppercase for Search Help |
 | 18 | `COMPANY` | `STRING` | Company address cross-system key |
 | 19 | `IDADTYPE` | `STRING` | Address Type of the Identity |
-| 20 | `AEDATTM` | `STRING` | — |
+| 20 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33449,7 +33492,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 1 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 2 | `LAND1` | `STRING` | Country Key |
 | 3 | `NAME1` | `STRING` | Name 1 |
 | 4 | `NAME2` | `STRING` | Name 2 |
@@ -33482,7 +33525,7 @@
 | 31 | `ESRNR` | `STRING` | ISR Subscriber Number |
 | 32 | `KONZS` | `STRING` | Group Key |
 | 33 | `KTOKK` | `STRING` | Supplier Account Group |
-| 34 | `KUNNR` | `STRING` | Customer Number |
+| 34 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 35 | `LNRZA` | `STRING` | Account Number of the Alternative Payee |
 | 36 | `LOEVM` | `STRING` | Central Deletion Flag for Master Record |
 | 37 | `SPERR` | `STRING` | Central posting block |
@@ -33624,7 +33667,7 @@
 | 173 | `ZZSEDEXNUM` | `STRING` | Sedex Reference Number |
 | 174 | `ZZSACQUI` | `STRING` | Acquisition |
 | 175 | `ZZRCVR_ACT_CODE` | `STRING` | Activity Code of the Receiver |
-| 176 | `AEDATTM` | `STRING` | — |
+| 176 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33701,7 +33744,7 @@
 | 58 | `/BIC/ZMGWIAET` | `STRING` | Work Item End Time (original) |
 | 59 | `/BIC/ZMGWIASD` | `STRING` | Work Item Start Date (original) |
 | 60 | `/BIC/ZMGWIAST` | `STRING` | Work Item Start Time (original) |
-| 61 | `AEDATTM` | `STRING` | — |
+| 61 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33800,7 +33843,7 @@
 | 80 | `TDSCHEDULE` | `STRING` | Send time request |
 | 81 | `TLAND` | `STRING` | Country Key |
 | 82 | `_DATAAGING` | `STRING` | Data Filter Value for Data Aging |
-| 83 | `AEDATTM` | `STRING` | — |
+| 83 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33854,7 +33897,7 @@
 | 35 | `LTRFLDDIS` | `STRING` | Basic write direction is defined in LTR (left-to-right) |
 | 36 | `BIDICTRLC` | `STRING` | DD: No Filtering of BIDI Formatting Characters |
 | 37 | `NOHISTORY` | `STRING` | DD: Flag for Deactivating Input History in Dynpro Field |
-| 38 | `AEDATTM` | `STRING` | — |
+| 38 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33914,7 +33957,7 @@
 | 41 | `TBFUNC_INCLUDED` | `STRING` | Contains info whether a table function exists in hierarchy |
 | 42 | `IS_GTT` | `STRING` | Flag whether table is a global temporary table |
 | 43 | `SESSION_VAR_EX` | `STRING` | DD: Does a session variable exist? |
-| 44 | `AEDATTM` | `STRING` | — |
+| 44 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -33930,9 +33973,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `BWART` | `STRING` | Movement Type (Inventory Management) |
 | 5 | `SHKZG` | `STRING` | Debit/Credit Indicator |
@@ -34000,7 +34043,7 @@
 | 5 | `KZZUG` | `STRING` | Receipt Indicator |
 | 6 | `KZVBR` | `STRING` | Consumption posting |
 | 7 | `BTEXT` | `STRING` | Movement Type Text (Inventory Management) |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34020,7 +34063,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `BWART` | `STRING` | Movement Type (Inventory Management) |
 | 3 | `BTEXT` | `STRING` | Movement Type Text (Inventory Management) |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34047,7 +34090,7 @@
 | 8 | `PRCTR` | `STRING` | Profit Center |
 | 9 | `USRTYP` | `STRING` | Recipient type |
 | 10 | `USRKEY` | `STRING` | Object ID for recipient |
-| 11 | `AEDATTM` | `STRING` | — |
+| 11 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34067,7 +34110,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `DISMM` | `STRING` | MRP Type |
 | 3 | `DIBEZ` | `STRING` | Material requirements planning description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34085,7 +34128,7 @@
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `DTART` | `STRING` | Type of MRP list |
-| 2 | `MATNR` | `STRING` | Material Number |
+| 2 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 3 | `PLWRK` | `STRING` | Plant |
 | 4 | `PLSCN` | `STRING` | Planning Scenario of Long-Term Planning |
 | 5 | `DTNUM` | `STRING` | Number of material requirements planning table |
@@ -34181,7 +34224,7 @@
 | 95 | `BADON` | `STRING` | Indicator: BAdI is Active |
 | 96 | `SGT_STATC` | `STRING` | Segmentation Status |
 | 97 | `HANAON` | `STRING` | HANA Optimizations Active / Inactive |
-| 98 | `AEDATTM` | `STRING` | — |
+| 98 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34204,7 +34247,7 @@
 | 4 | `ERDIS` | `STRING` | Indicator: create material requirements planning list |
 | 5 | `ASPRI` | `STRING` | Exception message priority |
 | 6 | `ASNOT` | `STRING` | Do not set exception message |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34224,7 +34267,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `AUSSL` | `STRING` | Exception message key |
 | 3 | `AUSLT` | `STRING` | Exception message text |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34245,7 +34288,7 @@
 | 2 | `WERKS` | `STRING` | Plant |
 | 3 | `DISGR` | `STRING` | MRP Group |
 | 4 | `TEXT40` | `STRING` | Text 40 Characters Long |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34321,7 +34364,7 @@
 | 57 | `RESLO` | `STRING` | Issuing Storage Location for Stock Transport Order |
 | 58 | `PRIO_URG` | `STRING` | Requirement Urgency |
 | 59 | `PRIO_REQ` | `STRING` | Requirement Priority |
-| 60 | `AEDATTM` | `STRING` | — |
+| 60 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34341,7 +34384,7 @@
 | 1 | `OBJNR` | `STRING` | Object number |
 | 2 | `KOKRS` | `STRING` | Controlling Area |
 | 3 | `KOSTL` | `STRING` | Cost Center |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34357,9 +34400,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `OBJEK` | `STRING` | Key of object to be classified |
 | 5 | `ATINN` | `STRING` | Internal characteristic |
@@ -34482,7 +34525,7 @@
 | 13 | `OFAKW` | `DECIMAL` | Open billing document credit value |
 | 14 | `AOLIW` | `DECIMAL` | Guaranteed open delivery value |
 | 15 | `AOFAW` | `DECIMAL` | Guaranteed open billing values |
-| 16 | `AEDATTM` | `STRING` | — |
+| 16 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34512,7 +34555,7 @@
 | 11 | `CMWAE` | `STRING` | Currency key of credit control area |
 | 12 | `OEIKW` | `DECIMAL` | Open sales order credit value (schedule lines) |
 | 13 | `AOEIW` | `DECIMAL` | Guaranteed open order value (schedule lines) |
-| 14 | `AEDATTM` | `STRING` | — |
+| 14 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34535,7 +34578,7 @@
 | 4 | `GBSTK` | `STRING` | Overall processing status of document |
 | 5 | `ORDER_STATUS` | `STRING` | Order Status |
 | 6 | `CHG_ALLOWED` | `STRING` | Checkbox |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34618,7 +34661,7 @@
 | 64 | `MEILR` | `STRING` | Indicator: Milestone confirmation carried out |
 | 65 | `AUFPL` | `STRING` | Routing number of operations in the order |
 | 66 | `APLZL` | `STRING` | General counter for order |
-| 67 | `AUFNR` | `STRING` | Order Number |
+| 67 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 68 | `APLFL` | `STRING` | Sequence |
 | 69 | `VORNR` | `STRING` | Activity Number |
 | 70 | `SUMNR` | `STRING` | Node number of the superior operation |
@@ -34695,7 +34738,7 @@
 | 141 | `UCMAT` | `STRING` | Mill: Material in Process Batch |
 | 142 | `UCCHA` | `STRING` | Mill: Process batch |
 | 143 | `WTY_IND` | `STRING` | Warranty indicator |
-| 144 | `AEDATTM` | `STRING` | — |
+| 144 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34712,7 +34755,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `AUFNR` | `STRING` | Order Number |
+| 1 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 2 | `AUART` | `STRING` | Order Type |
 | 3 | `AUTYP` | `STRING` | Order category |
 | 4 | `REFNR` | `STRING` | Reference order number |
@@ -34966,7 +35009,7 @@
 | 252 | `BMEINS` | `STRING` | Base Unit of Measure |
 | 253 | `BMENGE` | `DECIMAL` | Base quantity |
 | 254 | `MILL_OC_ZUSKZ` | `STRING` | Combination Indicator |
-| 255 | `AEDATTM` | `STRING` | — |
+| 255 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -34994,7 +35037,7 @@
 | 9 | `TOLKZ` | `STRING` | Indicator: Underdelivery Tolerance for Stock Transfers |
 | 10 | `CMM_MTM_STO_MODE` | `STRING` | Mirroring of Mark-to-Market Values |
 | 11 | `LOGTRM_STO_MODE` | `STRING` | Raw Exposure Mode for Cross-Company Stock Transport Document |
-| 12 | `AEDATTM` | `STRING` | — |
+| 12 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35014,7 +35057,7 @@
 | 1 | `VKORG` | `STRING` | Sales Organization |
 | 2 | `VTWEG` | `STRING` | Reference distrib.channel for cust.and material masters |
 | 3 | `WERKS` | `STRING` | Plant (Own or External) |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35033,7 +35076,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `ZFAILRCODE` | `STRING` | OTIF Failure Reason Code |
 | 2 | `ZFAILRDESCR` | `STRING` | OTIF Failure Reason Description |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35049,11 +35092,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 4 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 5 | `POSNR` | `STRING` | Item number of the SD document |
 | 6 | `VKORG` | `STRING` | Sales Organization |
 | 7 | `VTWEG` | `STRING` | Distribution Channel |
@@ -35085,12 +35128,12 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `ZSEQ` | `STRING` | Document Number |
-| 5 | `VBELN` | `STRING` | Sales Document |
+| 5 | `VBELN` | `STRING` | Sales Document _10-char zero-padded_ |
 | 6 | `POSNR` | `STRING` | Sales Document Item |
 | 7 | `ZETENR` | `STRING` | Schedule Line Number |
 | 8 | `ZKEY` | `STRING` | Key Change |
@@ -35104,7 +35147,7 @@
 | 16 | `ZNAME_AG` | `STRING` | Sold To Name |
 | 17 | `ZKUNNR_WE` | `STRING` | Ship To |
 | 18 | `ZNAME_WE` | `STRING` | Ship To Name |
-| 19 | `MATNR` | `STRING` | Material Number |
+| 19 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 20 | `AUART` | `STRING` | Sales Document Type |
 | 21 | `VDATU` | `STRING` | Requested delivery date |
 | 22 | `ZZPROMISEDDATE` | `STRING` | Promised Date |
@@ -35140,7 +35183,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `ZFAILRCODE` | `STRING` | OTIF Failure Reason Code |
 | 2 | `ZFAILRDESCR` | `STRING` | OTIF Failure Reason Description |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35162,7 +35205,7 @@
 | 3 | `ZZPRTERM` | `STRING` | Price Term |
 | 4 | `ZZPRTERM_DESC` | `STRING` | Pricing Term Description |
 | 5 | `ZZSEQUENCE` | `STRING` | Sequential Number |
-| 6 | `AEDATTM` | `STRING` | — |
+| 6 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35179,7 +35222,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 1 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 2 | `EKORG` | `STRING` | Purchasing Organization |
 | 3 | `LTSNR` | `STRING` | Vendor Subrange |
 | 4 | `WERKS` | `STRING` | Plant |
@@ -35191,7 +35234,7 @@
 | 10 | `DEFPA` | `STRING` | Default Partner |
 | 11 | `PERNR` | `STRING` | Personnel Number |
 | 12 | `PARNR` | `STRING` | Number of contact person |
-| 13 | `AEDATTM` | `STRING` | — |
+| 13 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35234,7 +35277,7 @@
 | 24 | `XSPLT` | `STRING` | Indicator: Term for installment payment |
 | 25 | `XSCRC` | `STRING` | Recurring Entries: Add Terms of Payment from Master Record |
 | 26 | `F_OBSOLETE` | `STRING` | Hide Entry in Value Help |
-| 27 | `AEDATTM` | `STRING` | — |
+| 27 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35255,7 +35298,7 @@
 | 2 | `ZTERM` | `STRING` | Terms of Payment Key |
 | 3 | `ZTAGG` | `STRING` | Day Limit |
 | 4 | `TEXT1` | `STRING` | Own Explanation of Term of Payment |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35316,7 +35359,7 @@
 | 42 | `ADRP_ERR_STATUS` | `STRING` | Error Status of Address |
 | 43 | `_DATAAGING` | `STRING` | Data Filter Value for Data Aging |
 | 44 | `XPCPT` | `STRING` | Business Purpose Completed Flag |
-| 45 | `AEDATTM` | `STRING` | — |
+| 45 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35336,17 +35379,17 @@
 | 1 | `IBLNR` | `STRING` | Physical Inventory Document |
 | 2 | `GJAHR` | `STRING` | Fiscal Year |
 | 3 | `ZEILI` | `STRING` | Line Number |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `WERKS` | `STRING` | Plant |
 | 6 | `LGORT` | `STRING` | Storage Location |
-| 7 | `CHARG` | `STRING` | Batch Number |
+| 7 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 8 | `SOBKZ` | `STRING` | Special Stock Indicator |
 | 9 | `BSTAR` | `STRING` | Stock Type (Physical Inventory |
 | 10 | `KDAUF` | `STRING` | Sales Order Number |
 | 11 | `KDPOS` | `STRING` | Item Number in Sales Order |
 | 12 | `KDEIN` | `STRING` | Delivery schedule for sales order |
-| 13 | `LIFNR` | `STRING` | Suppliers Account Number |
-| 14 | `KUNNR` | `STRING` | Account number of customer |
+| 13 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
+| 14 | `KUNNR` | `STRING` | Account number of customer _10-char zero-padded_ |
 | 15 | `PLPLA` | `STRING` | Distribution of Differences |
 | 16 | `USNAM` | `STRING` | Changed by |
 | 17 | `AEDAT` | `STRING` | Last Changed On |
@@ -35403,7 +35446,7 @@
 | 68 | `WSTI_XCALC` | `STRING` | Book Inventory Calculated at Count Time |
 | 69 | `WSTI_ENTERDATE` | `STRING` | Entry Date of Physical Inventory Count in System |
 | 70 | `WSTI_ENTERTIME` | `STRING` | Entry Time of Physical Inventory Count in System |
-| 71 | `AEDATTM` | `STRING` | — |
+| 71 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35421,7 +35464,7 @@
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `PLNUM` | `STRING` | Planned order number |
-| 2 | `MATNR` | `STRING` | Planning material |
+| 2 | `MATNR` | `STRING` | Planning material _18-char zero-padded_ |
 | 3 | `PLWRK` | `STRING` | Planning Plant |
 | 4 | `PWWRK` | `STRING` | Production plant in planned order |
 | 5 | `PAART` | `STRING` | Order type |
@@ -35467,7 +35510,7 @@
 | 45 | `ARSPS` | `STRING` | Item number of the settlement reservation |
 | 46 | `VERTO` | `STRING` | Distribution key for quantity produced |
 | 47 | `VERID` | `STRING` | Production Version |
-| 48 | `AUFNR` | `STRING` | Run schedule header number |
+| 48 | `AUFNR` | `STRING` | Run schedule header number _12-char zero-padded_ |
 | 49 | `TRART` | `STRING` | Scheduling type of the planned order |
 | 50 | `PLGRP` | `STRING` | Production Supervisor |
 | 51 | `TERST` | `STRING` | Start date for production |
@@ -35544,7 +35587,7 @@
 | 122 | `DAC_PP_COMPONENT` | `STRING` | Component ID in Extended Passport (EPP) |
 | 123 | `DAC_INDIRECT_ACCESS` | `STRING` | Digital Access: Object was created indirectly |
 | 124 | `DAC_CREATION_DATE` | `STRING` | System Date |
-| 125 | `KUNNR` | `STRING` | Customer Number |
+| 125 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 126 | `FLG_BUNDLE` | `STRING` | Indicates bundle information maintained |
 | 127 | `FSH_MPLND_ORD` | `STRING` | Master Planned Order Number |
 | 128 | `FSH_SEASON_YEAR` | `STRING` | Season Year |
@@ -35552,7 +35595,7 @@
 | 130 | `FSH_COLLECTION` | `STRING` | Fashion Collection |
 | 131 | `FSH_THEME` | `STRING` | Fashion Theme |
 | 132 | `DPS_HANDOVER_TIME` | `DECIMAL` | Time for Handover to Detailed Planning And Scheduling |
-| 133 | `AEDATTM` | `STRING` | — |
+| 133 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35594,7 +35637,7 @@
 | 23 | `LLSKZ` | `STRING` | Long-term planning: Use gross lot size |
 | 24 | `LTPLS` | `STRING` | Long-term planning lot size procedure (gross) |
 | 25 | `LTPID` | `STRING` | Long-term planning: Selection ID for BOMs |
-| 26 | `AEDATTM` | `STRING` | — |
+| 26 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35615,7 +35658,7 @@
 | 2 | `LGORT` | `STRING` | Storage Location |
 | 3 | `LFDNR` | `STRING` | Sequential address number |
 | 4 | `ADRNR` | `STRING` | Address Number |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35635,8 +35678,8 @@
 | 1 | `WERKS` | `STRING` | Plant |
 | 2 | `NAME1` | `STRING` | Name |
 | 3 | `BWKEY` | `STRING` | Valuation Area |
-| 4 | `KUNNR` | `STRING` | Customer number of plant |
-| 5 | `LIFNR` | `STRING` | Vendor number of plant |
+| 4 | `KUNNR` | `STRING` | Customer number of plant _10-char zero-padded_ |
+| 5 | `LIFNR` | `STRING` | Vendor number of plant _10-char zero-padded_ |
 | 6 | `FABKL` | `STRING` | Factory calendar key |
 | 7 | `NAME2` | `STRING` | Name 2 |
 | 8 | `STRAS` | `STRING` | Street and House Number |
@@ -35697,7 +35740,7 @@
 | 63 | `OIHCREDIPI` | `STRING` | IPI credit allowed |
 | 64 | `STORETYPE` | `STRING` | Store Category to Differentiate Store Dep. Store Shop |
 | 65 | `DEP_STORE` | `STRING` | Superior Department Store |
-| 66 | `AEDATTM` | `STRING` | — |
+| 66 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35733,7 +35776,7 @@
 | 17 | `TARIFF_REGION` | `STRING` | Tariff Region |
 | 18 | `ZZ_SITEQC` | `STRING` | Site QC Task |
 | 19 | `ZZBB_SUBREG` | `STRING` | Building Block Sub Region |
-| 20 | `AEDATTM` | `STRING` | — |
+| 20 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35783,7 +35826,7 @@
 | 31 | `ANLUNI` | `STRING` | Data origin indicator |
 | 32 | `DAUFN` | `STRING` | Standing order number |
 | 33 | `DAUFNI` | `STRING` | Data origin of standing order number field |
-| 34 | `AUFNR` | `STRING` | Settlement order |
+| 34 | `AUFNR` | `STRING` | Settlement order _12-char zero-padded_ |
 | 35 | `AUFNRI` | `STRING` | Data origin for settlement order field |
 | 36 | `TPLNRI` | `STRING` | Data origin for functional location field |
 | 37 | `VKORG` | `STRING` | Sales Organization |
@@ -35797,7 +35840,7 @@
 | 45 | `OWNER` | `STRING` | Object reference indicator |
 | 46 | `VKBUR` | `STRING` | Sales Office |
 | 47 | `VKGRP` | `STRING` | Sales Group |
-| 48 | `AEDATTM` | `STRING` | — |
+| 48 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35824,7 +35867,7 @@
 | 8 | `ZZSKDISTSHIPTO` | `STRING` | SAP Kerry Distributor Ship To |
 | 9 | `ZZMKDISTSOLDTO` | `STRING` | Mapics Kerry Distributor Sold To |
 | 10 | `ZZMKDISTSHIPTO` | `STRING` | Mapics Kerry Distributor Ship To |
-| 11 | `AEDATTM` | `STRING` | — |
+| 11 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35876,7 +35919,7 @@
 | 5 | `WKDAY` | `STRING` | PP Planning calendar: week day |
 | 6 | `FDINT` | `STRING` | PP Planning calendar: calculation rule for workday interval |
 | 7 | `PPDAT` | `STRING` | PP Planning calendar: start date for period calculation |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35893,7 +35936,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `EBELN` | `STRING` | Purchasing Document Number |
+| 1 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 2 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 3 | `ZEKKN` | `STRING` | Sequential Number of Account Assignment |
 | 4 | `VGABE` | `STRING` | Transaction/event type purchase order history |
@@ -35924,7 +35967,7 @@
 | 29 | `REEWR` | `DECIMAL` | Invoice Value Entered (in Local Currency) |
 | 30 | `EVERE` | `STRING` | Compliance with Shipping Instructions |
 | 31 | `REFWR` | `DECIMAL` | Invoice Value in Foreign Currency |
-| 32 | `MATNR` | `STRING` | Material Number |
+| 32 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 33 | `WERKS` | `STRING` | Plant |
 | 34 | `XWSBR` | `STRING` | Reversal of GR allowed for GR-based IV despite invoice |
 | 35 | `ETENS` | `STRING` | Sequential Number of Vendor Confirmation |
@@ -35936,7 +35979,7 @@
 | 41 | `AREWW` | `DECIMAL` | Clearing value on GR/IR clearing account (transac. currency) |
 | 42 | `HSWAE` | `STRING` | Local currency key |
 | 43 | `BAMNG` | `DECIMAL` | Quantity |
-| 44 | `CHARG` | `STRING` | Batch Number |
+| 44 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 45 | `BLDAT` | `STRING` | Document Date in Document |
 | 46 | `XWOFF` | `STRING` | Calculation of val. open |
 | 47 | `XUNPL` | `STRING` | Unplanned Account Assignment from Invoice Verification |
@@ -35978,7 +36021,7 @@
 | 83 | `WRF_CHARSTC1` | `STRING` | Characteristic Value 1 |
 | 84 | `WRF_CHARSTC2` | `STRING` | Characteristic Value 2 |
 | 85 | `WRF_CHARSTC3` | `STRING` | Characteristic Value 3 |
-| 86 | `AEDATTM` | `STRING` | — |
+| 86 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -35994,11 +36037,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `EBELN` | `STRING` | Purchasing Document Number |
+| 4 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 5 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 6 | `ETENR` | `STRING` | Delivery Schedule Line Counter |
 | 7 | `EINDT` | `STRING` | Item Delivery Date |
@@ -36021,7 +36064,7 @@
 | 24 | `FIXKZ` | `STRING` | Schedule Line is "Fixed" |
 | 25 | `GLMNG` | `DECIMAL` | Quantity Delivered (Stock Transfer) |
 | 26 | `DABMG` | `DECIMAL` | Quantity Reduced (MRP) |
-| 27 | `CHARG` | `STRING` | Batch Number |
+| 27 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 28 | `LICHA` | `STRING` | Vendor Batch Number |
 | 29 | `CHKOM` | `STRING` | Components |
 | 30 | `VERID` | `STRING` | Production Version |
@@ -36087,11 +36130,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `EBELN` | `STRING` | Purchasing Document Number |
+| 4 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 5 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 6 | `ZEKKN` | `STRING` | Sequential Number of Account Assignment |
 | 7 | `LOEKZ` | `STRING` | Deletion Indicator: Purchasing Document Account Assignment |
@@ -36104,13 +36147,13 @@
 | 14 | `GSBER` | `STRING` | Business Area |
 | 15 | `KOSTL` | `STRING` | Cost Center |
 | 16 | `PROJN` | `STRING` | Old: Project number : No longer used --> PS_POSNR |
-| 17 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 17 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 18 | `VBELP` | `STRING` | Sales Document Item |
 | 19 | `VETEN` | `STRING` | Schedule Line Number |
 | 20 | `KZBRB` | `STRING` | Gross requirements indicator |
 | 21 | `ANLN1` | `STRING` | Main Asset Number |
 | 22 | `ANLN2` | `STRING` | Asset Subnumber |
-| 23 | `AUFNR` | `STRING` | Order Number |
+| 23 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 24 | `WEMPF` | `STRING` | Goods recipient |
 | 25 | `ABLAD` | `STRING` | Unloading Point |
 | 26 | `KOKRS` | `STRING` | Controlling Area |
@@ -36175,11 +36218,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `EBELN` | `STRING` | Purchasing Document Number |
+| 4 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 5 | `BUKRS` | `STRING` | Company Code |
 | 6 | `BSTYP` | `STRING` | Purchasing Document Category |
 | 7 | `BSART` | `STRING` | Purchasing Document Type |
@@ -36190,7 +36233,7 @@
 | 12 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
 | 13 | `PINCR` | `STRING` | Item Number Interval |
 | 14 | `LPONR` | `STRING` | Last Item Number |
-| 15 | `LIFNR` | `STRING` | Suppliers Account Number |
+| 15 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
 | 16 | `SPRAS` | `STRING` | Language Key |
 | 17 | `ZTERM` | `STRING` | Terms of Payment Key |
 | 18 | `ZBD1T` | `DECIMAL` | Cash (Prompt Payment) Discount Days |
@@ -36217,7 +36260,7 @@
 | 39 | `VERKF` | `STRING` | Responsible Salesperson at Vendors Office |
 | 40 | `TELF1` | `STRING` | Vendors Telephone Number |
 | 41 | `LLIEF` | `STRING` | Supplying Vendor |
-| 42 | `KUNNR` | `STRING` | Customer Number |
+| 42 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 43 | `KONNR` | `STRING` | Number of principal purchase agreement |
 | 44 | `ABGRU` | `STRING` | Field Not Used |
 | 45 | `AUTLF` | `STRING` | Complete Delivery Stipulated for Each Purchase Order |
@@ -36347,11 +36390,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `EBELN` | `STRING` | Purchasing Document Number |
+| 4 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 5 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 6 | `EKORG` | `STRING` | Purchasing Organization |
 | 7 | `LTSNR` | `STRING` | Vendor Subrange |
@@ -36384,17 +36427,17 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `EBELN` | `STRING` | Purchasing Document Number |
+| 4 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 5 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 6 | `LOEKZ` | `STRING` | Deletion Indicator in Purchasing Document |
 | 7 | `STATU` | `STRING` | RFQ status |
 | 8 | `AEDAT` | `STRING` | Purchasing Document Item Change Date |
 | 9 | `TXZ01` | `STRING` | Short Text |
-| 10 | `MATNR` | `STRING` | Material Number |
+| 10 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 11 | `EMATN` | `STRING` | Material number |
 | 12 | `BUKRS` | `STRING` | Company Code |
 | 13 | `WERKS` | `STRING` | Plant |
@@ -36464,7 +36507,7 @@
 | 77 | `BSTYP` | `STRING` | Purchasing document category |
 | 78 | `EFFWR` | `DECIMAL` | Effective value of item |
 | 79 | `XOBLR` | `STRING` | Item affects commitments |
-| 80 | `KUNNR` | `STRING` | Customer |
+| 80 | `KUNNR` | `STRING` | Customer _10-char zero-padded_ |
 | 81 | `ADRNR` | `STRING` | Manual address number in purchasing document item |
 | 82 | `EKKOL` | `STRING` | Condition Group with Vendor |
 | 83 | `SKTOF` | `STRING` | Item Does Not Qualify for Cash Discount |
@@ -36717,16 +36760,16 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `EBELN` | `STRING` | Purchasing Document Number |
+| 4 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 5 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 6 | `VSTEL` | `STRING` | Shipping Point/Receiving Point |
 | 7 | `LPRIO` | `STRING` | Delivery Priority |
 | 8 | `ROUTE` | `STRING` | Route |
-| 9 | `KUNNR` | `STRING` | Customer Number |
+| 9 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 10 | `KUNAG` | `STRING` | Sold-To Party |
 | 11 | `SPDNR` | `STRING` | Forwarding agent |
 | 12 | `VKORG` | `STRING` | Sales Organization |
@@ -36770,7 +36813,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `PRODH` | `STRING` | Product Hierarchy |
 | 3 | `VTEXT` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -36834,7 +36877,7 @@
 | 45 | `LOCK_IND` | `STRING` | Lock indicator |
 | 46 | `PCA_TEMPLATE` | `STRING` | Template for Formula Planning in Profit Centers |
 | 47 | `SEGMENT` | `STRING` | Segment for Segmental Reporting |
-| 48 | `AEDATTM` | `STRING` | — |
+| 48 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -36858,7 +36901,7 @@
 | 5 | `KTEXT` | `STRING` | General Name |
 | 6 | `LTEXT` | `STRING` | Long Text |
 | 7 | `MCTXT` | `STRING` | Search term for matchcode search |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -36874,9 +36917,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `IDENT` | `STRING` | Public Holiday Calendar |
 | 4 | `DATUM` | `STRING` | Date |
 | 5 | `FTGID` | `STRING` | Public holiday key |
@@ -36907,7 +36950,7 @@
 | 7 | `KLASS` | `STRING` | Holiday class |
 | 8 | `GARANT` | `STRING` | Public holiday guaranteed flag |
 | 9 | `SORT` | `STRING` | Sort field for public holidays |
-| 10 | `AEDATTM` | `STRING` | — |
+| 10 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -36936,12 +36979,12 @@
 | 10 | `GSBER` | `STRING` | Business Area |
 | 11 | `KOSTL` | `STRING` | Cost Center |
 | 12 | `PROJN` | `STRING` | Old: Project number : No longer used --> PS_POSNR |
-| 13 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 13 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 14 | `VBELP` | `STRING` | Sales Document Item |
 | 15 | `VETEN` | `STRING` | Schedule Line Number |
 | 16 | `ANLN1` | `STRING` | Main Asset Number |
 | 17 | `ANLN2` | `STRING` | Asset Subnumber |
-| 18 | `AUFNR` | `STRING` | Order Number |
+| 18 | `AUFNR` | `STRING` | Order Number _12-char zero-padded_ |
 | 19 | `WEMPF` | `STRING` | Goods recipient |
 | 20 | `ABLAD` | `STRING` | Unloading Point |
 | 21 | `KOKRS` | `STRING` | Controlling Area |
@@ -36982,7 +37025,7 @@
 | 56 | `NOTAXCORR` | `STRING` | Do Not Consider Item in Input Tax Correction |
 | 57 | `DIFFOPTRATE` | `DECIMAL` | Real Estate Option Rate |
 | 58 | `HASDIFFOPTRATE` | `STRING` | Use Different Option Rate |
-| 59 | `AEDATTM` | `STRING` | — |
+| 59 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37015,7 +37058,7 @@
 | 14 | `ERDAT` | `STRING` | Last Changed On |
 | 15 | `AFNAM` | `STRING` | Name of requisitioner/requester |
 | 16 | `TXZ01` | `STRING` | Short Text |
-| 17 | `MATNR` | `STRING` | Material Number |
+| 17 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 18 | `EMATN` | `STRING` | Material Number Corresponding to Manufacturer Part Number |
 | 19 | `WERKS` | `STRING` | Plant |
 | 20 | `LGORT` | `STRING` | Storage Location |
@@ -37041,7 +37084,7 @@
 | 40 | `WEPOS` | `STRING` | Goods Receipt Indicator |
 | 41 | `WEUNB` | `STRING` | Goods Receipt Non-Valuated |
 | 42 | `REPOS` | `STRING` | Invoice Receipt Indicator |
-| 43 | `LIFNR` | `STRING` | Desired Vendor |
+| 43 | `LIFNR` | `STRING` | Desired Vendor _10-char zero-padded_ |
 | 44 | `FLIEF` | `STRING` | Fixed Vendor |
 | 45 | `EKORG` | `STRING` | Purchasing Organization |
 | 46 | `VRTYP` | `STRING` | Purchasing document category |
@@ -37056,7 +37099,7 @@
 | 55 | `BVDAT` | `STRING` | Date of last resubmission |
 | 56 | `BATOL` | `DECIMAL` | Resubmission interval of purchase requisition |
 | 57 | `BVDRK` | `DECIMAL` | Number of resubmissions |
-| 58 | `EBELN` | `STRING` | Purchase order number |
+| 58 | `EBELN` | `STRING` | Purchase order number _10-char zero-padded_ |
 | 59 | `EBELP` | `STRING` | Purchase order item number |
 | 60 | `BEDAT` | `STRING` | Purchase Order Date |
 | 61 | `BSMNG` | `DECIMAL` | Quantity ordered against this purchase requisition |
@@ -37079,7 +37122,7 @@
 | 78 | `FRGGR` | `STRING` | Release group |
 | 79 | `FRGRL` | `STRING` | Release Not Yet Completely Effected |
 | 80 | `AKTNR` | `STRING` | Promotion |
-| 81 | `CHARG` | `STRING` | Batch Number |
+| 81 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 82 | `UMSOK` | `STRING` | Special stock indicator for physical stock transfer |
 | 83 | `VERID` | `STRING` | Production Version |
 | 84 | `FIPOS` | `STRING` | Commitment Item |
@@ -37092,7 +37135,7 @@
 | 91 | `ATTYP` | `STRING` | Material Category |
 | 92 | `ADRNR` | `STRING` | Manual address number in purchasing document item |
 | 93 | `ADRN2` | `STRING` | Number of delivery address |
-| 94 | `KUNNR` | `STRING` | Customer |
+| 94 | `KUNNR` | `STRING` | Customer _10-char zero-padded_ |
 | 95 | `EMLIF` | `STRING` | Vendor to be supplied/who is to receive delivery |
 | 96 | `LBLKZ` | `STRING` | Subcontracting vendor |
 | 97 | `KZBWS` | `STRING` | Valuation of Special Stock |
@@ -37176,7 +37219,7 @@
 | 175 | `WRF_CHARSTC1` | `STRING` | Characteristic Value 1 |
 | 176 | `WRF_CHARSTC2` | `STRING` | Characteristic Value 2 |
 | 177 | `WRF_CHARSTC3` | `STRING` | Characteristic Value 3 |
-| 178 | `AEDATTM` | `STRING` | — |
+| 178 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37197,7 +37240,7 @@
 | 2 | `BSART` | `STRING` | Purchasing Document Type |
 | 3 | `BSTYP` | `STRING` | Purchasing document category |
 | 4 | `BATXT` | `STRING` | Short Description of Purchasing Document Type |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37222,7 +37265,7 @@
 | 6 | `TEL_NUMBER` | `STRING` | Telephone No.: Dialing Code + Number |
 | 7 | `TEL_EXTENS` | `STRING` | Telephone no.: Extension |
 | 8 | `SMTP_ADDR` | `STRING` | E-Mail Address |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37240,9 +37283,9 @@
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `INFNR` | `STRING` | Purchasing Info Record Number |
-| 2 | `MATNR` | `STRING` | Material Number |
+| 2 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 3 | `MATKL` | `STRING` | Material Group |
-| 4 | `LIFNR` | `STRING` | Suppliers Account Number |
+| 4 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
 | 5 | `LOEKZ` | `STRING` | Purchasing info: General data flagged for deletion |
 | 6 | `ERDAT` | `STRING` | Record Creation Date |
 | 7 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
@@ -37276,7 +37319,7 @@
 | 35 | `PUNEI` | `STRING` | Points unit |
 | 36 | `RELIF` | `STRING` | Regular Vendor |
 | 37 | `MFRNR` | `STRING` | Manufacturer |
-| 38 | `AEDATTM` | `STRING` | — |
+| 38 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37323,7 +37366,7 @@
 | 28 | `AMOAW` | `DECIMAL` | Amortized actual value |
 | 29 | `AMORS` | `STRING` | Indicator: Amortization reset |
 | 30 | `BSTYP` | `STRING` | Purchasing document category |
-| 31 | `EBELN` | `STRING` | Purchasing Document Number |
+| 31 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 32 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 33 | `DATLB` | `STRING` | Date of Last PO or Sched. Agreement Document in Info Record |
 | 34 | `NETPR` | `DECIMAL` | Net Price in Purchasing Info Record |
@@ -37374,7 +37417,7 @@
 | 79 | `SGT_SSREL` | `STRING` | Stock Segment Relevant Indicator |
 | 80 | `TRANSPORT_CHAIN` | `STRING` | Transportation Chain |
 | 81 | `STAGING_TIME` | `DECIMAL` | Staging Time in Days |
-| 82 | `AEDATTM` | `STRING` | — |
+| 82 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37402,7 +37445,7 @@
 | 9 | `MKALS` | `STRING` | Calculation Schema for Market Price |
 | 10 | `BPEFF` | `STRING` | Effective Price |
 | 11 | `BUKRS_NTR` | `STRING` | Company code for subsequent settlement at plant level |
-| 12 | `AEDATTM` | `STRING` | — |
+| 12 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37419,16 +37462,16 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
 | 3 | `ZEORD` | `STRING` | Number of Source List Record |
 | 4 | `ERDAT` | `STRING` | Record Creation Date |
 | 5 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
 | 6 | `VDATU` | `STRING` | Source List Record Valid From |
 | 7 | `BDATU` | `STRING` | Source List Record Valid To |
-| 8 | `LIFNR` | `STRING` | Suppliers Account Number |
+| 8 | `LIFNR` | `STRING` | Suppliers Account Number _10-char zero-padded_ |
 | 9 | `FLIFN` | `STRING` | Indicator: Fixed vendor |
-| 10 | `EBELN` | `STRING` | Agreement Number |
+| 10 | `EBELN` | `STRING` | Agreement Number _10-char zero-padded_ |
 | 11 | `EBELP` | `STRING` | Agreement Item |
 | 12 | `FEBEL` | `STRING` | Fixed Outline Purchase Agreement Item |
 | 13 | `RESWK` | `STRING` | Plant from Which Material is Procured |
@@ -37444,7 +37487,7 @@
 | 23 | `SOBKZ` | `STRING` | Special Stock Indicator |
 | 24 | `SRM_CONTRACT_ID` | `STRING` | Central Contract |
 | 25 | `SRM_CONTRACT_ITM` | `STRING` | Central Contract Item Number |
-| 26 | `AEDATTM` | `STRING` | — |
+| 26 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37467,7 +37510,7 @@
 | 4 | `AUART` | `STRING` | Sales Document Type |
 | 5 | `LGORT` | `STRING` | Storage Location |
 | 6 | `ZVENDOR` | `STRING` | Account Number of Supplier |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37513,7 +37556,7 @@
 | 27 | `AUTKZ` | `STRING` | Data Record Created with Function Create with Copy Model |
 | 28 | `KZACTIONBOX` | `STRING` | Created Using Action Box |
 | 29 | `FUNKTION` | `STRING` | Key for Function in Action Box |
-| 30 | `AEDATTM` | `STRING` | — |
+| 30 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37558,7 +37601,7 @@
 | 26 | `QURNUM` | `STRING` | Sort Number for Cause |
 | 27 | `AUTKZ` | `STRING` | Data Record Created with Function Create with Copy Model |
 | 28 | `INVOLVPERC` | `STRING` | Involvment in Percentage |
-| 29 | `AEDATTM` | `STRING` | — |
+| 29 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37627,7 +37670,7 @@
 | 50 | `ABC_TEMPL` | `STRING` | Template |
 | 51 | `EFFECTPERC` | `STRING` | Effect in Percentage |
 | 52 | `EFFECTTEXT` | `STRING` | Effect Text |
-| 53 | `AEDATTM` | `STRING` | — |
+| 53 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37643,9 +37686,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `QMNUM` | `STRING` | Notification No |
 | 5 | `FENUM` | `STRING` | Item Number in Item Record |
@@ -37693,7 +37736,7 @@
 | 47 | `POSNR` | `STRING` | Sort Number for Item |
 | 48 | `HERPOS` | `STRING` | Origin of Item Record |
 | 49 | `AUTKZ` | `STRING` | Data Record Created with Function Create with Copy Model |
-| 50 | `MATNR` | `STRING` | Material Number |
+| 50 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 51 | `WERKS` | `STRING` | Plant |
 | 52 | `EKORG` | `STRING` | Purchasing Organization |
 | 53 | `INFNR` | `STRING` | Purchasing Info Record Number |
@@ -37724,7 +37767,7 @@
 | 2 | `BLAND` | `STRING` | Region (State Province County) |
 | 3 | `FPRCD` | `STRING` | Provincial Tax Code |
 | 4 | `HERBL` | `STRING` | State of manufacture |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37745,7 +37788,7 @@
 | 2 | `LAND1` | `STRING` | Country Key |
 | 3 | `BLAND` | `STRING` | Region (State Province County) |
 | 4 | `BEZEI` | `STRING` | Description |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37764,7 +37807,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `KONNR` | `STRING` | Number of principal purchase agreement |
 | 2 | `KTPNR` | `STRING` | Item number of principal purchase agreement |
-| 3 | `EBELN` | `STRING` | Purchasing Document Number |
+| 3 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 4 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 5 | `BEDAT` | `STRING` | Purchase Order Date |
 | 6 | `MENGE` | `DECIMAL` | Purchase Order Quantity |
@@ -37781,7 +37824,7 @@
 | 17 | `AEDAT` | `STRING` | Last Changed On |
 | 18 | `BSTYP` | `STRING` | Purchasing document category |
 | 19 | `MEMORYTYPE` | `STRING` | Category of Incompleteness |
-| 20 | `AEDATTM` | `STRING` | — |
+| 20 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37802,7 +37845,7 @@
 | 2 | `CASE_TYPE` | `STRING` | Case Type |
 | 3 | `ROOT_CCODE` | `STRING` | Root Cause Code |
 | 4 | `DESCRIPTION` | `STRING` | Root Cause Code |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37827,7 +37870,7 @@
 | 6 | `LZONE` | `STRING` | Transportation zone to or from which the goods are delivered |
 | 7 | `GRULG` | `STRING` | Weight group for delivery (To group) |
 | 8 | `ROUTE` | `STRING` | Actual delivery route |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37865,7 +37908,7 @@
 | 19 | `TCTAB` | `STRING` | Take Table for Transit Countries into Account |
 | 20 | `ALLOWED_TWGT` | `DECIMAL` | Allowed total weight of shipment |
 | 21 | `ALLOWED_UOM` | `STRING` | Unit of Measurement for Allowed Total Weight of Shipment |
-| 22 | `AEDATTM` | `STRING` | — |
+| 22 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37885,7 +37928,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `ROUTE` | `STRING` | Route |
 | 3 | `BEZEI` | `STRING` | Description of Route |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37923,7 +37966,7 @@
 | 19 | `FRKRL` | `STRING` | Shipment costs relevance |
 | 20 | `SKALSM` | `STRING` | Pricing procedure in stage of shipment |
 | 21 | `OIJ_TSYST` | `STRING` | Transport system |
-| 22 | `AEDATTM` | `STRING` | — |
+| 22 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -37940,11 +37983,11 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `BWKEY` | `STRING` | Valuation Area |
 | 3 | `BWTAR` | `STRING` | Valuation Type |
 | 4 | `SOBKZ` | `STRING` | Special Stock Indicator |
-| 5 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 5 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 6 | `POSNR` | `STRING` | Item number of the SD document |
 | 7 | `LBKUM` | `DECIMAL` | Total Valuated Stock |
 | 8 | `SALK3` | `DECIMAL` | Value of Total Valuated Stock |
@@ -38013,7 +38056,7 @@
 | 71 | `FBWST` | `STRING` | Valuation Strategy for Future Planned Price Special Stock |
 | 72 | `MBRUE` | `STRING` | MBEWH rec. already exists for per. before last of MBEW per. |
 | 73 | `OKLAS` | `STRING` | Valuation Class for Special Stock at the Vendor |
-| 74 | `AEDATTM` | `STRING` | — |
+| 74 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38030,7 +38073,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `VBELN` | `STRING` | Sales Document |
+| 1 | `VBELN` | `STRING` | Sales Document _10-char zero-padded_ |
 | 2 | `POSNR` | `STRING` | Sales Document Item |
 | 3 | `ABRLI` | `STRING` | Internal delivery schedule number |
 | 4 | `ABART` | `STRING` | Rel. Type |
@@ -38089,7 +38132,7 @@
 | 57 | `SESSION_CREATION_DATE` | `STRING` | Date Of the Session During Which the Record Was Created |
 | 58 | `SESSION_CREATION_TIME` | `STRING` | Time Of the Session During Which the Record Was Created |
 | 59 | `_DATAAGING` | `STRING` | Data Filter Value for Data Aging |
-| 60 | `AEDATTM` | `STRING` | — |
+| 60 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38106,7 +38149,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `VKORG` | `STRING` | Sales Organization |
 | 3 | `VTWEG` | `STRING` | Distribution Channel |
 | 4 | `LVORM` | `STRING` | Ind.: Flag material for deletion at distribution chain level |
@@ -38176,7 +38219,7 @@
 | 68 | `ZZWERKS_MVKE` | `STRING` | Site of Manufacture for KIF |
 | 69 | `ZZPRCTR_MVKE` | `STRING` | Profit Centre (Revenue) |
 | 70 | `ZZASSBL2_MVKE` | `STRING` | Tech Unit (previously Asset base level 2) |
-| 71 | `AEDATTM` | `STRING` | — |
+| 71 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38196,7 +38239,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `SPART` | `STRING` | Division |
 | 3 | `VTEXT` | `STRING` | Name |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38216,7 +38259,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `PSTYV` | `STRING` | Sales Document Item Category |
 | 3 | `VTEXT` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38236,7 +38279,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `ABGRU` | `STRING` | Reason for rejection of quotations and sales orders |
 | 3 | `BEZEI` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38435,7 +38478,7 @@
 | 180 | `OISUBITEM` | `STRING` | Subscreen number (item level) |
 | 181 | `OIUSEREXIT` | `STRING` | Number of the routine used for copying |
 | 182 | `OIU_FKARA` | `STRING` | PRA Order related billing type |
-| 183 | `AEDATTM` | `STRING` | — |
+| 183 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38456,7 +38499,7 @@
 | 2 | `AUART` | `STRING` | Sales Document Type |
 | 3 | `BEZEI` | `STRING` | Description |
 | 4 | `TXT_BUTTON` | `STRING` | Text on Browser Button |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38477,7 +38520,7 @@
 | 2 | `VKGRP` | `STRING` | Sales Group |
 | 3 | `SMTP_ADDR` | `STRING` | E-Mail Address |
 | 4 | `ZTHREAD_ID_FLAG` | `STRING` | Case Number Mandatory Flag |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 6 | `OPFLAG` | `STRING` | Operational Flag (I/U/D) |
 
 ---
@@ -38498,7 +38541,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `VKGRP` | `STRING` | Sales Group |
 | 3 | `BEZEI` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38518,7 +38561,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `VKBUR` | `STRING` | Sales Office |
 | 3 | `BEZEI` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38538,7 +38581,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `AUGRU` | `STRING` | Order reason (reason for the business transaction) |
 | 3 | `BEZEI` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38555,12 +38598,12 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
 | 3 | `LGORT` | `STRING` | Storage Location |
-| 4 | `CHARG` | `STRING` | Batch Number |
+| 4 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 5 | `SOBKZ` | `STRING` | Special Stock Indicator |
-| 6 | `VBELN` | `STRING` | Sales and Distribution Document Number |
+| 6 | `VBELN` | `STRING` | Sales and Distribution Document Number _10-char zero-padded_ |
 | 7 | `POSNR` | `STRING` | Item number of the SD document |
 | 8 | `LFGJA` | `STRING` | Fiscal Year of Current Period |
 | 9 | `LFMON` | `STRING` | Current period (posting period) |
@@ -38592,7 +38635,7 @@
 | 35 | `FSH_COLLECTION` | `STRING` | Fashion Collection |
 | 36 | `FSH_THEME` | `STRING` | Fashion Theme |
 | 37 | `FSH_SALLOC_QTY` | `DECIMAL` | Allocated Stock Quantity |
-| 38 | `AEDATTM` | `STRING` | — |
+| 38 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38611,9 +38654,9 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `VKORG` | `STRING` | Sales Organization |
 | 2 | `VTWEG` | `STRING` | Distribution Channel |
-| 3 | `KUNNR` | `STRING` | Customer Number |
+| 3 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 4 | `ZZLEAD_TIME` | `DECIMAL` | Lead time in days |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38633,9 +38676,9 @@
 | 1 | `VKORG` | `STRING` | Sales Organization |
 | 2 | `VTWEG` | `STRING` | Distribution Channel |
 | 3 | `WERKS` | `STRING` | Plant |
-| 4 | `KUNNR` | `STRING` | Customer Number |
+| 4 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 5 | `ZZLEAD_TIME` | `DECIMAL` | Lead time in days |
-| 6 | `AEDATTM` | `STRING` | — |
+| 6 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38655,9 +38698,9 @@
 | 1 | `VKORG` | `STRING` | Sales Organization |
 | 2 | `VTWEG` | `STRING` | Distribution Channel |
 | 3 | `WERKS` | `STRING` | Plant |
-| 4 | `MATNR` | `STRING` | Material Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 5 | `ZZLEAD_TIME` | `DECIMAL` | Lead time in days |
-| 6 | `AEDATTM` | `STRING` | — |
+| 6 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38677,8 +38720,8 @@
 | 1 | `VKORG` | `STRING` | Sales Organization |
 | 2 | `VTWEG` | `STRING` | Distribution Channel |
 | 3 | `WERKS` | `STRING` | Plant |
-| 4 | `MATNR` | `STRING` | Material Number |
-| 5 | `KUNNR` | `STRING` | Customer Number |
+| 4 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
+| 5 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 6 | `ZZLEAD_TIME` | `DECIMAL` | Lead time in days |
 | 7 | `ZZNEW_LEAD_TIME` | `DECIMAL` | New Lead Time |
 | 8 | `ZZOLD_LEAD_TIME` | `DECIMAL` | Old Lead time in days |
@@ -38689,7 +38732,7 @@
 | 13 | `LAEDA` | `STRING` | Last Change on |
 | 14 | `AEZEIT` | `STRING` | Last Change at |
 | 15 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
-| 16 | `AEDATTM` | `STRING` | — |
+| 16 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38705,9 +38748,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `VKORG` | `STRING` | Sales Organization |
 | 5 | `WAERS` | `STRING` | Statistics currency |
@@ -38718,12 +38761,12 @@
 | 10 | `TXNAM_FUS` | `STRING` | Text name for formula text module footer lines |
 | 11 | `TXNAM_GRU` | `STRING` | Text name for form text module: Greeting |
 | 12 | `VKOAU` | `STRING` | Reference sales org.for sales doc.types (by sales area) |
-| 13 | `KUNNR` | `STRING` | Customer number for intercompany billing |
+| 13 | `KUNNR` | `STRING` | Customer number for intercompany billing _10-char zero-padded_ |
 | 14 | `BOAVO` | `STRING` | Rebate processing active in the sales organization |
 | 15 | `VKOKL` | `STRING` | Sales organization calendar |
 | 16 | `EKORG` | `STRING` | Purchasing Organization |
 | 17 | `EKGRP` | `STRING` | Purchasing Group |
-| 18 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 18 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 19 | `WERKS` | `STRING` | Plant |
 | 20 | `BSART` | `STRING` | Order Type (Purchasing) |
 | 21 | `BSTYP` | `STRING` | Purchasing document category |
@@ -38757,7 +38800,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `VKORG` | `STRING` | Sales Organization |
 | 3 | `VTEXT` | `STRING` | Name |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38810,9 +38853,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `SEQ` | `INT` | Sequence Number |
 | 4 | `MANDT` | `STRING` | Client |
 | 5 | `TDOBJECT` | `STRING` | Texts: application object |
@@ -38841,7 +38884,7 @@
 | 0 | `SPRSL` | `STRING` | Language Key |
 | 1 | `TCODE` | `STRING` | Transaction Code |
 | 2 | `TTEXT` | `STRING` | Transaction text |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38858,8 +38901,8 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `WERKS` | `STRING` | Plant |
-| 1 | `MATNR` | `STRING` | Material Number |
-| 2 | `KUNNR` | `STRING` | Customer Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
+| 2 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 3 | `ADATU` | `STRING` | Date for beginning of validity |
 | 4 | `BDATU` | `STRING` | Date validity ends |
 | 5 | `MEINS` | `STRING` | Unit of Measure |
@@ -38867,7 +38910,7 @@
 | 7 | `ZCUSTOMERLIABLE` | `STRING` | Customer Liable |
 | 8 | `ZCUSTOMERLIABLE_QTY` | `DECIMAL` | Customer Liable Quantity |
 | 9 | `ZCUSTOMERLIABLE_UOM` | `STRING` | Customer Liable UoM |
-| 10 | `AEDATTM` | `STRING` | — |
+| 10 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -38885,7 +38928,7 @@
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `WERKS` | `STRING` | Plant |
-| 2 | `MATNR` | `STRING` | Material Number |
+| 2 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 3 | `WAERS` | `STRING` | Currency Key |
 | 4 | `ABC` | `STRING` | ABC(D)-Indicator |
 | 5 | `ABCWERT` | `DECIMAL` | Totale Value for ABC-Analysis |
@@ -39097,7 +39140,7 @@
 | 211 | `SPITHR` | `DECIMAL` | Spike Threshold (%) |
 | 212 | `WBZEKT_S` | `SHORT` | Source for decoupled replenishment lead time (RLT) |
 | 213 | `WBZ_S` | `SHORT` | Source for replenishment lead time (RLT) |
-| 214 | `AEDATTM` | `STRING` | — |
+| 214 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39145,7 +39188,7 @@
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `VSBED` | `STRING` | Shipping Conditions |
-| 2 | `AEDATTM` | `STRING` | — |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39165,7 +39208,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `VSBED` | `STRING` | Shipping Conditions |
 | 3 | `VTEXT` | `STRING` | Description of the shipping conditions |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39213,7 +39256,7 @@
 | 29 | `TSTRID` | `STRING` | Working time from sales view |
 | 30 | `ROUNDG` | `DECIMAL` | Rounding period for shipping scheduling |
 | 31 | `ROUNDN` | `DECIMAL` | Rounding period in work hours |
-| 32 | `AEDATTM` | `STRING` | — |
+| 32 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39233,7 +39276,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `VSTEL` | `STRING` | Shipping Point/Receiving Point |
 | 3 | `VTEXT` | `STRING` | Description |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39264,7 +39307,7 @@
 | 12 | `ADDIN` | `STRING` | Additional Information on BAdI MD_EXT_SUP |
 | 13 | `MLSCR` | `STRING` | Multilevel Subcontracting Indicator |
 | 14 | `OPFLAG` | `STRING` | Operational Flag (I/U/D) |
-| 15 | `AEDATTM` | `STRING` | — |
+| 15 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39281,12 +39324,12 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
 | 3 | `LGORT` | `STRING` | Storage Location |
-| 4 | `CHARG` | `STRING` | Batch Number |
+| 4 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 5 | `SOBKZ` | `STRING` | Special Stock Indicator |
-| 6 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 6 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 7 | `LVORM` | `STRING` | Deletion Flag for All Data on a Consignment Stock |
 | 8 | `ERSDA` | `STRING` | Created On |
 | 9 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
@@ -39322,7 +39365,7 @@
 | 39 | `FSH_COLLECTION` | `STRING` | Fashion Collection |
 | 40 | `FSH_THEME` | `STRING` | Fashion Theme |
 | 41 | `FSH_SALLOC_QTY` | `DECIMAL` | Allocated Stock Quantity |
-| 42 | `AEDATTM` | `STRING` | — |
+| 42 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39339,11 +39382,11 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
-| 3 | `CHARG` | `STRING` | Batch Number |
+| 3 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 4 | `SOBKZ` | `STRING` | Special Stock Indicator |
-| 5 | `KUNNR` | `STRING` | Customer Number |
+| 5 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 6 | `LFGJA` | `STRING` | Fiscal Year of Current Period |
 | 7 | `LFMON` | `STRING` | Current period (posting period) |
 | 8 | `KUSPR` | `STRING` | Physical Inventory Blocking Indicator |
@@ -39370,7 +39413,7 @@
 | 29 | `FSH_COLLECTION` | `STRING` | Fashion Collection |
 | 30 | `FSH_THEME` | `STRING` | Fashion Theme |
 | 31 | `FSH_SALLOC_QTY` | `DECIMAL` | Allocated Stock Quantity |
-| 32 | `AEDATTM` | `STRING` | — |
+| 32 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39387,11 +39430,11 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
-| 3 | `CHARG` | `STRING` | Batch Number |
+| 3 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 4 | `SOBKZ` | `STRING` | Special Stock Indicator |
-| 5 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 5 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 6 | `LFGJA` | `STRING` | Fiscal Year of Current Period |
 | 7 | `LFMON` | `STRING` | Current period (posting period) |
 | 8 | `LBSPR` | `STRING` | Physical Inventory Blocking Indicator |
@@ -39413,7 +39456,7 @@
 | 24 | `LBRUE` | `STRING` | MxxxH rec. already exists for per. before last of Mxxx per. |
 | 25 | `LBUML` | `DECIMAL` | Stock in Transfer for Subcontracting (Plant to Plant) |
 | 26 | `SGT_SCAT` | `STRING` | Stock Segment |
-| 27 | `AEDATTM` | `STRING` | — |
+| 27 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39437,7 +39480,7 @@
 | 5 | `SPWOC` | `STRING` | Period to analyze - week |
 | 6 | `SPBUP` | `STRING` | Period to analyze - posting period |
 | 7 | `WERKS` | `STRING` | Plant |
-| 8 | `MATNR` | `STRING` | Material Number |
+| 8 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 9 | `LGORT` | `STRING` | Storage Location |
 | 10 | `PERIV` | `STRING` | Fiscal Year Variant |
 | 11 | `VWDAT` | `STRING` | Pointer to administrative data |
@@ -39466,7 +39509,7 @@
 | 34 | `GBNULL` | `DECIMAL` | Number of times that total stock was zero |
 | 35 | `BESZUG` | `DECIMAL` | Stock level at goods receipt |
 | 36 | `WBESZUG` | `DECIMAL` | Value of stock at goods receipt |
-| 37 | `AEDATTM` | `STRING` | — |
+| 37 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39517,7 +39560,7 @@
 | 2 | `ZCERID` | `STRING` | Certificate ID |
 | 3 | `EKORG` | `STRING` | Purchasing Organization |
 | 4 | `ZMANDAT` | `STRING` | Mandatory Data |
-| 5 | `AEDATTM` | `STRING` | — |
+| 5 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39534,10 +39577,10 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `MATNR` | `STRING` | Material Number |
+| 1 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 2 | `WERKS` | `STRING` | Plant |
 | 3 | `SOBKZ` | `STRING` | Special Stock Indicator |
-| 4 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 4 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 5 | `LFGJA` | `STRING` | Fiscal Year of Current Period |
 | 6 | `LFMON` | `STRING` | Current period (posting period) |
 | 7 | `SLLAB` | `DECIMAL` | Valuated Unrestricted-Use Stock |
@@ -39546,7 +39589,7 @@
 | 10 | `ERSDA` | `STRING` | Created On |
 | 11 | `XOBEW` | `STRING` | Vendor Stock Valuation Indicator |
 | 12 | `SLUML` | `DECIMAL` | Stock in Transfer for Subcontracting (Plant to Plant) |
-| 13 | `AEDATTM` | `STRING` | — |
+| 13 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39607,7 +39650,7 @@
 | 4 | `MSEH6` | `STRING` | External Unit of Measurement in Technical Format (6-Char.) |
 | 5 | `MSEHT` | `STRING` | Unit of Measurement Text (Maximum 10 Characters) |
 | 6 | `MSEHL` | `STRING` | Unit of Measurement Text (Maximum 30 Characters) |
-| 7 | `AEDATTM` | `STRING` | — |
+| 7 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39667,7 +39710,7 @@
 | 41 | `PWDLOCKDATE` | `STRING` | Date: Setting of Password Lock |
 | 42 | `PWDSALTEDHASH` | `STRING` | Password Hash Value (Various Algorithms and Codings) |
 | 43 | `SECURITY_POLICY` | `STRING` | Security Policy Name |
-| 44 | `AEDATTM` | `STRING` | — |
+| 44 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39699,7 +39742,7 @@
 | 13 | `TNEF` | `STRING` | Flag: Receiver can receive TNEF encoding by SMTP |
 | 14 | `VALID_FROM` | `STRING` | Communication Data: Valid From (YYYYMMDDHHMMSS) |
 | 15 | `VALID_TO` | `STRING` | Communication Data: Valid To (YYYYMMDDHHMMSS) |
-| 16 | `AEDATTM` | `STRING` | — |
+| 16 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39735,7 +39778,7 @@
 | 17 | `MC_CITY1` | `STRING` | City name in Uppercase for Search Help |
 | 18 | `COMPANY` | `STRING` | Company address cross-system key |
 | 19 | `IDADTYPE` | `STRING` | Address Type of the Identity |
-| 20 | `AEDATTM` | `STRING` | — |
+| 20 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39763,7 +39806,7 @@
 | 9 | `RESPONSIBLE` | `STRING` | User Responsible for Technical User Account |
 | 10 | `TECHDESC` | `STRING` | Description of the Technical User Account |
 | 11 | `IDENTITY_GUID` | `STRING` | GUID of the Identity |
-| 12 | `AEDATTM` | `STRING` | — |
+| 12 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39779,9 +39822,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `BWKEY` | `STRING` | Valuation Area |
 | 5 | `BUKRS` | `STRING` | Company Code |
@@ -39830,7 +39873,7 @@
 | 6 | `LOW` | `STRING` | Selection Variants: Field Content (LOW/HIGH) |
 | 7 | `HIGH` | `STRING` | Selection Variants: Field Content (LOW/HIGH) |
 | 8 | `CLIE_INDEP` | `STRING` | CHAR01 data element for SYST |
-| 9 | `AEDATTM` | `STRING` | — |
+| 9 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39847,7 +39890,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `EBELN` | `STRING` | Purchasing Document Number |
+| 1 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 2 | `EBELP` | `STRING` | Item Number of Purchasing Document |
 | 3 | `ETENS` | `STRING` | Sequential Number of Vendor Confirmation |
 | 4 | `EBTYP` | `STRING` | Confirmation Category |
@@ -39862,12 +39905,12 @@
 | 13 | `LOEKZ` | `STRING` | Vendor confirmation deletion indicator |
 | 14 | `KZDIS` | `STRING` | Indicator: Confirmation is Relevant to Materials Planning |
 | 15 | `XBLNR` | `STRING` | Reference Document Number (for Dependencies see Long Text) |
-| 16 | `VBELN` | `STRING` | Delivery |
+| 16 | `VBELN` | `STRING` | Delivery _10-char zero-padded_ |
 | 17 | `VBELP` | `STRING` | Delivery Item |
 | 18 | `MPROF` | `STRING` | Mfr Part Profile |
 | 19 | `EMATN` | `STRING` | Material Number Corresponding to Manufacturer Part Number |
 | 20 | `MAHNZ` | `DECIMAL` | Number of Reminders/Expediters |
-| 21 | `CHARG` | `STRING` | Batch Number |
+| 21 | `CHARG` | `STRING` | Batch Number _10-char zero-padded_ |
 | 22 | `UECHA` | `STRING` | Higher-Level Item of Batch Split Item |
 | 23 | `REF_ETENS` | `STRING` | Sequential Number of Vendor Confirmation |
 | 24 | `IMWRK` | `STRING` | Delivery has Status In Plant |
@@ -39878,7 +39921,7 @@
 | 29 | `SGT_SCAT` | `STRING` | Stock Segment |
 | 30 | `FSH_SALLOC_QTY` | `DECIMAL` | Allocated Stock Quantity |
 | 31 | `OPFLAG` | `STRING` | Operational Flag (I/U/D) |
-| 32 | `AEDATTM` | `STRING` | — |
+| 32 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39898,7 +39941,7 @@
 | 1 | `SPRAS` | `STRING` | Language Key |
 | 2 | `KTOKK` | `STRING` | Supplier Account Group |
 | 3 | `TXT30` | `STRING` | Account Group Name |
-| 4 | `AEDATTM` | `STRING` | — |
+| 4 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39915,7 +39958,7 @@
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
 | 0 | `MANDT` | `STRING` | Client |
-| 1 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 1 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 2 | `BANKS` | `STRING` | Country/Region Key of Bank |
 | 3 | `BANKL` | `STRING` | Bank Keys |
 | 4 | `BANKN` | `STRING` | Bank Account Number |
@@ -39928,7 +39971,7 @@
 | 11 | `EBPP_BVSTATUS` | `STRING` | Status of Bank Details in Biller Direct |
 | 12 | `KOVON` | `STRING` | Bank Details Valid From |
 | 13 | `KOBIS` | `STRING` | Bank details valid to |
-| 14 | `AEDATTM` | `STRING` | — |
+| 14 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -39944,11 +39987,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 4 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 5 | `BUKRS` | `STRING` | Company Code |
 | 6 | `PERNR` | `STRING` | Personnel Number |
 | 7 | `ERDAT` | `STRING` | Date on which the Record Was Created |
@@ -40041,11 +40084,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 4 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 5 | `LAND1` | `STRING` | Country Key |
 | 6 | `NAME1` | `STRING` | Name 1 |
 | 7 | `NAME2` | `STRING` | Name 2 |
@@ -40078,7 +40121,7 @@
 | 34 | `ESRNR` | `STRING` | ISR subscriber number |
 | 35 | `KONZS` | `STRING` | Group key |
 | 36 | `KTOKK` | `STRING` | Supplier Account Group |
-| 37 | `KUNNR` | `STRING` | Customer Number |
+| 37 | `KUNNR` | `STRING` | Customer Number _10-char zero-padded_ |
 | 38 | `LNRZA` | `STRING` | Account Number of the Alternative Payee |
 | 39 | `LOEVM` | `STRING` | Central Deletion Flag for Master Record |
 | 40 | `SPERR` | `STRING` | Central posting block |
@@ -40204,11 +40247,11 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
-| 4 | `LIFNR` | `STRING` | Vendors account number |
+| 4 | `LIFNR` | `STRING` | Vendors account number _10-char zero-padded_ |
 | 5 | `EKORG` | `STRING` | Purchasing Organization |
 | 6 | `ERDAT` | `STRING` | Date on Which Record Was Created |
 | 7 | `ERNAM` | `STRING` | Name of Person Responsible for Creating the Object |
@@ -40283,9 +40326,9 @@
 
 | # | Column | Type | Description |
 |--:|--------|------|-------------|
-| 0 | `AERUNID` | `INT` | Run ID |
-| 1 | `AERECNO` | `INT` | Record Number |
-| 2 | `AEDATTM` | `STRING` | Timestamp |
+| 0 | `AERUNID` | `INT` | _(Aecorsoft)_ Replication run ID — not a SAP field |
+| 1 | `AERECNO` | `INT` | _(Aecorsoft)_ Record sequence within replication run — not a SAP field |
+| 2 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 | 3 | `MANDT` | `STRING` | Client |
 | 4 | `DOCID` | `STRING` | Document Ledger Number |
 | 5 | `DOCTYPE` | `STRING` | Document Type |
@@ -40326,10 +40369,10 @@
 | 40 | `XBLNR` | `STRING` | Reference Document Number |
 | 41 | `RMWWR` | `DECIMAL` | Gross invoice amount in document currency |
 | 42 | `WAERS` | `STRING` | Currency Key |
-| 43 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 43 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 44 | `VEND_NAME` | `STRING` | Name 1 |
 | 45 | `VEND_NAME2` | `STRING` | Name 2 |
-| 46 | `EBELN` | `STRING` | Purchasing Document Number |
+| 46 | `EBELN` | `STRING` | Purchasing Document Number _10-char zero-padded_ |
 | 47 | `RECIPIENT_NAME` | `STRING` | Recipient Name |
 | 48 | `LXBLNR` | `STRING` | Long Invoice Referance Number |
 | 49 | `REQUISITIONER` | `STRING` | Open Text User Mapping Object ID |
@@ -40880,7 +40923,7 @@
 | 7 | `OBTYP` | `STRING` | Picking area (storage type) for Lean WM |
 | 8 | `LGREF` | `STRING` | Storage loc. ref. |
 | 9 | `CENSY` | `STRING` | Reference to central ERP system |
-| 10 | `AEDATTM` | `STRING` | — |
+| 10 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -40899,7 +40942,7 @@
 | 0 | `MANDT` | `STRING` | Client |
 | 1 | `LGNUM` | `STRING` | Warehouse Number / Warehouse Complex |
 | 2 | `REGKZ` | `STRING` | Region code |
-| 3 | `AEDATTM` | `STRING` | — |
+| 3 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -41011,7 +41054,7 @@
 | 93 | `KALNR` | `STRING` | Cost Estimate Number for Cost Est. w/o Qty Structure |
 | 94 | `POSID_EDIT` | `STRING` | Work Breakdown Structure Element (WBS Element) Edited |
 | 95 | `PSPKZ` | `STRING` | Indicator: WBS element for production lot |
-| 96 | `MATNR` | `STRING` | Material Number |
+| 96 | `MATNR` | `STRING` | Material Number _18-char zero-padded_ |
 | 97 | `VLPSP` | `STRING` | WBS: Reference work breakdown structure element |
 | 98 | `VLPKZ` | `STRING` | Indicator: Reference WBS element for production lot |
 | 99 | `SORT1` | `STRING` | Sort string 1 for production lot |
@@ -41029,7 +41072,7 @@
 | 111 | `ADPSP` | `STRING` | Reference Element PM/PS |
 | 112 | `RFIPPNT` | `STRING` | Reference Point for Relationship Between iPPE and PS |
 | 113 | `FERC_IND` | `STRING` | Regulatory indicator |
-| 114 | `AEDATTM` | `STRING` | — |
+| 114 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -41072,7 +41115,7 @@
 | 24 | `CAP_BACKFLUSH_SU` | `STRING` | Control: Calc. of Remaining Req./Duration After Confirmation |
 | 25 | `CAP_BACKFLUSH_PR` | `STRING` | Control: Calc. of Remaining Req./Duration After Confirmation |
 | 26 | `CAP_BACKFLUSH_TD` | `STRING` | Control: Calc. of Remaining Req./Duration After Confirmation |
-| 27 | `AEDATTM` | `STRING` | — |
+| 27 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -41202,7 +41245,7 @@
 | 111 | `RGEKZ` | `STRING` | Indicator: Backflushing |
 | 112 | `HRTYP` | `STRING` | Object Type |
 | 113 | `SLWID` | `STRING` | Key word ID for user-defined fields |
-| 114 | `LIFNR` | `STRING` | Account Number of Supplier |
+| 114 | `LIFNR` | `STRING` | Account Number of Supplier _10-char zero-padded_ |
 | 115 | `SLWID_REF` | `STRING` | Field is referenced |
 | 116 | `LIFNR_REF` | `STRING` | Field is referenced |
 | 117 | `VGARB` | `STRING` | Unit of measure of work |
@@ -41224,7 +41267,7 @@
 | 133 | `PPSKZ` | `STRING` | Advanced Planning |
 | 134 | `SRTYPE` | `STRING` | Shift Report Type |
 | 135 | `SNTYPE` | `STRING` | Shift Note Type |
-| 136 | `AEDATTM` | `STRING` | — |
+| 136 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 
@@ -41248,7 +41291,7 @@
 | 5 | `AENAM_TEXT` | `STRING` | User Name |
 | 6 | `KTEXT` | `STRING` | Short description |
 | 7 | `KTEXT_UP` | `STRING` | Short description in capitals |
-| 8 | `AEDATTM` | `STRING` | — |
+| 8 | `AEDATTM` | `STRING` | _(Aecorsoft)_ Replication timestamp — not a SAP field |
 
 ---
 

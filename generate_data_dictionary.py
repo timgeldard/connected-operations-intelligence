@@ -320,6 +320,67 @@ def generate_dictionary(schemas, output_file):
     lines.append("---")
     lines.append("")
 
+    # Data source context
+    lines.append("## Data Source")
+    lines.append("")
+    lines.append(
+        "Data is replicated from **SAP ECC 6.0** into BigQuery by **Aecorsoft** "
+        "at the database table level. Values are stored exactly as SAP holds them "
+        "internally — not formatted for display as in the SAP GUI."
+    )
+    lines.append("")
+    lines.append("### Field Conventions")
+    lines.append("")
+    lines.append(
+        "Because extraction is at the database level, key identifier fields are "
+        "**zero-padded** to their full SAP storage length. Apply `LTRIM(col, '0')` "
+        "or equivalent when comparing with external systems or displaying to users."
+    )
+    lines.append("")
+    lines.append("| SAP Field | Description | Padded Length | Example |")
+    lines.append("|-----------|-------------|:-------------:|---------|")
+    lines.append("| `MATNR` | Material Number | 18 | `000000000000012345` |")
+    lines.append("| `AUFNR` | Order Number | 12 | `000000123456` |")
+    lines.append("| `VBELN` | Sales / Delivery Document | 10 | `0000012345` |")
+    lines.append("| `EBELN` | Purchasing Document | 10 | `0000012345` |")
+    lines.append("| `KUNNR` | Customer Number | 10 | `0000012345` |")
+    lines.append("| `LIFNR` | Vendor Number | 10 | `0000012345` |")
+    lines.append("| `CHARG` | Batch Number | 10 | `0000000123` |")
+    lines.append("")
+    lines.append(
+        "**Date fields** (`DATS` type in SAP) are stored as `STRING` in `YYYYMMDD` format."
+    )
+    lines.append("")
+    lines.append("### Aecorsoft System Columns")
+    lines.append("")
+    lines.append(
+        "The following columns are added by Aecorsoft and are **not** SAP data fields:"
+    )
+    lines.append("")
+    lines.append("| Column | Type | Meaning |")
+    lines.append("|--------|------|---------|")
+    lines.append("| `AEDATTM` | `STRING` | Timestamp of last replication to BigQuery |")
+    lines.append("| `AERUNID` | `INT` | Aecorsoft replication run ID |")
+    lines.append("| `AERECNO` | `INT` | Record sequence number within replication run |")
+    lines.append("")
+    lines.append("### SAP Metadata Tables")
+    lines.append("")
+    lines.append(
+        "The following BC tables are imported specifically to support **data enrichment** "
+        "— resolving domain value descriptions, field labels, and table structures "
+        "programmatically rather than hard-coding them in reports:"
+    )
+    lines.append("")
+    lines.append("| SAP Table | BigQuery Table | Purpose |")
+    lines.append("|-----------|---------------|---------|")
+    lines.append("| `DD02L` | `metadata_saptable_dd02l` | Table definitions |")
+    lines.append("| `DD03L` | `datadictionaryfields_dd03l` | Field definitions per table |")
+    lines.append("| `DD04L` | `metadata_dataelement_dd04l` | Data element definitions |")
+    lines.append("| `DD07T` | `domaintext_dd07t` | Domain fixed-value descriptions |")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
     # Overview
     lines.append("## Overview")
     lines.append("")
@@ -390,13 +451,34 @@ def generate_dictionary(schemas, output_file):
             lines.append("")
 
             # Columns
+            AECORSOFT_COLS = {
+                "AEDATTM": "_(Aecorsoft)_ Replication timestamp — not a SAP field",
+                "AERUNID": "_(Aecorsoft)_ Replication run ID — not a SAP field",
+                "AERECNO": "_(Aecorsoft)_ Record sequence within replication run — not a SAP field",
+            }
+            PADDED_COLS = {
+                "MATNR": "18-char zero-padded",
+                "AUFNR": "12-char zero-padded",
+                "VBELN": "10-char zero-padded",
+                "EBELN": "10-char zero-padded",
+                "KUNNR": "10-char zero-padded",
+                "LIFNR": "10-char zero-padded",
+                "CHARG": "10-char zero-padded",
+            }
             if tdata["columns"]:
                 lines.append("| # | Column | Type | Description |")
                 lines.append("|--:|--------|------|-------------|")
                 for col in tdata["columns"]:
-                    desc = col["description"] if col["description"] else "—"
+                    cname = col["name"]
+                    if cname in AECORSOFT_COLS:
+                        desc = AECORSOFT_COLS[cname]
+                    elif col["description"]:
+                        pad = PADDED_COLS.get(cname, "")
+                        desc = col["description"] + (f" _{pad}_" if pad else "")
+                    else:
+                        desc = "—"
                     lines.append(
-                        f"| {col['num']} | `{col['name']}` | `{col['type']}` | {desc} |"
+                        f"| {col['num']} | `{cname}` | `{col['type']}` | {desc} |"
                     )
             else:
                 lines.append("_No column details available._")
