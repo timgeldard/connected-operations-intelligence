@@ -1,27 +1,28 @@
-# Operational Runbook — Connected Plant Silver Pipeline
+# Operational Runbook — Connected Plant Pipelines (Silver & Gold)
 
 ## Pipeline identity
 
-| Item | Value |
-|---|---|
-| Bundle name | `connected-plant-silver` |
-| Target (prod) | `connected_plant_uat.silver` |
-| Mode | Continuous |
-| Notifications | Configure in `resources/silver_pipeline.pipeline.yml` |
+| Item | Silver Pipeline | Gold Pipeline |
+|---|---|---|
+| Bundle name | `connected-plant` | `connected-plant` |
+| Target schema (prod) | `connected_plant_uat.silver` | `connected_plant_uat.gold` |
+| Mode | Continuous | Triggered (Batch) |
+| Notifications | Configure in `resources/silver_pipeline.pipeline.yml` | Configure in `resources/gold_pipeline.pipeline.yml` |
 
 ---
 
 ## 1. Check pipeline health
 
 ```bash
-# Get pipeline ID (after first deploy)
+# Get pipeline IDs (after first deploy)
 databricks pipelines list --profile DEFAULT | grep "Connected Plant"
 
 # Get current state
 databricks pipelines get --pipeline-id <id> --profile DEFAULT
 ```
 
-Healthy states: `RUNNING` (continuous mode). Alert states: `FAILED`, `IDLE` (unexpected stop).
+- **Silver Pipeline**: Healthy state is `RUNNING` (runs continuously). Alert states are `FAILED`, `IDLE` (unexpected stop).
+- **Gold Pipeline**: Healthy state is `COMPLETED` after a successful run. Alert state is `FAILED`.
 
 ---
 
@@ -31,8 +32,8 @@ A single flow (table) failed while the pipeline kept running.
 
 1. Open the pipeline UI → **Event log** → filter by `flow_name` to identify the failing table.
 2. Check the error message. Common causes:
-   - **Schema evolution** — a new column appeared in bronze. Run a full refresh of that table after acknowledging the change.
-   - **Bad SAP data** — an `expect_or_fail` fired (none currently set, but be aware). Check expectation metrics.
+   - **Schema evolution** — a new column appeared in bronze/silver. Run a full refresh of that table after acknowledging the change.
+   - **Bad SAP data** — an `expect_or_fail` or `expect` warning fired. Check expectation metrics.
    - **Transient Spark error** — retry by clicking **Start** in the UI or using `databricks pipelines start-update`.
 
 ---
@@ -47,7 +48,7 @@ databricks pipelines start-update <pipeline-id> --profile DEFAULT
 ```
 
 If restart fails repeatedly, check:
-- Bronze source tables exist and are accessible.
+- Source tables exist and are accessible (Bronze for Silver, Silver for Gold).
 - No breaking schema change that requires a full refresh (see §4).
 - Cluster/serverless availability in the workspace.
 
@@ -64,15 +65,15 @@ Streaming Tables cannot evolve incompatibly without a full refresh. Signs: pipel
    databricks pipelines start-update <pipeline-id> \
      --full-refresh-selection <table_name> --profile DEFAULT
    ```
-3. Monitor the refresh. Data for the affected table will be rebuilt from scratch — downstream Gold queries will see gaps during this window.
+3. Monitor the refresh. Data for the affected table will be rebuilt from scratch — downstream queries will see gaps during this window.
 
-**Do not** run a full pipeline full refresh unless all tables need rebuilding — this is time-consuming and causes widespread downstream gaps.
+**Do not** run a full pipeline refresh unless all tables need rebuilding.
 
 ---
 
-## 5. Dev bronze isolation
+## 5. Dev schema isolation
 
-The dev target (`silver_dev`) currently reads from the same UAT bronze as production. This is intentional until a dev bronze is provisioned. See `docs/adr/004-bronze-source-parameterization.md`.
+The dev target writes to `silver_dev` and `gold_dev` schemas respectively to prevent production database impacts.
 
 To add dev bronze isolation once available:
 1. Add `source_catalog` / `source_schema` overrides to the `dev` target in `databricks.yml`.
@@ -82,6 +83,7 @@ To add dev bronze isolation once available:
 
 ## 6. Plant access row filter
 
+### Silver Layer
 The Unity Catalog row filter (`plant_access_filter`) must be applied after the first prod deploy. Run `resources/row_filter.sql` once as a Unity Catalog admin:
 
 ```bash
@@ -89,8 +91,23 @@ databricks sql execute --warehouse-id <warehouse-id> \
   --statement "$(cat resources/row_filter.sql)" --profile DEFAULT
 ```
 
+### Gold Layer
+No manual SQL script is required for the Gold tables. The row filter is **automatically applied at deploy/refresh time** via the `@dlt.table` configuration properties pointing to `{silver_schema}.plant_access_filter` dynamically.
+
 ---
 
 ## 7. PP_PI_ORDER_TYPES TODO
 
 `PP_PI_ORDER_TYPES = None` in `silver/dlt_silver_pipeline.py` — all order types are currently included. Once process order types are confirmed with plant operations teams, update this constant and redeploy. A selective full refresh of `process_order` and `process_order_operation` will be required.
+
+---
+
+## 8. Running the Gold Pipeline
+
+Since the Gold pipeline runs in **Triggered (batch)** mode, it should be orchestrated to run periodically (e.g. daily, or immediately following the conclusion of large batch events).
+
+To run the Gold pipeline manually:
+```bash
+databricks pipelines start-update <gold-pipeline-id> --profile DEFAULT
+```
+Alternatively, schedule it using a Databricks Job task referencing `${resources.pipelines.gold_pipeline.id}`.
