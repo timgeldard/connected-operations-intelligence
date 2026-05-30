@@ -1,7 +1,7 @@
-# Connected Plant — Silver Pipeline
+# Connected Plant — Integrated Operations Reporting Pipelines
 
-SAP ECC 6.0 → silver layer (SCD Type 1) via Aecorsoft Delta replication.  
-Source: `connected_plant_uat.sap` · Target: `connected_plant_uat.silver`
+SAP ECC 6.0 → Silver layer (SCD Type 1) → Gold layer (reporting aggregates).  
+Source: `connected_plant.sap` · Silver Target: `connected_plant.silver` · Gold Target: `connected_plant.gold`
 
 ## Prerequisites
 
@@ -22,13 +22,17 @@ Configure auth before deploying: `databricks auth login --profile DEFAULT`
 ## Project layout
 
 ```
-databricks.yml                    # Bundle config (dev / prod targets)
+databricks.yml                    # Bundle config (dev / uat / prod targets)
 resources/
-  silver_pipeline.pipeline.yml    # Continuous pipeline definition
+  silver_pipeline.pipeline.yml    # Continuous Silver pipeline definition
+  gold_pipeline.pipeline.yml      # Triggered Gold pipeline definition
 silver/
   dlt_silver_pipeline.py          # All 14 silver table definitions
-  design_spec.md                  # Architecture and table catalogue
-tests/                            # Unit tests for helper functions
+  design_spec.md                  # Silver architecture and table catalogue
+gold/
+  dlt_gold_pipeline.py            # Gold KPI table definitions (OEE, OTIF, shift output)
+  design_spec.md                  # Gold architecture and KPI specs
+tests/                            # Unit tests for silver helpers and gold tables
 ```
 
 ## Development workflow
@@ -36,15 +40,16 @@ tests/                            # Unit tests for helper functions
 ```bash
 # Validate bundle config
 databricks bundle validate -t dev --profile DEFAULT
+databricks bundle validate -t uat --profile DEFAULT
+databricks bundle validate -t prod --profile DEFAULT
 
-# Deploy to dev (writes to connected_plant_uat.silver_dev)
+# Deploy to specific targets
 databricks bundle deploy -t dev --profile DEFAULT
-
-# Deploy to prod (writes to connected_plant_uat.silver)
+databricks bundle deploy -t uat --profile DEFAULT
 databricks bundle deploy -t prod --profile DEFAULT
 ```
 
-The pipeline is **continuous** — start it once via the Databricks UI or:
+The Silver pipeline is **continuous** — start it once via UI or CLI. The Gold pipeline is **triggered** (batch) mode.
 
 ```bash
 databricks pipelines start-update <pipeline-id> --profile DEFAULT
@@ -60,7 +65,7 @@ If skills are not available, install them: `databricks aitools install`
 ## Key notes
 
 - `PP_PI_ORDER_TYPES` in `dlt_silver_pipeline.py` is `None` — all order types included until confirmed with plant teams.
-- The dev target writes to `silver_dev` schema — create this schema before first deploy.
-- Add email recipients to the `notifications` block in `resources/silver_pipeline.pipeline.yml` before prod deploy.
-- Bronze source is parameterized via `source_catalog` / `source_schema` variables (defaults to `connected_plant_uat.sap`). Override in the `dev` target once a dev bronze exists.
+- Dev target writes to `connected_plant_dev` catalog, UAT to `connected_plant_uat`, and Prod to `connected_plant_prod`.
+- Email recipients are parameterized via `notification_email` variable in `databricks.yml`.
 - ADRs for key design decisions live in `docs/adr/`.
+

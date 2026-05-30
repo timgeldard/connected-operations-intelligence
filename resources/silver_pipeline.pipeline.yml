@@ -26,7 +26,7 @@ resources:
 
       notifications:
         - email_recipients:
-            - timgeldard@gmail.com
+            - ${var.notification_email}
           alerts:
             - on-update-failure
             - on-update-fatal-failure

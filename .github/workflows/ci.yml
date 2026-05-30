@@ -21,7 +21,7 @@ jobs:
         run: pip install pytest pyspark ruff
 
       - name: Lint
-        run: ruff check silver/ tests/
+        run: ruff check silver/ gold/ tests/
 
       - name: Test
         run: pytest
@@ -41,3 +41,15 @@ jobs:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: databricks bundle validate -t dev
+
+      - name: Validate uat bundle
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: databricks bundle validate -t uat
+
+      - name: Validate prod bundle
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: databricks bundle validate -t prod

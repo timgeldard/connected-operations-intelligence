@@ -6,15 +6,17 @@ include:
 
 variables:
   catalog:
-    default: connected_plant_uat
+    default: connected_plant_prod
   schema:
     default: silver
   gold_schema:
     default: gold
   source_catalog:
-    default: connected_plant_uat
+    default: connected_plant_prod
   source_schema:
     default: sap
+  notification_email:
+    default: connected-plant-dataops@company.com
 
 targets:
   dev:
@@ -23,8 +25,11 @@ targets:
     workspace:
       profile: DEFAULT
     variables:
+      catalog: connected_plant_dev
       schema: silver_dev
       gold_schema: gold_dev
+      source_catalog: connected_plant_uat
+      source_schema: sap
     resources:
       pipelines:
         silver_pipeline:
@@ -32,7 +37,25 @@ targets:
         gold_pipeline:
           development: true
 
+  uat:
+    mode: production
+    workspace:
+      profile: DEFAULT
+    variables:
+      catalog: connected_plant_uat
+      schema: silver
+      gold_schema: gold
+      source_catalog: connected_plant_uat
+      source_schema: sap
+
   prod:
     mode: production
     workspace:
       profile: DEFAULT
+    variables:
+      catalog: connected_plant_prod
+      schema: silver
+      gold_schema: gold
+      source_catalog: connected_plant_prod
+      source_schema: sap
+
