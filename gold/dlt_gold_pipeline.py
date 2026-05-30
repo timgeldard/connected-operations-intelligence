@@ -64,10 +64,13 @@ def gold_shift_output_summary():
     # Read from Silver layer
     goods_mov = spark.read.table(f"{silver_schema}.goods_movement")
     
+    # Filter only relevant movement types before grouping to optimize performance and reduce shuffle size
+    filtered_movs = goods_mov.filter(F.col("movement_type_code").isin("101", "102", "551", "552"))
+    
     # Aggregate output quantities based on standard movement types (101 receipt, 102 receipt reversal)
     # Scrap movement types are typically 551 (scrap) and 552 (scrap reversal)
     return (
-        goods_mov.groupBy("plant_code", "posting_date", "material_code", "base_uom")
+        filtered_movs.groupBy("plant_code", "posting_date", "material_code", "base_uom")
         .agg(
             F.sum(
                 F.when(F.col("movement_type_code") == "101", F.col("quantity"))
@@ -136,16 +139,16 @@ def gold_plant_oee_kpis():
     # Sum of downtime hours per plant
     plant_downtime = (
         downtime.groupBy("plant_code")
-        .agg(F.sum("duration_minutes").alias("total_downtime_minutes"))
+        .agg(F.coalesce(F.sum("duration_minutes"), F.lit(0.0)).alias("total_downtime_minutes"))
     )
     
-    # Sum of process orders quantities and yield
+    # Sum of process orders quantities and yield - coalesce sums to prevent NULL propagation
     plant_production = (
         orders.groupBy("plant_code")
         .agg(
-            F.sum("order_quantity").alias("total_ordered_qty"),
-            F.sum("confirmed_yield_quantity").alias("total_yield_qty"),
-            F.sum("total_scrap_quantity").alias("total_scrap_qty")
+            F.coalesce(F.sum("order_quantity"), F.lit(0.0)).alias("total_ordered_qty"),
+            F.coalesce(F.sum("confirmed_yield_quantity"), F.lit(0.0)).alias("total_yield_qty"),
+            F.coalesce(F.sum("total_scrap_quantity"), F.lit(0.0)).alias("total_scrap_qty")
         )
     )
     
