@@ -1,6 +1,7 @@
 -- Unity Catalog Row Filter — plant-level access control for silver tables (UAT).
 -- Run once as a Unity Catalog admin after the first uat deploy.
 -- Requires: CREATE FUNCTION privilege on connected_plant_uat.silver.
+-- Ordering is intentional: CREATE OR REPLACE FUNCTION must run before any ALTER TABLE SET ROW FILTER.
 -- WARNING: Generated automatically by scripts/generate_row_filter_sql.py. Do not edit manually.
 
 CREATE OR REPLACE FUNCTION connected_plant_uat.silver.plant_access_filter(plant_code STRING)

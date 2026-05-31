@@ -44,7 +44,11 @@ except Exception:
     APPLY_ROW_FILTER = False
 
 def gold_table_args(comment: str, cluster_by: list) -> dict:
-    """Return common decorator arguments, applying the row filter if configured."""
+    """Return common decorator arguments, applying the row filter if configured.
+
+    If gold_apply_row_filter is enabled, plant_access_filter must already exist
+    in the configured Silver schema before this pipeline is created/refreshed.
+    """
     args = {
         "comment": comment,
         "table_properties": {"delta.enableChangeDataFeed": "true"},
