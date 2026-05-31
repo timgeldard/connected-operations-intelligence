@@ -7,6 +7,16 @@ from pyspark.sql import Row
 from pyspark.sql import functions as F
 
 from silver.helpers import BRONZE, get_spark, sap_date, sap_flag, strip_zeros
+from silver.movement_types import (
+    ISSUE_MOVEMENT_TYPES,
+    MOVEMENT_TYPE_MAPPING,
+    RECEIPT_MOVEMENT_TYPES,
+    STOCK_WRITE_OFF_MOVEMENT_TYPES,
+    STOCK_WRITE_ON_MOVEMENT_TYPES,
+    T156_REVERSAL_MAPPING,
+    TRANSFER_MOVEMENT_TYPES,
+    get_movement_event_category,
+)
 
 spark = get_spark()
 
@@ -195,43 +205,26 @@ dlt.apply_changes(
 
 @dlt.table(
     name="movement_type_classification",
-    comment="Classification of SAP movement types for production and scrap reporting",
+    comment="Classification of SAP movement types for warehouse, production, and inventory reporting",
     table_properties={"delta.enableChangeDataFeed": "true"}
 )
 def movement_type_classification():
-    # Conformed classification seed mapping
     data = [
         Row(
-            movement_type_code="101",
-            movement_category="PRODUCTION_RECEIPT",
-            is_production_receipt=True,
-            is_receipt_reversal=False,
-            is_scrap=False,
-            is_scrap_reversal=False
-        ),
-        Row(
-            movement_type_code="102",
-            movement_category="PRODUCTION_REVERSAL",
-            is_production_receipt=False,
-            is_receipt_reversal=True,
-            is_scrap=False,
-            is_scrap_reversal=False
-        ),
-        Row(
-            movement_type_code="551",
-            movement_category="SCRAP",
-            is_production_receipt=False,
-            is_receipt_reversal=False,
-            is_scrap=True,
-            is_scrap_reversal=False
-        ),
-        Row(
-            movement_type_code="552",
-            movement_category="SCRAP_REVERSAL",
-            is_production_receipt=False,
-            is_receipt_reversal=False,
-            is_scrap=False,
-            is_scrap_reversal=True
-        ),
+            movement_type_code=code,
+            movement_label=label,
+            event_category=get_movement_event_category(code),
+            is_reversal=code in T156_REVERSAL_MAPPING,
+            is_goods_receipt=code in RECEIPT_MOVEMENT_TYPES,
+            is_goods_issue=code in ISSUE_MOVEMENT_TYPES,
+            is_transfer=code in TRANSFER_MOVEMENT_TYPES,
+            is_stock_write_on=code in STOCK_WRITE_ON_MOVEMENT_TYPES,
+            is_stock_write_off=code in STOCK_WRITE_OFF_MOVEMENT_TYPES,
+            is_production_receipt=code in {"101", "131"},
+            is_receipt_reversal=code in {"102", "132"},
+            is_scrap=code == "551",
+            is_scrap_reversal=code == "552",
+        )
+        for code, label in sorted(MOVEMENT_TYPE_MAPPING.items())
     ]
     return spark.createDataFrame(data)
