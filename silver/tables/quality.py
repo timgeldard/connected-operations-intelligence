@@ -50,8 +50,11 @@ def stg_quality_inspection_lot():
             F.col("l.PRUEFLOS").alias("inspection_lot_number"),
             F.col("l.WERKS").alias("plant_code"),
             strip_zeros("l.MATNR").alias("material_code"),
+            F.col("l.MATNR").alias("material_code_raw"),
             strip_zeros("l.CHARG").alias("batch_number"),
+            F.col("l.CHARG").alias("batch_number_raw"),
             strip_zeros("m.AUFNR").alias("order_number"),
+            F.col("m.AUFNR").alias("order_number_raw"),
             F.col("m.QMNUM").alias("quality_notification_number"),
 
             F.col("l.LOTORIGIN").alias("inspection_lot_origin_code"),

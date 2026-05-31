@@ -76,7 +76,9 @@ def stg_goods_movement():
 
             # ── Material & batch
             strip_zeros("s.MATNR").alias("material_code"),
+            F.col("s.MATNR").alias("material_code_raw"),
             strip_zeros("s.CHARG").alias("batch_number"),
+            F.col("s.CHARG").alias("batch_number_raw"),
 
             # ── Movement
             F.col("s.BWART").alias("movement_type_code"),
@@ -96,9 +98,12 @@ def stg_goods_movement():
 
             # ── Reference documents
             strip_zeros("s.AUFNR").alias("order_number"),
+            F.col("s.AUFNR").alias("order_number_raw"),
             strip_zeros("s.EBELN").alias("purchase_order_number"),
+            F.col("s.EBELN").alias("purchase_order_number_raw"),
             F.col("s.EBELP").alias("purchase_order_item"),
             strip_zeros("s.VBELN").alias("delivery_number"),
+            F.col("s.VBELN").alias("delivery_number_raw"),
             F.col("s.KDAUF").alias("sales_order_number"),
 
             # ── User
@@ -144,9 +149,11 @@ def stg_batch_stock():
     src = spark.readStream.table(f"{BRONZE}.batchstock_mchb")
     return src.select(
         strip_zeros("MATNR").alias("material_code"),
+        F.col("MATNR").alias("material_code_raw"),
         F.col("WERKS").alias("plant_code"),
         F.col("LGORT").alias("storage_location_code"),
         strip_zeros("CHARG").alias("batch_number"),
+        F.col("CHARG").alias("batch_number_raw"),
 
         F.col("CLABS").alias("unrestricted_quantity"),
         F.col("CINSM").alias("quality_inspection_quantity"),
@@ -231,7 +238,9 @@ def stg_warehouse_transfer_order():
 
             # ── Material & batch
             strip_zeros("i.MATNR").alias("material_code"),
+            F.col("i.MATNR").alias("material_code_raw"),
             strip_zeros("i.CHARG").alias("batch_number"),
+            F.col("i.CHARG").alias("batch_number_raw"),
             F.col("i.MEINS").alias("base_uom"),
             F.col("i.BESTQ").alias("stock_category_code"),
 
@@ -269,7 +278,9 @@ def stg_warehouse_transfer_order():
             # ── Reference
             F.col("h.BETYP").alias("source_reference_type"),
             strip_zeros("h.BENUM").alias("source_reference_number"),
+            F.col("h.BENUM").alias("source_reference_number_raw"),
             strip_zeros("h.VBELN").alias("delivery_number"),
+            F.col("h.VBELN").alias("delivery_number_raw"),
             F.col("h.TBPRI").alias("transfer_priority"),
 
             # ── Users
@@ -352,7 +363,9 @@ def stg_warehouse_transfer_requirement():
 
             # ── Material & batch
             strip_zeros("i.MATNR").alias("material_code"),
+            F.col("i.MATNR").alias("material_code_raw"),
             strip_zeros("i.CHARG").alias("batch_number"),
+            F.col("i.CHARG").alias("batch_number_raw"),
             F.col("i.MEINS").alias("base_uom"),
 
             # ── Quantities
@@ -376,6 +389,7 @@ def stg_warehouse_transfer_requirement():
             # ── Reference
             F.col("h.BETYP").alias("source_reference_type"),
             strip_zeros("h.BENUM").alias("source_reference_number"),
+            F.col("h.BENUM").alias("source_reference_number_raw"),
             F.col("h.RSNUM").alias("reservation_number"),
 
             # ── Custom fields (site-specific campaign / pick status)

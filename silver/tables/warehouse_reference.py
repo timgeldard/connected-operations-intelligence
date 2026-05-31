@@ -79,7 +79,10 @@ def stg_storage_bin():
     # Aggregate T320 to resolve a single primary plant per warehouse to prevent key instability/row duplication
     t320_agg = (
         t320.groupBy("warehouse_number")
-        .agg(F.min("plant_code").alias("primary_plant_code"))
+        .agg(
+            F.min("plant_code").alias("primary_plant_code"),
+            F.count_distinct("plant_code").alias("plant_count")
+        )
     )
 
     bins_to_refresh = (
@@ -120,7 +123,10 @@ def stg_storage_bin():
             F.col("b.LGNUM").alias("warehouse_number"),
             F.col("b.LGTYP").alias("storage_type"),
             F.col("b.LGPLA").alias("bin_code"),
-            F.coalesce(F.col("q.WERKS"), F.col("m.primary_plant_code")).alias("plant_code"),
+            F.coalesce(
+                F.col("q.WERKS"),
+                F.when(F.col("m.plant_count") > 1, F.lit("SHARED")).otherwise(F.col("m.primary_plant_code"))
+            ).alias("plant_code"),
 
             # ── Bin attributes
             F.col("b.LGBER").alias("storage_section"),
@@ -139,7 +145,9 @@ def stg_storage_bin():
             F.coalesce(F.col("q.LQNUM"), F.lit("__EMPTY__")).alias("_storage_bin_occupancy_key"),
             F.col("q.LQNUM").alias("quant_number"),
             strip_zeros("q.MATNR").alias("material_code"),
+            F.col("q.MATNR").alias("material_code_raw"),
             strip_zeros("q.CHARG").alias("batch_number"),
+            F.col("q.CHARG").alias("batch_number_raw"),
             F.col("q.BESTQ").alias("stock_category_code"),
             F.col("q.GESME").alias("total_quantity"),
             F.col("q.VERME").alias("available_quantity"),

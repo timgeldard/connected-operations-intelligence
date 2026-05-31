@@ -55,8 +55,9 @@ CREATE OR REPLACE FUNCTION {catalog}.{schema}.plant_access_filter(plant_code STR
 RETURNS BOOLEAN
 RETURN CASE
   WHEN IS_ACCOUNT_GROUP_MEMBER('{admin_group}') THEN TRUE
+  WHEN plant_code = 'SHARED' AND current_user_attribute('allowed_plants') IS NOT NULL THEN TRUE
   ELSE array_contains(
-    split(current_user_attribute('allowed_plants'), ','),
+    transform(split(current_user_attribute('allowed_plants'), ','), x -> trim(x)),
     plant_code
   )
 END;

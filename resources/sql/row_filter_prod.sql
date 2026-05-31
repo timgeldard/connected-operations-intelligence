@@ -8,8 +8,9 @@ CREATE OR REPLACE FUNCTION connected_plant_prod.silver.plant_access_filter(plant
 RETURNS BOOLEAN
 RETURN CASE
   WHEN IS_ACCOUNT_GROUP_MEMBER('silver_admin') THEN TRUE
+  WHEN plant_code = 'SHARED' AND current_user_attribute('allowed_plants') IS NOT NULL THEN TRUE
   ELSE array_contains(
-    split(current_user_attribute('allowed_plants'), ','),
+    transform(split(current_user_attribute('allowed_plants'), ','), x -> trim(x)),
     plant_code
   )
 END;

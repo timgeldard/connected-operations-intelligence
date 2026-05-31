@@ -60,6 +60,7 @@ def stg_process_order():
         .select(
             # ── Natural key
             strip_zeros(F.coalesce(F.col("k.AUFNR"), F.col("c.AUFNR"))).alias("order_number"),
+            F.coalesce(F.col("k.AUFNR"), F.col("c.AUFNR")).alias("order_number_raw"),
 
             # ── Organisation
             F.col("k.WERKS").alias("plant_code"),
@@ -71,10 +72,12 @@ def stg_process_order():
             F.col("k.AUART").alias("order_type_code"),
             F.col("k.KTEXT").alias("order_description"),
             strip_zeros("k.PROCNR").alias("production_process_number"),
+            F.col("k.PROCNR").alias("production_process_number_raw"),
             F.col("k.VAPLZ").alias("main_work_centre_code"),
 
             # ── Material & quantity (AFKO)
             strip_zeros("h.PLNBEZ").alias("material_code"),
+            F.col("h.PLNBEZ").alias("material_code_raw"),
             F.col("h.GAMNG").alias("order_quantity"),
             F.col("h.GMEIN").alias("order_quantity_uom"),
             F.col("h.GASMG").alias("total_scrap_quantity"),
@@ -106,6 +109,7 @@ def stg_process_order():
 
             # ── Linkages
             strip_zeros("k.KDAUF").alias("sales_order_number"),
+            F.col("k.KDAUF").alias("sales_order_number_raw"),
             F.col("k.KDPOS").alias("sales_order_item"),
             F.col("h.PRUEFLOS").alias("inspection_lot_number"),
             F.col("h.RSNUM").alias("reservation_number"),
@@ -190,6 +194,7 @@ def stg_process_order_operation():
         .select(
             # ── Natural key
             strip_zeros("h.AUFNR").alias("order_number"),
+            F.col("h.AUFNR").alias("order_number_raw"),
             F.col("o.VORNR").alias("operation_number"),
 
             # ── Organisation
@@ -268,6 +273,7 @@ def stg_pi_sheet_execution():
     return src.select(
         F.col("ZWERKS").alias("plant_code"),
         strip_zeros("ZAUFNR").alias("order_number"),
+        F.col("ZAUFNR").alias("order_number_raw"),
         F.col("ZVORNR").alias("operation_number"),
 
         sap_datetime("ZSDATS", "ZSTIMS").alias("pi_sheet_start_datetime"),
@@ -320,8 +326,10 @@ def stg_downtime_event():
         .select(
             # ── Natural key (composite — no single surrogate in Z-table)
             strip_zeros("AUFNR").alias("order_number"),
+            F.col("AUFNR").alias("order_number_raw"),
             F.col("WERKS").alias("plant_code"),
             strip_zeros("MATNR").alias("material_code"),
+            F.col("MATNR").alias("material_code_raw"),
             F.col("VORNR").alias("operation_number"),
             F.col("ZITEM").alias("item_number"),
 

@@ -129,8 +129,22 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
   * Flags minimum shelf-life breaches using `minimum_remaining_shelf_life_days` from material master.
 * **Freshness Expectation**: Batch triggered.
 
+### 10. `gold.gold_freshness_gate`
+* **Type**: DLT Validation View
+* **Source Silver Tables**: `silver.goods_movement`
+* **SLA Constraint**: Fails the Gold pipeline execution run dynamically via `@dlt.expect_or_fail` if the maximum data replication latency exceeds 120 minutes.
+
+---
+
+## Data Conventions & Security
+
+### Raw and Display Key Pairs
+To preserve SAP traceability and reconciliation audits while providing clean dashboards, key columns keep both:
+* **Raw Column (`_raw`):** Preserves original SAP format with leading zeros intact (used for joins, debugging, and DB validation).
+* **Display Column:** Conformed zero-stripped values for human-readable reports and BI dashboards.
+
 ### Access Tiers
-* Plant-scoped operative and supervisor reads are governed through Silver `plant_access_filter`.
+* Plant-scoped operative and supervisor reads are governed through Silver `plant_access_filter` (automatically handles `SHARED` empty bins for shared warehouses, and trims spaces from user attribute lists).
 * Cluster-lead cross-plant access is documented in ADR-005 but intentionally blocked until a governed plant-to-cluster source is approved.
 
 ### Deliberate Descope
