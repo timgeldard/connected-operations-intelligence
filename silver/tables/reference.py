@@ -1,0 +1,227 @@
+"""
+Reference/Master data domain tables.
+"""
+
+import dlt
+from pyspark.sql import Row, functions as F
+from silver.helpers import get_spark, BRONZE, strip_zeros, sap_date, sap_flag
+
+spark = get_spark()
+
+# ── 1. MATERIAL ──────────────────────────────────────────────────────────────
+
+@dlt.table(
+    comment="Material master — one row per material per plant, with descriptions and compliance attributes",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "material_type"],
+)
+@dlt.expect_all_or_drop({
+    "material_code present": "material_code IS NOT NULL",
+    "plant_code present": "plant_code IS NOT NULL"
+})
+@dlt.expect_all({
+    "base_uom present": "base_uom IS NOT NULL",
+    "material_type present": "material_type IS NOT NULL"
+})
+def material():
+    mara  = spark.read.table(f"{BRONZE}.materialmaster_mara")
+    marc  = spark.read.table(f"{BRONZE}.materialforplant_marc")
+    makt  = spark.read.table(f"{BRONZE}.materialdescription_makt").filter(
+        F.col("SPRAS") == "E"
+    )
+    loft  = spark.read.table(f"{BRONZE}.loftwareplantmaterialdata_zmanpex_loft_x")
+
+    return (
+        marc.alias("p")
+        .join(mara.alias("g"), ["MATNR", "MANDT"], "left")
+        .join(makt.alias("d"), ["MATNR", "MANDT"], "left")
+        .join(loft.alias("l"), ["MATNR", "MANDT"], "left")
+        .select(
+            strip_zeros("p.MATNR").alias("material_code"),
+            F.col("p.WERKS").alias("plant_code"),
+
+            # ── Descriptions
+            F.col("d.MAKTX").alias("material_description"),
+            F.col("g.MTART").alias("material_type"),
+            F.col("g.MATKL").alias("material_group"),
+            F.col("g.MEINS").alias("base_uom"),
+
+            # ── Physical attributes
+            F.col("g.NTGEW").alias("net_weight"),
+            F.col("g.BRGEW").alias("gross_weight"),
+            F.col("g.GEWEI").alias("weight_unit"),
+            F.col("g.MHDRZ").alias("shelf_life_days"),
+            F.col("g.MHDLP").alias("minimum_remaining_shelf_life_days"),
+
+            # ── Batch & storage
+            sap_flag("g.XCHPF").alias("batch_management_required"),
+            F.col("g.IPRKZ").alias("storage_conditions_code"),
+            F.col("l.STORCOND").alias("storage_conditions_description"),
+            F.col("g.STOFF").alias("hazardous_material_number"),
+
+            # ── Plant-specific MRP
+            F.col("p.DISPO").alias("mrp_controller"),
+            F.col("p.DISMM").alias("mrp_type"),
+            F.col("p.FEVOR").alias("production_supervisor_code"),
+            F.col("p.LGPRO").alias("production_storage_location"),
+            F.col("p.LGFSB").alias("goods_receipt_storage_location"),
+
+            # ── Compliance (from Loftware Z-table)
+            sap_flag("l.KOSHERSUIT").alias("is_kosher_suitable"),
+            sap_flag("l.KOSHERAPP").alias("is_kosher_approved"),
+            sap_flag("l.HALALSUIT").alias("is_halal_suitable"),
+            sap_flag("l.HALALAPP").alias("is_halal_approved"),
+            sap_flag("l.ORGANICSUIT").alias("is_organic_suitable"),
+            sap_flag("l.ORGANICAPP").alias("is_organic_approved"),
+            F.col("l.ZGMO_CODE").alias("gmo_code"),
+
+            # ── Label templates
+            F.col("l.Z_LOFTWARE_LABEL").alias("label_layout"),
+            F.col("l.ZZPALLBLTEMP").alias("pallet_label_template"),
+
+            F.col("p.AEDATTM").alias("_replicated_at"),
+        )
+    )
+
+
+# ── 2. STORAGE LOCATION ───────────────────────────────────────────────────────
+
+@dlt.table(
+    comment="Storage locations — one row per storage location per plant",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "plant_code present": "plant_code IS NOT NULL",
+    "storage_location_code present": "storage_location_code IS NOT NULL"
+})
+def storage_location():
+    src = spark.read.table(f"{BRONZE}.storagelocation_t001l")
+    return src.select(
+        F.col("WERKS").alias("plant_code"),
+        F.col("LGORT").alias("storage_location_code"),
+        F.col("LGOBE").alias("storage_location_description"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )
+
+
+# ── 3. WORK CENTRE ────────────────────────────────────────────────────────────
+
+@dlt.table(
+    comment="Work centres — one row per work centre per plant, with descriptions",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "work_centre_code present": "work_centre_code IS NOT NULL",
+    "plant_code present": "plant_code IS NOT NULL"
+})
+def work_centre():
+    crhd = spark.read.table(f"{BRONZE}.workcenterheader_crhd")
+    crtx = spark.read.table(f"{BRONZE}.workcentertext_crtx").filter(
+        F.col("SPRAS") == "E"
+    )
+    return (
+        crhd.alias("w")
+        .join(crtx.alias("t"), ["OBJID", "MANDT"], "left")
+        .select(
+            F.col("w.ARBPL").alias("work_centre_code"),
+            F.col("w.WERKS").alias("plant_code"),
+            F.col("t.KTEXT").alias("work_centre_description"),
+            F.col("w.VERWE").alias("work_centre_category"),
+            F.col("w.KOSTL").alias("cost_centre"),
+            F.col("w.OBJID").alias("work_centre_internal_id"),
+            F.col("w.AEDATTM").alias("_replicated_at"),
+        )
+    )
+
+
+# ── 4. CAPACITY UTILISATION ───────────────────────────────────────────────────
+
+@dlt.view(name="stg_capacity_utilisation")
+@dlt.expect_all_or_drop({
+    "plant_code present": "plant_code IS NOT NULL",
+    "capacity_id present": "capacity_id IS NOT NULL"
+})
+def stg_capacity_utilisation():
+    kapa = spark.readStream.table(f"{BRONZE}.shiftparametersavailablecapacity_kapa")
+    kako = spark.read.table(f"{BRONZE}.capacityheadersegment_kako").select(
+        "KAPID", "MANDT", "ARBPL", "WERKS", "KAPAR"
+    )
+    return (
+        kapa.alias("k")
+        .join(kako.alias("h"), ["KAPID", "MANDT"], "left")
+        .select(
+            F.col("k.KAPID").alias("capacity_id"),
+            F.col("h.ARBPL").alias("work_centre_code"),
+            F.col("h.WERKS").alias("plant_code"),
+            F.col("h.KAPAR").alias("capacity_category"),
+
+            sap_date("k.DAFBI").alias("valid_from_date"),
+            sap_date("k.DAFEI").alias("valid_to_date"),
+            F.col("k.PAUSA").alias("break_duration"),
+            F.col("k.BEGDA").alias("start_time"),
+            F.col("k.ENDDA").alias("end_time"),
+            F.col("k.KAPAZ").alias("available_capacity"),
+            F.col("k.MEINH").alias("capacity_unit"),
+            F.col("k.OEFFZ").alias("operating_time"),
+            F.col("k.NORMA").alias("normal_capacity"),
+            F.col("k.RUEZT").alias("setup_time_reduction"),
+
+            F.col("k.AEDATTM").alias("_replicated_at"),
+            F.col("k.AERUNID").alias("_run_id"),
+        )
+    )
+
+dlt.apply_changes(
+    target="capacity_utilisation",
+    source="stg_capacity_utilisation",
+    keys=["capacity_id", "valid_from_date"],
+    sequence_by=F.col("_replicated_at"),
+    stored_as_scd_type=1,
+    cluster_by=["plant_code", "valid_from_date"],
+)
+
+
+# ── 5. MOVEMENT TYPE CLASSIFICATION ───────────────────────────────────────────
+
+@dlt.table(
+    name="movement_type_classification",
+    comment="Classification of SAP movement types for production and scrap reporting",
+    table_properties={"delta.enableChangeDataFeed": "true"}
+)
+def movement_type_classification():
+    # Conformed classification seed mapping
+    data = [
+        Row(
+            movement_type_code="101",
+            movement_category="PRODUCTION_RECEIPT",
+            is_production_receipt=True,
+            is_receipt_reversal=False,
+            is_scrap=False,
+            is_scrap_reversal=False
+        ),
+        Row(
+            movement_type_code="102",
+            movement_category="PRODUCTION_REVERSAL",
+            is_production_receipt=False,
+            is_receipt_reversal=True,
+            is_scrap=False,
+            is_scrap_reversal=False
+        ),
+        Row(
+            movement_type_code="551",
+            movement_category="SCRAP",
+            is_production_receipt=False,
+            is_receipt_reversal=False,
+            is_scrap=True,
+            is_scrap_reversal=False
+        ),
+        Row(
+            movement_type_code="552",
+            movement_category="SCRAP_REVERSAL",
+            is_production_receipt=False,
+            is_receipt_reversal=False,
+            is_scrap=False,
+            is_scrap_reversal=True
+        ),
+    ]
+    return spark.createDataFrame(data)
