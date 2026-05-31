@@ -138,3 +138,179 @@ def gold_inbound_outbound_throughput():
             (F.col("inbound_qty") - F.col("outbound_qty")).alias("net_qty"),
         )
     )
+
+
+@dlt.table(**gold_table_args(
+    comment="Current warehouse bin occupancy by warehouse, plant, storage type, and bin type.",
+    cluster_by=["plant_code", "warehouse_number"],
+))
+@dlt.expect("occupancy_rate bounded", "occupancy_rate >= 0.0 AND occupancy_rate <= 1.0")
+def gold_bin_occupancy():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    storage_bins = spark.read.table(f"{silver_schema}.storage_bin")
+
+    physical_bins = (
+        storage_bins
+        .groupBy("warehouse_number", "plant_code", "storage_type", "bin_type", "bin_code")
+        .agg(
+            F.max(F.when(F.col("quant_number").isNotNull(), F.lit(1)).otherwise(F.lit(0))).alias(
+                "is_occupied_bin"
+            ),
+            F.max(F.when(F.col("is_blocked"), F.lit(1)).otherwise(F.lit(0))).alias(
+                "is_blocked_bin"
+            ),
+            F.max(
+                F.when(F.col("is_blocked_for_stock_removal"), F.lit(1)).otherwise(F.lit(0))
+            ).alias("is_stock_removal_blocked_bin"),
+            F.max(F.when(F.col("is_blocked_for_putaway"), F.lit(1)).otherwise(F.lit(0))).alias(
+                "is_putaway_blocked_bin"
+            ),
+            F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("total_quantity"),
+            F.coalesce(F.sum("available_quantity"), F.lit(0.0)).alias("available_quantity"),
+            F.coalesce(F.sum("open_transfer_quantity"), F.lit(0.0)).alias(
+                "open_transfer_quantity"
+            ),
+        )
+    )
+
+    return (
+        physical_bins
+        .groupBy("warehouse_number", "plant_code", "storage_type", "bin_type")
+        .agg(
+            F.count(F.lit(1)).alias("bin_record_count"),
+            F.sum("is_occupied_bin").alias("occupied_bin_count"),
+            F.sum(1 - F.col("is_occupied_bin")).alias("empty_bin_count"),
+            F.sum("is_blocked_bin").alias("blocked_bin_count"),
+            F.sum("is_stock_removal_blocked_bin").alias("stock_removal_blocked_bin_count"),
+            F.sum("is_putaway_blocked_bin").alias("putaway_blocked_bin_count"),
+            F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("total_stock_qty"),
+            F.coalesce(F.sum("available_quantity"), F.lit(0.0)).alias("available_stock_qty"),
+            F.coalesce(F.sum("open_transfer_quantity"), F.lit(0.0)).alias(
+                "open_transfer_stock_qty"
+            ),
+        )
+        .select(
+            "warehouse_number",
+            "plant_code",
+            "storage_type",
+            "bin_type",
+            "bin_record_count",
+            "occupied_bin_count",
+            "empty_bin_count",
+            "blocked_bin_count",
+            "stock_removal_blocked_bin_count",
+            "putaway_blocked_bin_count",
+            F.when(
+                F.col("bin_record_count") > 0,
+                F.col("occupied_bin_count") / F.col("bin_record_count"),
+            ).otherwise(F.lit(0.0)).alias("occupancy_rate"),
+            "total_stock_qty",
+            "available_stock_qty",
+            "open_transfer_stock_qty",
+        )
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment="Current stock availability by plant, storage location, material, batch, and base UOM.",
+    cluster_by=["plant_code", "storage_location_code"],
+))
+def gold_stock_availability():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    batch_stock = spark.read.table(f"{silver_schema}.batch_stock")
+
+    return (
+        batch_stock
+        .groupBy("plant_code", "storage_location_code", "material_code", "batch_number", "base_uom")
+        .agg(
+            F.coalesce(F.sum("unrestricted_quantity"), F.lit(0.0)).alias("unrestricted_qty"),
+            F.coalesce(F.sum("quality_inspection_quantity"), F.lit(0.0)).alias(
+                "quality_inspection_qty"
+            ),
+            F.coalesce(F.sum("blocked_quantity"), F.lit(0.0)).alias("blocked_qty"),
+            F.coalesce(F.sum("restricted_use_quantity"), F.lit(0.0)).alias("restricted_use_qty"),
+            F.coalesce(F.sum("in_transfer_quantity"), F.lit(0.0)).alias("in_transfer_qty"),
+            F.coalesce(F.sum("blocked_returns_quantity"), F.lit(0.0)).alias(
+                "blocked_returns_qty"
+            ),
+        )
+        .select(
+            "plant_code",
+            "storage_location_code",
+            "material_code",
+            "batch_number",
+            "base_uom",
+            "unrestricted_qty",
+            "quality_inspection_qty",
+            "blocked_qty",
+            "restricted_use_qty",
+            "in_transfer_qty",
+            "blocked_returns_qty",
+            F.col("unrestricted_qty").alias("available_qty"),
+            (
+                F.col("quality_inspection_qty")
+                + F.col("blocked_qty")
+                + F.col("restricted_use_qty")
+                + F.col("blocked_returns_qty")
+            ).alias("unavailable_qty"),
+            (
+                F.col("unrestricted_qty")
+                + F.col("quality_inspection_qty")
+                + F.col("blocked_qty")
+                + F.col("restricted_use_qty")
+                + F.col("in_transfer_qty")
+                + F.col("blocked_returns_qty")
+            ).alias("total_stock_qty"),
+        )
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment="Current open transfer-requirement backlog by warehouse, plant, queue, and source/destination storage.",
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_transfer_requirement_backlog():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    transfer_requirements = spark.read.table(f"{silver_schema}.warehouse_transfer_requirement")
+
+    open_requirements = transfer_requirements.filter(
+        (~F.coalesce(F.col("is_processing_complete"), F.lit(False)))
+        & (F.coalesce(F.col("open_quantity"), F.lit(0.0)) > 0)
+    )
+
+    return (
+        open_requirements
+        .groupBy(
+            "warehouse_number",
+            "plant_code",
+            "source_storage_type",
+            "destination_storage_type",
+            "queue",
+            "transfer_priority",
+        )
+        .agg(
+            F.count(F.lit(1)).alias("backlog_item_count"),
+            F.coalesce(F.sum("open_quantity"), F.lit(0.0)).alias("open_qty"),
+            F.coalesce(F.sum("required_quantity"), F.lit(0.0)).alias("required_qty"),
+            F.min("created_datetime").alias("oldest_created_datetime"),
+            F.min("planned_execution_datetime").alias("oldest_planned_execution_datetime"),
+        )
+        .select(
+            "warehouse_number",
+            "plant_code",
+            "source_storage_type",
+            "destination_storage_type",
+            "queue",
+            "transfer_priority",
+            "backlog_item_count",
+            "open_qty",
+            "required_qty",
+            F.when(F.col("required_qty") > 0, F.col("open_qty") / F.col("required_qty"))
+            .alias("open_quantity_rate"),
+            "oldest_created_datetime",
+            "oldest_planned_execution_datetime",
+        )
+    )

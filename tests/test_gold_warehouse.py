@@ -8,8 +8,11 @@ import pytest
 from pyspark.sql import Row, SparkSession
 
 from gold.warehouse_kpis import (
+    gold_bin_occupancy,
     gold_inbound_outbound_throughput,
+    gold_stock_availability,
     gold_transfer_order_performance,
+    gold_transfer_requirement_backlog,
 )
 from silver.movement_types import (
     ISSUE_MOVEMENT_TYPES,
@@ -209,3 +212,191 @@ def test_inbound_outbound_throughput_reversal_netting_and_transfer_exclusion(spa
     assert row["transfer_qty"] == 25.0
     assert row["adjustment_qty"] == 5.0
     assert row["net_qty"] == -30.0
+
+
+def test_bin_occupancy_current_state_counts_and_stock(spark: SparkSession):
+    storage_bin_data = [
+        Row(
+            warehouse_number="001",
+            plant_code="1000",
+            storage_type="A01",
+            bin_code="B01",
+            bin_type="PALLET",
+            quant_number="Q1",
+            is_blocked=False,
+            is_blocked_for_stock_removal=False,
+            is_blocked_for_putaway=False,
+            total_quantity=10.0,
+            available_quantity=8.0,
+            open_transfer_quantity=2.0,
+        ),
+        Row(
+            warehouse_number="001",
+            plant_code="1000",
+            storage_type="A01",
+            bin_code="B01",
+            bin_type="PALLET",
+            quant_number="Q2",
+            is_blocked=False,
+            is_blocked_for_stock_removal=False,
+            is_blocked_for_putaway=True,
+            total_quantity=5.0,
+            available_quantity=5.0,
+            open_transfer_quantity=0.0,
+        ),
+        Row(
+            warehouse_number="001",
+            plant_code="1000",
+            storage_type="A01",
+            bin_code="B02",
+            bin_type="PALLET",
+            quant_number=None,
+            is_blocked=True,
+            is_blocked_for_stock_removal=True,
+            is_blocked_for_putaway=False,
+            total_quantity=None,
+            available_quantity=None,
+            open_transfer_quantity=None,
+        ),
+        Row(
+            warehouse_number="001",
+            plant_code="1000",
+            storage_type="A01",
+            bin_code="B03",
+            bin_type="PALLET",
+            quant_number="Q3",
+            is_blocked=False,
+            is_blocked_for_stock_removal=False,
+            is_blocked_for_putaway=False,
+            total_quantity=5.0,
+            available_quantity=5.0,
+            open_transfer_quantity=0.0,
+        ),
+    ]
+    spark.createDataFrame(storage_bin_data).write.mode("overwrite").saveAsTable(
+        "silver.storage_bin"
+    )
+
+    row = all_rows(gold_bin_occupancy())[0]
+
+    assert row["bin_record_count"] == 3
+    assert row["occupied_bin_count"] == 2
+    assert row["empty_bin_count"] == 1
+    assert row["blocked_bin_count"] == 1
+    assert row["stock_removal_blocked_bin_count"] == 1
+    assert row["putaway_blocked_bin_count"] == 1
+    assert abs(row["occupancy_rate"] - (2 / 3)) < 0.0001
+    assert row["total_stock_qty"] == 20.0
+    assert row["available_stock_qty"] == 18.0
+    assert row["open_transfer_stock_qty"] == 2.0
+
+
+def test_stock_availability_current_batch_state(spark: SparkSession):
+    batch_stock_data = [
+        Row(
+            plant_code="1000",
+            storage_location_code="SL01",
+            material_code="12345",
+            batch_number="B1",
+            base_uom="KG",
+            unrestricted_quantity=10.0,
+            quality_inspection_quantity=2.0,
+            blocked_quantity=1.0,
+            restricted_use_quantity=3.0,
+            in_transfer_quantity=4.0,
+            blocked_returns_quantity=5.0,
+        ),
+        Row(
+            plant_code="1000",
+            storage_location_code="SL01",
+            material_code="12345",
+            batch_number="B1",
+            base_uom="KG",
+            unrestricted_quantity=6.0,
+            quality_inspection_quantity=0.0,
+            blocked_quantity=0.0,
+            restricted_use_quantity=1.0,
+            in_transfer_quantity=0.0,
+            blocked_returns_quantity=0.0,
+        ),
+    ]
+    spark.createDataFrame(batch_stock_data).write.mode("overwrite").saveAsTable(
+        "silver.batch_stock"
+    )
+
+    row = all_rows(gold_stock_availability())[0]
+
+    assert row["unrestricted_qty"] == 16.0
+    assert row["available_qty"] == 16.0
+    assert row["unavailable_qty"] == 12.0
+    assert row["in_transfer_qty"] == 4.0
+    assert row["total_stock_qty"] == 32.0
+
+
+def test_transfer_requirement_backlog_filters_completed_and_closed_items(spark: SparkSession):
+    transfer_requirement_data = [
+        Row(
+            warehouse_number="001",
+            plant_code="1000",
+            source_storage_type="A01",
+            destination_storage_type="B01",
+            queue="Q1",
+            transfer_priority="1",
+            is_processing_complete=False,
+            open_quantity=7.0,
+            required_quantity=10.0,
+            created_datetime=datetime(2026, 5, 30, 7, 0, 0),
+            planned_execution_datetime=datetime(2026, 5, 30, 9, 0, 0),
+        ),
+        Row(
+            warehouse_number="001",
+            plant_code="1000",
+            source_storage_type="A01",
+            destination_storage_type="B01",
+            queue="Q1",
+            transfer_priority="1",
+            is_processing_complete=False,
+            open_quantity=3.0,
+            required_quantity=5.0,
+            created_datetime=datetime(2026, 5, 30, 8, 0, 0),
+            planned_execution_datetime=datetime(2026, 5, 30, 10, 0, 0),
+        ),
+        Row(
+            warehouse_number="001",
+            plant_code="1000",
+            source_storage_type="A01",
+            destination_storage_type="B01",
+            queue="Q1",
+            transfer_priority="1",
+            is_processing_complete=True,
+            open_quantity=9.0,
+            required_quantity=9.0,
+            created_datetime=datetime(2026, 5, 30, 6, 0, 0),
+            planned_execution_datetime=datetime(2026, 5, 30, 8, 0, 0),
+        ),
+        Row(
+            warehouse_number="001",
+            plant_code="1000",
+            source_storage_type="A01",
+            destination_storage_type="B01",
+            queue="Q1",
+            transfer_priority="1",
+            is_processing_complete=False,
+            open_quantity=0.0,
+            required_quantity=4.0,
+            created_datetime=datetime(2026, 5, 30, 6, 30, 0),
+            planned_execution_datetime=datetime(2026, 5, 30, 8, 30, 0),
+        ),
+    ]
+    spark.createDataFrame(transfer_requirement_data).write.mode("overwrite").saveAsTable(
+        "silver.warehouse_transfer_requirement"
+    )
+
+    row = all_rows(gold_transfer_requirement_backlog())[0]
+
+    assert row["backlog_item_count"] == 2
+    assert row["open_qty"] == 10.0
+    assert row["required_qty"] == 15.0
+    assert abs(row["open_quantity_rate"] - (10.0 / 15.0)) < 0.0001
+    assert row["oldest_created_datetime"] == datetime(2026, 5, 30, 7, 0, 0)
+    assert row["oldest_planned_execution_datetime"] == datetime(2026, 5, 30, 9, 0, 0)

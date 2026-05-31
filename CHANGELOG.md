@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Added a paused Databricks job resource to refresh triggered Silver domains before Gold on an explicit schedule.
 - Added conformed SAP movement-type taxonomy for warehouse KPI event-family classification.
 - Added Gold warehouse flow KPIs for transfer-order performance and inbound/outbound throughput.
+- Added current-state Gold warehouse KPIs for bin occupancy, stock availability, and transfer-requirement backlog.
 
 ### Changed
 - Refactored `silver/dlt_silver_fast.py`, `silver/dlt_silver_slow.py`, and `silver/dlt_silver_quality.py` to act as pipeline entrypoints, importing tables from the domain files.
