@@ -35,8 +35,9 @@ try:
     SILVER_CATALOG = spark.conf.get('silver_catalog', 'connected_plant_prod')
     SILVER_SCHEMA = spark.conf.get('silver_schema', 'silver')
     ROW_FILTER_FN = f"{SILVER_CATALOG}.{SILVER_SCHEMA}.plant_access_filter"
-    # Row filter is enabled by default, but can be explicitly disabled via Spark config (e.g. in unit tests)
-    APPLY_ROW_FILTER = spark.conf.get("gold_apply_row_filter", "true").lower() == "true"
+    # Gold runs as a trusted aggregate layer. Plant security is enforced on direct
+    # Silver consumption; applying row filters here would force full MV refreshes.
+    APPLY_ROW_FILTER = spark.conf.get("gold_apply_row_filter", "false").lower() == "true"
 except Exception:
     # Local/manual fallback default only (points to production)
     ROW_FILTER_FN = "connected_plant_prod.silver.plant_access_filter"
@@ -58,7 +59,7 @@ def gold_table_args(comment: str, cluster_by: list) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dlt.table(**gold_table_args(
-    comment="Shift-level production output summary. Aggregates quantity and scrap by posting date and plant.",
+    comment="Daily production output summary. Aggregates quantity and scrap by posting date and plant.",
     cluster_by=["plant_code", "posting_date"]
 ))
 @dlt.expect("produced_quantity non-negative", "produced_quantity >= 0.0")
@@ -91,7 +92,7 @@ def gold_shift_output_summary():
     )
 
 @dlt.table(**gold_table_args(
-    comment="On-Time-In-Full (OTIF) metrics comparing scheduled vs actual process order completions.",
+    comment="Production order schedule-adherence metrics comparing scheduled vs actual completions.",
     cluster_by=["plant_code", "actual_finish_date"]
 ))
 @dlt.expect("order_quantity non-negative", "order_quantity >= 0.0")

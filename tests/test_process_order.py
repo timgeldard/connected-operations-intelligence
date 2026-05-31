@@ -6,8 +6,7 @@ Business rules under test:
   - LOEKZ flag maps to is_deletion_flagged
   - Material code and order number are zero-stripped
   - Scheduling dates from AFKO are correctly parsed
-  - Left join: orders without an AFKO row are retained (material fields NULL)
-  - Order type filter: when PP_PI_ORDER_TYPES is set, non-matching orders excluded
+  - Process order category filter: AUFK.AUTYP='10' rows are retained
 """
 
 from datetime import date, datetime
@@ -22,7 +21,7 @@ from tests.conftest import all_rows, first_row
 # Explicit schemas prevent inference failures when rows contain None fields
 # or when the list is empty (left-join tests).
 _AUFK_SCHEMA = (
-    "AUFNR STRING, MANDT STRING, WERKS STRING, AUART STRING, KTEXT STRING, "
+    "AUFNR STRING, MANDT STRING, WERKS STRING, AUART STRING, AUTYP STRING, KTEXT STRING, "
     "ERDAT STRING, ERNAM STRING, PHAS0 STRING, PHAS1 STRING, PHAS2 STRING, "
     "PHAS3 STRING, LOEKZ STRING, KDAUF STRING, STDAT STRING, "
     "RecordActivity STRING, AEDATTM STRING"
@@ -48,6 +47,7 @@ def apply_process_order_transform(
     return (
         aufk.alias("k")
         .join(afko.alias("h"), ["AUFNR", "MANDT"], "left")
+        .filter(F.col("k.AUTYP") == "10")
         .select(
             strip_zeros("k.AUFNR").alias("order_number"),
             F.col("k.WERKS").alias("plant_code"),
@@ -82,6 +82,7 @@ def make_aufk(
     MANDT="100",
     WERKS="1000",
     AUART="PI01",
+    AUTYP="10",
     KTEXT="Test Process Order",
     ERDAT="20241201",
     ERNAM="JSMITH",
@@ -93,7 +94,7 @@ def make_aufk(
     AEDATTM="2024-12-01T10:00:00",
 ) -> Row:
     return Row(
-        AUFNR=AUFNR, MANDT=MANDT, WERKS=WERKS, AUART=AUART,
+        AUFNR=AUFNR, MANDT=MANDT, WERKS=WERKS, AUART=AUART, AUTYP=AUTYP,
         KTEXT=KTEXT, ERDAT=ERDAT, ERNAM=ERNAM,
         PHAS0=PHAS0, PHAS1=PHAS1, PHAS2=PHAS2, PHAS3=PHAS3,
         LOEKZ=LOEKZ, KDAUF=KDAUF, STDAT=STDAT,
@@ -294,3 +295,12 @@ class TestProcessOrderJoin:
         )
         row = first_row(df)
         assert row["record_activity"] == "D"
+
+    def test_non_process_order_category_excluded(self, spark):
+        """AUFK contains many order categories; only AUTYP='10' is PP/PI."""
+        df = apply_process_order_transform(
+            spark,
+            [make_aufk(AUTYP="30", AUART="PM01", AUFNR="000000099998")],
+            [],
+        )
+        assert len(all_rows(df)) == 0

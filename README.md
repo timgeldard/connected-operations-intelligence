@@ -2,7 +2,7 @@
 
 Bronze SAP replicas → Silver operational state → Gold reporting aggregates.
 
-Aecorsoft replicates SAP data incrementally into bronze. This bundle transforms it into 14 clean silver tables and computes downstream Gold aggregates for OEE, OTIF, and production output.
+Aecorsoft replicates SAP data incrementally into bronze. This bundle transforms it into 14 clean silver tables and computes downstream Gold aggregates for production output, process-order schedule adherence, and production quality.
 
 ## Architecture
 
@@ -25,7 +25,7 @@ Aecorsoft replicates SAP data incrementally into bronze. This bundle transforms 
    gold_shift_output_summary · gold_order_otif_metrics · gold_plant_production_quality_summary
 ```
 
-Silver tables use SCD Type 1 (`apply_changes`) with liquid clustering and Unity Catalog Row Filters for plant-level access control. Gold tables aggregate Silver conformed data into Materialized Views with native row filters.
+Silver tables use SCD Type 1 (`apply_changes`) with liquid clustering and Unity Catalog Row Filters for plant-level access control. Gold tables aggregate Silver conformed data into Materialized Views and are intended to run as a trusted aggregate layer to avoid row-filter-driven full refreshes.
 
 ## Quick start
 

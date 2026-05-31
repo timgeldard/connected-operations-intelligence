@@ -85,7 +85,7 @@ Current checks by table:
 | `batch_stock` | material_code, plant_code | unrestricted_quantity ≥ 0 |
 | `warehouse_transfer_order` | warehouse_number, transfer_order_number | — |
 | `warehouse_transfer_requirement` | warehouse_number, transfer_requirement_number | required_quantity > 0 |
-| `storage_bin` | warehouse_number, bin_code | — |
+| `storage_bin` | warehouse_number, storage_type, bin_code, occupancy key | — |
 | `downtime_event` | plant_code, start_datetime | duration ≥ 0 |
 | `quality_inspection_lot` | inspection_lot_number, plant_code | material_code present, inspection dates ordered |
 | `material` | material_code, plant_code | base_uom present, material_type present |
@@ -106,10 +106,10 @@ Current checks by table:
 | `batch_stock` | 1 row / batch × plant × storage location | MCHB | Supervisor, Operative |
 | `warehouse_transfer_order` | 1 row / transfer order item | LTAK + LTAP | Supervisor, Operative |
 | `warehouse_transfer_requirement` | 1 row / transfer requirement item | LTBK + LTBP | Supervisor |
-| `storage_bin` | 1 row / bin (with current quant if occupied) | LAGP + LQUA | Supervisor, Operative |
+| `storage_bin` | 1 row / bin occupancy slot; multiple quants in the same bin produce multiple rows | LAGP + LQUA | Supervisor, Operative |
 | `downtime_event` | 1 row / downtime event | ZPEXPM_DWNT | Plant Manager, Supervisor |
 | `quality_inspection_lot` | 1 row / inspection lot | QALS + QMIH + QAMV | Plant Manager, Supervisor |
-| `material` | 1 row / material × plant | MARA + MARC + MAKT + ZMANPEX_LOFT_X | All |
+| `material` | 1 row / material × plant | MARA + MARC + MAKT | All |
 | `storage_location` | 1 row / storage location | T001L | All |
 | `work_centre` | 1 row / work centre × plant | CRHD + CRTX | All |
 | `capacity_utilisation` | 1 row / capacity × period | KAPA + KAKO | Plant Manager |
@@ -139,9 +139,9 @@ SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
 ```
 
 ### Storage Bin Row-Level Security
-* **Current Status:** Not filtered by the plant-level row filter because the grain of `storage_bin` is warehouse/bin level (does not naturally contain `plant_code`).
-* **Risk:** Users with table access to `storage_bin` may see bins for warehouses outside their plant scope.
-* **Mitigation:** In future iterations, derive `plant_code` into `storage_bin` via warehouse/storage-location mappings or implement a dedicated warehouse-level filter (`warehouse_access_filter`).
+* **Current Status:** Filtered by the plant-level row filter using the derived `plant_code`. Occupied bins prefer the quant plant; empty bins derive plant from the warehouse-to-plant mapping.
+* **Risk:** Shared warehouses are assigned to a deterministic primary plant for empty bins until a warehouse-level access model exists.
+* **Mitigation:** Review shared-warehouse assignments with plant operations before granting broad direct access to `storage_bin`.
 
 ---
 

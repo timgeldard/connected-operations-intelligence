@@ -35,11 +35,10 @@ class TestStripZeros:
         assert result == "10"
 
     def test_single_zero(self, spark):
-        """A literal '0' (e.g. item 0) becomes empty string — callers must handle."""
+        """A fully zero-padded key is normalised to NULL, not an empty string."""
         df = spark.createDataFrame([Row(v="0")])
         result = df.withColumn("out", strip_zeros("v")).collect()[0]["out"]
-        # SAP never uses '0' as a meaningful key — document the behaviour explicitly
-        assert result == ""
+        assert result is None
 
     def test_null_passthrough(self, spark):
         """NULL values propagate through unchanged."""
@@ -48,10 +47,10 @@ class TestStripZeros:
         assert result is None
 
     def test_alphanumeric_with_leading_zeros(self, spark):
-        """Alphanumeric batch numbers like '0000ABC001' stripped to 'ABC001'."""
+        """Alphanumeric identifiers are preserved; ALPHA stripping is numeric-only."""
         df = spark.createDataFrame([Row(v="0000ABC001")])
         result = df.withColumn("out", strip_zeros("v")).collect()[0]["out"]
-        assert result == "ABC001"
+        assert result == "0000ABC001"
 
     def test_ten_char_padded_order(self, spark):
         """10-char padded sales order number."""
@@ -97,6 +96,11 @@ class TestSapDate:
         df = spark.createDataFrame([Row(d="20240229")])
         result = df.withColumn("out", sap_date("d")).collect()[0]["out"]
         assert result == date(2024, 2, 29)
+
+    def test_invalid_date_returns_null(self, spark):
+        df = spark.createDataFrame([Row(d="20240230")])
+        result = df.withColumn("out", sap_date("d")).collect()[0]["out"]
+        assert result is None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

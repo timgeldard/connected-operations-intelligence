@@ -31,13 +31,11 @@ def material():
     makt  = spark.read.table(f"{BRONZE}.materialdescription_makt").filter(
         F.col("SPRAS") == "E"
     )
-    loft  = spark.read.table(f"{BRONZE}.loftwareplantmaterialdata_zmanpex_loft_x")
 
     return (
         marc.alias("p")
         .join(mara.alias("g"), ["MATNR", "MANDT"], "left")
         .join(makt.alias("d"), ["MATNR", "MANDT"], "left")
-        .join(loft.alias("l"), ["MATNR", "MANDT"], "left")
         .select(
             strip_zeros("p.MATNR").alias("material_code"),
             F.col("p.WERKS").alias("plant_code"),
@@ -58,7 +56,6 @@ def material():
             # ── Batch & storage
             sap_flag("g.XCHPF").alias("batch_management_required"),
             F.col("g.IPRKZ").alias("storage_conditions_code"),
-            F.col("l.STORCOND").alias("storage_conditions_description"),
             F.col("g.STOFF").alias("hazardous_material_number"),
 
             # ── Plant-specific MRP
@@ -67,19 +64,6 @@ def material():
             F.col("p.FEVOR").alias("production_supervisor_code"),
             F.col("p.LGPRO").alias("production_storage_location"),
             F.col("p.LGFSB").alias("goods_receipt_storage_location"),
-
-            # ── Compliance (from Loftware Z-table)
-            sap_flag("l.KOSHERSUIT").alias("is_kosher_suitable"),
-            sap_flag("l.KOSHERAPP").alias("is_kosher_approved"),
-            sap_flag("l.HALALSUIT").alias("is_halal_suitable"),
-            sap_flag("l.HALALAPP").alias("is_halal_approved"),
-            sap_flag("l.ORGANICSUIT").alias("is_organic_suitable"),
-            sap_flag("l.ORGANICAPP").alias("is_organic_approved"),
-            F.col("l.ZGMO_CODE").alias("gmo_code"),
-
-            # ── Label templates
-            F.col("l.Z_LOFTWARE_LABEL").alias("label_layout"),
-            F.col("l.ZZPALLBLTEMP").alias("pallet_label_template"),
 
             F.col("p.AEDATTM").alias("_replicated_at"),
         )

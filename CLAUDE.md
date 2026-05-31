@@ -35,7 +35,7 @@ silver/
   helpers.py                      # Shared DLT helpers and constants
   design_spec.md                  # Silver architecture and table catalogue
 gold/
-  dlt_gold_pipeline.py            # Gold KPI table definitions (OEE, OTIF, shift output)
+  dlt_gold_pipeline.py            # Gold aggregate definitions (daily output, schedule adherence, quality)
   design_spec.md                  # Gold architecture and KPI specs
 tests/                            # Unit tests for silver helpers and gold tables
 ```
@@ -71,7 +71,7 @@ If skills are not available, install them: `databricks aitools install`
 
 ## Key notes
 
-- `PP_PI_ORDER_TYPES` in `silver/helpers.py` is `None` — all order types included until confirmed with plant teams.
+- `process_order` is always restricted to AUFK `AUTYP = '10'` (PP/PI process orders). `PP_PI_ORDER_TYPES` can further narrow AUART values once plant teams confirm the allowlist.
 - Dev target writes to `connected_plant_dev` catalog, UAT to `connected_plant_uat`, and Prod to `connected_plant_prod`.
 - Email recipients are parameterized via `notification_email` variable in `databricks.yml`.
 - ADRs for key design decisions live in `docs/adr/`.

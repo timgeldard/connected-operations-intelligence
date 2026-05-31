@@ -7,6 +7,7 @@ from pyspark.sql import functions as F
 
 from silver.helpers import (
     BRONZE,
+    PP_PI_ORDER_CATEGORY,
     PP_PI_ORDER_TYPES,
     get_spark,
     sap_date,
@@ -43,17 +44,18 @@ def stg_process_order():
     aufk = spark.read.table(f"{BRONZE}.ordermaster_aufk")
     afko = spark.read.table(f"{BRONZE}.productionorderobject_afko")
 
-    order_filter = (
+    order_type_filter = (
         F.col("k.AUART").isin(PP_PI_ORDER_TYPES)
         if PP_PI_ORDER_TYPES
         else F.lit(True)
     )
+    process_order_filter = (F.col("k.AUTYP") == PP_PI_ORDER_CATEGORY) & order_type_filter
 
     return (
         changed_keys.alias("c")
         .join(aufk.alias("k"), ["AUFNR", "MANDT"], "left")
         .join(afko.alias("h"), ["AUFNR", "MANDT"], "left")
-        .filter(order_filter)
+        .filter(process_order_filter)
         .select(
             # ── Natural key
             strip_zeros("k.AUFNR").alias("order_number"),

@@ -129,6 +129,7 @@ def stg_storage_bin():
             F.col("b.SPGRU").alias("blocking_reason_code"),
 
             # ── Current quant (NULL if bin is empty)
+            F.coalesce(F.col("q.LQNUM"), F.lit("__EMPTY__")).alias("_storage_bin_occupancy_key"),
             F.col("q.LQNUM").alias("quant_number"),
             strip_zeros("q.MATNR").alias("material_code"),
             strip_zeros("q.CHARG").alias("batch_number"),
@@ -160,7 +161,7 @@ dlt.create_streaming_table(
 dlt.apply_changes(
     target="storage_bin",
     source="stg_storage_bin",
-    keys=["warehouse_number", "storage_type", "bin_code"],
+    keys=["warehouse_number", "storage_type", "bin_code", "_storage_bin_occupancy_key"],
     sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     stored_as_scd_type=1,
 )

@@ -114,19 +114,19 @@ The Unity Catalog row filter (`plant_access_filter`) must be applied after the f
   ```
 
 ### Gold Layer
-No manual SQL script is required for the Gold tables. The row filter is **automatically applied at deploy/refresh time** via the `@dlt.table` configuration properties pointing to `{silver_schema}.plant_access_filter` dynamically.
+No manual SQL script is required for the Gold tables. Gold row filters are disabled by default (`gold_apply_row_filter=false`) so materialized views can use incremental refresh where Databricks supports it. Run the Gold pipeline as a trusted/admin identity that can read the row-filtered Silver tables; enforce plant-level security for direct Silver consumers.
 
 ---
 
-## 7. PP_PI_ORDER_TYPES TODO
+## 7. PP/PI Process Order Scope
 
-`PP_PI_ORDER_TYPES = None` in `silver/dlt_silver_pipeline.py` — all order types are currently included. Once process order types are confirmed with plant operations teams, update this constant and redeploy. A selective full refresh of `process_order` and `process_order_operation` will be required.
+`process_order` is restricted to AUFK `AUTYP = '10'`, the PP/PI process-order category. `PP_PI_ORDER_TYPES = None` in `silver/helpers.py` means no additional AUART allowlist is applied. Once process order types are confirmed with plant operations teams, update this constant and redeploy. A selective full refresh of `process_order` and `process_order_operation` will be required.
 
 ---
 
 ## 8. Running the Gold Pipeline
 
-Since the Gold pipeline runs in **Triggered (batch)** mode, it should be orchestrated to run periodically (e.g. daily, or immediately following the conclusion of large batch events).
+Since the Gold pipeline runs in **Triggered (batch)** mode, use the bundled `gold_refresh_job` to refresh slow Silver domains and then Gold three times daily. The Silver fast pipeline is continuous and is not included as a scheduled job task because continuous pipeline tasks do not naturally complete.
 
 Gold reads from Silver tables that have Unity Catalog row filters applied. Databricks may choose full refresh for materialized views sourced from row-filtered tables, even on serverless. After first deployment, compare Gold update duration and input rows across several runs before increasing schedule frequency.
 
@@ -134,4 +134,4 @@ To run the Gold pipeline manually:
 ```bash
 databricks pipelines start-update <gold-pipeline-id> --profile DEFAULT
 ```
-Alternatively, schedule it using a Databricks Job task referencing `${resources.pipelines.gold_pipeline.id}`.
+The bundled job is paused by default. Enable it after validating target-specific cadence and notification settings.

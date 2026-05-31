@@ -8,9 +8,15 @@ All notable changes to this project will be documented in this file.
 - Created `silver/tables/` domain-specific modular directory structure.
 - Grouped expectations using `@dlt.expect_all` and `@dlt.expect_all_or_drop` for improved pipeline maintainability.
 - Consolidated unit tests to import directly from domain-specific modules.
+- Added a paused Databricks job resource to refresh triggered Silver domains before Gold on an explicit schedule.
 
 ### Changed
 - Refactored `silver/dlt_silver_fast.py`, `silver/dlt_silver_slow.py`, and `silver/dlt_silver_quality.py` to act as pipeline entrypoints, importing tables from the domain files.
+- Restricted `process_order` to PP/PI AUFK order category `AUTYP = '10'`.
+- Changed `storage_bin` CDC keys to preserve multiple quants in the same bin.
+- Removed unused Loftware enrichment fields from the Silver material table.
+- Disabled Gold row filters by default to avoid row-filter-driven full materialized-view refreshes.
+- Hardened SAP key/date helpers for numeric-only ALPHA stripping and invalid-date tolerance.
 
 ## [0.2.0] - 2026-05-31
 
