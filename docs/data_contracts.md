@@ -120,5 +120,18 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Freshness Expectation**: Batch triggered.
 * **Snapshot Caveat**: Daily append snapshots are intentionally not part of this contract until retention and scheduling requirements are agreed.
 
+### 9. `gold.gold_stock_expiry_risk`
+* **Grain**: 1 row per plant × material × batch × base UOM
+* **Source Silver Tables**: `silver.storage_bin` + `silver.material`
+* **Aggregation Logic**:
+  * Includes current bin/quant stock where material, batch, and expiry date are present.
+  * Buckets quantities into expired, <7 days, 7-30 days, 30-90 days, and OK based on `expiry_date` vs current date.
+  * Flags minimum shelf-life breaches using `minimum_remaining_shelf_life_days` from material master.
+* **Freshness Expectation**: Batch triggered.
+
+### Access Tiers
+* Plant-scoped operative and supervisor reads are governed through Silver `plant_access_filter`.
+* Cluster-lead cross-plant access is documented in ADR-005 but intentionally blocked until a governed plant-to-cluster source is approved.
+
 ### Deliberate Descope
 * Loftware compliance and label-template attributes are excluded from the reporting contracts because they are not used by the current Gold outputs.
