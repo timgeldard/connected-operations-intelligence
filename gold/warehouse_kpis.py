@@ -314,3 +314,127 @@ def gold_transfer_requirement_backlog():
             "oldest_planned_execution_datetime",
         )
     )
+
+
+@dlt.table(**gold_table_args(
+    comment="Current batch stock expiry risk by plant, material, batch, and base UOM.",
+    cluster_by=["plant_code", "minimum_expiry_date"],
+))
+@dlt.expect("total stock quantity non-negative", "total_stock_qty >= 0.0")
+def gold_stock_expiry_risk():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    storage_bins = spark.read.table(f"{silver_schema}.storage_bin")
+    materials = spark.read.table(f"{silver_schema}.material").select(
+        "plant_code",
+        "material_code",
+        "material_description",
+        "shelf_life_days",
+        "minimum_remaining_shelf_life_days",
+    )
+
+    stock_with_material = storage_bins.join(
+        materials,
+        ["plant_code", "material_code"],
+        "left",
+    ).filter(
+        F.col("material_code").isNotNull()
+        & F.col("batch_number").isNotNull()
+        & F.col("expiry_date").isNotNull()
+    )
+
+    days_to_expiry = F.datediff(F.col("expiry_date"), F.current_date())
+    quantity = F.coalesce(F.col("total_quantity"), F.lit(0.0))
+
+    return (
+        stock_with_material
+        .withColumn("days_to_expiry", days_to_expiry)
+        .groupBy(
+            "plant_code",
+            "material_code",
+            "material_description",
+            "batch_number",
+            "base_uom",
+        )
+        .agg(
+            F.min("expiry_date").alias("minimum_expiry_date"),
+            F.min("goods_receipt_date").alias("earliest_goods_receipt_date"),
+            F.min("days_to_expiry").alias("minimum_days_to_expiry"),
+            F.max("shelf_life_days").alias("shelf_life_days"),
+            F.max("minimum_remaining_shelf_life_days").alias(
+                "minimum_remaining_shelf_life_days"
+            ),
+            F.coalesce(F.sum(quantity), F.lit(0.0)).alias("total_stock_qty"),
+            F.coalesce(
+                F.sum(F.when(F.col("days_to_expiry") < 0, quantity).otherwise(F.lit(0.0))),
+                F.lit(0.0),
+            ).alias("expired_qty"),
+            F.coalesce(
+                F.sum(
+                    F.when(
+                        (F.col("days_to_expiry") >= 0) & (F.col("days_to_expiry") < 7),
+                        quantity,
+                    ).otherwise(F.lit(0.0))
+                ),
+                F.lit(0.0),
+            ).alias("expiry_risk_lt_7d_qty"),
+            F.coalesce(
+                F.sum(
+                    F.when(
+                        (F.col("days_to_expiry") >= 7) & (F.col("days_to_expiry") < 30),
+                        quantity,
+                    ).otherwise(F.lit(0.0))
+                ),
+                F.lit(0.0),
+            ).alias("expiry_risk_7_30d_qty"),
+            F.coalesce(
+                F.sum(
+                    F.when(
+                        (F.col("days_to_expiry") >= 30) & (F.col("days_to_expiry") < 90),
+                        quantity,
+                    ).otherwise(F.lit(0.0))
+                ),
+                F.lit(0.0),
+            ).alias("expiry_risk_30_90d_qty"),
+            F.coalesce(
+                F.sum(F.when(F.col("days_to_expiry") >= 90, quantity).otherwise(F.lit(0.0))),
+                F.lit(0.0),
+            ).alias("expiry_ok_qty"),
+            F.coalesce(
+                F.sum(
+                    F.when(
+                        F.col("days_to_expiry")
+                        < F.coalesce(F.col("minimum_remaining_shelf_life_days"), F.lit(0)),
+                        quantity,
+                    ).otherwise(F.lit(0.0))
+                ),
+                F.lit(0.0),
+            ).alias("minimum_shelf_life_breach_qty"),
+        )
+        .select(
+            "plant_code",
+            "material_code",
+            "material_description",
+            "batch_number",
+            "base_uom",
+            "minimum_expiry_date",
+            "earliest_goods_receipt_date",
+            "minimum_days_to_expiry",
+            "shelf_life_days",
+            "minimum_remaining_shelf_life_days",
+            "total_stock_qty",
+            "expired_qty",
+            "expiry_risk_lt_7d_qty",
+            "expiry_risk_7_30d_qty",
+            "expiry_risk_30_90d_qty",
+            "expiry_ok_qty",
+            "minimum_shelf_life_breach_qty",
+            F.when(F.col("expired_qty") > 0, F.lit("EXPIRED"))
+            .when(F.col("expiry_risk_lt_7d_qty") > 0, F.lit("LT_7_DAYS"))
+            .when(F.col("expiry_risk_7_30d_qty") > 0, F.lit("DAYS_7_30"))
+            .when(F.col("expiry_risk_30_90d_qty") > 0, F.lit("DAYS_30_90"))
+            .otherwise(F.lit("OK"))
+            .alias("highest_expiry_risk_bucket"),
+            (F.col("minimum_shelf_life_breach_qty") > 0).alias("has_minimum_shelf_life_breach"),
+        )
+    )

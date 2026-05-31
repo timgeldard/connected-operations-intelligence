@@ -2,7 +2,7 @@
 Tests for warehouse Gold KPI transformations.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 from pyspark.sql import Row, SparkSession
@@ -11,6 +11,7 @@ from gold.warehouse_kpis import (
     gold_bin_occupancy,
     gold_inbound_outbound_throughput,
     gold_stock_availability,
+    gold_stock_expiry_risk,
     gold_transfer_order_performance,
     gold_transfer_requirement_backlog,
 )
@@ -400,3 +401,81 @@ def test_transfer_requirement_backlog_filters_completed_and_closed_items(spark: 
     assert abs(row["open_quantity_rate"] - (10.0 / 15.0)) < 0.0001
     assert row["oldest_created_datetime"] == datetime(2026, 5, 30, 7, 0, 0)
     assert row["oldest_planned_execution_datetime"] == datetime(2026, 5, 30, 9, 0, 0)
+
+
+def test_stock_expiry_risk_buckets_and_minimum_shelf_life(spark: SparkSession):
+    today = date.today()
+    storage_bin_data = [
+        Row(
+            plant_code="1000",
+            material_code="12345",
+            batch_number="B1",
+            base_uom="KG",
+            expiry_date=today - timedelta(days=1),
+            goods_receipt_date=today - timedelta(days=120),
+            total_quantity=2.0,
+        ),
+        Row(
+            plant_code="1000",
+            material_code="12345",
+            batch_number="B1",
+            base_uom="KG",
+            expiry_date=today + timedelta(days=3),
+            goods_receipt_date=today - timedelta(days=90),
+            total_quantity=3.0,
+        ),
+        Row(
+            plant_code="1000",
+            material_code="12345",
+            batch_number="B1",
+            base_uom="KG",
+            expiry_date=today + timedelta(days=20),
+            goods_receipt_date=today - timedelta(days=60),
+            total_quantity=5.0,
+        ),
+        Row(
+            plant_code="1000",
+            material_code="12345",
+            batch_number="B1",
+            base_uom="KG",
+            expiry_date=today + timedelta(days=45),
+            goods_receipt_date=today - timedelta(days=30),
+            total_quantity=7.0,
+        ),
+        Row(
+            plant_code="1000",
+            material_code="12345",
+            batch_number="B1",
+            base_uom="KG",
+            expiry_date=today + timedelta(days=120),
+            goods_receipt_date=today,
+            total_quantity=11.0,
+        ),
+    ]
+    material_data = [
+        Row(
+            plant_code="1000",
+            material_code="12345",
+            material_description="Finished Good",
+            shelf_life_days=180,
+            minimum_remaining_shelf_life_days=30,
+        )
+    ]
+    spark.createDataFrame(storage_bin_data).write.mode("overwrite").saveAsTable(
+        "silver.storage_bin"
+    )
+    spark.createDataFrame(material_data).write.mode("overwrite").saveAsTable("silver.material")
+
+    row = all_rows(gold_stock_expiry_risk())[0]
+
+    assert row["minimum_expiry_date"] == today - timedelta(days=1)
+    assert row["minimum_days_to_expiry"] == -1
+    assert row["total_stock_qty"] == 28.0
+    assert row["expired_qty"] == 2.0
+    assert row["expiry_risk_lt_7d_qty"] == 3.0
+    assert row["expiry_risk_7_30d_qty"] == 5.0
+    assert row["expiry_risk_30_90d_qty"] == 7.0
+    assert row["expiry_ok_qty"] == 11.0
+    assert row["minimum_shelf_life_breach_qty"] == 10.0
+    assert row["highest_expiry_risk_bucket"] == "EXPIRED"
+    assert row["has_minimum_shelf_life_breach"] is True

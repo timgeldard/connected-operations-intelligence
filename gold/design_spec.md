@@ -98,5 +98,14 @@ Managed via Declarative Automation Bundle (DAB).
 - **Freshness:** Depends on `silver_fast_pipeline` transfer-requirement refresh and the triggered Gold refresh job.
 - **Snapshot note:** This PR intentionally adds current-state materialized views only. Daily append snapshots should be added with an explicit retention and scheduling decision.
 
+### `gold_stock_expiry_risk`
+- **Granularity:** 1 row per plant × material × batch × base UOM.
+- **Description:** Current batch expiry exposure from storage-bin quants joined to material shelf-life policy, with expired, <7 day, 7-30 day, 30-90 day, and OK quantity buckets.
+- **Freshness:** Depends on `silver_fast_pipeline` storage-bin refresh, `silver_slow_pipeline` material refresh, and the triggered Gold refresh job.
+
+### Access-tier foundation
+- **Current state:** Operative and supervisor access remains plant-scoped through Silver `plant_access_filter`.
+- **Cluster-lead tier:** Documented in ADR-005. Execution is blocked until a governed plant-to-cluster source is selected.
+
 ### Deliberate exclusions
 - Loftware compliance and label-template attributes are not included in Silver `material` or Gold because they are not used by the current reporting layer.
