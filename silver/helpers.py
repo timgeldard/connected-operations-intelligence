@@ -5,14 +5,14 @@ from pyspark.sql import functions as F
 def get_spark() -> SparkSession:
     return SparkSession.builder.getOrCreate()
 
-try:
-    spark = get_spark()
-    BRONZE = (
-        f"{spark.conf.get('source_catalog', 'connected_plant_prod')}"
-        f".{spark.conf.get('source_schema', 'sap')}"
-    )
-except Exception:
-    BRONZE = "connected_plant_prod.sap"
+spark = get_spark()
+source_catalog = spark.conf.get("source_catalog", None)
+source_schema = spark.conf.get("source_schema", None)
+if not source_catalog:
+    raise ValueError("source_catalog configuration must be set in the Spark session.")
+if not source_schema:
+    raise ValueError("source_schema configuration must be set in the Spark session.")
+BRONZE = f"{source_catalog}.{source_schema}"
 
 PP_PI_ORDER_TYPES = None
 PP_PI_ORDER_CATEGORY = "10"

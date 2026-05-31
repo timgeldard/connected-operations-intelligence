@@ -23,12 +23,12 @@ spark = get_spark()
 @dlt.view(name="stg_process_order")
 @dlt.expect_all_or_drop({
     "order_number present": "order_number IS NOT NULL",
-    "plant_code present": "plant_code IS NOT NULL"
+    "plant_code present": "plant_code IS NOT NULL OR record_activity = 'D'"
 })
 @dlt.expect_all({
-    "quantity non-negative": "order_quantity >= 0",
-    "scheduled dates ordered": "scheduled_start_date <= scheduled_finish_date OR scheduled_start_date IS NULL OR scheduled_finish_date IS NULL",
-    "actual dates ordered": "actual_start_date <= actual_finish_date OR actual_start_date IS NULL OR actual_finish_date IS NULL"
+    "quantity non-negative": "order_quantity >= 0 OR record_activity = 'D'",
+    "scheduled dates ordered": "scheduled_start_date <= scheduled_finish_date OR scheduled_start_date IS NULL OR scheduled_finish_date IS NULL OR record_activity = 'D'",
+    "actual dates ordered": "actual_start_date <= actual_finish_date OR actual_start_date IS NULL OR actual_finish_date IS NULL OR record_activity = 'D'"
 })
 def stg_process_order():
     aufk_changes = spark.readStream.table(f"{BRONZE}.ordermaster_aufk").select(
@@ -44,12 +44,13 @@ def stg_process_order():
     aufk = spark.read.table(f"{BRONZE}.ordermaster_aufk")
     afko = spark.read.table(f"{BRONZE}.productionorderobject_afko")
 
+    is_delete = F.coalesce(F.col("k.RecordActivity"), F.col("c.RecordActivity")) == "D"
     order_type_filter = (
         F.col("k.AUART").isin(PP_PI_ORDER_TYPES)
         if PP_PI_ORDER_TYPES
         else F.lit(True)
     )
-    process_order_filter = (F.col("k.AUTYP") == PP_PI_ORDER_CATEGORY) & order_type_filter
+    process_order_filter = is_delete | ((F.col("k.AUTYP") == PP_PI_ORDER_CATEGORY) & order_type_filter)
 
     return (
         changed_keys.alias("c")
@@ -58,7 +59,8 @@ def stg_process_order():
         .filter(process_order_filter)
         .select(
             # ── Natural key
-            strip_zeros("k.AUFNR").alias("order_number"),
+            strip_zeros(F.coalesce(F.col("k.AUFNR"), F.col("c.AUFNR"))).alias("order_number"),
+            F.coalesce(F.col("k.AUFNR"), F.col("c.AUFNR")).alias("order_number_raw"),
 
             # ── Organisation
             F.col("k.WERKS").alias("plant_code"),
@@ -70,10 +72,12 @@ def stg_process_order():
             F.col("k.AUART").alias("order_type_code"),
             F.col("k.KTEXT").alias("order_description"),
             strip_zeros("k.PROCNR").alias("production_process_number"),
+            F.col("k.PROCNR").alias("production_process_number_raw"),
             F.col("k.VAPLZ").alias("main_work_centre_code"),
 
             # ── Material & quantity (AFKO)
             strip_zeros("h.PLNBEZ").alias("material_code"),
+            F.col("h.PLNBEZ").alias("material_code_raw"),
             F.col("h.GAMNG").alias("order_quantity"),
             F.col("h.GMEIN").alias("order_quantity_uom"),
             F.col("h.GASMG").alias("total_scrap_quantity"),
@@ -105,6 +109,7 @@ def stg_process_order():
 
             # ── Linkages
             strip_zeros("k.KDAUF").alias("sales_order_number"),
+            F.col("k.KDAUF").alias("sales_order_number_raw"),
             F.col("k.KDPOS").alias("sales_order_item"),
             F.col("h.PRUEFLOS").alias("inspection_lot_number"),
             F.col("h.RSNUM").alias("reservation_number"),
@@ -189,6 +194,7 @@ def stg_process_order_operation():
         .select(
             # ── Natural key
             strip_zeros("h.AUFNR").alias("order_number"),
+            F.col("h.AUFNR").alias("order_number_raw"),
             F.col("o.VORNR").alias("operation_number"),
 
             # ── Organisation
@@ -267,6 +273,7 @@ def stg_pi_sheet_execution():
     return src.select(
         F.col("ZWERKS").alias("plant_code"),
         strip_zeros("ZAUFNR").alias("order_number"),
+        F.col("ZAUFNR").alias("order_number_raw"),
         F.col("ZVORNR").alias("operation_number"),
 
         sap_datetime("ZSDATS", "ZSTIMS").alias("pi_sheet_start_datetime"),
@@ -319,8 +326,10 @@ def stg_downtime_event():
         .select(
             # ── Natural key (composite — no single surrogate in Z-table)
             strip_zeros("AUFNR").alias("order_number"),
+            F.col("AUFNR").alias("order_number_raw"),
             F.col("WERKS").alias("plant_code"),
             strip_zeros("MATNR").alias("material_code"),
+            F.col("MATNR").alias("material_code_raw"),
             F.col("VORNR").alias("operation_number"),
             F.col("ZITEM").alias("item_number"),
 

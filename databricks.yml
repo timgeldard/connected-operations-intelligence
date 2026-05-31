@@ -6,15 +6,15 @@ include:
 
 variables:
   catalog:
-    default: connected_plant_prod
+    default: connected_plant_dev
   schema:
-    default: silver
+    default: silver_dev
   gold_schema:
-    default: gold
+    default: gold_dev
   source_catalog:
-    default: connected_plant_prod
+    default: connected_plant_dev
   source_schema:
-    default: sap
+    default: sap_sample
   notification_email:
     description: Required notification distribution list for pipeline and job failures.
 

@@ -1,5 +1,8 @@
 """
-Warehouse and Inventory domain tables.
+Warehouse and Inventory operational tables (Fast tier — streaming sources).
+
+Tables: goods_movement, batch_stock, warehouse_transfer_order,
+        warehouse_transfer_requirement
 """
 
 import dlt
@@ -9,181 +12,26 @@ from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, 
 
 spark = get_spark()
 
-# ── 1. WAREHOUSE PLANT MAPPING (reference) ───────────────────────────────────
 
-@dlt.table(
-    name="warehouse_plant_mapping",
-    comment="Warehouse to Plant mapping (SAP T320)",
-    table_properties={"delta.enableChangeDataFeed": "true"},
-)
-@dlt.expect_all_or_drop({
-    "warehouse_number present": "warehouse_number IS NOT NULL",
-    "plant_code present": "plant_code IS NOT NULL"
-})
-def warehouse_plant_mapping():
-    src = spark.read.table(f"{BRONZE}.warehouseforplant_t320")
-    return src.select(
-        F.col("LGNUM").alias("warehouse_number"),
-        F.col("WERKS").alias("plant_code"),
-        F.col("LGORT").alias("storage_location_code"),
-        F.col("AEDATTM").alias("_replicated_at"),
-    )
+# ── 1. GOODS MOVEMENT ────────────────────────────────────────────────────────
 
-
-@dlt.view(
-    name="warehouse_plant_mapping_validation",
-    comment="Validation view to audit warehouses mapped to multiple plants (ambiguous scopes)",
-)
-def warehouse_plant_mapping_validation():
-    return (
-        dlt.read("warehouse_plant_mapping")
-        .groupBy("warehouse_number")
-        .agg(F.count_distinct("plant_code").alias("plant_count"))
-        .filter(F.col("plant_count") > 1)
-    )
-
-
-# ── 2. STORAGE BIN ────────────────────────────────────────────────────────────
-
-@dlt.view(name="stg_storage_bin")
-@dlt.expect_all_or_drop({
-    "warehouse_number present": "warehouse_number IS NOT NULL",
-    "bin_code present": "bin_code IS NOT NULL"
-})
-def stg_storage_bin():
-    lagp_changes = spark.readStream.table(f"{BRONZE}.storagebin_lagp").select(
-        "LGNUM", "LGTYP", "LGPLA", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
-    )
-    lqua_changes = spark.readStream.table(f"{BRONZE}.quant_lqua").select(
-        "LGNUM", "LGTYP", "LGPLA", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
-    )
-    t320_changes = (
-        spark.readStream.table(f"{BRONZE}.warehouseforplant_t320")
-        .select("LGNUM", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
-        .withColumn("LGTYP", F.lit(None).cast("string"))
-        .withColumn("LGPLA", F.lit(None).cast("string"))
-    )
-
-    changed_keys = lagp_changes.unionByName(lqua_changes).unionByName(t320_changes)
-    lagp = spark.read.table(f"{BRONZE}.storagebin_lagp")
-    lqua = spark.read.table(f"{BRONZE}.quant_lqua")
-    t320 = dlt.read("warehouse_plant_mapping")
-
-    # Aggregate T320 to resolve a single primary plant per warehouse to prevent key instability/row duplication
-    t320_agg = (
-        t320.groupBy("warehouse_number")
-        .agg(F.min("plant_code").alias("primary_plant_code"))
-    )
-
-    bins_to_refresh = (
-        changed_keys.alias("c")
-        .join(
-            lagp.alias("b"),
-            (F.col("c.LGNUM") == F.col("b.LGNUM"))
-            & (F.col("c.MANDT") == F.col("b.MANDT"))
-            & (F.col("c.LGTYP").isNull() | (F.col("c.LGTYP") == F.col("b.LGTYP")))
-            & (F.col("c.LGPLA").isNull() | (F.col("c.LGPLA") == F.col("b.LGPLA"))),
-            "left",
-        )
-        .select(
-            "b.*",
-            F.col("c.AEDATTM").alias("_change_replicated_at"),
-            F.col("c.AERUNID").alias("_change_run_id"),
-            F.col("c.AERECNO").alias("_change_record_seq"),
-        )
-    )
-
-    bins_with_quants = (
-        bins_to_refresh.alias("b")
-        .join(lqua.alias("q"),
-              (F.col("b.LGNUM") == F.col("q.LGNUM")) &
-              (F.col("b.LGTYP") == F.col("q.LGTYP")) &
-              (F.col("b.LGPLA") == F.col("q.LGPLA")) &
-              (F.col("b.MANDT") == F.col("q.MANDT")),
-              "left")
-    )
-
-    return (
-        bins_with_quants
-        .join(t320_agg.alias("m"),
-              F.col("b.LGNUM") == F.col("m.warehouse_number"),
-              "left")
-        .select(
-            # ── Natural key (physical bin identity)
-            F.col("b.LGNUM").alias("warehouse_number"),
-            F.col("b.LGTYP").alias("storage_type"),
-            F.col("b.LGPLA").alias("bin_code"),
-            F.coalesce(F.col("q.WERKS"), F.col("m.primary_plant_code")).alias("plant_code"),
-
-            # ── Bin attributes
-            F.col("b.LGBER").alias("storage_section"),
-            F.col("b.LGBKT").alias("bin_type"),
-            F.col("b.KOBER").alias("picking_area"),
-            F.col("b.LGPBE").alias("storage_bin_structure"),
-            F.col("b.MAXGW").alias("maximum_weight"),
-            F.col("b.BRGEW").alias("current_weight"),
-            F.col("b.GEWEI").alias("weight_unit"),
-            F.col("b.MAXEI").alias("maximum_capacity_units"),
-            F.col("b.ANZRE").alias("current_capacity_units_used"),
-            sap_flag("b.SPGRU").alias("is_blocked"),
-            F.col("b.SPGRU").alias("blocking_reason_code"),
-
-            # ── Current quant (NULL if bin is empty)
-            F.coalesce(F.col("q.LQNUM"), F.lit("__EMPTY__")).alias("_storage_bin_occupancy_key"),
-            F.col("q.LQNUM").alias("quant_number"),
-            strip_zeros("q.MATNR").alias("material_code"),
-            strip_zeros("q.CHARG").alias("batch_number"),
-            F.col("q.BESTQ").alias("stock_category_code"),
-            F.col("q.GESME").alias("total_quantity"),
-            F.col("q.VERME").alias("available_quantity"),
-            F.col("q.EINME").alias("putaway_quantity"),
-            F.col("q.AUSME").alias("pick_quantity"),
-            F.col("q.TRAME").alias("open_transfer_quantity"),
-            F.col("q.MEINS").alias("base_uom"),
-            sap_date("q.WDATU").alias("goods_receipt_date"),
-            sap_date("q.VFDAT").alias("expiry_date"),
-            sap_datetime("q.BDATU", "q.BZEIT").alias("last_movement_datetime"),
-            sap_flag("q.SKZUA").alias("is_blocked_for_stock_removal"),
-            sap_flag("q.SKZUE").alias("is_blocked_for_putaway"),
-
-            F.col("b._change_replicated_at").alias("_replicated_at"),
-            F.col("b._change_run_id").alias("_run_id"),
-            F.col("b._change_record_seq").alias("_record_seq"),
-        )
-    )
-
-dlt.create_streaming_table(
-    name="storage_bin",
-    table_properties={"delta.enableChangeDataFeed": "true"},
-    cluster_by=["warehouse_number", "storage_type"],
-)
-
-dlt.apply_changes(
-    target="storage_bin",
-    source="stg_storage_bin",
-    keys=["warehouse_number", "storage_type", "bin_code", "_storage_bin_occupancy_key"],
-    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
-    stored_as_scd_type=1,
-)
-
-
-# ── 3. GOODS MOVEMENT ────────────────────────────────────────────────────────
 
 @dlt.view(name="stg_goods_movement")
 @dlt.expect_all_or_drop({
     "document_number present": "material_document_number IS NOT NULL",
-    "plant_code present": "plant_code IS NOT NULL"
+    "plant_code present": "plant_code IS NOT NULL OR record_activity = 'D'"
 })
 @dlt.expect_all({
-    "movement_type_code present": "movement_type_code IS NOT NULL"
+    "movement_type_code present": "movement_type_code IS NOT NULL OR record_activity = 'D'"
 })
 def stg_goods_movement():
     mseg_changes = spark.readStream.table(f"{BRONZE}.inventorymovement_mseg").select(
-        "MBLNR", "MJAHR", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
+        "MBLNR", "MJAHR", "MANDT", "ZEILE", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
     )
     mkpf_changes = (
         spark.readStream.table(f"{BRONZE}.materialdocument_mkpf")
         .select("MBLNR", "MJAHR", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+        .withColumn("ZEILE", F.lit(None).cast("string"))
         .withColumn("RecordActivity", F.lit(None).cast("string"))
     )
 
@@ -194,9 +42,19 @@ def stg_goods_movement():
     )
     movement_lines_to_refresh = (
         changed_keys.alias("c")
-        .join(mseg.alias("s"), ["MBLNR", "MJAHR", "MANDT"], "left")
+        .join(
+            mseg.alias("s"),
+            (F.col("c.MBLNR") == F.col("s.MBLNR"))
+            & (F.col("c.MJAHR") == F.col("s.MJAHR"))
+            & (F.col("c.MANDT") == F.col("s.MANDT"))
+            & (F.col("c.ZEILE").isNull() | (F.col("c.ZEILE") == F.col("s.ZEILE"))),
+            "left",
+        )
         .select(
             "s.*",
+            F.col("c.MBLNR").alias("_change_mblnr"),
+            F.col("c.MJAHR").alias("_change_mjahr"),
+            F.col("c.ZEILE").alias("_change_zeile"),
             F.col("c.AEDATTM").alias("_change_replicated_at"),
             F.col("c.AERUNID").alias("_change_run_id"),
             F.col("c.AERECNO").alias("_change_record_seq"),
@@ -208,9 +66,9 @@ def stg_goods_movement():
         .join(mkpf.alias("h"), ["MBLNR", "MJAHR", "MANDT"], "left")
         .select(
             # ── Natural key
-            strip_zeros("s.MBLNR").alias("material_document_number"),
-            F.col("s.MJAHR").alias("fiscal_year"),
-            F.col("s.ZEILE").alias("document_line_item"),
+            strip_zeros(F.coalesce(F.col("s.MBLNR"), F.col("s._change_mblnr"))).alias("material_document_number"),
+            F.coalesce(F.col("s.MJAHR"), F.col("s._change_mjahr")).alias("fiscal_year"),
+            F.coalesce(F.col("s.ZEILE"), F.col("s._change_zeile")).alias("document_line_item"),
 
             # ── Organisation
             F.col("s.WERKS").alias("plant_code"),
@@ -218,7 +76,9 @@ def stg_goods_movement():
 
             # ── Material & batch
             strip_zeros("s.MATNR").alias("material_code"),
+            F.col("s.MATNR").alias("material_code_raw"),
             strip_zeros("s.CHARG").alias("batch_number"),
+            F.col("s.CHARG").alias("batch_number_raw"),
 
             # ── Movement
             F.col("s.BWART").alias("movement_type_code"),
@@ -238,9 +98,12 @@ def stg_goods_movement():
 
             # ── Reference documents
             strip_zeros("s.AUFNR").alias("order_number"),
+            F.col("s.AUFNR").alias("order_number_raw"),
             strip_zeros("s.EBELN").alias("purchase_order_number"),
+            F.col("s.EBELN").alias("purchase_order_number_raw"),
             F.col("s.EBELP").alias("purchase_order_item"),
             strip_zeros("s.VBELN").alias("delivery_number"),
+            F.col("s.VBELN").alias("delivery_number_raw"),
             F.col("s.KDAUF").alias("sales_order_number"),
 
             # ── User
@@ -272,7 +135,7 @@ dlt.apply_changes(
 )
 
 
-# ── 4. BATCH STOCK ────────────────────────────────────────────────────────────
+# ── 2. BATCH STOCK ────────────────────────────────────────────────────────────
 
 @dlt.view(name="stg_batch_stock")
 @dlt.expect_all_or_drop({
@@ -286,9 +149,11 @@ def stg_batch_stock():
     src = spark.readStream.table(f"{BRONZE}.batchstock_mchb")
     return src.select(
         strip_zeros("MATNR").alias("material_code"),
+        F.col("MATNR").alias("material_code_raw"),
         F.col("WERKS").alias("plant_code"),
         F.col("LGORT").alias("storage_location_code"),
         strip_zeros("CHARG").alias("batch_number"),
+        F.col("CHARG").alias("batch_number_raw"),
 
         F.col("CLABS").alias("unrestricted_quantity"),
         F.col("CINSM").alias("quality_inspection_quantity"),
@@ -325,7 +190,7 @@ dlt.apply_changes(
 )
 
 
-# ── 5. WAREHOUSE TRANSFER ORDER ───────────────────────────────────────────────
+# ── 3. WAREHOUSE TRANSFER ORDER ───────────────────────────────────────────────
 
 @dlt.view(name="stg_warehouse_transfer_order")
 @dlt.expect_all_or_drop({
@@ -350,6 +215,8 @@ def stg_warehouse_transfer_order():
         .join(ltap.alias("i"), ["LGNUM", "TANUM", "MANDT"], "left")
         .select(
             "i.*",
+            F.col("c.LGNUM").alias("_change_lgnum"),
+            F.col("c.TANUM").alias("_change_tanum"),
             F.col("c.AEDATTM").alias("_change_replicated_at"),
             F.col("c.AERUNID").alias("_change_run_id"),
             F.col("c.AERECNO").alias("_change_record_seq"),
@@ -362,8 +229,8 @@ def stg_warehouse_transfer_order():
         .join(ltak.alias("h"), ["LGNUM", "TANUM", "MANDT"], "left")
         .select(
             # ── Natural key
-            F.col("i.LGNUM").alias("warehouse_number"),
-            F.col("i.TANUM").alias("transfer_order_number"),
+            F.coalesce(F.col("i.LGNUM"), F.col("i._change_lgnum")).alias("warehouse_number"),
+            F.coalesce(F.col("i.TANUM"), F.col("i._change_tanum")).alias("transfer_order_number"),
             F.col("i.TAPOS").alias("item_number"),
 
             # ── Organisation
@@ -371,7 +238,9 @@ def stg_warehouse_transfer_order():
 
             # ── Material & batch
             strip_zeros("i.MATNR").alias("material_code"),
+            F.col("i.MATNR").alias("material_code_raw"),
             strip_zeros("i.CHARG").alias("batch_number"),
+            F.col("i.CHARG").alias("batch_number_raw"),
             F.col("i.MEINS").alias("base_uom"),
             F.col("i.BESTQ").alias("stock_category_code"),
 
@@ -409,7 +278,9 @@ def stg_warehouse_transfer_order():
             # ── Reference
             F.col("h.BETYP").alias("source_reference_type"),
             strip_zeros("h.BENUM").alias("source_reference_number"),
+            F.col("h.BENUM").alias("source_reference_number_raw"),
             strip_zeros("h.VBELN").alias("delivery_number"),
+            F.col("h.VBELN").alias("delivery_number_raw"),
             F.col("h.TBPRI").alias("transfer_priority"),
 
             # ── Users
@@ -441,7 +312,7 @@ dlt.apply_changes(
 )
 
 
-# ── 6. WAREHOUSE TRANSFER REQUIREMENT ─────────────────────────────────────────
+# ── 4. WAREHOUSE TRANSFER REQUIREMENT ─────────────────────────────────────────
 
 @dlt.view(name="stg_warehouse_transfer_requirement")
 @dlt.expect_all_or_drop({
@@ -449,7 +320,7 @@ dlt.apply_changes(
     "transfer_requirement_number present": "transfer_requirement_number IS NOT NULL"
 })
 @dlt.expect_all({
-    "required quantity positive": "required_quantity > 0"
+    "required quantity positive": "required_quantity > 0 OR record_activity = 'D'"
 })
 def stg_warehouse_transfer_requirement():
     ltbk_changes = spark.readStream.table(f"{BRONZE}.transferrequirementobjects_ltbk").select(
@@ -469,6 +340,8 @@ def stg_warehouse_transfer_requirement():
         .join(ltbp.alias("i"), ["LGNUM", "TBNUM", "MANDT"], "left")
         .select(
             "i.*",
+            F.col("c.LGNUM").alias("_change_lgnum"),
+            F.col("c.TBNUM").alias("_change_tbnum"),
             F.col("c.AEDATTM").alias("_change_replicated_at"),
             F.col("c.AERUNID").alias("_change_run_id"),
             F.col("c.AERECNO").alias("_change_record_seq"),
@@ -481,8 +354,8 @@ def stg_warehouse_transfer_requirement():
         .join(ltbk.alias("h"), ["LGNUM", "TBNUM", "MANDT"], "left")
         .select(
             # ── Natural key
-            F.col("i.LGNUM").alias("warehouse_number"),
-            F.col("i.TBNUM").alias("transfer_requirement_number"),
+            F.coalesce(F.col("i.LGNUM"), F.col("i._change_lgnum")).alias("warehouse_number"),
+            F.coalesce(F.col("i.TBNUM"), F.col("i._change_tbnum")).alias("transfer_requirement_number"),
             F.col("i.TBPOS").alias("item_number"),
 
             # ── Organisation
@@ -490,7 +363,9 @@ def stg_warehouse_transfer_requirement():
 
             # ── Material & batch
             strip_zeros("i.MATNR").alias("material_code"),
+            F.col("i.MATNR").alias("material_code_raw"),
             strip_zeros("i.CHARG").alias("batch_number"),
+            F.col("i.CHARG").alias("batch_number_raw"),
             F.col("i.MEINS").alias("base_uom"),
 
             # ── Quantities
@@ -514,6 +389,7 @@ def stg_warehouse_transfer_requirement():
             # ── Reference
             F.col("h.BETYP").alias("source_reference_type"),
             strip_zeros("h.BENUM").alias("source_reference_number"),
+            F.col("h.BENUM").alias("source_reference_number_raw"),
             F.col("h.RSNUM").alias("reservation_number"),
 
             # ── Custom fields (site-specific campaign / pick status)

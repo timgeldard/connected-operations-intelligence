@@ -10,29 +10,31 @@ def get_spark_session() -> SparkSession:
 
 
 def get_silver_schema(spark: SparkSession) -> str:
-    try:
-        catalog = spark.conf.get("silver_catalog", None)
-        schema = spark.conf.get("silver_schema", "silver")
-        # Local Spark (spark_catalog) requires single-part namespace (database.table)
-        if catalog and catalog != "spark_catalog":
-            return f"{catalog}.{schema}"
+    catalog = spark.conf.get("silver_catalog", None)
+    schema = spark.conf.get("silver_schema", None)
+    if not catalog:
+        raise ValueError("silver_catalog configuration must be set in the Spark session.")
+    if not schema:
+        raise ValueError("silver_schema configuration must be set in the Spark session.")
+    
+    # Local Spark (spark_catalog) requires single-part namespace (database.table)
+    if catalog == "spark_catalog":
         return schema
-    except Exception:
-        # Local/manual fallback default only (points to production)
-        return "connected_plant_prod.silver"
+    return f"{catalog}.{schema}"
 
 
-try:
-    spark = get_spark_session()
-    SILVER_CATALOG = spark.conf.get("silver_catalog", "connected_plant_prod")
-    SILVER_SCHEMA = spark.conf.get("silver_schema", "silver")
-    ROW_FILTER_FN = f"{SILVER_CATALOG}.{SILVER_SCHEMA}.plant_access_filter"
-    # Gold runs as a trusted aggregate layer. Plant security is enforced on direct
-    # Silver consumption; applying row filters here would force full MV refreshes.
-    APPLY_ROW_FILTER = spark.conf.get("gold_apply_row_filter", "false").lower() == "true"
-except Exception:
-    ROW_FILTER_FN = "connected_plant_prod.silver.plant_access_filter"
-    APPLY_ROW_FILTER = False
+spark = get_spark_session()
+SILVER_CATALOG = spark.conf.get("silver_catalog", None)
+SILVER_SCHEMA = spark.conf.get("silver_schema", None)
+if not SILVER_CATALOG:
+    raise ValueError("silver_catalog configuration must be set in the Spark session.")
+if not SILVER_SCHEMA:
+    raise ValueError("silver_schema configuration must be set in the Spark session.")
+
+ROW_FILTER_FN = f"{SILVER_CATALOG}.{SILVER_SCHEMA}.plant_access_filter"
+# Gold runs as a trusted aggregate layer. Plant security is enforced on direct
+# Silver consumption; applying row filters here would force full MV refreshes.
+APPLY_ROW_FILTER = spark.conf.get("gold_apply_row_filter", "false").lower() == "true"
 
 
 def gold_table_args(comment: str, cluster_by: list) -> dict:

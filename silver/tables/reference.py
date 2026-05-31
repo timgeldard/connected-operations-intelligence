@@ -48,6 +48,7 @@ def material():
         .join(makt.alias("d"), ["MATNR", "MANDT"], "left")
         .select(
             strip_zeros("p.MATNR").alias("material_code"),
+            F.col("p.MATNR").alias("material_code_raw"),
             F.col("p.WERKS").alias("plant_code"),
 
             # ── Descriptions

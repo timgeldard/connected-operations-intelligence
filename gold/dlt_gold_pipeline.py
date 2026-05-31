@@ -133,3 +133,30 @@ def gold_plant_production_quality_summary():
             ).otherwise(F.lit(None).cast("double")).alias("quality_rate")
         )
     )
+
+
+@dlt.view(
+    name="gold_freshness_gate",
+    comment="Validation view to enforce freshness guarantees. Checks the max lag of silver.goods_movement."
+)
+@dlt.expect_or_fail("data_is_fresh", "max_lag_minutes <= 120 OR max_lag_minutes IS NULL")
+def gold_freshness_gate():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    catalog = spark.conf.get("silver_catalog", None)
+    
+    # If in local test mode, return a dummy DataFrame to bypass real-time checks
+    if catalog == "spark_catalog":
+        return spark.range(1).select(F.lit(0.0).alias("max_lag_minutes"))
+        
+    goods_mov = spark.read.table(f"{silver_schema}.goods_movement")
+    return (
+        goods_mov.agg(
+            F.max("_replicated_at").alias("latest_replication_time")
+        )
+        .withColumn("current_time", F.current_timestamp())
+        .withColumn(
+            "max_lag_minutes",
+            (F.unix_timestamp("current_time") - F.unix_timestamp("latest_replication_time")) / 60
+        )
+    )
