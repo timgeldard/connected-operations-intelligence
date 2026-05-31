@@ -35,7 +35,7 @@ silver/
   helpers.py                      # Shared DLT helpers and constants
   design_spec.md                  # Silver architecture and table catalogue
 gold/
-  dlt_gold_pipeline.py            # Gold KPI table definitions (OEE, OTIF, shift output)
+  dlt_gold_pipeline.py            # Gold aggregate definitions (daily output, schedule adherence, quality)
   design_spec.md                  # Gold architecture and KPI specs
 tests/                            # Unit tests for silver helpers and gold tables
 ```

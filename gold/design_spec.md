@@ -58,11 +58,11 @@ Managed via Declarative Automation Bundle (DAB).
 
 ### `gold_shift_output_summary`
 - **Granularity:** 1 row per plant × posting date × material × UOM.
-- **Description:** Aggregated produced quantity (receipt type 101 minus reversals 102) and scrap quantity (movements 551/552) to report shift-level outputs.
+- **Description:** Aggregated daily produced quantity (receipt type 101 minus reversals 102) and scrap quantity (movements 551/552). The historical table name is retained for compatibility; no shift dimension is present until a shift calendar is introduced.
 
 ### `gold_order_otif_metrics`
 - **Granularity:** 1 row per process order.
-- **Description:** On-Time-In-Full performance metrics, comparing actual vs scheduled completion dates and ordered vs yield quantities.
+- **Description:** Internal process-order schedule-adherence metrics, comparing actual vs scheduled completion dates and ordered vs yield quantities. This is not customer-delivery OTIF.
 
 ### `gold_plant_production_quality_summary`
 - **Granularity:** 1 row per plant.

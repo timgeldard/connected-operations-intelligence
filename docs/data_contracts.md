@@ -44,19 +44,21 @@ This document defines the formal data contracts for the key Silver and Gold laye
 ### 1. `gold.gold_shift_output_summary`
 * **Grain**: 1 row per plant × posting date × material × base UOM
 * **Source Silver Tables**: `silver.goods_movement` + `silver.movement_type_classification`
+* **Name Caveat**: Historical table name retained; this is a daily output aggregate and has no shift dimension.
 * **Aggregation Logic**:
   * Inner join on `movement_type_code`.
   * `produced_quantity` = sum of quantities where `is_production_receipt = True` minus `is_receipt_reversal = True`.
   * `scrap_quantity` = sum of quantities where `is_scrap = True` minus `is_scrap_reversal = True`.
-* **Row-Level Security**: Enforced on `plant_code` (inherited from the Silver plant row filter).
-* **Freshness Expectation**: Triggered pipeline execution (runs 3 times daily or on shift completion).
+* **Row-Level Security**: Gold is produced by a trusted aggregate pipeline. Apply plant-level controls at the consumption boundary.
+* **Freshness Expectation**: Triggered pipeline execution (bundled job schedule: three times daily).
 * **Known Caveats**: Relies on conformed classifications mapped in `movement_type_classification`. Any newly introduced custom movement codes must be classified first.
 
 ### 2. `gold.gold_order_otif_metrics`
 * **Grain**: 1 row per completed process order
 * **Source Silver Tables**: `silver.process_order`
-* **OTIF Logic**:
+* **Schedule-Adherence Logic**:
   * `is_on_time` = 1 if `actual_finish_date <= scheduled_finish_date`, else 0.
   * `is_in_full` = 1 if `confirmed_yield_quantity >= order_quantity`, else 0.
-* **Row-Level Security**: Filtered by `plant_code`.
+* **Name Caveat**: This is process-order schedule adherence, not customer-delivery OTIF.
+* **Row-Level Security**: Gold is produced by a trusted aggregate pipeline. Apply plant-level controls at the consumption boundary.
 * **Freshness Expectation**: Batch triggered.

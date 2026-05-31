@@ -337,6 +337,7 @@ def apply_storage_bin_transform(
             F.col("b.MAXGW").alias("maximum_weight"),
             sap_flag("b.SPGRU").alias("is_blocked"),
             F.col("b.SPGRU").alias("blocking_reason_code"),
+            F.coalesce(F.col("q.LQNUM"), F.lit("__EMPTY__")).alias("_storage_bin_occupancy_key"),
             F.col("q.LQNUM").alias("quant_number"),
             strip_zeros("q.MATNR").alias("material_code"),
             strip_zeros("q.CHARG").alias("batch_number"),
@@ -649,6 +650,29 @@ class TestStorageBin:
         )
         bins = {r["bin_code"] for r in all_rows(df)}
         assert bins == {"BIN-001", "BIN-002"}
+
+    def test_multiple_quants_in_same_bin_all_returned(self, spark):
+        df = apply_storage_bin_transform(
+            spark,
+            [make_lagp(LGNUM="001", LGTYP="001", LGPLA="BIN-MULTI")],
+            [
+                make_lqua(LGNUM="001", LGTYP="001", LGPLA="BIN-MULTI", LQNUM="000001", MATNR="000000000000011111"),
+                make_lqua(LGNUM="001", LGTYP="001", LGPLA="BIN-MULTI", LQNUM="000002", MATNR="000000000000022222"),
+            ],
+        )
+        rows = all_rows(df)
+        assert {r["quant_number"] for r in rows} == {"000001", "000002"}
+        assert {r["material_code"] for r in rows} == {"11111", "22222"}
+
+    def test_empty_bin_has_stable_internal_occupancy_key(self, spark):
+        df = apply_storage_bin_transform(
+            spark,
+            [make_lagp(LGNUM="001", LGTYP="002", LGPLA="EMPTY-BIN")],
+            [],
+        )
+        row = first_row(df)
+        assert row["quant_number"] is None
+        assert row["_storage_bin_occupancy_key"] == "__EMPTY__"
 
     def test_empty_bin_resolves_plant_from_t320(self, spark):
         df = apply_storage_bin_transform(
