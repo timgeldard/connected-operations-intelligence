@@ -8,13 +8,14 @@
 | Target Catalog (Prod) | `connected_plant_prod` | `connected_plant_prod` |
 | Target Schema (Prod) | `silver` | `gold` |
 | Mode | Continuous | Triggered (Batch) |
-| Notifications | Configure in `resources/silver_pipeline.pipeline.yml` | Configure in `resources/gold_pipeline.pipeline.yml` |
+| Notifications | Configure in `resources/silver_*_pipeline.pipeline.yml` | Configure in `resources/gold_pipeline.pipeline.yml` |
 
 ### Environment Target Matrix
 
 | Environment Target | Catalog (`${var.catalog}`) | Silver Schema (`${var.schema}`) | Gold Schema (`${var.gold_schema}`) | Source Catalog (`${var.source_catalog}`) |
 | :--- | :--- | :--- | :--- | :--- |
-| **dev** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_uat` |
+| **dev_uat_source** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_uat` |
+| **dev_sample** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_dev` |
 | **uat** | `connected_plant_uat` | `silver` | `gold` | `connected_plant_uat` |
 | **prod** | `connected_plant_prod` | `silver` | `gold` | `connected_plant_prod` |
 
@@ -82,12 +83,12 @@ Streaming Tables cannot evolve incompatibly without a full refresh. Signs: pipel
 
 ## 5. Dev schema isolation
 
-The dev target writes to `connected_plant_dev` to prevent production database impacts. 
-*Note:* As a temporary compromise, the `dev` target reads from the `connected_plant_uat` bronze source until a dedicated dev bronze source is provisioned.
+The dev targets write to `connected_plant_dev` to prevent production database impacts.
+*Note:* `dev_uat_source` reads from the `connected_plant_uat` bronze source as a temporary compromise; `dev_sample` reads from `connected_plant_dev.sap_sample`.
 
 To isolate dev bronze once available:
-1. Update `source_catalog` / `source_schema` variables for the `dev` target in `databricks.yml`.
-2. Re-deploy dev: `databricks bundle deploy -t dev`.
+1. Update `source_catalog` / `source_schema` variables for the relevant dev target in `databricks.yml`.
+2. Re-deploy dev: `databricks bundle deploy -t dev_uat_source` or `databricks bundle deploy -t dev_sample`.
 
 ---
 
@@ -95,6 +96,8 @@ To isolate dev bronze once available:
 
 ### Silver Layer
 The Unity Catalog row filter (`plant_access_filter`) must be applied after the first deployment to each environment target. Run the target-specific SQL script once as a Unity Catalog admin:
+
+Each script creates or replaces `plant_access_filter` before applying any table row filters. Do not split the script or run the `ALTER TABLE ... SET ROW FILTER` statements before the function exists.
 
 - **Development**:
   ```bash
@@ -113,22 +116,26 @@ The Unity Catalog row filter (`plant_access_filter`) must be applied after the f
   ```
 
 ### Gold Layer
-No manual SQL script is required for the Gold tables. The row filter is **automatically applied at deploy/refresh time** via the `@dlt.table` configuration properties pointing to `{silver_schema}.plant_access_filter` dynamically.
+No manual SQL script is required for the Gold tables. Gold row filters are disabled by default (`gold_apply_row_filter=false`) so materialized views can use incremental refresh where Databricks supports it. Run the Gold pipeline as a trusted/admin identity that can read the row-filtered Silver tables; enforce plant-level security for direct Silver consumers.
 
 ---
 
-## 7. PP_PI_ORDER_TYPES TODO
+## 7. PP/PI Process Order Scope
 
-`PP_PI_ORDER_TYPES = None` in `silver/dlt_silver_pipeline.py` — all order types are currently included. Once process order types are confirmed with plant operations teams, update this constant and redeploy. A selective full refresh of `process_order` and `process_order_operation` will be required.
+`process_order` is restricted to AUFK `AUTYP = '10'`, the PP/PI process-order category. `PP_PI_ORDER_TYPES = None` in `silver/helpers.py` means no additional AUART allowlist is applied. Once process order types are confirmed with plant operations teams, update this constant and redeploy. A selective full refresh of `process_order` and `process_order_operation` will be required.
 
 ---
 
 ## 8. Running the Gold Pipeline
 
-Since the Gold pipeline runs in **Triggered (batch)** mode, it should be orchestrated to run periodically (e.g. daily, or immediately following the conclusion of large batch events).
+Since the Gold pipeline runs in **Triggered (batch)** mode, use the bundled `gold_refresh_job` to refresh slow Silver domains and then Gold three times daily. The Silver fast pipeline is continuous and is not included as a scheduled job task because continuous pipeline tasks do not naturally complete.
+
+Gold output for production orders and material movements reflects the current state of `silver_fast_pipeline` at job-run time. If the continuous fast pipeline is stopped or lagging, Gold refreshes can complete successfully while aggregating stale fast-domain data.
+
+Gold reads from Silver tables that have Unity Catalog row filters applied, but Gold table row filters are disabled by default. Databricks may choose full refresh for materialized views sourced from row-filtered tables, even on serverless. After first deployment, compare Gold update duration and input rows across several runs before increasing schedule frequency.
 
 To run the Gold pipeline manually:
 ```bash
 databricks pipelines start-update <gold-pipeline-id> --profile DEFAULT
 ```
-Alternatively, schedule it using a Databricks Job task referencing `${resources.pipelines.gold_pipeline.id}`.
+The bundled job is paused by default. Enable it after validating target-specific cadence and notification settings.

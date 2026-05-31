@@ -58,7 +58,21 @@ def warehouse_plant_mapping_validation():
     "bin_code present": "bin_code IS NOT NULL"
 })
 def stg_storage_bin():
-    lagp = spark.readStream.table(f"{BRONZE}.storagebin_lagp")
+    lagp_changes = spark.readStream.table(f"{BRONZE}.storagebin_lagp").select(
+        "LGNUM", "LGTYP", "LGPLA", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
+    )
+    lqua_changes = spark.readStream.table(f"{BRONZE}.quant_lqua").select(
+        "LGNUM", "LGTYP", "LGPLA", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
+    )
+    t320_changes = (
+        spark.readStream.table(f"{BRONZE}.warehouseforplant_t320")
+        .select("LGNUM", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+        .withColumn("LGTYP", F.lit(None).cast("string"))
+        .withColumn("LGPLA", F.lit(None).cast("string"))
+    )
+
+    changed_keys = lagp_changes.unionByName(lqua_changes).unionByName(t320_changes)
+    lagp = spark.read.table(f"{BRONZE}.storagebin_lagp")
     lqua = spark.read.table(f"{BRONZE}.quant_lqua")
     t320 = dlt.read("warehouse_plant_mapping")
 
@@ -68,8 +82,26 @@ def stg_storage_bin():
         .agg(F.min("plant_code").alias("primary_plant_code"))
     )
 
+    bins_to_refresh = (
+        changed_keys.alias("c")
+        .join(
+            lagp.alias("b"),
+            (F.col("c.LGNUM") == F.col("b.LGNUM"))
+            & (F.col("c.MANDT") == F.col("b.MANDT"))
+            & (F.col("c.LGTYP").isNull() | (F.col("c.LGTYP") == F.col("b.LGTYP")))
+            & (F.col("c.LGPLA").isNull() | (F.col("c.LGPLA") == F.col("b.LGPLA"))),
+            "left",
+        )
+        .select(
+            "b.*",
+            F.col("c.AEDATTM").alias("_change_replicated_at"),
+            F.col("c.AERUNID").alias("_change_run_id"),
+            F.col("c.AERECNO").alias("_change_record_seq"),
+        )
+    )
+
     bins_with_quants = (
-        lagp.alias("b")
+        bins_to_refresh.alias("b")
         .join(lqua.alias("q"),
               (F.col("b.LGNUM") == F.col("q.LGNUM")) &
               (F.col("b.LGTYP") == F.col("q.LGTYP")) &
@@ -104,6 +136,7 @@ def stg_storage_bin():
             F.col("b.SPGRU").alias("blocking_reason_code"),
 
             # ── Current quant (NULL if bin is empty)
+            F.coalesce(F.col("q.LQNUM"), F.lit("__EMPTY__")).alias("_storage_bin_occupancy_key"),
             F.col("q.LQNUM").alias("quant_number"),
             strip_zeros("q.MATNR").alias("material_code"),
             strip_zeros("q.CHARG").alias("batch_number"),
@@ -120,16 +153,22 @@ def stg_storage_bin():
             sap_flag("q.SKZUA").alias("is_blocked_for_stock_removal"),
             sap_flag("q.SKZUE").alias("is_blocked_for_putaway"),
 
-            F.col("b.AEDATTM").alias("_replicated_at"),
-            F.col("b.AERUNID").alias("_run_id"),
+            F.col("b._change_replicated_at").alias("_replicated_at"),
+            F.col("b._change_run_id").alias("_run_id"),
+            F.col("b._change_record_seq").alias("_record_seq"),
         )
     )
+
+dlt.create_streaming_table(
+    name="storage_bin",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["warehouse_number", "storage_type"],
+)
 
 dlt.apply_changes(
     target="storage_bin",
     source="stg_storage_bin",
-    keys=["warehouse_number", "storage_type", "bin_code"],
-    sequence_by=F.col("_replicated_at"),
+    keys=["warehouse_number", "storage_type", "bin_code", "_storage_bin_occupancy_key"],
+    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     stored_as_scd_type=1,
-    cluster_by=["warehouse_number", "storage_type"],
 )

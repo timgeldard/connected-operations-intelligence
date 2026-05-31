@@ -3,32 +3,57 @@ Tests for the gold layer DLT transformations.
 """
 
 from datetime import date
+
 import pytest
 from pyspark.sql import Row, SparkSession
-from tests.conftest import all_rows
+
 from gold.dlt_gold_pipeline import (
-    gold_shift_output_summary,
     gold_order_otif_metrics,
     gold_plant_production_quality_summary,
+    gold_shift_output_summary,
 )
+from silver.movement_types import (
+    ISSUE_MOVEMENT_TYPES,
+    MOVEMENT_TYPE_MAPPING,
+    RECEIPT_MOVEMENT_TYPES,
+    STOCK_WRITE_OFF_MOVEMENT_TYPES,
+    STOCK_WRITE_ON_MOVEMENT_TYPES,
+    T156_REVERSAL_MAPPING,
+    TRANSFER_MOVEMENT_TYPES,
+    get_movement_event_category,
+)
+from tests.conftest import all_rows
+
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_databases(spark: SparkSession):
     # Set configuration to use spark_catalog and silver schema locally
     spark.conf.set("silver_catalog", "spark_catalog")
     spark.conf.set("silver_schema", "silver")
-    
+
     spark.sql("CREATE DATABASE IF NOT EXISTS silver")
-    
+
     # Mock data for conformed movement type classification
     classification_data = [
-        Row(movement_type_code="101", movement_category="PRODUCTION_RECEIPT", is_production_receipt=True, is_receipt_reversal=False, is_scrap=False, is_scrap_reversal=False),
-        Row(movement_type_code="102", movement_category="PRODUCTION_REVERSAL", is_production_receipt=False, is_receipt_reversal=True, is_scrap=False, is_scrap_reversal=False),
-        Row(movement_type_code="551", movement_category="SCRAP", is_production_receipt=False, is_receipt_reversal=False, is_scrap=True, is_scrap_reversal=False),
-        Row(movement_type_code="552", movement_category="SCRAP_REVERSAL", is_production_receipt=False, is_receipt_reversal=False, is_scrap=False, is_scrap_reversal=True),
+        Row(
+            movement_type_code=code,
+            movement_label=MOVEMENT_TYPE_MAPPING[code],
+            event_category=get_movement_event_category(code),
+            is_reversal=code in T156_REVERSAL_MAPPING,
+            is_goods_receipt=code in RECEIPT_MOVEMENT_TYPES,
+            is_goods_issue=code in ISSUE_MOVEMENT_TYPES,
+            is_transfer=code in TRANSFER_MOVEMENT_TYPES,
+            is_stock_write_on=code in STOCK_WRITE_ON_MOVEMENT_TYPES,
+            is_stock_write_off=code in STOCK_WRITE_OFF_MOVEMENT_TYPES,
+            is_production_receipt=code in {"101", "131"},
+            is_receipt_reversal=code in {"102", "132"},
+            is_scrap=code == "551",
+            is_scrap_reversal=code == "552",
+        )
+        for code in ["101", "102", "201", "551", "552"]
     ]
     spark.createDataFrame(classification_data).write.mode("overwrite").saveAsTable("silver.movement_type_classification")
-    
+
     yield
     spark.sql("DROP DATABASE IF EXISTS silver CASCADE")
 
@@ -46,14 +71,14 @@ def test_gold_shift_output_summary(spark: SparkSession):
         # Unrelated movement type
         Row(plant_code="1000", posting_date=date(2026, 5, 30), material_code="MAT01", base_uom="KG", movement_type_code="201", quantity=10.0),
     ]
-    
+
     df_gm = spark.createDataFrame(goods_movement_data)
     df_gm.write.mode("overwrite").saveAsTable("silver.goods_movement")
-    
+
     # Run target function
     res_df = gold_shift_output_summary()
     results = all_rows(res_df)
-    
+
     assert len(results) == 1
     row = results[0]
     assert row["plant_code"] == "1000"
@@ -76,22 +101,22 @@ def test_gold_order_otif_metrics(spark: SparkSession):
         Row(order_number="4", plant_code="1000", material_code="MAT01", order_quantity=100.0, confirmed_yield_quantity=100.0,
             scheduled_finish_date=None, actual_finish_date=date(2026, 5, 29), is_completed=True, is_closed=False),
     ]
-    
+
     df_po = spark.createDataFrame(process_order_data)
     df_po.write.mode("overwrite").saveAsTable("silver.process_order")
-    
+
     res_df = gold_order_otif_metrics()
     results = all_rows(res_df)
-    
+
     # Should only have completed/closed orders (1, 2, 4)
     assert len(results) == 3
-    
+
     otif_map = {r["order_number"]: r for r in results}
-    
+
     # Order 1: On time and In Full
     assert otif_map["1"]["is_on_time"] == 1
     assert otif_map["1"]["is_in_full"] == 1
-    
+
     # Order 2: Late and Not In Full
     assert otif_map["2"]["is_on_time"] == 0
     assert otif_map["2"]["is_in_full"] == 0
@@ -115,19 +140,19 @@ def test_gold_plant_production_quality_summary(spark: SparkSession):
         Row(plant_code="1000", duration_minutes=60.0),
         Row(plant_code="2000", duration_minutes=0.0),
     ]
-    
+
     df_po = spark.createDataFrame(process_order_data)
     df_po.write.mode("overwrite").saveAsTable("silver.process_order")
-    
+
     df_dt = spark.createDataFrame(downtime_data)
     df_dt.write.mode("overwrite").saveAsTable("silver.downtime_event")
-    
+
     res_df = gold_plant_production_quality_summary()
     results = all_rows(res_df)
-    
+
     assert len(results) == 2
     oee_map = {r["plant_code"]: r for r in results}
-    
+
     # Plant 1000
     row_1000 = oee_map["1000"]
     assert row_1000["total_ordered_qty"] == 300.0
@@ -143,4 +168,3 @@ def test_gold_plant_production_quality_summary(spark: SparkSession):
     assert row_2000["total_yield_qty"] == 0.0
     assert row_2000["total_scrap_qty"] == 0.0
     assert row_2000["quality_rate"] is None
-

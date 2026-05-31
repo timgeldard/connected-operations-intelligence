@@ -7,7 +7,6 @@ Run in Databricks: attach to cluster, run `pytest tests/ -v` in terminal or
 """
 
 import sys
-from datetime import date, datetime
 from typing import Any, Dict, List
 from unittest.mock import MagicMock
 
@@ -37,6 +36,9 @@ _dlt_mock.view = lambda *a, **kw: (lambda f: f)
 _dlt_mock.table = lambda *a, **kw: (lambda f: f)
 _dlt_mock.expect = lambda *a, **kw: (lambda f: f)
 _dlt_mock.expect_or_drop = lambda *a, **kw: (lambda f: f)
+_dlt_mock.expect_all = lambda *a, **kw: (lambda f: f)
+_dlt_mock.expect_all_or_drop = lambda *a, **kw: (lambda f: f)
+_dlt_mock.create_streaming_table = MagicMock()
 _dlt_mock.apply_changes = MagicMock()
 _dlt_mock.read = MagicMock()
 _dlt_mock.read_stream = MagicMock()

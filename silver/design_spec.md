@@ -40,7 +40,8 @@ ${var.source_catalog}.${var.source_schema} (Bronze — Aecorsoft Delta replicati
 | Pipeline mode | **Continuous** | Near real-time delivery; Aecorsoft replicates incrementally |
 | Change strategy | **SCD Type 1** via `dlt.apply_changes` | Operational state — current values matter, not history |
 | Clustering | **Liquid clustering** on `plant_code` + date | Auto-compacts; no manual tuning at 100+ plant scale |
-| CDC source | `RecordActivity` / `OPFLAG` where present; `AEDATTM` sequence otherwise | Handles deletes from SAP where flagged |
+| CDC source | `RecordActivity` / `OPFLAG` where present; `AEDATTM`, `AERUNID`, `AERECNO` sequence otherwise | Handles deletes from SAP where flagged and preserves deterministic event ordering |
+| Multi-source joins | **Trigger-stream refresh** | Header/detail/reference changes emit affected keys, then rows are rebuilt from latest replicated tables to avoid stale stream-static enrichment |
 | Key fields | Zero-padding stripped on all SAP key columns | Database-level extraction — see bronze conventions |
 | Date fields | `YYYYMMDD` STRING → `DATE`; date+time pairs → `TIMESTAMP` | Usable in BI without transformation |
 | Descriptions | Denormalised at silver | Eliminates joins in BI / Gold layer |
@@ -57,7 +58,8 @@ Managed via Declarative Automation Bundle (DAB). See `docs/adr/001-dab-bundle-de
 
 | Target | Output Catalog (`${var.catalog}`) | Silver Schema (`${var.schema}`) | Source Catalog (`${var.source_catalog}`) | Source Schema (`${var.source_schema}`) |
 | :--- | :--- | :--- | :--- | :--- |
-| **dev** | `connected_plant_dev` | `silver_dev` | `connected_plant_uat` (Compromise) | `sap` |
+| **dev_uat_source** | `connected_plant_dev` | `silver_dev` | `connected_plant_uat` (Compromise) | `sap` |
+| **dev_sample** | `connected_plant_dev` | `silver_dev` | `connected_plant_dev` | `sap_sample` |
 | **uat** | `connected_plant_uat` | `silver` | `connected_plant_uat` | `sap` |
 | **prod** | `connected_plant_prod` | `silver` | `connected_plant_prod` | `sap` |
 
@@ -83,7 +85,7 @@ Current checks by table:
 | `batch_stock` | material_code, plant_code | unrestricted_quantity ≥ 0 |
 | `warehouse_transfer_order` | warehouse_number, transfer_order_number | — |
 | `warehouse_transfer_requirement` | warehouse_number, transfer_requirement_number | required_quantity > 0 |
-| `storage_bin` | warehouse_number, bin_code | — |
+| `storage_bin` | warehouse_number, storage_type, bin_code, occupancy key | — |
 | `downtime_event` | plant_code, start_datetime | duration ≥ 0 |
 | `quality_inspection_lot` | inspection_lot_number, plant_code | material_code present, inspection dates ordered |
 | `material` | material_code, plant_code | base_uom present, material_type present |
@@ -104,13 +106,32 @@ Current checks by table:
 | `batch_stock` | 1 row / batch × plant × storage location | MCHB | Supervisor, Operative |
 | `warehouse_transfer_order` | 1 row / transfer order item | LTAK + LTAP | Supervisor, Operative |
 | `warehouse_transfer_requirement` | 1 row / transfer requirement item | LTBK + LTBP | Supervisor |
-| `storage_bin` | 1 row / bin (with current quant if occupied) | LAGP + LQUA | Supervisor, Operative |
+| `storage_bin` | 1 row / bin occupancy slot; multiple quants in the same bin produce multiple rows | LAGP + LQUA | Supervisor, Operative |
 | `downtime_event` | 1 row / downtime event | ZPEXPM_DWNT | Plant Manager, Supervisor |
 | `quality_inspection_lot` | 1 row / inspection lot | QALS + QMIH + QAMV | Plant Manager, Supervisor |
-| `material` | 1 row / material × plant | MARA + MARC + MAKT + ZMANPEX_LOFT_X | All |
+| `material` | 1 row / material × plant | MARA + MARC + MAKT | All |
 | `storage_location` | 1 row / storage location | T001L | All |
 | `work_centre` | 1 row / work centre × plant | CRHD + CRTX | All |
 | `capacity_utilisation` | 1 row / capacity × period | KAPA + KAKO | Plant Manager |
+| `movement_type_classification` | 1 row / SAP movement type | Conformed seed from `silver/movement_types.py` | All |
+
+---
+
+## Movement Semantics
+
+`movement_type_classification` is generated from `silver/movement_types.py`, copied from the SupplyChainGraph movement taxonomy. It classifies SAP movement types into event families used by warehouse and production Gold tables:
+
+- `GOODS_RECEIPT`
+- `GOODS_ISSUE`
+- `TRANSFER`
+- `STOCK_WRITE_ON`
+- `STOCK_WRITE_OFF`
+- `INITIAL_ENTRY`
+- `OTHER`
+
+Reversal handling is based on the explicit `T156_REVERSAL_MAPPING` derived from labels containing `REVERSAL`; downstream warehouse volume KPIs should use event-family flags plus this reversal flag for reversal netting. Net stock movement KPIs should use `SHKZG` (`S` receipt/debit, `H` issue/credit) rather than applying both sign conventions.
+
+Site-specific `Z*` movement types are carried from the source taxonomy but must be confirmed against this SAP configuration before they are treated as final. Storage type descriptions require T301T replication; until then warehouse KPIs should use storage type codes only.
 
 ---
 
@@ -137,9 +158,9 @@ SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
 ```
 
 ### Storage Bin Row-Level Security
-* **Current Status:** Not filtered by the plant-level row filter because the grain of `storage_bin` is warehouse/bin level (does not naturally contain `plant_code`).
-* **Risk:** Users with table access to `storage_bin` may see bins for warehouses outside their plant scope.
-* **Mitigation:** In future iterations, derive `plant_code` into `storage_bin` via warehouse/storage-location mappings or implement a dedicated warehouse-level filter (`warehouse_access_filter`).
+* **Current Status:** Filtered by the plant-level row filter using the derived `plant_code`. Occupied bins prefer the quant plant; empty bins derive plant from the warehouse-to-plant mapping.
+* **Risk:** Shared warehouses are assigned to a deterministic primary plant for empty bins until a warehouse-level access model exists.
+* **Mitigation:** Review shared-warehouse assignments with plant operations before granting broad direct access to `storage_bin`.
 
 ---
 

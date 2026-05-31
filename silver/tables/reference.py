@@ -3,8 +3,20 @@ Reference/Master data domain tables.
 """
 
 import dlt
-from pyspark.sql import Row, functions as F
-from silver.helpers import get_spark, BRONZE, strip_zeros, sap_date, sap_flag
+from pyspark.sql import Row
+from pyspark.sql import functions as F
+
+from silver.helpers import BRONZE, get_spark, sap_date, sap_flag, strip_zeros
+from silver.movement_types import (
+    ISSUE_MOVEMENT_TYPES,
+    MOVEMENT_TYPE_MAPPING,
+    RECEIPT_MOVEMENT_TYPES,
+    STOCK_WRITE_OFF_MOVEMENT_TYPES,
+    STOCK_WRITE_ON_MOVEMENT_TYPES,
+    T156_REVERSAL_MAPPING,
+    TRANSFER_MOVEMENT_TYPES,
+    get_movement_event_category,
+)
 
 spark = get_spark()
 
@@ -29,13 +41,11 @@ def material():
     makt  = spark.read.table(f"{BRONZE}.materialdescription_makt").filter(
         F.col("SPRAS") == "E"
     )
-    loft  = spark.read.table(f"{BRONZE}.loftwareplantmaterialdata_zmanpex_loft_x")
 
     return (
         marc.alias("p")
         .join(mara.alias("g"), ["MATNR", "MANDT"], "left")
         .join(makt.alias("d"), ["MATNR", "MANDT"], "left")
-        .join(loft.alias("l"), ["MATNR", "MANDT"], "left")
         .select(
             strip_zeros("p.MATNR").alias("material_code"),
             F.col("p.WERKS").alias("plant_code"),
@@ -56,7 +66,6 @@ def material():
             # ── Batch & storage
             sap_flag("g.XCHPF").alias("batch_management_required"),
             F.col("g.IPRKZ").alias("storage_conditions_code"),
-            F.col("l.STORCOND").alias("storage_conditions_description"),
             F.col("g.STOFF").alias("hazardous_material_number"),
 
             # ── Plant-specific MRP
@@ -65,19 +74,6 @@ def material():
             F.col("p.FEVOR").alias("production_supervisor_code"),
             F.col("p.LGPRO").alias("production_storage_location"),
             F.col("p.LGFSB").alias("goods_receipt_storage_location"),
-
-            # ── Compliance (from Loftware Z-table)
-            sap_flag("l.KOSHERSUIT").alias("is_kosher_suitable"),
-            sap_flag("l.KOSHERAPP").alias("is_kosher_approved"),
-            sap_flag("l.HALALSUIT").alias("is_halal_suitable"),
-            sap_flag("l.HALALAPP").alias("is_halal_approved"),
-            sap_flag("l.ORGANICSUIT").alias("is_organic_suitable"),
-            sap_flag("l.ORGANICAPP").alias("is_organic_approved"),
-            F.col("l.ZGMO_CODE").alias("gmo_code"),
-
-            # ── Label templates
-            F.col("l.Z_LOFTWARE_LABEL").alias("label_layout"),
-            F.col("l.ZZPALLBLTEMP").alias("pallet_label_template"),
 
             F.col("p.AEDATTM").alias("_replicated_at"),
         )
@@ -142,12 +138,30 @@ def work_centre():
     "capacity_id present": "capacity_id IS NOT NULL"
 })
 def stg_capacity_utilisation():
-    kapa = spark.readStream.table(f"{BRONZE}.shiftparametersavailablecapacity_kapa")
+    kapa_changes = spark.readStream.table(
+        f"{BRONZE}.shiftparametersavailablecapacity_kapa"
+    ).select("KAPID", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+    kako_changes = spark.readStream.table(f"{BRONZE}.capacityheadersegment_kako").select(
+        "KAPID", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
+    )
+
+    changed_keys = kapa_changes.unionByName(kako_changes)
+    kapa = spark.read.table(f"{BRONZE}.shiftparametersavailablecapacity_kapa")
     kako = spark.read.table(f"{BRONZE}.capacityheadersegment_kako").select(
         "KAPID", "MANDT", "ARBPL", "WERKS", "KAPAR"
     )
+    capacities_to_refresh = (
+        changed_keys.alias("c")
+        .join(kapa.alias("k"), ["KAPID", "MANDT"], "left")
+        .select(
+            "k.*",
+            F.col("c.AEDATTM").alias("_change_replicated_at"),
+            F.col("c.AERUNID").alias("_change_run_id"),
+            F.col("c.AERECNO").alias("_change_record_seq"),
+        )
+    )
     return (
-        kapa.alias("k")
+        capacities_to_refresh.alias("k")
         .join(kako.alias("h"), ["KAPID", "MANDT"], "left")
         .select(
             F.col("k.KAPID").alias("capacity_id"),
@@ -166,18 +180,24 @@ def stg_capacity_utilisation():
             F.col("k.NORMA").alias("normal_capacity"),
             F.col("k.RUEZT").alias("setup_time_reduction"),
 
-            F.col("k.AEDATTM").alias("_replicated_at"),
-            F.col("k.AERUNID").alias("_run_id"),
+            F.col("k._change_replicated_at").alias("_replicated_at"),
+            F.col("k._change_run_id").alias("_run_id"),
+            F.col("k._change_record_seq").alias("_record_seq"),
         )
     )
+
+dlt.create_streaming_table(
+    name="capacity_utilisation",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "valid_from_date"],
+)
 
 dlt.apply_changes(
     target="capacity_utilisation",
     source="stg_capacity_utilisation",
     keys=["capacity_id", "valid_from_date"],
-    sequence_by=F.col("_replicated_at"),
+    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     stored_as_scd_type=1,
-    cluster_by=["plant_code", "valid_from_date"],
 )
 
 
@@ -185,43 +205,26 @@ dlt.apply_changes(
 
 @dlt.table(
     name="movement_type_classification",
-    comment="Classification of SAP movement types for production and scrap reporting",
+    comment="Classification of SAP movement types for warehouse, production, and inventory reporting",
     table_properties={"delta.enableChangeDataFeed": "true"}
 )
 def movement_type_classification():
-    # Conformed classification seed mapping
     data = [
         Row(
-            movement_type_code="101",
-            movement_category="PRODUCTION_RECEIPT",
-            is_production_receipt=True,
-            is_receipt_reversal=False,
-            is_scrap=False,
-            is_scrap_reversal=False
-        ),
-        Row(
-            movement_type_code="102",
-            movement_category="PRODUCTION_REVERSAL",
-            is_production_receipt=False,
-            is_receipt_reversal=True,
-            is_scrap=False,
-            is_scrap_reversal=False
-        ),
-        Row(
-            movement_type_code="551",
-            movement_category="SCRAP",
-            is_production_receipt=False,
-            is_receipt_reversal=False,
-            is_scrap=True,
-            is_scrap_reversal=False
-        ),
-        Row(
-            movement_type_code="552",
-            movement_category="SCRAP_REVERSAL",
-            is_production_receipt=False,
-            is_receipt_reversal=False,
-            is_scrap=False,
-            is_scrap_reversal=True
-        ),
+            movement_type_code=code,
+            movement_label=label,
+            event_category=get_movement_event_category(code),
+            is_reversal=code in T156_REVERSAL_MAPPING,
+            is_goods_receipt=code in RECEIPT_MOVEMENT_TYPES,
+            is_goods_issue=code in ISSUE_MOVEMENT_TYPES,
+            is_transfer=code in TRANSFER_MOVEMENT_TYPES,
+            is_stock_write_on=code in STOCK_WRITE_ON_MOVEMENT_TYPES,
+            is_stock_write_off=code in STOCK_WRITE_OFF_MOVEMENT_TYPES,
+            is_production_receipt=code in {"101", "131"},
+            is_receipt_reversal=code in {"102", "132"},
+            is_scrap=code == "551",
+            is_scrap_reversal=code == "552",
+        )
+        for code, label in sorted(MOVEMENT_TYPE_MAPPING.items())
     ]
     return spark.createDataFrame(data)

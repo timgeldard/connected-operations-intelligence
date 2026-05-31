@@ -2,8 +2,8 @@
 Tests for the reference / slowly-changing silver tables.
 
 Business rules under test:
-  - material: 4-way join (MARC + MARA + MAKT + LOFT), language filter on MAKT,
-    compliance flags, zero-padding on material_code
+  - material: 3-way join (MARC + MARA + MAKT), language filter on MAKT,
+    batch-management flag, zero-padding on material_code
   - storage_location: simple select, key presence
   - work_centre: CRHD + CRTX join, language filter on CRTX, internal_id linkage
   - capacity_utilisation: KAPA + KAKO join, date parsing, NULL work_centre when
@@ -29,11 +29,6 @@ _MARA_SCHEMA = (
     "XCHPF STRING, IPRKZ STRING, STOFF STRING"
 )
 _MAKT_SCHEMA = "MATNR STRING, MANDT STRING, SPRAS STRING, MAKTX STRING"
-_LOFT_SCHEMA = (
-    "MATNR STRING, MANDT STRING, KOSHERSUIT STRING, KOSHERAPP STRING, "
-    "HALALSUIT STRING, HALALAPP STRING, ORGANICSUIT STRING, ORGANICAPP STRING, "
-    "ZGMO_CODE STRING, Z_LOFTWARE_LABEL STRING, ZZPALLBLTEMP STRING, STORCOND STRING"
-)
 _T001L_SCHEMA = "WERKS STRING, LGORT STRING, LGOBE STRING, AEDATTM STRING"
 _CRHD_SCHEMA = (
     "OBJID STRING, MANDT STRING, ARBPL STRING, WERKS STRING, "
@@ -56,18 +51,15 @@ def apply_material_transform(
     marc_rows: List[Row],
     mara_rows: List[Row],
     makt_rows: List[Row],
-    loft_rows: List[Row],
 ) -> DataFrame:
     marc = spark.createDataFrame(marc_rows, _MARC_SCHEMA)
     mara = spark.createDataFrame(mara_rows, _MARA_SCHEMA)
     makt = spark.createDataFrame(makt_rows, _MAKT_SCHEMA).filter(F.col("SPRAS") == "E")
-    loft = spark.createDataFrame(loft_rows, _LOFT_SCHEMA)
 
     return (
         marc.alias("p")
         .join(mara.alias("g"), ["MATNR", "MANDT"], "left")
         .join(makt.alias("d"), ["MATNR", "MANDT"], "left")
-        .join(loft.alias("l"), ["MATNR", "MANDT"], "left")
         .select(
             strip_zeros("p.MATNR").alias("material_code"),
             F.col("p.WERKS").alias("plant_code"),
@@ -75,10 +67,6 @@ def apply_material_transform(
             F.col("g.MTART").alias("material_type"),
             F.col("g.MEINS").alias("base_uom"),
             sap_flag("g.XCHPF").alias("batch_management_required"),
-            sap_flag("l.KOSHERSUIT").alias("is_kosher_suitable"),
-            sap_flag("l.HALALSUIT").alias("is_halal_suitable"),
-            sap_flag("l.ORGANICSUIT").alias("is_organic_suitable"),
-            F.col("l.ZGMO_CODE").alias("gmo_code"),
             F.col("p.AEDATTM").alias("_replicated_at"),
         )
     )
@@ -132,28 +120,6 @@ def make_makt(
     return Row(MATNR=MATNR, MANDT=MANDT, SPRAS=SPRAS, MAKTX=MAKTX)
 
 
-def make_loft(
-    MATNR="000000000000012345",
-    MANDT="100",
-    KOSHERSUIT="X",
-    KOSHERAPP="",
-    HALALSUIT="X",
-    HALALAPP="",
-    ORGANICSUIT="",
-    ORGANICAPP="",
-    ZGMO_CODE="NON-GMO",
-    Z_LOFTWARE_LABEL="STD-LABEL",
-    ZZPALLBLTEMP="PALLET-A",
-    STORCOND="Cool and dry",
-):
-    return Row(
-        MATNR=MATNR, MANDT=MANDT, KOSHERSUIT=KOSHERSUIT, KOSHERAPP=KOSHERAPP,
-        HALALSUIT=HALALSUIT, HALALAPP=HALALAPP, ORGANICSUIT=ORGANICSUIT,
-        ORGANICAPP=ORGANICAPP, ZGMO_CODE=ZGMO_CODE, Z_LOFTWARE_LABEL=Z_LOFTWARE_LABEL,
-        ZZPALLBLTEMP=ZZPALLBLTEMP, STORCOND=STORCOND,
-    )
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Material — key stripping and joins
 # ─────────────────────────────────────────────────────────────────────────────
@@ -165,7 +131,6 @@ class TestMaterial:
             [make_marc(MATNR="000000000000099999")],
             [make_mara(MATNR="000000000000099999")],
             [make_makt(MATNR="000000000000099999")],
-            [make_loft(MATNR="000000000000099999")],
         )
         assert first_row(df)["material_code"] == "99999"
 
@@ -179,7 +144,6 @@ class TestMaterial:
                 make_makt(SPRAS="E", MAKTX="Chocolate Coating"),
                 make_makt(SPRAS="D", MAKTX="Schokoladenüberzug"),
             ],
-            [make_loft()],
         )
         rows = all_rows(df)
         assert len(rows) == 1
@@ -192,18 +156,15 @@ class TestMaterial:
             [make_marc()],
             [make_mara()],
             [make_makt(SPRAS="D", MAKTX="Schokoladenüberzug")],
-            [make_loft()],
         )
         assert first_row(df)["material_description"] is None
 
-    def test_material_without_loft_retained(self, spark):
-        """Material with no Loftware compliance record must still appear."""
+    def test_material_with_core_sources_retained(self, spark):
         df = apply_material_transform(
-            spark, [make_marc()], [make_mara()], [make_makt()], []
+            spark, [make_marc()], [make_mara()], [make_makt()]
         )
         row = first_row(df)
         assert row["material_code"] == "12345"
-        assert row["is_kosher_suitable"] is False
 
     def test_batch_management_required_flag(self, spark):
         df = apply_material_transform(
@@ -211,22 +172,8 @@ class TestMaterial:
             [make_marc()],
             [make_mara(XCHPF="X")],
             [make_makt()],
-            [make_loft()],
         )
         assert first_row(df)["batch_management_required"] is True
-
-    def test_compliance_flags(self, spark):
-        df = apply_material_transform(
-            spark,
-            [make_marc()],
-            [make_mara()],
-            [make_makt()],
-            [make_loft(KOSHERSUIT="X", HALALSUIT="X", ORGANICSUIT="")],
-        )
-        row = first_row(df)
-        assert row["is_kosher_suitable"] is True
-        assert row["is_halal_suitable"] is True
-        assert row["is_organic_suitable"] is False
 
 
 # ─────────────────────────────────────────────────────────────────────────────

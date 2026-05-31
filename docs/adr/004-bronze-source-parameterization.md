@@ -24,7 +24,7 @@ BRONZE = (
 ```
 
 ```yaml
-# resources/silver_pipeline.pipeline.yml
+# resources/silver_*_pipeline.pipeline.yml
 configuration:
   source_catalog: ${var.source_catalog}
   source_schema: ${var.source_schema}

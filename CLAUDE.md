@@ -24,7 +24,9 @@ Configure auth before deploying: `databricks auth login --profile DEFAULT`
 ```
 databricks.yml                    # Bundle config (dev / uat / prod targets)
 resources/
-  silver_pipeline.pipeline.yml    # Continuous Silver pipeline definition
+  silver_fast_pipeline.pipeline.yml    # Continuous Silver pipeline definition
+  silver_slow_pipeline.pipeline.yml    # Triggered Silver reference pipeline definition
+  silver_quality_pipeline.pipeline.yml # Triggered Silver quality pipeline definition
   gold_pipeline.pipeline.yml      # Triggered Gold pipeline definition
 silver/
   tables/                         # Domain-specific table definitions (process_order, warehouse_fast, warehouse_reference, etc.)
@@ -34,7 +36,7 @@ silver/
   helpers.py                      # Shared DLT helpers and constants
   design_spec.md                  # Silver architecture and table catalogue
 gold/
-  dlt_gold_pipeline.py            # Gold KPI table definitions (OEE, OTIF, shift output)
+  dlt_gold_pipeline.py            # Gold aggregate definitions (daily output, schedule adherence, quality)
   design_spec.md                  # Gold architecture and KPI specs
 tests/                            # Unit tests for silver helpers and gold tables
 ```
@@ -43,12 +45,14 @@ tests/                            # Unit tests for silver helpers and gold table
 
 ```bash
 # Validate bundle config
-databricks bundle validate -t dev --profile DEFAULT
+databricks bundle validate -t dev_uat_source --profile DEFAULT
+databricks bundle validate -t dev_sample --profile DEFAULT
 databricks bundle validate -t uat --profile DEFAULT
 databricks bundle validate -t prod --profile DEFAULT
 
 # Deploy to specific targets
-databricks bundle deploy -t dev --profile DEFAULT
+databricks bundle deploy -t dev_uat_source --profile DEFAULT
+databricks bundle deploy -t dev_sample --profile DEFAULT
 databricks bundle deploy -t uat --profile DEFAULT
 databricks bundle deploy -t prod --profile DEFAULT
 ```
@@ -68,8 +72,7 @@ If skills are not available, install them: `databricks aitools install`
 
 ## Key notes
 
-- `PP_PI_ORDER_TYPES` in `silver/helpers.py` is `None` — all order types included until confirmed with plant teams.
+- `process_order` is always restricted to AUFK `AUTYP = '10'` (PP/PI process orders). `PP_PI_ORDER_TYPES` can further narrow AUART values once plant teams confirm the allowlist.
 - Dev target writes to `connected_plant_dev` catalog, UAT to `connected_plant_uat`, and Prod to `connected_plant_prod`.
 - Email recipients are parameterized via `notification_email` variable in `databricks.yml`.
 - ADRs for key design decisions live in `docs/adr/`.
-

@@ -2,7 +2,7 @@
 
 Bronze SAP replicas → Silver operational state → Gold reporting aggregates.
 
-Aecorsoft replicates SAP data incrementally into bronze. This bundle transforms it into 14 clean silver tables and computes downstream Gold aggregates for OEE, OTIF, and production output.
+Aecorsoft replicates SAP data incrementally into bronze. This bundle transforms it into 14 clean silver tables and computes downstream Gold aggregates for production output, process-order schedule adherence, and production quality.
 
 ## Architecture
 
@@ -25,7 +25,7 @@ Aecorsoft replicates SAP data incrementally into bronze. This bundle transforms 
    gold_shift_output_summary · gold_order_otif_metrics · gold_plant_production_quality_summary
 ```
 
-Silver tables use SCD Type 1 (`apply_changes`) with liquid clustering and Unity Catalog Row Filters for plant-level access control. Gold tables aggregate Silver conformed data into Materialized Views with native row filters.
+Silver tables use SCD Type 1 (`apply_changes`) with liquid clustering and Unity Catalog Row Filters for plant-level access control. Gold tables aggregate Silver conformed data into Materialized Views and are intended to run as a trusted aggregate layer to avoid row-filter-driven full refreshes.
 
 ## Quick start
 
@@ -39,12 +39,14 @@ brew tap databricks/tap && brew install databricks
 databricks auth login --profile DEFAULT
 
 # Validate bundle configurations for targets
-databricks bundle validate -t dev --profile DEFAULT
+databricks bundle validate -t dev_uat_source --profile DEFAULT
+databricks bundle validate -t dev_sample --profile DEFAULT
 databricks bundle validate -t uat --profile DEFAULT
 databricks bundle validate -t prod --profile DEFAULT
 
 # Deploy to specific targets (writes to target catalogs)
-databricks bundle deploy -t dev --profile DEFAULT
+databricks bundle deploy -t dev_uat_source --profile DEFAULT
+databricks bundle deploy -t dev_sample --profile DEFAULT
 databricks bundle deploy -t uat --profile DEFAULT
 databricks bundle deploy -t prod --profile DEFAULT
 ```
@@ -71,4 +73,3 @@ PYTHONPATH=. pytest
 - [`gold/design_spec.md`](gold/design_spec.md) — Gold architecture and KPI calculations
 - [`docs/adr/`](docs/adr/) — Architecture decision records
 - [`docs/runbook.md`](docs/runbook.md) — Operational runbook for Silver & Gold pipelines
-

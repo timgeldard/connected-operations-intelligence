@@ -1,0 +1,33 @@
+resources:
+  jobs:
+    gold_refresh_job:
+      name: "[${bundle.target}] Connected Plant — Gold Refresh"
+
+      tasks:
+        - task_key: refresh_silver_reference
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver_slow_pipeline.id}
+
+        - task_key: refresh_silver_quality
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver_quality_pipeline.id}
+
+        - task_key: refresh_gold
+          depends_on:
+            - task_key: refresh_silver_reference
+            - task_key: refresh_silver_quality
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gold_pipeline.id}
+
+      schedule:
+        quartz_cron_expression: "0 0 6,14,22 * * ?"
+        timezone_id: "Europe/Dublin"
+        pause_status: PAUSED
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users

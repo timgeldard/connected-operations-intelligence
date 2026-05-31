@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import re
 
+
 def main():
     with open("silver/dlt_silver_pipeline.py", "r") as f:
         content = f.read()
@@ -8,11 +9,11 @@ def main():
     # Split using the pattern of section headers starting with unicode horizontal lines
     # e.g., # ── 1. PROCESS ORDER ──
     sections = re.split(r"(# ──+ \d+\. [^\n]+)", content)
-    
+
     # We should have a list of [header, content, header, content, ...]
     # Let's group them
     header_content_pairs = []
-    
+
     for i in range(1, len(sections), 2):
         header = sections[i]
         body = sections[i+1] if i+1 < len(sections) else ""
@@ -29,7 +30,7 @@ def main():
         "WAREHOUSE TRANSFER REQUIREMENT",
         "DOWNTIME EVENT"
     ]
-    
+
     # Slow pipeline tables (Triggered reference)
     slow_sections = [
         "WAREHOUSE PLANT MAPPING",
@@ -40,20 +41,20 @@ def main():
         "CAPACITY UTILISATION",
         "MOVEMENT TYPE CLASSIFICATION"
     ]
-    
+
     # Quality pipeline tables (Triggered Quality)
     quality_sections = [
         "QUALITY INSPECTION LOT"
     ]
-    
+
     fast_code = []
     slow_code = []
     quality_code = []
-    
+
     for header, body in header_content_pairs:
         matched = False
         header_upper = header.upper()
-        
+
         for s in fast_sections:
             if s in header_upper:
                 fast_code.append(header + body)
@@ -61,7 +62,7 @@ def main():
                 break
         if matched:
             continue
-            
+
         for s in slow_sections:
             if s in header_upper:
                 slow_code.append(header + body)
@@ -69,13 +70,13 @@ def main():
                 break
         if matched:
             continue
-            
+
         for s in quality_sections:
             if s in header_upper:
                 quality_code.append(header + body)
                 matched = True
                 break
-        
+
         if not matched:
             print(f"Warning: Section not matched: {header}")
 

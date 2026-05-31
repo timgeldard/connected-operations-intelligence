@@ -41,22 +41,97 @@ This document defines the formal data contracts for the key Silver and Gold laye
 
 ## Gold Layer Aggregates & KPIs
 
+Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-family semantics. Receipt/issue volume KPIs should net reversals using `is_reversal`; net stock movement KPIs should use `SHKZG` direction from `silver.goods_movement` and must not also apply reversal netting.
+
 ### 1. `gold.gold_shift_output_summary`
 * **Grain**: 1 row per plant × posting date × material × base UOM
 * **Source Silver Tables**: `silver.goods_movement` + `silver.movement_type_classification`
+* **Name Caveat**: Historical table name retained; this is a daily output aggregate and has no shift dimension.
 * **Aggregation Logic**:
   * Inner join on `movement_type_code`.
   * `produced_quantity` = sum of quantities where `is_production_receipt = True` minus `is_receipt_reversal = True`.
   * `scrap_quantity` = sum of quantities where `is_scrap = True` minus `is_scrap_reversal = True`.
-* **Row-Level Security**: Enforced on `plant_code` (inherited from the Silver plant row filter).
-* **Freshness Expectation**: Triggered pipeline execution (runs 3 times daily or on shift completion).
+* **Row-Level Security**: Gold is produced by a trusted aggregate pipeline. Apply plant-level controls at the consumption boundary.
+* **Freshness Expectation**: Triggered pipeline execution (bundled job schedule: three times daily).
 * **Known Caveats**: Relies on conformed classifications mapped in `movement_type_classification`. Any newly introduced custom movement codes must be classified first.
+* **Freshness Caveat**: Depends on the continuous `silver_fast_pipeline`; the Gold refresh job does not trigger that pipeline.
 
 ### 2. `gold.gold_order_otif_metrics`
 * **Grain**: 1 row per completed process order
 * **Source Silver Tables**: `silver.process_order`
-* **OTIF Logic**:
+* **Schedule-Adherence Logic**:
   * `is_on_time` = 1 if `actual_finish_date <= scheduled_finish_date`, else 0.
   * `is_in_full` = 1 if `confirmed_yield_quantity >= order_quantity`, else 0.
-* **Row-Level Security**: Filtered by `plant_code`.
+* **Name Caveat**: This is process-order schedule adherence, not customer-delivery OTIF.
+* **Row-Level Security**: Gold is produced by a trusted aggregate pipeline. Apply plant-level controls at the consumption boundary.
 * **Freshness Expectation**: Batch triggered.
+* **Freshness Caveat**: Depends on the continuous `silver_fast_pipeline`; the Gold refresh job does not trigger that pipeline.
+
+### 3. `gold.gold_plant_production_quality_summary`
+* **Grain**: 1 row per plant across all available history
+* **Source Silver Tables**: `silver.process_order` + `silver.downtime_event`
+* **Window Caveat**: Current totals and quality rate are all-time aggregates. Add a fiscal/posting-period grain before using this table for trend or period comparison.
+
+### 4. `gold.gold_transfer_order_performance`
+* **Grain**: 1 row per warehouse × plant × confirmed user × confirmed date × source storage type
+* **Source Silver Tables**: `silver.warehouse_transfer_order`
+* **Aggregation Logic**:
+  * `confirmed_by_user` is coalesced to `UNKNOWN` when the source operator field is missing.
+  * `pick_accuracy` = picked quantity / confirmed quantity, left null when confirmed quantity is zero.
+  * `fully_confirmed_rate` excludes open items, counting fully confirmed items as 1.0 and partially confirmed items as 0.0.
+  * `avg_confirmation_cycle_hours` is derived from start/end timestamps when both are populated and is floored at zero.
+  * `avg_processing_time` is normalized to minutes before averaging.
+* **Freshness Expectation**: Batch triggered.
+
+### 5. `gold.gold_inbound_outbound_throughput`
+* **Grain**: 1 row per plant × storage location × posting date
+* **Source Silver Tables**: `silver.goods_movement` + `silver.movement_type_classification`
+* **Aggregation Logic**:
+  * Joins movement rows to the conformed classification table on `movement_type_code`.
+  * Reversal movement types are netted with a negative sign inside the same event family.
+  * `net_qty` = inbound quantity - outbound quantity on the consolidated daily row. Transfers and inventory adjustments are reported separately and excluded from `net_qty`.
+* **Freshness Expectation**: Batch triggered.
+
+### 6. `gold.gold_bin_occupancy`
+* **Grain**: 1 row per warehouse × plant × storage type × bin type
+* **Source Silver Tables**: `silver.storage_bin`
+* **Aggregation Logic**:
+  * Quant-level `storage_bin` rows are first rolled up to the physical bin grain (`warehouse_number`, `storage_type`, `bin_code`).
+  * Occupied bins are physical bins with at least one non-null `quant_number`.
+  * Empty, blocked, stock-removal-blocked, and putaway-blocked physical-bin counts are reported separately.
+  * Stock quantities are summed from the current bin/quant state.
+* **Freshness Expectation**: Batch triggered.
+
+### 7. `gold.gold_stock_availability`
+* **Grain**: 1 row per plant × storage location × material × batch × base UOM
+* **Source Silver Tables**: `silver.batch_stock`
+* **Aggregation Logic**:
+  * `available_qty` follows unrestricted stock.
+  * `unavailable_qty` combines quality inspection, blocked, restricted-use, and blocked-return quantities.
+  * `total_stock_qty` includes unrestricted, unavailable, and in-transfer stock.
+* **Freshness Expectation**: Batch triggered.
+
+### 8. `gold.gold_transfer_requirement_backlog`
+* **Grain**: 1 row per warehouse × plant × source/destination storage type × queue × transfer priority
+* **Source Silver Tables**: `silver.warehouse_transfer_requirement`
+* **Aggregation Logic**:
+  * Includes only items where processing is not complete and open quantity is greater than zero.
+  * Reports backlog item count, open quantity, required quantity, open-quantity rate, and oldest created/planned timestamps.
+* **Freshness Expectation**: Batch triggered.
+* **Snapshot Caveat**: Daily append snapshots are intentionally not part of this contract until retention and scheduling requirements are agreed.
+
+### 9. `gold.gold_stock_expiry_risk`
+* **Grain**: 1 row per plant × material × batch × base UOM
+* **Source Silver Tables**: `silver.storage_bin` + `silver.material`
+* **Aggregation Logic**:
+  * Includes current bin/quant stock where material, batch, and expiry date are present.
+  * Buckets quantities into expired, <7 days, 7-30 days, 30-90 days, and OK based on `expiry_date` vs current date.
+  * Flags minimum shelf-life breaches using `minimum_remaining_shelf_life_days` from material master.
+* **Freshness Expectation**: Batch triggered.
+
+### Access Tiers
+* Plant-scoped operative and supervisor reads are governed through Silver `plant_access_filter`.
+* Cluster-lead cross-plant access is documented in ADR-005 but intentionally blocked until a governed plant-to-cluster source is approved.
+
+### Deliberate Descope
+* Loftware compliance and label-template attributes are excluded from the reporting contracts because they are not used by the current Gold outputs.

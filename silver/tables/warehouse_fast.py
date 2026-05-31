@@ -7,12 +7,14 @@ Tables: goods_movement, batch_stock, warehouse_transfer_order,
 
 import dlt
 from pyspark.sql import functions as F
-from silver.helpers import get_spark, BRONZE, strip_zeros, sap_date, sap_datetime, sap_flag
+
+from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
 
 spark = get_spark()
 
 
 # ── 1. GOODS MOVEMENT ────────────────────────────────────────────────────────
+
 
 @dlt.view(name="stg_goods_movement")
 @dlt.expect_all_or_drop({
@@ -23,12 +25,33 @@ spark = get_spark()
     "movement_type_code present": "movement_type_code IS NOT NULL"
 })
 def stg_goods_movement():
-    mseg = spark.readStream.table(f"{BRONZE}.inventorymovement_mseg")
+    mseg_changes = spark.readStream.table(f"{BRONZE}.inventorymovement_mseg").select(
+        "MBLNR", "MJAHR", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
+    )
+    mkpf_changes = (
+        spark.readStream.table(f"{BRONZE}.materialdocument_mkpf")
+        .select("MBLNR", "MJAHR", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+        .withColumn("RecordActivity", F.lit(None).cast("string"))
+    )
+
+    changed_keys = mseg_changes.unionByName(mkpf_changes)
+    mseg = spark.read.table(f"{BRONZE}.inventorymovement_mseg")
     mkpf = spark.read.table(f"{BRONZE}.materialdocument_mkpf").select(
         "MBLNR", "MJAHR", "MANDT", "BUDAT", "BLDAT", "USNAM", "TCODE"
     )
+    movement_lines_to_refresh = (
+        changed_keys.alias("c")
+        .join(mseg.alias("s"), ["MBLNR", "MJAHR", "MANDT"], "left")
+        .select(
+            "s.*",
+            F.col("c.AEDATTM").alias("_change_replicated_at"),
+            F.col("c.AERUNID").alias("_change_run_id"),
+            F.col("c.AERECNO").alias("_change_record_seq"),
+            F.col("c.RecordActivity").alias("_change_record_activity"),
+        )
+    )
     return (
-        mseg.alias("s")
+        movement_lines_to_refresh.alias("s")
         .join(mkpf.alias("h"), ["MBLNR", "MJAHR", "MANDT"], "left")
         .select(
             # ── Natural key
@@ -71,18 +94,28 @@ def stg_goods_movement():
             F.col("h.USNAM").alias("posted_by_user"),
             F.col("h.TCODE").alias("transaction_code"),
 
-            F.col("s.AEDATTM").alias("_replicated_at"),
-            F.col("s.AERUNID").alias("_run_id"),
+            F.col("s._change_replicated_at").alias("_replicated_at"),
+            F.col("s._change_run_id").alias("_run_id"),
+            F.col("s._change_record_seq").alias("_record_seq"),
+            F.coalesce(F.col("s.RecordActivity"), F.col("s._change_record_activity")).alias(
+                "record_activity"
+            ),
         )
     )
+
+dlt.create_streaming_table(
+    name="goods_movement",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "posting_date"],
+)
 
 dlt.apply_changes(
     target="goods_movement",
     source="stg_goods_movement",
     keys=["material_document_number", "fiscal_year", "document_line_item"],
-    sequence_by=F.col("_replicated_at"),
+    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
+    apply_as_deletes=F.expr("record_activity = 'D'"),
     stored_as_scd_type=1,
-    cluster_by=["plant_code", "posting_date"],
 )
 
 
@@ -121,15 +154,21 @@ def stg_batch_stock():
 
         F.col("AEDATTM").alias("_replicated_at"),
         F.col("AERUNID").alias("_run_id"),
+        F.col("AERECNO").alias("_record_seq"),
     )
+
+dlt.create_streaming_table(
+    name="batch_stock",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "storage_location_code"],
+)
 
 dlt.apply_changes(
     target="batch_stock",
     source="stg_batch_stock",
     keys=["material_code", "plant_code", "storage_location_code", "batch_number"],
-    sequence_by=F.col("_replicated_at"),
+    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     stored_as_scd_type=1,
-    cluster_by=["plant_code", "storage_location_code"],
 )
 
 
@@ -141,12 +180,33 @@ dlt.apply_changes(
     "transfer_order_number present": "transfer_order_number IS NOT NULL"
 })
 def stg_warehouse_transfer_order():
-    ltak = spark.readStream.table(f"{BRONZE}.transferorderobjects_ltak")
+    ltak_changes = spark.readStream.table(f"{BRONZE}.transferorderobjects_ltak").select(
+        "LGNUM", "TANUM", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
+    )
+    ltap_changes = (
+        spark.readStream.table(f"{BRONZE}.transferorderobjects_ltap")
+        .select("LGNUM", "TANUM", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+        .withColumn("RecordActivity", F.lit(None).cast("string"))
+    )
+
+    changed_keys = ltak_changes.unionByName(ltap_changes)
+    ltak = spark.read.table(f"{BRONZE}.transferorderobjects_ltak")
     ltap = spark.read.table(f"{BRONZE}.transferorderobjects_ltap")
+    order_items_to_refresh = (
+        changed_keys.alias("c")
+        .join(ltap.alias("i"), ["LGNUM", "TANUM", "MANDT"], "left")
+        .select(
+            "i.*",
+            F.col("c.AEDATTM").alias("_change_replicated_at"),
+            F.col("c.AERUNID").alias("_change_run_id"),
+            F.col("c.AERECNO").alias("_change_record_seq"),
+            F.col("c.RecordActivity").alias("_change_record_activity"),
+        )
+    )
 
     return (
-        ltak.alias("h")
-        .join(ltap.alias("i"), ["LGNUM", "TANUM", "MANDT"], "left")
+        order_items_to_refresh.alias("i")
+        .join(ltak.alias("h"), ["LGNUM", "TANUM", "MANDT"], "left")
         .select(
             # ── Natural key
             F.col("i.LGNUM").alias("warehouse_number"),
@@ -203,20 +263,28 @@ def stg_warehouse_transfer_order():
             F.col("h.BNAME").alias("created_by_user"),
             F.col("i.QNAME").alias("confirmed_by_user"),
 
-            F.col("h.AEDATTM").alias("_replicated_at"),
-            F.col("h.AERUNID").alias("_run_id"),
-            F.col("h.RecordActivity").alias("record_activity"),
+            F.col("i._change_replicated_at").alias("_replicated_at"),
+            F.col("i._change_run_id").alias("_run_id"),
+            F.col("i._change_record_seq").alias("_record_seq"),
+            F.coalesce(F.col("h.RecordActivity"), F.col("i._change_record_activity")).alias(
+                "record_activity"
+            ),
         )
     )
+
+dlt.create_streaming_table(
+    name="warehouse_transfer_order",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "created_datetime"],
+)
 
 dlt.apply_changes(
     target="warehouse_transfer_order",
     source="stg_warehouse_transfer_order",
     keys=["warehouse_number", "transfer_order_number", "item_number"],
-    sequence_by=F.col("_replicated_at"),
+    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     apply_as_deletes=F.expr("record_activity = 'D'"),
     stored_as_scd_type=1,
-    cluster_by=["plant_code", "created_datetime"],
 )
 
 
@@ -231,12 +299,33 @@ dlt.apply_changes(
     "required quantity positive": "required_quantity > 0"
 })
 def stg_warehouse_transfer_requirement():
-    ltbk = spark.readStream.table(f"{BRONZE}.transferrequirementobjects_ltbk")
+    ltbk_changes = spark.readStream.table(f"{BRONZE}.transferrequirementobjects_ltbk").select(
+        "LGNUM", "TBNUM", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "OPFLAG"
+    )
+    ltbp_changes = (
+        spark.readStream.table(f"{BRONZE}.transferrequirementobjects_ltbp")
+        .select("LGNUM", "TBNUM", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+        .withColumn("OPFLAG", F.lit(None).cast("string"))
+    )
+
+    changed_keys = ltbk_changes.unionByName(ltbp_changes)
+    ltbk = spark.read.table(f"{BRONZE}.transferrequirementobjects_ltbk")
     ltbp = spark.read.table(f"{BRONZE}.transferrequirementobjects_ltbp")
+    requirement_items_to_refresh = (
+        changed_keys.alias("c")
+        .join(ltbp.alias("i"), ["LGNUM", "TBNUM", "MANDT"], "left")
+        .select(
+            "i.*",
+            F.col("c.AEDATTM").alias("_change_replicated_at"),
+            F.col("c.AERUNID").alias("_change_run_id"),
+            F.col("c.AERECNO").alias("_change_record_seq"),
+            F.col("c.OPFLAG").alias("_change_record_activity"),
+        )
+    )
 
     return (
-        ltbk.alias("h")
-        .join(ltbp.alias("i"), ["LGNUM", "TBNUM", "MANDT"], "left")
+        requirement_items_to_refresh.alias("i")
+        .join(ltbk.alias("h"), ["LGNUM", "TBNUM", "MANDT"], "left")
         .select(
             # ── Natural key
             F.col("i.LGNUM").alias("warehouse_number"),
@@ -283,18 +372,26 @@ def stg_warehouse_transfer_requirement():
             F.col("h.BNAME").alias("created_by_user"),
             F.col("h.TBPRI").alias("transfer_priority"),
 
-            F.col("h.AEDATTM").alias("_replicated_at"),
-            F.col("h.AERUNID").alias("_run_id"),
-            F.col("h.OPFLAG").alias("record_activity"),
+            F.col("i._change_replicated_at").alias("_replicated_at"),
+            F.col("i._change_run_id").alias("_run_id"),
+            F.col("i._change_record_seq").alias("_record_seq"),
+            F.coalesce(F.col("h.OPFLAG"), F.col("i._change_record_activity")).alias(
+                "record_activity"
+            ),
         )
     )
+
+dlt.create_streaming_table(
+    name="warehouse_transfer_requirement",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "created_datetime"],
+)
 
 dlt.apply_changes(
     target="warehouse_transfer_requirement",
     source="stg_warehouse_transfer_requirement",
     keys=["warehouse_number", "transfer_requirement_number", "item_number"],
-    sequence_by=F.col("_replicated_at"),
+    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     apply_as_deletes=F.expr("record_activity = 'D'"),
     stored_as_scd_type=1,
-    cluster_by=["plant_code", "created_datetime"],
 )

@@ -2,7 +2,6 @@
 """Generate data_dictionary.md from schema_documentation.md."""
 
 import re
-from collections import defaultdict
 
 INPUT_FILE = "schema_documentation.md"
 OUTPUT_FILE = "data_dictionary.md"
@@ -239,7 +238,6 @@ def parse_file(filepath):
     current_schema = None
     current_table = None
     columns_list = None
-    in_body = False
 
     with open(filepath, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -264,7 +262,6 @@ def parse_file(filepath):
                     "columns": [],
                 }
                 columns_list = schemas[current_schema]["tables"][current_table]["columns"]
-                in_body = False
                 continue
 
             # Column count
