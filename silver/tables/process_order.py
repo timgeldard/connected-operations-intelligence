@@ -23,12 +23,12 @@ spark = get_spark()
 @dlt.view(name="stg_process_order")
 @dlt.expect_all_or_drop({
     "order_number present": "order_number IS NOT NULL",
-    "plant_code present": "plant_code IS NOT NULL"
+    "plant_code present": "plant_code IS NOT NULL OR record_activity = 'D'"
 })
 @dlt.expect_all({
-    "quantity non-negative": "order_quantity >= 0",
-    "scheduled dates ordered": "scheduled_start_date <= scheduled_finish_date OR scheduled_start_date IS NULL OR scheduled_finish_date IS NULL",
-    "actual dates ordered": "actual_start_date <= actual_finish_date OR actual_start_date IS NULL OR actual_finish_date IS NULL"
+    "quantity non-negative": "order_quantity >= 0 OR record_activity = 'D'",
+    "scheduled dates ordered": "scheduled_start_date <= scheduled_finish_date OR scheduled_start_date IS NULL OR scheduled_finish_date IS NULL OR record_activity = 'D'",
+    "actual dates ordered": "actual_start_date <= actual_finish_date OR actual_start_date IS NULL OR actual_finish_date IS NULL OR record_activity = 'D'"
 })
 def stg_process_order():
     aufk_changes = spark.readStream.table(f"{BRONZE}.ordermaster_aufk").select(
@@ -44,12 +44,13 @@ def stg_process_order():
     aufk = spark.read.table(f"{BRONZE}.ordermaster_aufk")
     afko = spark.read.table(f"{BRONZE}.productionorderobject_afko")
 
+    is_delete = F.coalesce(F.col("k.RecordActivity"), F.col("c.RecordActivity")) == "D"
     order_type_filter = (
         F.col("k.AUART").isin(PP_PI_ORDER_TYPES)
         if PP_PI_ORDER_TYPES
         else F.lit(True)
     )
-    process_order_filter = (F.col("k.AUTYP") == PP_PI_ORDER_CATEGORY) & order_type_filter
+    process_order_filter = is_delete | ((F.col("k.AUTYP") == PP_PI_ORDER_CATEGORY) & order_type_filter)
 
     return (
         changed_keys.alias("c")
@@ -58,7 +59,7 @@ def stg_process_order():
         .filter(process_order_filter)
         .select(
             # ── Natural key
-            strip_zeros("k.AUFNR").alias("order_number"),
+            strip_zeros(F.coalesce(F.col("k.AUFNR"), F.col("c.AUFNR"))).alias("order_number"),
 
             # ── Organisation
             F.col("k.WERKS").alias("plant_code"),

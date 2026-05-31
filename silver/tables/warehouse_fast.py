@@ -19,18 +19,19 @@ spark = get_spark()
 @dlt.view(name="stg_goods_movement")
 @dlt.expect_all_or_drop({
     "document_number present": "material_document_number IS NOT NULL",
-    "plant_code present": "plant_code IS NOT NULL"
+    "plant_code present": "plant_code IS NOT NULL OR record_activity = 'D'"
 })
 @dlt.expect_all({
-    "movement_type_code present": "movement_type_code IS NOT NULL"
+    "movement_type_code present": "movement_type_code IS NOT NULL OR record_activity = 'D'"
 })
 def stg_goods_movement():
     mseg_changes = spark.readStream.table(f"{BRONZE}.inventorymovement_mseg").select(
-        "MBLNR", "MJAHR", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
+        "MBLNR", "MJAHR", "MANDT", "ZEILE", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
     )
     mkpf_changes = (
         spark.readStream.table(f"{BRONZE}.materialdocument_mkpf")
         .select("MBLNR", "MJAHR", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+        .withColumn("ZEILE", F.lit(None).cast("string"))
         .withColumn("RecordActivity", F.lit(None).cast("string"))
     )
 
@@ -41,9 +42,19 @@ def stg_goods_movement():
     )
     movement_lines_to_refresh = (
         changed_keys.alias("c")
-        .join(mseg.alias("s"), ["MBLNR", "MJAHR", "MANDT"], "left")
+        .join(
+            mseg.alias("s"),
+            (F.col("c.MBLNR") == F.col("s.MBLNR"))
+            & (F.col("c.MJAHR") == F.col("s.MJAHR"))
+            & (F.col("c.MANDT") == F.col("s.MANDT"))
+            & (F.col("c.ZEILE").isNull() | (F.col("c.ZEILE") == F.col("s.ZEILE"))),
+            "left",
+        )
         .select(
             "s.*",
+            F.col("c.MBLNR").alias("_change_mblnr"),
+            F.col("c.MJAHR").alias("_change_mjahr"),
+            F.col("c.ZEILE").alias("_change_zeile"),
             F.col("c.AEDATTM").alias("_change_replicated_at"),
             F.col("c.AERUNID").alias("_change_run_id"),
             F.col("c.AERECNO").alias("_change_record_seq"),
@@ -55,9 +66,9 @@ def stg_goods_movement():
         .join(mkpf.alias("h"), ["MBLNR", "MJAHR", "MANDT"], "left")
         .select(
             # ── Natural key
-            strip_zeros("s.MBLNR").alias("material_document_number"),
-            F.col("s.MJAHR").alias("fiscal_year"),
-            F.col("s.ZEILE").alias("document_line_item"),
+            strip_zeros(F.coalesce(F.col("s.MBLNR"), F.col("s._change_mblnr"))).alias("material_document_number"),
+            F.coalesce(F.col("s.MJAHR"), F.col("s._change_mjahr")).alias("fiscal_year"),
+            F.coalesce(F.col("s.ZEILE"), F.col("s._change_zeile")).alias("document_line_item"),
 
             # ── Organisation
             F.col("s.WERKS").alias("plant_code"),
@@ -197,6 +208,8 @@ def stg_warehouse_transfer_order():
         .join(ltap.alias("i"), ["LGNUM", "TANUM", "MANDT"], "left")
         .select(
             "i.*",
+            F.col("c.LGNUM").alias("_change_lgnum"),
+            F.col("c.TANUM").alias("_change_tanum"),
             F.col("c.AEDATTM").alias("_change_replicated_at"),
             F.col("c.AERUNID").alias("_change_run_id"),
             F.col("c.AERECNO").alias("_change_record_seq"),
@@ -209,8 +222,8 @@ def stg_warehouse_transfer_order():
         .join(ltak.alias("h"), ["LGNUM", "TANUM", "MANDT"], "left")
         .select(
             # ── Natural key
-            F.col("i.LGNUM").alias("warehouse_number"),
-            F.col("i.TANUM").alias("transfer_order_number"),
+            F.coalesce(F.col("i.LGNUM"), F.col("i._change_lgnum")).alias("warehouse_number"),
+            F.coalesce(F.col("i.TANUM"), F.col("i._change_tanum")).alias("transfer_order_number"),
             F.col("i.TAPOS").alias("item_number"),
 
             # ── Organisation
@@ -296,7 +309,7 @@ dlt.apply_changes(
     "transfer_requirement_number present": "transfer_requirement_number IS NOT NULL"
 })
 @dlt.expect_all({
-    "required quantity positive": "required_quantity > 0"
+    "required quantity positive": "required_quantity > 0 OR record_activity = 'D'"
 })
 def stg_warehouse_transfer_requirement():
     ltbk_changes = spark.readStream.table(f"{BRONZE}.transferrequirementobjects_ltbk").select(
@@ -316,6 +329,8 @@ def stg_warehouse_transfer_requirement():
         .join(ltbp.alias("i"), ["LGNUM", "TBNUM", "MANDT"], "left")
         .select(
             "i.*",
+            F.col("c.LGNUM").alias("_change_lgnum"),
+            F.col("c.TBNUM").alias("_change_tbnum"),
             F.col("c.AEDATTM").alias("_change_replicated_at"),
             F.col("c.AERUNID").alias("_change_run_id"),
             F.col("c.AERECNO").alias("_change_record_seq"),
@@ -328,8 +343,8 @@ def stg_warehouse_transfer_requirement():
         .join(ltbk.alias("h"), ["LGNUM", "TBNUM", "MANDT"], "left")
         .select(
             # ── Natural key
-            F.col("i.LGNUM").alias("warehouse_number"),
-            F.col("i.TBNUM").alias("transfer_requirement_number"),
+            F.coalesce(F.col("i.LGNUM"), F.col("i._change_lgnum")).alias("warehouse_number"),
+            F.coalesce(F.col("i.TBNUM"), F.col("i._change_tbnum")).alias("transfer_requirement_number"),
             F.col("i.TBPOS").alias("item_number"),
 
             # ── Organisation
