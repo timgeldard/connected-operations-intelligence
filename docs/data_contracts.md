@@ -41,6 +41,8 @@ This document defines the formal data contracts for the key Silver and Gold laye
 
 ## Gold Layer Aggregates & KPIs
 
+Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-family semantics. Receipt/issue volume KPIs should net reversals using `is_reversal`; net stock movement KPIs should use `SHKZG` direction from `silver.goods_movement` and must not also apply reversal netting.
+
 ### 1. `gold.gold_shift_output_summary`
 * **Grain**: 1 row per plant × posting date × material × base UOM
 * **Source Silver Tables**: `silver.goods_movement` + `silver.movement_type_classification`

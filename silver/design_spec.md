@@ -113,6 +113,25 @@ Current checks by table:
 | `storage_location` | 1 row / storage location | T001L | All |
 | `work_centre` | 1 row / work centre × plant | CRHD + CRTX | All |
 | `capacity_utilisation` | 1 row / capacity × period | KAPA + KAKO | Plant Manager |
+| `movement_type_classification` | 1 row / SAP movement type | Conformed seed from `silver/movement_types.py` | All |
+
+---
+
+## Movement Semantics
+
+`movement_type_classification` is generated from `silver/movement_types.py`, copied from the SupplyChainGraph movement taxonomy. It classifies SAP movement types into event families used by warehouse and production Gold tables:
+
+- `GOODS_RECEIPT`
+- `GOODS_ISSUE`
+- `TRANSFER`
+- `STOCK_WRITE_ON`
+- `STOCK_WRITE_OFF`
+- `INITIAL_ENTRY`
+- `OTHER`
+
+Reversal handling is based on the explicit `T156_REVERSAL_MAPPING` derived from labels containing `REVERSAL`; downstream warehouse volume KPIs should use event-family flags plus this reversal flag for reversal netting. Net stock movement KPIs should use `SHKZG` (`S` receipt/debit, `H` issue/credit) rather than applying both sign conventions.
+
+Site-specific `Z*` movement types are carried from the source taxonomy but must be confirmed against this SAP configuration before they are treated as final. Storage type descriptions require T301T replication; until then warehouse KPIs should use storage type codes only.
 
 ---
 

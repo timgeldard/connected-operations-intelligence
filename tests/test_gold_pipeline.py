@@ -12,6 +12,16 @@ from gold.dlt_gold_pipeline import (
     gold_plant_production_quality_summary,
     gold_shift_output_summary,
 )
+from silver.movement_types import (
+    ISSUE_MOVEMENT_TYPES,
+    MOVEMENT_TYPE_MAPPING,
+    RECEIPT_MOVEMENT_TYPES,
+    STOCK_WRITE_OFF_MOVEMENT_TYPES,
+    STOCK_WRITE_ON_MOVEMENT_TYPES,
+    T156_REVERSAL_MAPPING,
+    TRANSFER_MOVEMENT_TYPES,
+    get_movement_event_category,
+)
 from tests.conftest import all_rows
 
 
@@ -25,10 +35,22 @@ def setup_databases(spark: SparkSession):
 
     # Mock data for conformed movement type classification
     classification_data = [
-        Row(movement_type_code="101", movement_category="PRODUCTION_RECEIPT", is_production_receipt=True, is_receipt_reversal=False, is_scrap=False, is_scrap_reversal=False),
-        Row(movement_type_code="102", movement_category="PRODUCTION_REVERSAL", is_production_receipt=False, is_receipt_reversal=True, is_scrap=False, is_scrap_reversal=False),
-        Row(movement_type_code="551", movement_category="SCRAP", is_production_receipt=False, is_receipt_reversal=False, is_scrap=True, is_scrap_reversal=False),
-        Row(movement_type_code="552", movement_category="SCRAP_REVERSAL", is_production_receipt=False, is_receipt_reversal=False, is_scrap=False, is_scrap_reversal=True),
+        Row(
+            movement_type_code=code,
+            movement_label=MOVEMENT_TYPE_MAPPING[code],
+            event_category=get_movement_event_category(code),
+            is_reversal=code in T156_REVERSAL_MAPPING,
+            is_goods_receipt=code in RECEIPT_MOVEMENT_TYPES,
+            is_goods_issue=code in ISSUE_MOVEMENT_TYPES,
+            is_transfer=code in TRANSFER_MOVEMENT_TYPES,
+            is_stock_write_on=code in STOCK_WRITE_ON_MOVEMENT_TYPES,
+            is_stock_write_off=code in STOCK_WRITE_OFF_MOVEMENT_TYPES,
+            is_production_receipt=code in {"101", "131"},
+            is_receipt_reversal=code in {"102", "132"},
+            is_scrap=code == "551",
+            is_scrap_reversal=code == "552",
+        )
+        for code in ["101", "102", "201", "551", "552"]
     ]
     spark.createDataFrame(classification_data).write.mode("overwrite").saveAsTable("silver.movement_type_classification")
 
@@ -146,4 +168,3 @@ def test_gold_plant_production_quality_summary(spark: SparkSession):
     assert row_2000["total_yield_qty"] == 0.0
     assert row_2000["total_scrap_qty"] == 0.0
     assert row_2000["quality_rate"] is None
-

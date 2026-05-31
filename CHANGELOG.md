@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Grouped expectations using `@dlt.expect_all` and `@dlt.expect_all_or_drop` for improved pipeline maintainability.
 - Consolidated unit tests to import directly from domain-specific modules.
 - Added a paused Databricks job resource to refresh triggered Silver domains before Gold on an explicit schedule.
+- Added conformed SAP movement-type taxonomy for warehouse KPI event-family classification.
 
 ### Changed
 - Refactored `silver/dlt_silver_fast.py`, `silver/dlt_silver_slow.py`, and `silver/dlt_silver_quality.py` to act as pipeline entrypoints, importing tables from the domain files.
@@ -20,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - Derived downtime duration from start/end timestamps when available instead of assuming the raw duration unit.
 - Made `notification_email` a required bundle variable with no placeholder default.
 - Documented Gold freshness dependencies, all-time aggregate caveats, and row-filter setup ordering.
+- Replaced the 4-row movement-type classification seed with generated semantics covering receipt, issue, transfer, adjustment, and reversal families.
 
 ## [0.2.0] - 2026-05-31
 
