@@ -96,8 +96,9 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Grain**: 1 row per warehouse × plant × storage type × bin type
 * **Source Silver Tables**: `silver.storage_bin`
 * **Aggregation Logic**:
-  * Occupied bins are current `storage_bin` records with a non-null `quant_number`.
-  * Empty, blocked, stock-removal-blocked, and putaway-blocked counts are reported separately.
+  * Quant-level `storage_bin` rows are first rolled up to the physical bin grain (`warehouse_number`, `storage_type`, `bin_code`).
+  * Occupied bins are physical bins with at least one non-null `quant_number`.
+  * Empty, blocked, stock-removal-blocked, and putaway-blocked physical-bin counts are reported separately.
   * Stock quantities are summed from the current bin/quant state.
 * **Freshness Expectation**: Batch triggered.
 

@@ -150,26 +150,40 @@ def gold_bin_occupancy():
     silver_schema = get_silver_schema(spark)
     storage_bins = spark.read.table(f"{silver_schema}.storage_bin")
 
-    return (
+    physical_bins = (
         storage_bins
+        .groupBy("warehouse_number", "plant_code", "storage_type", "bin_type", "bin_code")
+        .agg(
+            F.max(F.when(F.col("quant_number").isNotNull(), F.lit(1)).otherwise(F.lit(0))).alias(
+                "is_occupied_bin"
+            ),
+            F.max(F.when(F.col("is_blocked"), F.lit(1)).otherwise(F.lit(0))).alias(
+                "is_blocked_bin"
+            ),
+            F.max(
+                F.when(F.col("is_blocked_for_stock_removal"), F.lit(1)).otherwise(F.lit(0))
+            ).alias("is_stock_removal_blocked_bin"),
+            F.max(F.when(F.col("is_blocked_for_putaway"), F.lit(1)).otherwise(F.lit(0))).alias(
+                "is_putaway_blocked_bin"
+            ),
+            F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("total_quantity"),
+            F.coalesce(F.sum("available_quantity"), F.lit(0.0)).alias("available_quantity"),
+            F.coalesce(F.sum("open_transfer_quantity"), F.lit(0.0)).alias(
+                "open_transfer_quantity"
+            ),
+        )
+    )
+
+    return (
+        physical_bins
         .groupBy("warehouse_number", "plant_code", "storage_type", "bin_type")
         .agg(
             F.count(F.lit(1)).alias("bin_record_count"),
-            F.sum(F.when(F.col("quant_number").isNotNull(), F.lit(1)).otherwise(F.lit(0))).alias(
-                "occupied_bin_count"
-            ),
-            F.sum(F.when(F.col("quant_number").isNull(), F.lit(1)).otherwise(F.lit(0))).alias(
-                "empty_bin_count"
-            ),
-            F.sum(F.when(F.col("is_blocked"), F.lit(1)).otherwise(F.lit(0))).alias(
-                "blocked_bin_count"
-            ),
-            F.sum(
-                F.when(F.col("is_blocked_for_stock_removal"), F.lit(1)).otherwise(F.lit(0))
-            ).alias("stock_removal_blocked_bin_count"),
-            F.sum(F.when(F.col("is_blocked_for_putaway"), F.lit(1)).otherwise(F.lit(0))).alias(
-                "putaway_blocked_bin_count"
-            ),
+            F.sum("is_occupied_bin").alias("occupied_bin_count"),
+            F.sum(1 - F.col("is_occupied_bin")).alias("empty_bin_count"),
+            F.sum("is_blocked_bin").alias("blocked_bin_count"),
+            F.sum("is_stock_removal_blocked_bin").alias("stock_removal_blocked_bin_count"),
+            F.sum("is_putaway_blocked_bin").alias("putaway_blocked_bin_count"),
             F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("total_stock_qty"),
             F.coalesce(F.sum("available_quantity"), F.lit(0.0)).alias("available_stock_qty"),
             F.coalesce(F.sum("open_transfer_quantity"), F.lit(0.0)).alias(
@@ -295,7 +309,6 @@ def gold_transfer_requirement_backlog():
             "open_qty",
             "required_qty",
             F.when(F.col("required_qty") > 0, F.col("open_qty") / F.col("required_qty"))
-            .otherwise(F.lit(None).cast("double"))
             .alias("open_quantity_rate"),
             "oldest_created_datetime",
             "oldest_planned_execution_datetime",

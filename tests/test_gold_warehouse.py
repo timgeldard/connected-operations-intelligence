@@ -220,6 +220,7 @@ def test_bin_occupancy_current_state_counts_and_stock(spark: SparkSession):
             warehouse_number="001",
             plant_code="1000",
             storage_type="A01",
+            bin_code="B01",
             bin_type="PALLET",
             quant_number="Q1",
             is_blocked=False,
@@ -233,6 +234,21 @@ def test_bin_occupancy_current_state_counts_and_stock(spark: SparkSession):
             warehouse_number="001",
             plant_code="1000",
             storage_type="A01",
+            bin_code="B01",
+            bin_type="PALLET",
+            quant_number="Q2",
+            is_blocked=False,
+            is_blocked_for_stock_removal=False,
+            is_blocked_for_putaway=True,
+            total_quantity=5.0,
+            available_quantity=5.0,
+            open_transfer_quantity=0.0,
+        ),
+        Row(
+            warehouse_number="001",
+            plant_code="1000",
+            storage_type="A01",
+            bin_code="B02",
             bin_type="PALLET",
             quant_number=None,
             is_blocked=True,
@@ -246,11 +262,12 @@ def test_bin_occupancy_current_state_counts_and_stock(spark: SparkSession):
             warehouse_number="001",
             plant_code="1000",
             storage_type="A01",
+            bin_code="B03",
             bin_type="PALLET",
-            quant_number="Q2",
+            quant_number="Q3",
             is_blocked=False,
             is_blocked_for_stock_removal=False,
-            is_blocked_for_putaway=True,
+            is_blocked_for_putaway=False,
             total_quantity=5.0,
             available_quantity=5.0,
             open_transfer_quantity=0.0,
@@ -269,8 +286,8 @@ def test_bin_occupancy_current_state_counts_and_stock(spark: SparkSession):
     assert row["stock_removal_blocked_bin_count"] == 1
     assert row["putaway_blocked_bin_count"] == 1
     assert abs(row["occupancy_rate"] - (2 / 3)) < 0.0001
-    assert row["total_stock_qty"] == 15.0
-    assert row["available_stock_qty"] == 13.0
+    assert row["total_stock_qty"] == 20.0
+    assert row["available_stock_qty"] == 18.0
     assert row["open_transfer_stock_qty"] == 2.0
 
 

@@ -84,7 +84,7 @@ Managed via Declarative Automation Bundle (DAB).
 
 ### `gold_bin_occupancy`
 - **Granularity:** 1 row per warehouse × plant × storage type × bin type.
-- **Description:** Current bin occupancy, block status, and stock quantity measures from the SCD1 `storage_bin` current state.
+- **Description:** Current physical-bin occupancy and block counts from SCD1 `storage_bin`, with quant-level stock quantities summed after deduplicating bin-level attributes by `bin_code`.
 - **Freshness:** Depends on `silver_fast_pipeline` storage-bin refresh and the triggered Gold refresh job.
 
 ### `gold_stock_availability`
