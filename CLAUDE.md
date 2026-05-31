@@ -24,7 +24,9 @@ Configure auth before deploying: `databricks auth login --profile DEFAULT`
 ```
 databricks.yml                    # Bundle config (dev / uat / prod targets)
 resources/
-  silver_pipeline.pipeline.yml    # Continuous Silver pipeline definition
+  silver_fast_pipeline.pipeline.yml    # Continuous Silver pipeline definition
+  silver_slow_pipeline.pipeline.yml    # Triggered Silver reference pipeline definition
+  silver_quality_pipeline.pipeline.yml # Triggered Silver quality pipeline definition
   gold_pipeline.pipeline.yml      # Triggered Gold pipeline definition
 silver/
   dlt_silver_fast.py              # Fast operational silver tables (continuous)
@@ -42,12 +44,14 @@ tests/                            # Unit tests for silver helpers and gold table
 
 ```bash
 # Validate bundle config
-databricks bundle validate -t dev --profile DEFAULT
+databricks bundle validate -t dev_uat_source --profile DEFAULT
+databricks bundle validate -t dev_sample --profile DEFAULT
 databricks bundle validate -t uat --profile DEFAULT
 databricks bundle validate -t prod --profile DEFAULT
 
 # Deploy to specific targets
-databricks bundle deploy -t dev --profile DEFAULT
+databricks bundle deploy -t dev_uat_source --profile DEFAULT
+databricks bundle deploy -t dev_sample --profile DEFAULT
 databricks bundle deploy -t uat --profile DEFAULT
 databricks bundle deploy -t prod --profile DEFAULT
 ```
@@ -71,4 +75,3 @@ If skills are not available, install them: `databricks aitools install`
 - Dev target writes to `connected_plant_dev` catalog, UAT to `connected_plant_uat`, and Prod to `connected_plant_prod`.
 - Email recipients are parameterized via `notification_email` variable in `databricks.yml`.
 - ADRs for key design decisions live in `docs/adr/`.
-

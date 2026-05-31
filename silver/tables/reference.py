@@ -3,8 +3,10 @@ Reference/Master data domain tables.
 """
 
 import dlt
-from pyspark.sql import Row, functions as F
-from silver.helpers import get_spark, BRONZE, strip_zeros, sap_date, sap_flag
+from pyspark.sql import Row
+from pyspark.sql import functions as F
+
+from silver.helpers import BRONZE, get_spark, sap_date, sap_flag, strip_zeros
 
 spark = get_spark()
 
@@ -142,12 +144,30 @@ def work_centre():
     "capacity_id present": "capacity_id IS NOT NULL"
 })
 def stg_capacity_utilisation():
-    kapa = spark.readStream.table(f"{BRONZE}.shiftparametersavailablecapacity_kapa")
+    kapa_changes = spark.readStream.table(
+        f"{BRONZE}.shiftparametersavailablecapacity_kapa"
+    ).select("KAPID", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+    kako_changes = spark.readStream.table(f"{BRONZE}.capacityheadersegment_kako").select(
+        "KAPID", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
+    )
+
+    changed_keys = kapa_changes.unionByName(kako_changes)
+    kapa = spark.read.table(f"{BRONZE}.shiftparametersavailablecapacity_kapa")
     kako = spark.read.table(f"{BRONZE}.capacityheadersegment_kako").select(
         "KAPID", "MANDT", "ARBPL", "WERKS", "KAPAR"
     )
+    capacities_to_refresh = (
+        changed_keys.alias("c")
+        .join(kapa.alias("k"), ["KAPID", "MANDT"], "left")
+        .select(
+            "k.*",
+            F.col("c.AEDATTM").alias("_change_replicated_at"),
+            F.col("c.AERUNID").alias("_change_run_id"),
+            F.col("c.AERECNO").alias("_change_record_seq"),
+        )
+    )
     return (
-        kapa.alias("k")
+        capacities_to_refresh.alias("k")
         .join(kako.alias("h"), ["KAPID", "MANDT"], "left")
         .select(
             F.col("k.KAPID").alias("capacity_id"),
@@ -166,18 +186,24 @@ def stg_capacity_utilisation():
             F.col("k.NORMA").alias("normal_capacity"),
             F.col("k.RUEZT").alias("setup_time_reduction"),
 
-            F.col("k.AEDATTM").alias("_replicated_at"),
-            F.col("k.AERUNID").alias("_run_id"),
+            F.col("k._change_replicated_at").alias("_replicated_at"),
+            F.col("k._change_run_id").alias("_run_id"),
+            F.col("k._change_record_seq").alias("_record_seq"),
         )
     )
+
+dlt.create_streaming_table(
+    name="capacity_utilisation",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "valid_from_date"],
+)
 
 dlt.apply_changes(
     target="capacity_utilisation",
     source="stg_capacity_utilisation",
     keys=["capacity_id", "valid_from_date"],
-    sequence_by=F.col("_replicated_at"),
+    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     stored_as_scd_type=1,
-    cluster_by=["plant_code", "valid_from_date"],
 )
 
 

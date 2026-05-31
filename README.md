@@ -39,12 +39,14 @@ brew tap databricks/tap && brew install databricks
 databricks auth login --profile DEFAULT
 
 # Validate bundle configurations for targets
-databricks bundle validate -t dev --profile DEFAULT
+databricks bundle validate -t dev_uat_source --profile DEFAULT
+databricks bundle validate -t dev_sample --profile DEFAULT
 databricks bundle validate -t uat --profile DEFAULT
 databricks bundle validate -t prod --profile DEFAULT
 
 # Deploy to specific targets (writes to target catalogs)
-databricks bundle deploy -t dev --profile DEFAULT
+databricks bundle deploy -t dev_uat_source --profile DEFAULT
+databricks bundle deploy -t dev_sample --profile DEFAULT
 databricks bundle deploy -t uat --profile DEFAULT
 databricks bundle deploy -t prod --profile DEFAULT
 ```
@@ -71,4 +73,3 @@ PYTHONPATH=. pytest
 - [`gold/design_spec.md`](gold/design_spec.md) — Gold architecture and KPI calculations
 - [`docs/adr/`](docs/adr/) — Architecture decision records
 - [`docs/runbook.md`](docs/runbook.md) — Operational runbook for Silver & Gold pipelines
-

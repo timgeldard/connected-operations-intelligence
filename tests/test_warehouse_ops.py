@@ -6,6 +6,7 @@ Business rules under test:
     zero-padding on MATNR/CHARG/VBELN/BENUM, RecordActivity CDC
   - warehouse_transfer_requirement: ELIKZ flag, OPFLAG CDC, custom ZZ fields,
     LTBP+LTBK left join
+  - goods_movement: RecordActivity CDC delete propagation
   - storage_bin: LAGP+LQUA left join (empty bins retain bin attributes, NULL stock),
     SPGRU blocking flag
   - batch_stock: compound natural key, all stock type quantities, zero-padding
@@ -54,6 +55,85 @@ _MCHB_SCHEMA = (
     "CLABS DOUBLE, CINSM DOUBLE, CSPEM DOUBLE, CEINM DOUBLE, "
     "CUMLM DOUBLE, CRETM DOUBLE, AEDATTM STRING"
 )
+_MSEG_SCHEMA = (
+    "MBLNR STRING, MJAHR STRING, MANDT STRING, ZEILE STRING, WERKS STRING, "
+    "BWART STRING, MENGE DOUBLE, MEINS STRING, RecordActivity STRING, AEDATTM STRING"
+)
+_MKPF_SCHEMA = (
+    "MBLNR STRING, MJAHR STRING, MANDT STRING, BUDAT STRING, BLDAT STRING"
+)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Goods Movement helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def apply_goods_movement_transform(
+    spark: SparkSession,
+    mseg_rows: List[Row],
+    mkpf_rows: List[Row],
+) -> DataFrame:
+    mseg = spark.createDataFrame(mseg_rows, _MSEG_SCHEMA)
+    mkpf = spark.createDataFrame(mkpf_rows, _MKPF_SCHEMA)
+
+    return (
+        mseg.alias("s")
+        .join(mkpf.alias("h"), ["MBLNR", "MJAHR", "MANDT"], "left")
+        .select(
+            strip_zeros("s.MBLNR").alias("material_document_number"),
+            F.col("s.MJAHR").alias("fiscal_year"),
+            F.col("s.ZEILE").alias("document_line_item"),
+            F.col("s.WERKS").alias("plant_code"),
+            F.col("s.BWART").alias("movement_type_code"),
+            F.col("s.MENGE").alias("quantity"),
+            F.col("s.MEINS").alias("base_uom"),
+            sap_date("h.BUDAT").alias("posting_date"),
+            sap_date("h.BLDAT").alias("document_date"),
+            F.col("s.AEDATTM").alias("_replicated_at"),
+            F.col("s.RecordActivity").alias("record_activity"),
+        )
+    )
+
+
+def make_mseg(
+    MBLNR="0000005001",
+    MJAHR="2024",
+    MANDT="100",
+    ZEILE="0001",
+    WERKS="1000",
+    BWART="101",
+    MENGE=100.0,
+    MEINS="KG",
+    RecordActivity="I",
+    AEDATTM="2024-12-01T10:00:00",
+):
+    return Row(
+        MBLNR=MBLNR, MJAHR=MJAHR, MANDT=MANDT, ZEILE=ZEILE, WERKS=WERKS,
+        BWART=BWART, MENGE=MENGE, MEINS=MEINS,
+        RecordActivity=RecordActivity, AEDATTM=AEDATTM,
+    )
+
+
+def make_mkpf(
+    MBLNR="0000005001",
+    MJAHR="2024",
+    MANDT="100",
+    BUDAT="20241201",
+    BLDAT="20241201",
+):
+    return Row(MBLNR=MBLNR, MJAHR=MJAHR, MANDT=MANDT, BUDAT=BUDAT, BLDAT=BLDAT)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Goods Movement — CDC
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestGoodsMovementCDC:
+    def test_record_activity_delete_flagged(self, spark):
+        df = apply_goods_movement_transform(
+            spark, [make_mseg(RecordActivity="D")], [make_mkpf()]
+        )
+        assert first_row(df)["record_activity"] == "D"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

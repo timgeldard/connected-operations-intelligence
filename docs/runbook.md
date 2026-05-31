@@ -8,13 +8,14 @@
 | Target Catalog (Prod) | `connected_plant_prod` | `connected_plant_prod` |
 | Target Schema (Prod) | `silver` | `gold` |
 | Mode | Continuous | Triggered (Batch) |
-| Notifications | Configure in `resources/silver_pipeline.pipeline.yml` | Configure in `resources/gold_pipeline.pipeline.yml` |
+| Notifications | Configure in `resources/silver_*_pipeline.pipeline.yml` | Configure in `resources/gold_pipeline.pipeline.yml` |
 
 ### Environment Target Matrix
 
 | Environment Target | Catalog (`${var.catalog}`) | Silver Schema (`${var.schema}`) | Gold Schema (`${var.gold_schema}`) | Source Catalog (`${var.source_catalog}`) |
 | :--- | :--- | :--- | :--- | :--- |
-| **dev** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_uat` |
+| **dev_uat_source** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_uat` |
+| **dev_sample** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_dev` |
 | **uat** | `connected_plant_uat` | `silver` | `gold` | `connected_plant_uat` |
 | **prod** | `connected_plant_prod` | `silver` | `gold` | `connected_plant_prod` |
 
@@ -82,12 +83,12 @@ Streaming Tables cannot evolve incompatibly without a full refresh. Signs: pipel
 
 ## 5. Dev schema isolation
 
-The dev target writes to `connected_plant_dev` to prevent production database impacts. 
-*Note:* As a temporary compromise, the `dev` target reads from the `connected_plant_uat` bronze source until a dedicated dev bronze source is provisioned.
+The dev targets write to `connected_plant_dev` to prevent production database impacts.
+*Note:* `dev_uat_source` reads from the `connected_plant_uat` bronze source as a temporary compromise; `dev_sample` reads from `connected_plant_dev.sap_sample`.
 
 To isolate dev bronze once available:
-1. Update `source_catalog` / `source_schema` variables for the `dev` target in `databricks.yml`.
-2. Re-deploy dev: `databricks bundle deploy -t dev`.
+1. Update `source_catalog` / `source_schema` variables for the relevant dev target in `databricks.yml`.
+2. Re-deploy dev: `databricks bundle deploy -t dev_uat_source` or `databricks bundle deploy -t dev_sample`.
 
 ---
 
@@ -126,6 +127,8 @@ No manual SQL script is required for the Gold tables. The row filter is **automa
 ## 8. Running the Gold Pipeline
 
 Since the Gold pipeline runs in **Triggered (batch)** mode, it should be orchestrated to run periodically (e.g. daily, or immediately following the conclusion of large batch events).
+
+Gold reads from Silver tables that have Unity Catalog row filters applied. Databricks may choose full refresh for materialized views sourced from row-filtered tables, even on serverless. After first deployment, compare Gold update duration and input rows across several runs before increasing schedule frequency.
 
 To run the Gold pipeline manually:
 ```bash

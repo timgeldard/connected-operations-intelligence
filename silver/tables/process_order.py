@@ -4,7 +4,16 @@ Process Order domain tables.
 
 import dlt
 from pyspark.sql import functions as F
-from silver.helpers import get_spark, BRONZE, PP_PI_ORDER_TYPES, strip_zeros, sap_date, sap_datetime, sap_flag
+
+from silver.helpers import (
+    BRONZE,
+    PP_PI_ORDER_TYPES,
+    get_spark,
+    sap_date,
+    sap_datetime,
+    sap_flag,
+    strip_zeros,
+)
 
 spark = get_spark()
 
@@ -21,7 +30,17 @@ spark = get_spark()
     "actual dates ordered": "actual_start_date <= actual_finish_date OR actual_start_date IS NULL OR actual_finish_date IS NULL"
 })
 def stg_process_order():
-    aufk = spark.readStream.table(f"{BRONZE}.ordermaster_aufk")
+    aufk_changes = spark.readStream.table(f"{BRONZE}.ordermaster_aufk").select(
+        "AUFNR", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
+    )
+    afko_changes = (
+        spark.readStream.table(f"{BRONZE}.productionorderobject_afko")
+        .select("AUFNR", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+        .withColumn("RecordActivity", F.lit(None).cast("string"))
+    )
+
+    changed_keys = aufk_changes.unionByName(afko_changes)
+    aufk = spark.read.table(f"{BRONZE}.ordermaster_aufk")
     afko = spark.read.table(f"{BRONZE}.productionorderobject_afko")
 
     order_filter = (
@@ -31,7 +50,8 @@ def stg_process_order():
     )
 
     return (
-        aufk.alias("k")
+        changed_keys.alias("c")
+        .join(aufk.alias("k"), ["AUFNR", "MANDT"], "left")
         .join(afko.alias("h"), ["AUFNR", "MANDT"], "left")
         .filter(order_filter)
         .select(
@@ -88,20 +108,28 @@ def stg_process_order():
             F.col("h.RSNUM").alias("reservation_number"),
 
             # ── Aecorsoft system columns
-            F.col("k.AEDATTM").alias("_replicated_at"),
-            F.col("k.AERUNID").alias("_run_id"),
-            F.col("k.RecordActivity").alias("record_activity"),
+            F.col("c.AEDATTM").alias("_replicated_at"),
+            F.col("c.AERUNID").alias("_run_id"),
+            F.col("c.AERECNO").alias("_record_seq"),
+            F.coalesce(F.col("k.RecordActivity"), F.col("c.RecordActivity")).alias(
+                "record_activity"
+            ),
         )
     )
+
+dlt.create_streaming_table(
+    name="process_order",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "scheduled_start_date"],
+)
 
 dlt.apply_changes(
     target="process_order",
     source="stg_process_order",
     keys=["order_number"],
-    sequence_by=F.col("_replicated_at"),
+    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     apply_as_deletes=F.expr("record_activity = 'D'"),
     stored_as_scd_type=1,
-    cluster_by=["plant_code", "scheduled_start_date"],
 )
 
 # ── 2. PROCESS ORDER OPERATION ────────────────────────────────────────────────
@@ -116,14 +144,44 @@ dlt.apply_changes(
     "scheduled dates ordered": "scheduled_start_datetime <= scheduled_finish_datetime OR scheduled_start_datetime IS NULL OR scheduled_finish_datetime IS NULL"
 })
 def stg_process_order_operation():
-    afvc = spark.readStream.table(f"{BRONZE}.processorderobject_afvc")
+    afvc_changes = spark.readStream.table(f"{BRONZE}.processorderobject_afvc").select(
+        "AUFPL", "APLZL", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
+    )
+    afvv_changes = spark.readStream.table(
+        f"{BRONZE}.dbstructureoperationquantitydatevalues_afvv"
+    ).select("AUFPL", "APLZL", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+    afko_changes = (
+        spark.readStream.table(f"{BRONZE}.productionorderobject_afko")
+        .select("AUFPL", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+        .withColumn("APLZL", F.lit(None).cast("string"))
+    )
+
+    changed_keys = afvc_changes.unionByName(afvv_changes).unionByName(afko_changes)
+    afvc = spark.read.table(f"{BRONZE}.processorderobject_afvc")
     afvv = spark.read.table(f"{BRONZE}.dbstructureoperationquantitydatevalues_afvv")
     afko = spark.read.table(
         f"{BRONZE}.productionorderobject_afko"
     ).select("AUFPL", "AUFNR", "MANDT")
 
+    operations_to_refresh = (
+        changed_keys.alias("c")
+        .join(
+            afvc.alias("o"),
+            (F.col("c.AUFPL") == F.col("o.AUFPL"))
+            & (F.col("c.MANDT") == F.col("o.MANDT"))
+            & (F.col("c.APLZL").isNull() | (F.col("c.APLZL") == F.col("o.APLZL"))),
+            "left",
+        )
+        .select(
+            "o.*",
+            F.col("c.AEDATTM").alias("_change_replicated_at"),
+            F.col("c.AERUNID").alias("_change_run_id"),
+            F.col("c.AERECNO").alias("_change_record_seq"),
+        )
+    )
+
     return (
-        afvc.alias("o")
+        operations_to_refresh.alias("o")
         .join(afvv.alias("v"),  ["AUFPL", "APLZL", "MANDT"], "left")
         .join(afko.alias("h"),  ["AUFPL",           "MANDT"], "left")
         .select(
@@ -170,18 +228,24 @@ def stg_process_order_operation():
             F.when(F.col("o.RUECK").isNotNull(), True).otherwise(False).alias("is_confirmed"),
 
             # ── Aecorsoft system columns
-            F.col("o.AEDATTM").alias("_replicated_at"),
-            F.col("o.AERUNID").alias("_run_id"),
+            F.col("o._change_replicated_at").alias("_replicated_at"),
+            F.col("o._change_run_id").alias("_run_id"),
+            F.col("o._change_record_seq").alias("_record_seq"),
         )
     )
+
+dlt.create_streaming_table(
+    name="process_order_operation",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "scheduled_start_datetime"],
+)
 
 dlt.apply_changes(
     target="process_order_operation",
     source="stg_process_order_operation",
     keys=["order_number", "operation_number"],
-    sequence_by=F.col("_replicated_at"),
+    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     stored_as_scd_type=1,
-    cluster_by=["plant_code", "scheduled_start_datetime"],
 )
 
 # ── 3. PI SHEET EXECUTION ─────────────────────────────────────────────────────
@@ -216,15 +280,22 @@ def stg_pi_sheet_execution():
          .otherwise("Not Started").alias("pi_sheet_status"),
 
         F.col("AEDATTM").alias("_replicated_at"),
+        F.col("AERUNID").alias("_run_id"),
+        F.col("AERECNO").alias("_record_seq"),
     )
+
+dlt.create_streaming_table(
+    name="pi_sheet_execution",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "pi_sheet_start_datetime"],
+)
 
 dlt.apply_changes(
     target="pi_sheet_execution",
     source="stg_pi_sheet_execution",
     keys=["plant_code", "order_number", "operation_number"],
-    sequence_by=F.col("_replicated_at"),
+    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     stored_as_scd_type=1,
-    cluster_by=["plant_code", "pi_sheet_start_datetime"],
 )
 
 # ── 4. DOWNTIME EVENT ─────────────────────────────────────────────────────────
@@ -274,14 +345,21 @@ def stg_downtime_event():
             F.col("ZTEXT1").alias("comment"),
 
             F.col("AEDATTM").alias("_replicated_at"),
+            F.col("AERUNID").alias("_run_id"),
+            F.col("AERECNO").alias("_record_seq"),
         )
     )
+
+dlt.create_streaming_table(
+    name="downtime_event",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "start_datetime"],
+)
 
 dlt.apply_changes(
     target="downtime_event",
     source="stg_downtime_event",
     keys=["order_number", "plant_code", "operation_number", "item_number"],
-    sequence_by=F.col("_replicated_at"),
+    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     stored_as_scd_type=1,
-    cluster_by=["plant_code", "start_datetime"],
 )

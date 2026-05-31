@@ -10,7 +10,9 @@ Deployed via DAB bundle: databricks.yml / resources/gold_pipeline.pipeline.yml
 """
 
 import dlt
-from pyspark.sql import SparkSession, functions as F
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+
 
 def get_spark_session() -> SparkSession:
     return SparkSession.builder.getOrCreate()
@@ -67,22 +69,22 @@ def gold_shift_output_summary():
     # Read from Silver layer
     goods_mov = spark.read.table(f"{silver_schema}.goods_movement")
     classification = spark.read.table(f"{silver_schema}.movement_type_classification")
-    
+
     # Join with conformed classification metadata to decouple hardcoded SAP codes
     joined_movs = goods_mov.join(classification, "movement_type_code", "inner")
-    
+
     # Aggregate output quantities based on semantic categories (receipts minus reversals)
     return (
         joined_movs.groupBy("plant_code", "posting_date", "material_code", "base_uom")
         .agg(
             F.sum(
-                F.when(F.col("is_production_receipt") == True, F.col("quantity"))
-                .when(F.col("is_receipt_reversal") == True, -F.col("quantity"))
+                F.when(F.col("is_production_receipt"), F.col("quantity"))
+                .when(F.col("is_receipt_reversal"), -F.col("quantity"))
                 .otherwise(0.0)
             ).alias("produced_quantity"),
             F.sum(
-                F.when(F.col("is_scrap") == True, F.col("quantity"))
-                .when(F.col("is_scrap_reversal") == True, -F.col("quantity"))
+                F.when(F.col("is_scrap"), F.col("quantity"))
+                .when(F.col("is_scrap_reversal"), -F.col("quantity"))
                 .otherwise(0.0)
             ).alias("scrap_quantity")
         )
@@ -97,10 +99,10 @@ def gold_order_otif_metrics():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
     orders = spark.read.table(f"{silver_schema}.process_order")
-    
+
     # Filter completed or closed orders
     completed_orders = orders.filter("is_completed = true OR is_closed = true")
-    
+
     return (
         completed_orders.select(
             "order_number",
@@ -138,13 +140,13 @@ def gold_plant_production_quality_summary():
     silver_schema = get_silver_schema(spark)
     orders = spark.read.table(f"{silver_schema}.process_order")
     downtime = spark.read.table(f"{silver_schema}.downtime_event")
-    
+
     # Sum of downtime hours per plant
     plant_downtime = (
         downtime.groupBy("plant_code")
         .agg(F.coalesce(F.sum("duration_minutes"), F.lit(0.0)).alias("total_downtime_minutes"))
     )
-    
+
     # Sum of process orders quantities and yield - coalesce sums to prevent NULL propagation
     plant_production = (
         orders.groupBy("plant_code")
@@ -154,7 +156,7 @@ def gold_plant_production_quality_summary():
             F.coalesce(F.sum("total_scrap_quantity"), F.lit(0.0)).alias("total_scrap_qty")
         )
     )
-    
+
     return (
         plant_production.join(plant_downtime, "plant_code", "left")
         .select(

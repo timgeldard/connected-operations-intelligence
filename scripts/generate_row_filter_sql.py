@@ -66,7 +66,7 @@ END;
 def generate_sql():
     # Make sure output directory exists
     os.makedirs("resources/sql", exist_ok=True)
-    
+
     for env, config in ENVIRONMENTS.items():
         sql_content = TEMPLATE.format(
             env_upper=env.upper(),
@@ -75,12 +75,12 @@ def generate_sql():
             schema=config["schema"],
             admin_group=config["admin_group"]
         )
-        
+
         for table in TABLES:
             fq_table = f"{config['catalog']}.{config['schema']}.{table}"
             fq_filter = f"{config['catalog']}.{config['schema']}.plant_access_filter"
             sql_content += f"\nALTER TABLE {fq_table}\n  SET ROW FILTER {fq_filter} ON (plant_code);\n"
-            
+
         with open(config["filename"], "w") as f:
             f.write(sql_content)
         print(f"Generated: {config['filename']}")

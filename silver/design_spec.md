@@ -40,7 +40,8 @@ ${var.source_catalog}.${var.source_schema} (Bronze — Aecorsoft Delta replicati
 | Pipeline mode | **Continuous** | Near real-time delivery; Aecorsoft replicates incrementally |
 | Change strategy | **SCD Type 1** via `dlt.apply_changes` | Operational state — current values matter, not history |
 | Clustering | **Liquid clustering** on `plant_code` + date | Auto-compacts; no manual tuning at 100+ plant scale |
-| CDC source | `RecordActivity` / `OPFLAG` where present; `AEDATTM` sequence otherwise | Handles deletes from SAP where flagged |
+| CDC source | `RecordActivity` / `OPFLAG` where present; `AEDATTM`, `AERUNID`, `AERECNO` sequence otherwise | Handles deletes from SAP where flagged and preserves deterministic event ordering |
+| Multi-source joins | **Trigger-stream refresh** | Header/detail/reference changes emit affected keys, then rows are rebuilt from latest replicated tables to avoid stale stream-static enrichment |
 | Key fields | Zero-padding stripped on all SAP key columns | Database-level extraction — see bronze conventions |
 | Date fields | `YYYYMMDD` STRING → `DATE`; date+time pairs → `TIMESTAMP` | Usable in BI without transformation |
 | Descriptions | Denormalised at silver | Eliminates joins in BI / Gold layer |
@@ -57,7 +58,8 @@ Managed via Declarative Automation Bundle (DAB). See `docs/adr/001-dab-bundle-de
 
 | Target | Output Catalog (`${var.catalog}`) | Silver Schema (`${var.schema}`) | Source Catalog (`${var.source_catalog}`) | Source Schema (`${var.source_schema}`) |
 | :--- | :--- | :--- | :--- | :--- |
-| **dev** | `connected_plant_dev` | `silver_dev` | `connected_plant_uat` (Compromise) | `sap` |
+| **dev_uat_source** | `connected_plant_dev` | `silver_dev` | `connected_plant_uat` (Compromise) | `sap` |
+| **dev_sample** | `connected_plant_dev` | `silver_dev` | `connected_plant_dev` | `sap_sample` |
 | **uat** | `connected_plant_uat` | `silver` | `connected_plant_uat` | `sap` |
 | **prod** | `connected_plant_prod` | `silver` | `connected_plant_prod` | `sap` |
 

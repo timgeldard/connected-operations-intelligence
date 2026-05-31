@@ -35,6 +35,7 @@ ${var.catalog}.${var.schema} (Silver — clean conformed tables)
 | Dataset types | **Materialized Views** | Auto-recomputes aggregations to stay correct as Silver tables receive updates |
 | Read strategy | **Batch read** (`spark.read.table`) | Prevents streaming state-management overhead for aggregations on streaming tables |
 | Clustering | **Liquid clustering** on `plant_code` + dates | Ensures fast retrieval for dashboard queries filtering by plant or time periods |
+| Security/performance tradeoff | **Read row-filtered Silver tables** | Silver remains secure for direct access. Databricks may full-refresh Gold MVs sourced from row-filtered tables; monitor refresh cost before widening Gold scope. |
 
 ---
 
@@ -46,7 +47,8 @@ Managed via Declarative Automation Bundle (DAB).
 
 | Target | Output Catalog (`${var.catalog}`) | Silver Schema (`${var.schema}`) | Gold Schema (`${var.gold_schema}`) | Source Catalog (`${var.source_catalog}`) | Source Schema (`${var.source_schema}`) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **dev** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_uat` (Compromise) | `sap` |
+| **dev_uat_source** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_uat` (Compromise) | `sap` |
+| **dev_sample** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_dev` | `sap_sample` |
 | **uat** | `connected_plant_uat` | `silver` | `gold` | `connected_plant_uat` | `sap` |
 | **prod** | `connected_plant_prod` | `silver` | `gold` | `connected_plant_prod` | `sap` |
 

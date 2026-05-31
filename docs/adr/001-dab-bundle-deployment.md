@@ -13,7 +13,7 @@ The silver pipeline needs a repeatable, version-controlled deployment mechanism.
 
 ## Decision
 
-Use a DAB bundle (`databricks.yml` + `resources/silver_pipeline.pipeline.yml`).
+Use a DAB bundle (`databricks.yml` + one pipeline resource file per pipeline in `resources/`).
 
 ## Consequences
 

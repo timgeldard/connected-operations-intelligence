@@ -7,7 +7,6 @@ Run in Databricks: attach to cluster, run `pytest tests/ -v` in terminal or
 """
 
 import sys
-from datetime import date, datetime
 from typing import Any, Dict, List
 from unittest.mock import MagicMock
 
