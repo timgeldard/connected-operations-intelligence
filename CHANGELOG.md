@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Split `silver/tables/warehouse.py` into two tier-specific modules to eliminate overlapping table ownership between the Fast and Reference pipelines:
+  - `warehouse_fast.py` — `goods_movement`, `batch_stock`, `warehouse_transfer_order`, `warehouse_transfer_requirement` (all streaming sources; owned by the continuous Fast pipeline)
+  - `warehouse_reference.py` — `warehouse_plant_mapping`, `warehouse_plant_mapping_validation`, `storage_bin` (owned by the triggered Reference/Slow pipeline)
+- `storage_bin` is placed in the Reference tier because it depends on `warehouse_plant_mapping` via `dlt.read()` (an intra-pipeline reference), and because its quant occupancy source (`LQUA`) is already a batch read — meaning occupancy freshness is a periodic snapshot regardless of tier.
+- Updated `dlt_silver_fast.py` to import `warehouse_fast`; `dlt_silver_slow.py` to import `warehouse_reference`.
+- Removed the now-redundant `silver/tables/warehouse.py`.
+
+## [0.3.0] - 2026-05-31
+
 ### Added
 - Created `silver/tables/` domain-specific modular directory structure.
 - Grouped expectations using `@dlt.expect_all` and `@dlt.expect_all_or_drop` for improved pipeline maintainability.

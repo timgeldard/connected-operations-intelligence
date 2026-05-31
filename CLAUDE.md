@@ -27,7 +27,7 @@ resources/
   silver_pipeline.pipeline.yml    # Continuous Silver pipeline definition
   gold_pipeline.pipeline.yml      # Triggered Gold pipeline definition
 silver/
-  tables/                         # Domain-specific table definitions (process_order, warehouse, etc.)
+  tables/                         # Domain-specific table definitions (process_order, warehouse_fast, warehouse_reference, etc.)
   dlt_silver_fast.py              # Fast operational silver entrypoint (continuous)
   dlt_silver_slow.py              # Slow reference silver entrypoint (triggered)
   dlt_silver_quality.py           # Quality silver entrypoint (triggered)
