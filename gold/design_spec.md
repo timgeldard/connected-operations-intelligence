@@ -72,5 +72,15 @@ Managed via Declarative Automation Bundle (DAB).
 - **Description:** All-time production volumes, scrap, total downtime, and quality rate (yield / (yield + scrap)).
 - **Window:** This blends all available history. Add a fiscal/posting-period grain before using it for trend or period comparison.
 
+### `gold_transfer_order_performance`
+- **Granularity:** 1 row per warehouse × plant × confirmed user × confirmed date × source storage type.
+- **Description:** Transfer-order execution metrics for warehouse operations, including confirmed/requested/picked quantities, pick accuracy, fully confirmed rate, confirmation cycle time, and processing time.
+- **Freshness:** Depends on `silver_slow_pipeline` warehouse transfer-order refresh and the triggered Gold refresh job.
+
+### `gold_inbound_outbound_throughput`
+- **Granularity:** 1 row per plant × storage location × posting date.
+- **Description:** Goods-movement throughput by day, using the conformed movement-type classification to net reversals for inbound, outbound, transfer, and adjustment quantities.
+- **Freshness:** Depends on `silver_fast_pipeline` goods movement and `silver_slow_pipeline` movement classification refresh.
+
 ### Deliberate exclusions
 - Loftware compliance and label-template attributes are not included in Silver `material` or Gold because they are not used by the current reporting layer.

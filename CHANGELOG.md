@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Consolidated unit tests to import directly from domain-specific modules.
 - Added a paused Databricks job resource to refresh triggered Silver domains before Gold on an explicit schedule.
 - Added conformed SAP movement-type taxonomy for warehouse KPI event-family classification.
+- Added Gold warehouse flow KPIs for transfer-order performance and inbound/outbound throughput.
 
 ### Changed
 - Refactored `silver/dlt_silver_fast.py`, `silver/dlt_silver_slow.py`, and `silver/dlt_silver_quality.py` to act as pipeline entrypoints, importing tables from the domain files.

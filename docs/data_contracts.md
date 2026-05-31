@@ -72,5 +72,25 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Source Silver Tables**: `silver.process_order` + `silver.downtime_event`
 * **Window Caveat**: Current totals and quality rate are all-time aggregates. Add a fiscal/posting-period grain before using this table for trend or period comparison.
 
+### 4. `gold.gold_transfer_order_performance`
+* **Grain**: 1 row per warehouse × plant × confirmed user × confirmed date × source storage type
+* **Source Silver Tables**: `silver.warehouse_transfer_order`
+* **Aggregation Logic**:
+  * `confirmed_by_user` is coalesced to `UNKNOWN` when the source operator field is missing.
+  * `pick_accuracy` = picked quantity / confirmed quantity, left null when confirmed quantity is zero.
+  * `fully_confirmed_rate` excludes open items, counting fully confirmed items as 1.0 and partially confirmed items as 0.0.
+  * `avg_confirmation_cycle_hours` is derived from start/end timestamps when both are populated and is floored at zero.
+  * `avg_processing_time` is normalized to minutes before averaging.
+* **Freshness Expectation**: Batch triggered.
+
+### 5. `gold.gold_inbound_outbound_throughput`
+* **Grain**: 1 row per plant × storage location × posting date
+* **Source Silver Tables**: `silver.goods_movement` + `silver.movement_type_classification`
+* **Aggregation Logic**:
+  * Joins movement rows to the conformed classification table on `movement_type_code`.
+  * Reversal movement types are netted with a negative sign inside the same event family.
+  * `net_qty` = inbound quantity - outbound quantity on the consolidated daily row. Transfers and inventory adjustments are reported separately and excluded from `net_qty`.
+* **Freshness Expectation**: Batch triggered.
+
 ### Deliberate Descope
 * Loftware compliance and label-template attributes are excluded from the reporting contracts because they are not used by the current Gold outputs.
