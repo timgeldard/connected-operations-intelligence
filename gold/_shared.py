@@ -11,7 +11,7 @@ def get_spark_session() -> SparkSession:
 
 def get_silver_schema(spark: SparkSession) -> str:
     try:
-        catalog = spark.conf.get("silver_catalog")
+        catalog = spark.conf.get("silver_catalog", None)
         schema = spark.conf.get("silver_schema", "silver")
         # Local Spark (spark_catalog) requires single-part namespace (database.table)
         if catalog and catalog != "spark_catalog":

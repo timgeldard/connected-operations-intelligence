@@ -78,8 +78,8 @@ Managed via Declarative Automation Bundle (DAB).
 - **Freshness:** Depends on `silver_slow_pipeline` warehouse transfer-order refresh and the triggered Gold refresh job.
 
 ### `gold_inbound_outbound_throughput`
-- **Granularity:** 1 row per plant × storage location × posting date × movement event category.
-- **Description:** Goods-movement throughput by event family, using the conformed movement-type classification to net reversals for inbound, outbound, transfer, and adjustment quantities.
+- **Granularity:** 1 row per plant × storage location × posting date.
+- **Description:** Goods-movement throughput by day, using the conformed movement-type classification to net reversals for inbound, outbound, transfer, and adjustment quantities.
 - **Freshness:** Depends on `silver_fast_pipeline` goods movement and `silver_slow_pipeline` movement classification refresh.
 
 ### Deliberate exclusions

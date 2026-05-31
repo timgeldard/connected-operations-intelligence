@@ -82,11 +82,26 @@ def test_transfer_order_performance_operator_bucket_and_accuracy(spark: SparkSes
             confirmed_quantity=5.0,
             requested_quantity=5.0,
             actual_quantity_picked=5.0,
+            item_status="Partially Confirmed",
+            start_datetime=datetime(2026, 5, 30, 11, 0, 0),
+            end_datetime=datetime(2026, 5, 30, 10, 0, 0),
+            actual_processing_time=0.5,
+            processing_time_unit="HR",
+        ),
+        Row(
+            warehouse_number="001",
+            plant_code="1000",
+            confirmed_by_user="OP1",
+            confirmed_date=date(2026, 5, 30),
+            source_storage_type="A01",
+            confirmed_quantity=0.0,
+            requested_quantity=4.0,
+            actual_quantity_picked=0.0,
             item_status="Open",
             start_datetime=None,
             end_datetime=None,
-            actual_processing_time=10.0,
-            processing_time_unit="MIN",
+            actual_processing_time=600.0,
+            processing_time_unit="SEC",
         ),
         Row(
             warehouse_number="001",
@@ -115,14 +130,14 @@ def test_transfer_order_performance_operator_bucket_and_accuracy(spark: SparkSes
     }
 
     op_row = grouped[("OP1", date(2026, 5, 30))]
-    assert op_row["to_item_count"] == 2
+    assert op_row["to_item_count"] == 3
     assert op_row["confirmed_qty"] == 15.0
-    assert op_row["requested_qty"] == 17.0
+    assert op_row["requested_qty"] == 21.0
     assert op_row["picked_qty"] == 14.0
     assert abs(op_row["pick_accuracy"] - (14.0 / 15.0)) < 0.0001
     assert op_row["fully_confirmed_rate"] == 0.5
-    assert op_row["avg_confirmation_cycle_hours"] == 2.0
-    assert op_row["avg_processing_time"] == 15.0
+    assert op_row["avg_confirmation_cycle_hours"] == 1.0
+    assert op_row["avg_processing_time"] == 20.0
     assert op_row["processing_time_unit"] == "MIN"
 
     unknown_row = grouped[("UNKNOWN", None)]
@@ -186,22 +201,11 @@ def test_inbound_outbound_throughput_reversal_netting_and_transfer_exclusion(spa
         "silver.goods_movement"
     )
 
-    rows = {
-        row["event_category"]: row
-        for row in all_rows(gold_inbound_outbound_throughput())
-    }
+    row = all_rows(gold_inbound_outbound_throughput())[0]
 
-    assert rows["GOODS_RECEIPT"]["movement_line_count"] == 2
-    assert rows["GOODS_RECEIPT"]["inbound_qty"] == 0.0
-    assert rows["GOODS_RECEIPT"]["net_qty"] == 0.0
-
-    assert rows["GOODS_ISSUE"]["outbound_qty"] == 30.0
-    assert rows["GOODS_ISSUE"]["net_qty"] == -30.0
-
-    assert rows["TRANSFER"]["transfer_qty"] == 25.0
-    assert rows["TRANSFER"]["net_qty"] == 0.0
-
-    assert rows["STOCK_WRITE_ON"]["adjustment_qty"] == 7.0
-    assert rows["STOCK_WRITE_ON"]["net_qty"] == 0.0
-    assert rows["STOCK_WRITE_OFF"]["adjustment_qty"] == -2.0
-    assert rows["STOCK_WRITE_OFF"]["net_qty"] == 0.0
+    assert row["movement_line_count"] == 7
+    assert row["inbound_qty"] == 0.0
+    assert row["outbound_qty"] == 30.0
+    assert row["transfer_qty"] == 25.0
+    assert row["adjustment_qty"] == 5.0
+    assert row["net_qty"] == -30.0

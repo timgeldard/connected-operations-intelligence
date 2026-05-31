@@ -78,17 +78,18 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Aggregation Logic**:
   * `confirmed_by_user` is coalesced to `UNKNOWN` when the source operator field is missing.
   * `pick_accuracy` = picked quantity / confirmed quantity, left null when confirmed quantity is zero.
-  * `fully_confirmed_rate` = average of transfer-order items with `item_status = 'Fully Confirmed'`.
-  * `avg_confirmation_cycle_hours` is derived from start/end timestamps when both are populated.
+  * `fully_confirmed_rate` excludes open items, counting fully confirmed items as 1.0 and partially confirmed items as 0.0.
+  * `avg_confirmation_cycle_hours` is derived from start/end timestamps when both are populated and is floored at zero.
+  * `avg_processing_time` is normalized to minutes before averaging.
 * **Freshness Expectation**: Batch triggered.
 
 ### 5. `gold.gold_inbound_outbound_throughput`
-* **Grain**: 1 row per plant × storage location × posting date × movement event category
+* **Grain**: 1 row per plant × storage location × posting date
 * **Source Silver Tables**: `silver.goods_movement` + `silver.movement_type_classification`
 * **Aggregation Logic**:
   * Joins movement rows to the conformed classification table on `movement_type_code`.
   * Reversal movement types are netted with a negative sign inside the same event family.
-  * `net_qty` = inbound quantity - outbound quantity. Transfers and inventory adjustments are reported separately and excluded from `net_qty`.
+  * `net_qty` = inbound quantity - outbound quantity on the consolidated daily row. Transfers and inventory adjustments are reported separately and excluded from `net_qty`.
 * **Freshness Expectation**: Batch triggered.
 
 ### Deliberate Descope

@@ -13,6 +13,14 @@ def _reversal_net_quantity() -> Column:
     return F.col("quantity") * F.when(F.col("is_reversal"), F.lit(-1.0)).otherwise(F.lit(1.0))
 
 
+def _processing_time_minutes() -> Column:
+    return (
+        F.when(F.col("processing_time_unit") == "SEC", F.col("actual_processing_time") / 60.0)
+        .when(F.col("processing_time_unit") == "HR", F.col("actual_processing_time") * 60.0)
+        .otherwise(F.col("actual_processing_time"))
+    )
+
+
 @dlt.table(**gold_table_args(
     comment="Transfer-order operator performance by warehouse, plant, date, and source storage type.",
     cluster_by=["plant_code", "confirmed_date"],
@@ -26,13 +34,17 @@ def gold_transfer_order_performance():
 
     cycle_hours = F.when(
         F.col("start_datetime").isNotNull() & F.col("end_datetime").isNotNull(),
-        (F.unix_timestamp("end_datetime") - F.unix_timestamp("start_datetime")) / 3600,
+        F.greatest(
+            (F.unix_timestamp("end_datetime") - F.unix_timestamp("start_datetime")) / 3600,
+            F.lit(0.0),
+        ),
     )
 
     return (
         transfer_orders
         .withColumn("operator_user", F.coalesce(F.col("confirmed_by_user"), F.lit("UNKNOWN")))
         .withColumn("confirmation_cycle_hours", cycle_hours)
+        .withColumn("processing_time_minutes", _processing_time_minutes())
         .groupBy(
             "warehouse_number",
             "plant_code",
@@ -46,12 +58,14 @@ def gold_transfer_order_performance():
             F.coalesce(F.sum("requested_quantity"), F.lit(0.0)).alias("requested_qty"),
             F.coalesce(F.sum("actual_quantity_picked"), F.lit(0.0)).alias("picked_qty"),
             F.coalesce(
-                F.avg(F.when(F.col("item_status") == "Fully Confirmed", F.lit(1.0)).otherwise(F.lit(0.0))),
+                F.avg(
+                    F.when(F.col("item_status") == "Fully Confirmed", F.lit(1.0))
+                    .when(F.col("item_status") == "Partially Confirmed", F.lit(0.0))
+                ),
                 F.lit(0.0),
             ).alias("fully_confirmed_rate"),
             F.avg("confirmation_cycle_hours").alias("avg_confirmation_cycle_hours"),
-            F.avg("actual_processing_time").alias("avg_processing_time"),
-            F.max("processing_time_unit").alias("processing_time_unit"),
+            F.avg("processing_time_minutes").alias("avg_processing_time"),
         )
         .select(
             "warehouse_number",
@@ -69,13 +83,13 @@ def gold_transfer_order_performance():
             "fully_confirmed_rate",
             "avg_confirmation_cycle_hours",
             "avg_processing_time",
-            "processing_time_unit",
+            F.lit("MIN").alias("processing_time_unit"),
         )
     )
 
 
 @dlt.table(**gold_table_args(
-    comment="Inbound, outbound, transfer, and adjustment throughput by plant, storage location, date, and movement family.",
+    comment="Inbound, outbound, transfer, and adjustment throughput by plant, storage location, and date.",
     cluster_by=["plant_code", "posting_date"],
 ))
 def gold_inbound_outbound_throughput():
@@ -88,7 +102,7 @@ def gold_inbound_outbound_throughput():
     reversal_net_qty = _reversal_net_quantity()
 
     return (
-        joined.groupBy("plant_code", "storage_location_code", "posting_date", "event_category")
+        joined.groupBy("plant_code", "storage_location_code", "posting_date")
         .agg(
             F.count(F.lit(1)).alias("movement_line_count"),
             F.coalesce(
@@ -116,7 +130,6 @@ def gold_inbound_outbound_throughput():
             "plant_code",
             "storage_location_code",
             "posting_date",
-            "event_category",
             "movement_line_count",
             "inbound_qty",
             "outbound_qty",
