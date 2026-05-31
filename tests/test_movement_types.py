@@ -39,6 +39,12 @@ def test_movement_direction_uses_transfer_and_signed_quantity_rules():
     assert get_movement_direction("311", signed_quantity=-10.0) == "INTERNAL"
     assert get_movement_direction("101", signed_quantity=10.0) == "INBOUND"
     assert get_movement_direction("102", signed_quantity=-10.0) == "OUTBOUND"
+    assert get_movement_direction("101") == "INBOUND"
+    assert get_movement_direction("102") == "OUTBOUND"
+    assert get_movement_direction("261") == "OUTBOUND"
+    assert get_movement_direction("262") == "INBOUND"
+    assert get_movement_direction("561") == "INBOUND"
+    assert get_movement_direction("562") == "OUTBOUND"
     assert get_movement_direction("999") == "UNKNOWN"
 
 
@@ -60,3 +66,5 @@ def test_movement_type_classification_schema_and_backcompat_columns():
     assert rows["311"]["is_transfer"] is True
     assert rows["701"]["is_stock_write_on"] is True
     assert rows["702"]["is_stock_write_off"] is True
+    assert rows["561"]["event_category"] == "INITIAL_ENTRY"
+    assert rows["562"]["is_reversal"] is True

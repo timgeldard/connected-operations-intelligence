@@ -88,6 +88,9 @@ MOVEMENT_TYPE_MAPPING = {
     "542": "REVERSAL_GR_SUBCONTRACTING",
     "543": "GOODS_ISSUE_SUBCONTRACTING_COMPONENT",
     "544": "REVERSAL_GI_SUBCONTRACTING_COMPONENT",
+    # ===== INITIAL ENTRY =====
+    "561": "INITIAL_ENTRY_OF_STOCK",
+    "562": "REVERSAL_INITIAL_ENTRY_OF_STOCK",
     # ===== CUSTOM Z-MOVEMENTS =====
     # TODO: Confirm these site-specific custom codes against this SAP configuration.
     "Z01": "CUSTOM_BULK_DROP",
@@ -300,7 +303,7 @@ def get_movement_direction(
 
     category = get_movement_event_category(movement_type)
     if category in {"GOODS_RECEIPT", "STOCK_WRITE_ON", "INITIAL_ENTRY"}:
-        return "INBOUND"
+        return "OUTBOUND" if is_reversal(movement_type) else "INBOUND"
     if category in {"GOODS_ISSUE", "STOCK_WRITE_OFF"}:
-        return "OUTBOUND"
+        return "INBOUND" if is_reversal(movement_type) else "OUTBOUND"
     return "UNKNOWN"
