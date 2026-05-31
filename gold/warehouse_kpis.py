@@ -364,9 +364,9 @@ def gold_stock_expiry_risk():
             F.max("minimum_remaining_shelf_life_days").alias(
                 "minimum_remaining_shelf_life_days"
             ),
-            F.coalesce(F.sum(quantity), F.lit(0.0)).alias("total_stock_qty"),
+            F.sum(quantity).alias("total_stock_qty"),
             F.coalesce(
-                F.sum(F.when(F.col("days_to_expiry") < 0, quantity).otherwise(F.lit(0.0))),
+                F.sum(F.when(F.col("days_to_expiry") < 0, quantity)),
                 F.lit(0.0),
             ).alias("expired_qty"),
             F.coalesce(
@@ -374,7 +374,7 @@ def gold_stock_expiry_risk():
                     F.when(
                         (F.col("days_to_expiry") >= 0) & (F.col("days_to_expiry") < 7),
                         quantity,
-                    ).otherwise(F.lit(0.0))
+                    )
                 ),
                 F.lit(0.0),
             ).alias("expiry_risk_lt_7d_qty"),
@@ -383,7 +383,7 @@ def gold_stock_expiry_risk():
                     F.when(
                         (F.col("days_to_expiry") >= 7) & (F.col("days_to_expiry") < 30),
                         quantity,
-                    ).otherwise(F.lit(0.0))
+                    )
                 ),
                 F.lit(0.0),
             ).alias("expiry_risk_7_30d_qty"),
@@ -392,12 +392,12 @@ def gold_stock_expiry_risk():
                     F.when(
                         (F.col("days_to_expiry") >= 30) & (F.col("days_to_expiry") < 90),
                         quantity,
-                    ).otherwise(F.lit(0.0))
+                    )
                 ),
                 F.lit(0.0),
             ).alias("expiry_risk_30_90d_qty"),
             F.coalesce(
-                F.sum(F.when(F.col("days_to_expiry") >= 90, quantity).otherwise(F.lit(0.0))),
+                F.sum(F.when(F.col("days_to_expiry") >= 90, quantity)),
                 F.lit(0.0),
             ).alias("expiry_ok_qty"),
             F.coalesce(
@@ -406,7 +406,7 @@ def gold_stock_expiry_risk():
                         F.col("days_to_expiry")
                         < F.coalesce(F.col("minimum_remaining_shelf_life_days"), F.lit(0)),
                         quantity,
-                    ).otherwise(F.lit(0.0))
+                    )
                 ),
                 F.lit(0.0),
             ).alias("minimum_shelf_life_breach_qty"),

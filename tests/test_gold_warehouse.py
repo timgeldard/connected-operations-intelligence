@@ -404,7 +404,7 @@ def test_transfer_requirement_backlog_filters_completed_and_closed_items(spark: 
 
 
 def test_stock_expiry_risk_buckets_and_minimum_shelf_life(spark: SparkSession):
-    today = date.today()
+    today = spark.sql("SELECT current_date() AS today").collect()[0]["today"]
     storage_bin_data = [
         Row(
             plant_code="1000",
