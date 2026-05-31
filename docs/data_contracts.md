@@ -92,5 +92,32 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
   * `net_qty` = inbound quantity - outbound quantity on the consolidated daily row. Transfers and inventory adjustments are reported separately and excluded from `net_qty`.
 * **Freshness Expectation**: Batch triggered.
 
+### 6. `gold.gold_bin_occupancy`
+* **Grain**: 1 row per warehouse × plant × storage type × bin type
+* **Source Silver Tables**: `silver.storage_bin`
+* **Aggregation Logic**:
+  * Occupied bins are current `storage_bin` records with a non-null `quant_number`.
+  * Empty, blocked, stock-removal-blocked, and putaway-blocked counts are reported separately.
+  * Stock quantities are summed from the current bin/quant state.
+* **Freshness Expectation**: Batch triggered.
+
+### 7. `gold.gold_stock_availability`
+* **Grain**: 1 row per plant × storage location × material × batch × base UOM
+* **Source Silver Tables**: `silver.batch_stock`
+* **Aggregation Logic**:
+  * `available_qty` follows unrestricted stock.
+  * `unavailable_qty` combines quality inspection, blocked, restricted-use, and blocked-return quantities.
+  * `total_stock_qty` includes unrestricted, unavailable, and in-transfer stock.
+* **Freshness Expectation**: Batch triggered.
+
+### 8. `gold.gold_transfer_requirement_backlog`
+* **Grain**: 1 row per warehouse × plant × source/destination storage type × queue × transfer priority
+* **Source Silver Tables**: `silver.warehouse_transfer_requirement`
+* **Aggregation Logic**:
+  * Includes only items where processing is not complete and open quantity is greater than zero.
+  * Reports backlog item count, open quantity, required quantity, open-quantity rate, and oldest created/planned timestamps.
+* **Freshness Expectation**: Batch triggered.
+* **Snapshot Caveat**: Daily append snapshots are intentionally not part of this contract until retention and scheduling requirements are agreed.
+
 ### Deliberate Descope
 * Loftware compliance and label-template attributes are excluded from the reporting contracts because they are not used by the current Gold outputs.

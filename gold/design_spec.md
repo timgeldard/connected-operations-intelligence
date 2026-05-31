@@ -82,5 +82,21 @@ Managed via Declarative Automation Bundle (DAB).
 - **Description:** Goods-movement throughput by day, using the conformed movement-type classification to net reversals for inbound, outbound, transfer, and adjustment quantities.
 - **Freshness:** Depends on `silver_fast_pipeline` goods movement and `silver_slow_pipeline` movement classification refresh.
 
+### `gold_bin_occupancy`
+- **Granularity:** 1 row per warehouse × plant × storage type × bin type.
+- **Description:** Current bin occupancy, block status, and stock quantity measures from the SCD1 `storage_bin` current state.
+- **Freshness:** Depends on `silver_fast_pipeline` storage-bin refresh and the triggered Gold refresh job.
+
+### `gold_stock_availability`
+- **Granularity:** 1 row per plant × storage location × material × batch × base UOM.
+- **Description:** Current batch-stock availability, separating unrestricted available stock from quality, blocked, restricted-use, transfer, and blocked-return quantities.
+- **Freshness:** Depends on `silver_fast_pipeline` batch-stock refresh and the triggered Gold refresh job.
+
+### `gold_transfer_requirement_backlog`
+- **Granularity:** 1 row per warehouse × plant × source/destination storage type × queue × transfer priority.
+- **Description:** Current open transfer-requirement backlog. Completed requirements and zero-open-quantity items are excluded.
+- **Freshness:** Depends on `silver_fast_pipeline` transfer-requirement refresh and the triggered Gold refresh job.
+- **Snapshot note:** This PR intentionally adds current-state materialized views only. Daily append snapshots should be added with an explicit retention and scheduling decision.
+
 ### Deliberate exclusions
 - Loftware compliance and label-template attributes are not included in Silver `material` or Gold because they are not used by the current reporting layer.
