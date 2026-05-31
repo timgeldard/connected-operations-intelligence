@@ -27,7 +27,10 @@ resources/
   silver_pipeline.pipeline.yml    # Continuous Silver pipeline definition
   gold_pipeline.pipeline.yml      # Triggered Gold pipeline definition
 silver/
-  dlt_silver_pipeline.py          # All 14 silver table definitions
+  dlt_silver_fast.py              # Fast operational silver tables (continuous)
+  dlt_silver_slow.py              # Slow reference silver tables (triggered)
+  dlt_silver_quality.py           # Quality silver tables (triggered)
+  helpers.py                      # Shared DLT helpers and constants
   design_spec.md                  # Silver architecture and table catalogue
 gold/
   dlt_gold_pipeline.py            # Gold KPI table definitions (OEE, OTIF, shift output)

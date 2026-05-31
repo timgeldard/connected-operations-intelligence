@@ -27,7 +27,10 @@ resources/
   silver_pipeline.pipeline.yml    # Continuous Silver pipeline definition
   gold_pipeline.pipeline.yml      # Triggered Gold pipeline definition
 silver/
-  dlt_silver_pipeline.py          # All 14 silver table definitions
+  dlt_silver_fast.py              # Fast operational silver tables (continuous)
+  dlt_silver_slow.py              # Slow reference silver tables (triggered)
+  dlt_silver_quality.py           # Quality silver tables (triggered)
+  helpers.py                      # Shared DLT helpers and constants
   design_spec.md                  # Silver architecture and table catalogue
 gold/
   dlt_gold_pipeline.py            # Gold KPI table definitions (OEE, OTIF, shift output)
@@ -49,7 +52,7 @@ databricks bundle deploy -t uat --profile DEFAULT
 databricks bundle deploy -t prod --profile DEFAULT
 ```
 
-The Silver pipeline is **continuous** — start it once via UI or CLI. The Gold pipeline is **triggered** (batch) mode.
+The Silver pipelines are configured with different update modes (fast is continuous, slow and quality are triggered). The Gold pipeline is triggered (batch) mode.
 
 ```bash
 databricks pipelines start-update <pipeline-id> --profile DEFAULT
@@ -64,7 +67,7 @@ If skills are not available, install them: `databricks aitools install`
 
 ## Key notes
 
-- `PP_PI_ORDER_TYPES` in `dlt_silver_pipeline.py` is `None` — all order types included until confirmed with plant teams.
+- `PP_PI_ORDER_TYPES` in `silver/helpers.py` is `None` — all order types included until confirmed with plant teams.
 - Dev target writes to `connected_plant_dev` catalog, UAT to `connected_plant_uat`, and Prod to `connected_plant_prod`.
 - Email recipients are parameterized via `notification_email` variable in `databricks.yml`.
 - ADRs for key design decisions live in `docs/adr/`.
