@@ -312,6 +312,8 @@ dlt.apply_changes(
 })
 def stg_downtime_event():
     src = spark.readStream.table(f"{BRONZE}.downtime_zpexpm_dwnt")
+    start_datetime = sap_datetime("ZAUSVN", "ZAUZTV")
+    end_datetime = sap_datetime("ZAUSBS", "ZAUZTB")
     return (
         src.filter(F.col("ZDEL").isNull() | (F.col("ZDEL") != "X"))   # exclude soft-deleted rows
         .select(
@@ -336,9 +338,14 @@ def stg_downtime_event():
             F.col("ZSRTXT").alias("sub_reason_description"),
 
             # ── Times
-            sap_datetime("ZAUSVN", "ZAUZTV").alias("start_datetime"),
-            sap_datetime("ZAUSBS", "ZAUZTB").alias("end_datetime"),
-            (F.col("ZEAUSZT") * 60).alias("duration_minutes"),
+            start_datetime.alias("start_datetime"),
+            end_datetime.alias("end_datetime"),
+            F.when(
+                start_datetime.isNotNull() & end_datetime.isNotNull(),
+                (F.unix_timestamp(end_datetime) - F.unix_timestamp(start_datetime)) / 60,
+            )
+            .otherwise(F.col("ZEAUSZT"))
+            .alias("duration_minutes"),
 
             # ── Notification
             F.col("QMNUM").alias("quality_notification_number"),

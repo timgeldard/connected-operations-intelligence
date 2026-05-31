@@ -17,6 +17,9 @@ All notable changes to this project will be documented in this file.
 - Removed unused Loftware enrichment fields from the Silver material table.
 - Disabled Gold row filters by default to avoid row-filter-driven full materialized-view refreshes.
 - Hardened SAP key/date helpers for numeric-only ALPHA stripping and invalid-date tolerance.
+- Derived downtime duration from start/end timestamps when available instead of assuming the raw duration unit.
+- Made `notification_email` a required bundle variable with no placeholder default.
+- Documented Gold freshness dependencies, all-time aggregate caveats, and row-filter setup ordering.
 
 ## [0.2.0] - 2026-05-31
 

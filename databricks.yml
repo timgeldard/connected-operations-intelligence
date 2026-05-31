@@ -16,7 +16,7 @@ variables:
   source_schema:
     default: sap
   notification_email:
-    default: connected-plant-dataops@company.com
+    description: Required notification distribution list for pipeline and job failures.
 
 targets:
   dev_uat_source:
@@ -83,4 +83,3 @@ targets:
       gold_schema: gold
       source_catalog: connected_plant_prod
       source_schema: sap
-

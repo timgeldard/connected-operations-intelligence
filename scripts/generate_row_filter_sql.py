@@ -48,6 +48,7 @@ TABLES = [
 TEMPLATE = """-- Unity Catalog Row Filter — plant-level access control for silver tables ({env_upper}).
 -- Run once as a Unity Catalog admin after the first {env_lower} deploy.
 -- Requires: CREATE FUNCTION privilege on {catalog}.{schema}.
+-- Ordering is intentional: CREATE OR REPLACE FUNCTION must run before any ALTER TABLE SET ROW FILTER.
 -- WARNING: Generated automatically by scripts/generate_row_filter_sql.py. Do not edit manually.
 
 CREATE OR REPLACE FUNCTION {catalog}.{schema}.plant_access_filter(plant_code STRING)

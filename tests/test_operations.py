@@ -6,7 +6,7 @@ Business rules under test:
     RUECK presence, zero-padding on order_number
   - pi_sheet_execution: pi_sheet_status derivation (Completed/In Progress/Not
     Started), duration_hours = ZDUR * 24, zero-padding on ZAUFNR
-  - downtime_event: ZDEL='X' soft-delete filter, duration_minutes = ZEAUSZT * 60
+  - downtime_event: ZDEL='X' soft-delete filter, duration_minutes from start/end timestamps
   - quality_inspection_lot: usage_decision derivation from VCODE,
     is_deletion_flagged from KZLOESCH, QALS+QMIH left join
 """
@@ -171,6 +171,8 @@ def make_pi_sheet(
 
 def apply_downtime_transform(spark: SparkSession, src_rows: List[Row]) -> DataFrame:
     src = spark.createDataFrame(src_rows, _DOWNTIME_SCHEMA)
+    start_datetime = sap_datetime("ZAUSVN", "ZAUZTV")
+    end_datetime = sap_datetime("ZAUSBS", "ZAUZTB")
     return (
         src.filter(F.col("ZDEL").isNull() | (F.col("ZDEL") != "X"))
         .select(
@@ -181,9 +183,14 @@ def apply_downtime_transform(spark: SparkSession, src_rows: List[Row]) -> DataFr
             F.col("ZITEM").alias("item_number"),
             F.col("ZRCD").alias("downtime_reason_code"),
             F.col("ZTEXT").alias("downtime_reason_description"),
-            sap_datetime("ZAUSVN", "ZAUZTV").alias("start_datetime"),
-            sap_datetime("ZAUSBS", "ZAUZTB").alias("end_datetime"),
-            (F.col("ZEAUSZT") * 60).alias("duration_minutes"),
+            start_datetime.alias("start_datetime"),
+            end_datetime.alias("end_datetime"),
+            F.when(
+                start_datetime.isNotNull() & end_datetime.isNotNull(),
+                (F.unix_timestamp(end_datetime) - F.unix_timestamp(start_datetime)) / 60,
+            )
+            .otherwise(F.col("ZEAUSZT"))
+            .alias("duration_minutes"),
             F.col("ZDEL").alias("_zdel"),
             F.col("AEDATTM").alias("_replicated_at"),
         )
@@ -422,16 +429,15 @@ class TestDowntimeEvent:
         items = {r["item_number"] for r in rows}
         assert items == {"001", "003"}
 
-    def test_duration_minutes_is_zeauszt_times_60(self, spark):
+    def test_duration_minutes_uses_start_and_end_timestamps(self, spark):
         df = apply_downtime_transform(
-            spark, [make_downtime(ZEAUSZT=1.5)]
+            spark, [make_downtime(ZAUZTV="080000", ZAUZTB="093000", ZEAUSZT=999.0)]
         )
         assert first_row(df)["duration_minutes"] == 90.0
 
-    def test_duration_minutes_sub_hour(self, spark):
-        """30-minute downtime: ZEAUSZT=0.5 → 30 minutes."""
+    def test_duration_minutes_falls_back_to_raw_duration_when_end_missing(self, spark):
         df = apply_downtime_transform(
-            spark, [make_downtime(ZEAUSZT=0.5)]
+            spark, [make_downtime(ZAUSBS=None, ZAUZTB=None, ZEAUSZT=30.0)]
         )
         assert first_row(df)["duration_minutes"] == 30.0
 

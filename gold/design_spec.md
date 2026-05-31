@@ -35,7 +35,7 @@ ${var.catalog}.${var.schema} (Silver — clean conformed tables)
 | Dataset types | **Materialized Views** | Auto-recomputes aggregations to stay correct as Silver tables receive updates |
 | Read strategy | **Batch read** (`spark.read.table`) | Prevents streaming state-management overhead for aggregations on streaming tables |
 | Clustering | **Liquid clustering** on `plant_code` + dates | Ensures fast retrieval for dashboard queries filtering by plant or time periods |
-| Security/performance tradeoff | **Read row-filtered Silver tables** | Silver remains secure for direct access. Databricks may full-refresh Gold MVs sourced from row-filtered tables; monitor refresh cost before widening Gold scope. |
+| Security/performance tradeoff | **Trusted Gold aggregate layer** | Silver remains secure for direct access. Gold row filters are disabled by default to avoid row-filter-driven full MV refreshes; apply plant controls at the downstream consumption boundary. |
 
 ---
 
@@ -59,11 +59,18 @@ Managed via Declarative Automation Bundle (DAB).
 ### `gold_shift_output_summary`
 - **Granularity:** 1 row per plant × posting date × material × UOM.
 - **Description:** Aggregated daily produced quantity (receipt type 101 minus reversals 102) and scrap quantity (movements 551/552). The historical table name is retained for compatibility; no shift dimension is present until a shift calendar is introduced.
+- **Freshness:** Depends on `silver_fast_pipeline` being healthy; the Gold refresh job does not trigger the continuous fast pipeline.
 
 ### `gold_order_otif_metrics`
 - **Granularity:** 1 row per process order.
 - **Description:** Internal process-order schedule-adherence metrics, comparing actual vs scheduled completion dates and ordered vs yield quantities. This is not customer-delivery OTIF.
+- **Window:** All completed/closed process orders currently remain in scope; add a period grain before using this as a period-comparable KPI.
+- **Freshness:** Depends on `silver_fast_pipeline` being healthy; the Gold refresh job does not trigger the continuous fast pipeline.
 
 ### `gold_plant_production_quality_summary`
 - **Granularity:** 1 row per plant.
-- **Description:** Summarizes production volumes, scrap, total downtime, and computes overall quality rate (yield / (yield + scrap)).
+- **Description:** All-time production volumes, scrap, total downtime, and quality rate (yield / (yield + scrap)).
+- **Window:** This blends all available history. Add a fiscal/posting-period grain before using it for trend or period comparison.
+
+### Deliberate exclusions
+- Loftware compliance and label-template attributes are not included in Silver `material` or Gold because they are not used by the current reporting layer.

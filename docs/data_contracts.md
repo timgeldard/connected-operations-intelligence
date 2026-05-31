@@ -52,6 +52,7 @@ This document defines the formal data contracts for the key Silver and Gold laye
 * **Row-Level Security**: Gold is produced by a trusted aggregate pipeline. Apply plant-level controls at the consumption boundary.
 * **Freshness Expectation**: Triggered pipeline execution (bundled job schedule: three times daily).
 * **Known Caveats**: Relies on conformed classifications mapped in `movement_type_classification`. Any newly introduced custom movement codes must be classified first.
+* **Freshness Caveat**: Depends on the continuous `silver_fast_pipeline`; the Gold refresh job does not trigger that pipeline.
 
 ### 2. `gold.gold_order_otif_metrics`
 * **Grain**: 1 row per completed process order
@@ -62,3 +63,12 @@ This document defines the formal data contracts for the key Silver and Gold laye
 * **Name Caveat**: This is process-order schedule adherence, not customer-delivery OTIF.
 * **Row-Level Security**: Gold is produced by a trusted aggregate pipeline. Apply plant-level controls at the consumption boundary.
 * **Freshness Expectation**: Batch triggered.
+* **Freshness Caveat**: Depends on the continuous `silver_fast_pipeline`; the Gold refresh job does not trigger that pipeline.
+
+### 3. `gold.gold_plant_production_quality_summary`
+* **Grain**: 1 row per plant across all available history
+* **Source Silver Tables**: `silver.process_order` + `silver.downtime_event`
+* **Window Caveat**: Current totals and quality rate are all-time aggregates. Add a fiscal/posting-period grain before using this table for trend or period comparison.
+
+### Deliberate Descope
+* Loftware compliance and label-template attributes are excluded from the reporting contracts because they are not used by the current Gold outputs.

@@ -97,6 +97,8 @@ To isolate dev bronze once available:
 ### Silver Layer
 The Unity Catalog row filter (`plant_access_filter`) must be applied after the first deployment to each environment target. Run the target-specific SQL script once as a Unity Catalog admin:
 
+Each script creates or replaces `plant_access_filter` before applying any table row filters. Do not split the script or run the `ALTER TABLE ... SET ROW FILTER` statements before the function exists.
+
 - **Development**:
   ```bash
   databricks sql execute --warehouse-id <warehouse-id> \
@@ -128,7 +130,9 @@ No manual SQL script is required for the Gold tables. Gold row filters are disab
 
 Since the Gold pipeline runs in **Triggered (batch)** mode, use the bundled `gold_refresh_job` to refresh slow Silver domains and then Gold three times daily. The Silver fast pipeline is continuous and is not included as a scheduled job task because continuous pipeline tasks do not naturally complete.
 
-Gold reads from Silver tables that have Unity Catalog row filters applied. Databricks may choose full refresh for materialized views sourced from row-filtered tables, even on serverless. After first deployment, compare Gold update duration and input rows across several runs before increasing schedule frequency.
+Gold output for production orders and material movements reflects the current state of `silver_fast_pipeline` at job-run time. If the continuous fast pipeline is stopped or lagging, Gold refreshes can complete successfully while aggregating stale fast-domain data.
+
+Gold reads from Silver tables that have Unity Catalog row filters applied, but Gold table row filters are disabled by default. Databricks may choose full refresh for materialized views sourced from row-filtered tables, even on serverless. After first deployment, compare Gold update duration and input rows across several runs before increasing schedule frequency.
 
 To run the Gold pipeline manually:
 ```bash
