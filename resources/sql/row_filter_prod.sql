@@ -70,3 +70,9 @@ ALTER TABLE connected_plant_prod.silver.outbound_delivery
 
 ALTER TABLE connected_plant_prod.silver.stock_at_location
   SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_prod.silver.purchase_order
+  SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_prod.silver.handling_unit
+  SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);

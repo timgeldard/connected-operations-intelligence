@@ -379,3 +379,27 @@ def material_valuation():
         F.col("LFMON").alias("fiscal_period"),
         F.col("AEDATTM").alias("_replicated_at"),
     )
+
+
+# ── 11. VENDOR ────────────────────────────────────────────────────────────────
+# LFA1 — vendor master (published / central_services). Batch dimension.
+
+@dlt.table(
+    comment="Vendor master — one row per vendor, with name and address (LFA1)",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "vendor_code present": "vendor_code IS NOT NULL",
+})
+def vendor():
+    src = spark.read.table(f"{bronze_published()}.vendormaster_lfa1")
+    return src.select(
+        strip_zeros("LIFNR").alias("vendor_code"),
+        F.col("LIFNR").alias("vendor_code_raw"),
+        F.col("NAME1").alias("vendor_name"),
+        F.col("NAME2").alias("vendor_name_2"),
+        F.col("ORT01").alias("city"),
+        F.col("LAND1").alias("country_key"),
+        F.col("REGIO").alias("region_code"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )
