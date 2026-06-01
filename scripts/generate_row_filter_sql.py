@@ -42,7 +42,13 @@ TABLES = [
     "storage_location",
     "work_centre",
     "capacity_utilisation",
-    "storage_bin"
+    "storage_bin",
+    "plant",
+    "reservation_requirement",
+    "outbound_delivery",
+    "stock_at_location",
+    "purchase_order",
+    "handling_unit",
 ]
 
 TEMPLATE = """-- Unity Catalog Row Filter — plant-level access control for silver tables ({env_upper}).
@@ -83,7 +89,7 @@ def generate_sql():
             fq_filter = f"{config['catalog']}.{config['schema']}.plant_access_filter"
             sql_content += f"\nALTER TABLE {fq_table}\n  SET ROW FILTER {fq_filter} ON (plant_code);\n"
 
-        with open(config["filename"], "w") as f:
+        with open(config["filename"], "w", encoding="utf-8") as f:
             f.write(sql_content)
         print(f"Generated: {config['filename']}")
 

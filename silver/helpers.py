@@ -14,8 +14,29 @@ if not source_schema:
     raise ValueError("source_schema configuration must be set in the Spark session.")
 BRONZE = f"{source_catalog}.{source_schema}"
 
+
+def bronze_published() -> str:
+    """Second bronze source for cross-application master data (plant T001W,
+    customer KNA1) that lives in the published / central_services catalog rather
+    than the SAP source. Read lazily so pipelines that do not use it (fast,
+    quality) are not required to configure published_catalog/published_schema."""
+    catalog = spark.conf.get("published_catalog", None)
+    schema = spark.conf.get("published_schema", None)
+    if not catalog or not schema:
+        raise ValueError(
+            "published_catalog and published_schema must be set to read the "
+            "published (central_services) source."
+        )
+    return f"{catalog}.{schema}"
+
+
+# AUFK.AUTYP order category for PP-PI process orders. Verified against live
+# connected_plant_uat.sap: process orders are AUTYP='40' (AUART ZI01/ZI02/ZI05/...);
+# AUTYP='10' returns zero rows in Kerry's config.
+PP_PI_ORDER_CATEGORY = "40"
+# Optional AUART allowlist to further narrow within AUTYP='40'
+# (e.g. ("ZI01", "ZI02", "ZI05")). None = keep all AUTYP='40' process orders.
 PP_PI_ORDER_TYPES = None
-PP_PI_ORDER_CATEGORY = "10"
 
 def strip_zeros(col_name: str) -> Column:
     """Apply SAP ALPHA-style leading-zero removal for numeric identifiers."""

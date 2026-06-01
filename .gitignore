@@ -36,3 +36,6 @@ Thumbs.db
 .agents/
 .claude/
 
+# Reference copies of external SAP source specs (internal Kerry docs, not for VCS)
+docs/reference/
+

@@ -6,7 +6,7 @@ Business rules under test:
   - LOEKZ flag maps to is_deletion_flagged
   - Material code and order number are zero-stripped
   - Scheduling dates from AFKO are correctly parsed
-  - Process order category filter: AUFK.AUTYP='10' rows are retained
+  - Process order category filter: AUFK.AUTYP='40' rows are retained
 """
 
 from datetime import date, datetime
@@ -47,7 +47,7 @@ def apply_process_order_transform(
     return (
         aufk.alias("k")
         .join(afko.alias("h"), ["AUFNR", "MANDT"], "left")
-        .filter(F.col("k.AUTYP") == "10")
+        .filter(F.col("k.AUTYP") == "40")
         .select(
             strip_zeros("k.AUFNR").alias("order_number"),
             F.col("k.WERKS").alias("plant_code"),
@@ -81,8 +81,8 @@ def make_aufk(
     AUFNR="000000012345",
     MANDT="100",
     WERKS="1000",
-    AUART="PI01",
-    AUTYP="10",
+    AUART="ZI01",
+    AUTYP="40",
     KTEXT="Test Process Order",
     ERDAT="20241201",
     ERNAM="JSMITH",
@@ -297,7 +297,7 @@ class TestProcessOrderJoin:
         assert row["record_activity"] == "D"
 
     def test_non_process_order_category_excluded(self, spark):
-        """AUFK contains many order categories; only AUTYP='10' is PP/PI."""
+        """AUFK contains many order categories; only AUTYP='40' is PP/PI."""
         df = apply_process_order_transform(
             spark,
             [make_aufk(AUTYP="30", AUART="PM01", AUFNR="000000099998")],

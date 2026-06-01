@@ -24,6 +24,8 @@ _session = (
     .config("spark.sql.session.timeZone", "UTC")
     .config("source_catalog", "connected_plant_dev")
     .config("source_schema", "sap")
+    .config("published_catalog", "published_uat")
+    .config("published_schema", "central_services")
     .config("silver_catalog", "connected_plant_dev")
     .config("silver_schema", "silver_dev")
     .config("gold_apply_row_filter", "false")

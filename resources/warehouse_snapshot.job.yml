@@ -1,0 +1,34 @@
+resources:
+  jobs:
+    warehouse_snapshot:
+      name: "[${bundle.target}] Connected Plant — Warehouse Snapshot"
+
+      # Daily append of current-state warehouse Gold into *_snapshot companions.
+      # Paused by default; unpause per target once the Gold tables are populated.
+      schedule:
+        quartz_cron_expression: "0 0 2 * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED
+
+      tasks:
+        - task_key: snapshot
+          environment_key: default
+          spark_python_task:
+            python_file: ../gold/snapshots/warehouse_snapshot.py
+            parameters:
+              - "--gold_catalog=${var.catalog}"
+              - "--gold_schema=${var.gold_schema}"
+              - "--retention_days=400"
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users

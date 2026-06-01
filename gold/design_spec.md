@@ -109,3 +109,36 @@ Managed via Declarative Automation Bundle (DAB).
 
 ### Deliberate exclusions
 - Loftware compliance and label-template attributes are not included in Silver `material` or Gold because they are not used by the current reporting layer.
+
+---
+
+## Warehouse operations — metric dictionary
+
+One-line definition per warehouse Gold table (grain · key measures · scope/filter).
+
+| Table | Grain | Key measures | Scope / notes |
+|---|---|---|---|
+| `gold_transfer_order_performance` | wh × plant × operator × confirmed_date × source ST | pick_accuracy, fully_confirmed_rate, cycle/processing time | confirmed TO items |
+| `gold_transfer_requirement_backlog` | wh × plant × queue × src/dst ST × priority | open backlog count, open qty, oldest age | open TRs (not complete, open_qty>0) |
+| `gold_bin_occupancy` | wh × plant × storage_type × bin_type | occupancy_rate, occupied/empty/blocked counts | current bin state |
+| `gold_stock_availability` | plant × sloc × material × batch × UOM | unrestricted/QI/blocked/restricted/in-transfer | batch stock (MCHB) |
+| `gold_stock_expiry_risk` | plant × material × batch × UOM | expiry buckets (expired/<7/7-30/30-90/OK) | bin stock joined to shelf-life |
+| `gold_dispensary_backlog` | plant × supply area × wh | open task/order count, open/required qty, urgency dates | RESB BWART 261, not deleted, open_qty>0 |
+| `gold_lineside_stock` | plant × wh × storage_type × material × batch × UOM | total/available qty, min days-to-expiry | occupied bins in line-side STs (`_LINESIDE_PREDICATE`) |
+| `gold_delivery_pick_status` | delivery | pick_fraction, line_count, is_shipped, `risk_band` | LIPS qty-based pick % (not TO-level); RAG: shipped→green, null GI→grey |
+| `gold_stock_reconciliation` | plant × material | im/wm totals, delta, inventory_value, mismatch_class, abc_class | IM(MARD) vs WM(bins); tolerance = max(0.1, 1% IM); abc 'U' = unpriced |
+| `gold_process_order_staging` | process order | staging_fraction, to_items done/total, `risk_band` | TO source ref = AUFNR (assumption) |
+| `gold_inbound_gr_status` | plant × vendor × purchasing org | open item/PO count, ordered qty, open value | open PO items (PO backlog, **not** GR history) |
+| `gold_handling_unit_summary` | plant × wh × HU status × ref-doc category | HU/SSCC/delivery/material counts, gross weight (per-HU) | EXIDV = SSCC |
+| `gold_warehouse_exceptions` | exception instance | severity (1-4), sla_hours, quantity, age | UNION of 7 integrity/aging checks |
+| `gold_warehouse_kpi_snapshot` | plant | open orders/TRs/TOs/deliveries/inbound, bin counts, util % | per-plant scorecard (mixed-grain counts) |
+
+## Known limitations / follow-ups (warehouse product)
+
+- **Stock reconciliation grain is coarse.** `gold_stock_reconciliation` compares IM (MARD) vs WM at **plant × material** only. It does not yet map WM-managed storage locations, reconcile by batch (MARD is non-batch), or normalise UoM. A `max(0.1, 1% of IM)` tolerance suppresses rounding noise, but a v2 should reconcile at plant × storage-location × warehouse × material × batch × stock-category with a WM-managed-sloc mapping and UoM normalisation.
+- **Line-side storage types are hard-coded** (`storage_type = '100' OR LIKE '8%'`). Replace with a governed storage-type *role* config table (per warehouse/plant) before global rollout.
+- **`gold_process_order_staging` assumes TO source reference = process order** (LTAK-BENUM). Confirm against live LTAK reference types per plant; non-PP/PI staging TOs are silently excluded.
+- **`gold_inbound_gr_status` is a PO backlog**, not goods-receipt history (no EKBE/MSEG GR, schedule lines, or remaining qty). **`gold_delivery_pick_status`** is delivery-quantity based, not TO-level picking status. Names reflect this.
+- **Gold / snapshot security.** Per ADR-005 the Gold layer is trusted (row filters off to avoid MV full-refresh); plant access is enforced on Silver / at the consumption boundary. Snapshot tables are append-only (not MVs) so they *could* carry plant row filters without the refresh cost — an open decision if direct Gold/snapshot access is granted to plant-scoped users.
+- **CDF on batch dimensions.** `plant`, `customer`, `vendor`, `storage_type`, `stock_at_location`, `material_valuation`, `handling_unit` enable Change Data Feed for consistency with the existing reference dims and potential downstream consumers, despite having no streaming consumer in this layer today.
+- **SSCC fidelity.** Handling units (VEKP/VEPO) approximate SSCC; the WMA-E-50 execution tables (`ZWM_SSCC_CREATE`, `ZTR_SPLIT`, `ZSCMWM_RFCTR`, `COCH`) are not replicated (see ADR 007).

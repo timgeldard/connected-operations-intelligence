@@ -58,3 +58,21 @@ ALTER TABLE connected_plant_dev.silver_dev.capacity_utilisation
 
 ALTER TABLE connected_plant_dev.silver_dev.storage_bin
   SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_dev.silver_dev.plant
+  SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_dev.silver_dev.reservation_requirement
+  SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_dev.silver_dev.outbound_delivery
+  SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_dev.silver_dev.stock_at_location
+  SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_dev.silver_dev.purchase_order
+  SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_dev.silver_dev.handling_unit
+  SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);

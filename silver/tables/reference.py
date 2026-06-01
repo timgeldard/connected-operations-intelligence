@@ -6,7 +6,7 @@ import dlt
 from pyspark.sql import Row
 from pyspark.sql import functions as F
 
-from silver.helpers import BRONZE, get_spark, sap_date, sap_flag, strip_zeros
+from silver.helpers import BRONZE, bronze_published, get_spark, sap_date, sap_flag, strip_zeros
 from silver.movement_types import (
     ISSUE_MOVEMENT_TYPES,
     MOVEMENT_TYPE_MAPPING,
@@ -229,3 +229,177 @@ def movement_type_classification():
         for code, label in sorted(MOVEMENT_TYPE_MAPPING.items())
     ]
     return spark.createDataFrame(data)
+
+
+# ── 6. PLANT ──────────────────────────────────────────────────────────────────
+# Source: published / central_services (T001W is not replicated into the SAP
+# source). Read via bronze_published() so the fast/quality pipelines are unaffected.
+
+@dlt.table(
+    comment="Plant master — one row per plant, with name, location and org assignments",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "plant_code present": "plant_code IS NOT NULL",
+})
+def plant():
+    src = spark.read.table(f"{bronze_published()}.plantcode_t001w")
+    return src.select(
+        F.col("WERKS").alias("plant_code"),
+        F.col("NAME1").alias("plant_name"),
+        F.col("NAME2").alias("plant_name_2"),
+        F.col("ORT01").alias("city"),
+        F.col("LAND1").alias("country_key"),
+        F.col("REGIO").alias("region_code"),
+        F.col("BWKEY").alias("valuation_area"),
+        F.col("EKORG").alias("purchasing_org"),
+        F.col("VKORG").alias("sales_org"),
+        F.col("SPART").alias("division"),
+        strip_zeros("KUNNR").alias("plant_customer_number"),
+        strip_zeros("LIFNR").alias("plant_vendor_number"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )
+
+
+# ── 7. CUSTOMER ───────────────────────────────────────────────────────────────
+# Source: published / central_services (KNA1 is not replicated into the SAP source).
+
+@dlt.table(
+    comment="Customer master — one row per customer (sold-to/ship-to), with name and address",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "customer_code present": "customer_code IS NOT NULL",
+})
+def customer():
+    src = spark.read.table(f"{bronze_published()}.customermaster_kna1")
+    return src.select(
+        strip_zeros("KUNNR").alias("customer_code"),
+        F.col("KUNNR").alias("customer_code_raw"),
+        F.col("NAME1").alias("customer_name"),
+        F.col("NAME2").alias("customer_name_2"),
+        F.col("ORT01").alias("city"),
+        F.col("LAND1").alias("country_key"),
+        F.col("REGIO").alias("region_code"),
+        F.col("PSTLZ").alias("postal_code"),
+        F.col("STRAS").alias("street"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )
+
+
+# ── 8. STORAGE TYPE ───────────────────────────────────────────────────────────
+# WM storage-type dimension (LGTYP) with English description. From the SAP source.
+
+@dlt.table(
+    comment="WM storage types — one row per warehouse number and storage type, with description",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "warehouse_number present": "warehouse_number IS NOT NULL",
+    "storage_type present": "storage_type IS NOT NULL",
+})
+def storage_type():
+    t301 = spark.read.table(f"{BRONZE}.wm_storagetypes_t301")
+    t301t = spark.read.table(f"{BRONZE}.wm_storagetypesdescription_t301t").filter(
+        F.col("SPRAS") == "E"
+    )
+    return (
+        t301.alias("s")
+        .join(t301t.alias("t"), ["LGNUM", "LGTYP", "MANDT"], "left")
+        .select(
+            F.col("s.LGNUM").alias("warehouse_number"),
+            F.col("s.LGTYP").alias("storage_type"),
+            F.col("t.LTYPT").alias("storage_type_description"),
+            F.col("s.AEDATTM").alias("_replicated_at"),
+        )
+    )
+
+
+# ── 9. STOCK AT LOCATION (IM book stock) ──────────────────────────────────────
+# MARD — inventory-management book stock per material/plant/storage location.
+# Batch snapshot (MARD carries only AEDATTM, no run/seq/RecordActivity).
+
+@dlt.table(
+    comment="IM book stock per material, plant and storage location (MARD)",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "storage_location_code"],
+)
+@dlt.expect_all_or_drop({
+    "material_code present": "material_code IS NOT NULL",
+    "plant_code present": "plant_code IS NOT NULL",
+    "storage_location_code present": "storage_location_code IS NOT NULL",
+})
+def stock_at_location():
+    src = spark.read.table(f"{BRONZE}.storagelocationmaterial_mard")
+    return src.select(
+        strip_zeros("MATNR").alias("material_code"),
+        F.col("MATNR").alias("material_code_raw"),
+        F.col("WERKS").alias("plant_code"),
+        F.col("LGORT").alias("storage_location_code"),
+        F.col("LABST").alias("unrestricted_quantity"),
+        F.col("INSME").alias("quality_inspection_quantity"),
+        F.col("SPEME").alias("blocked_quantity"),
+        F.col("EINME").alias("restricted_use_quantity"),
+        F.col("RETME").alias("blocked_returns_quantity"),
+        F.col("UMLME").alias("in_transfer_quantity"),
+        sap_flag("LVORM").alias("is_deletion_flagged"),
+        F.col("LGPBE").alias("storage_bin"),
+        F.col("LFGJA").alias("fiscal_year"),
+        F.col("LFMON").alias("fiscal_period"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )
+
+
+# ── 10. MATERIAL VALUATION ────────────────────────────────────────────────────
+# MBEW — valuation / pricing per valuation area. Batch snapshot (AEDATTM only).
+
+@dlt.table(
+    comment="Material valuation and pricing per valuation area (MBEW)",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "material_code present": "material_code IS NOT NULL",
+    "valuation_area present": "valuation_area IS NOT NULL",
+})
+def material_valuation():
+    src = spark.read.table(f"{BRONZE}.materialvaluation_mbew")
+    return src.select(
+        strip_zeros("MATNR").alias("material_code"),
+        F.col("MATNR").alias("material_code_raw"),
+        F.col("BWKEY").alias("valuation_area"),
+        F.col("BWTAR").alias("valuation_type"),
+        F.col("VPRSV").alias("price_control_indicator"),
+        F.col("STPRS").alias("standard_price"),
+        F.col("VERPR").alias("moving_average_price"),
+        F.col("PEINH").alias("price_unit"),
+        F.col("SALK3").alias("total_stock_value"),
+        F.col("LBKUM").alias("total_valuated_stock"),
+        F.col("BKLAS").alias("valuation_class"),
+        F.col("LFGJA").alias("fiscal_year"),
+        F.col("LFMON").alias("fiscal_period"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )
+
+
+# ── 11. VENDOR ────────────────────────────────────────────────────────────────
+# LFA1 — vendor master (published / central_services). Batch dimension.
+
+@dlt.table(
+    comment="Vendor master — one row per vendor, with name and address (LFA1)",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "vendor_code present": "vendor_code IS NOT NULL",
+})
+def vendor():
+    src = spark.read.table(f"{bronze_published()}.vendormaster_lfa1")
+    return src.select(
+        strip_zeros("LIFNR").alias("vendor_code"),
+        F.col("LIFNR").alias("vendor_code_raw"),
+        F.col("NAME1").alias("vendor_name"),
+        F.col("NAME2").alias("vendor_name_2"),
+        F.col("ORT01").alias("city"),
+        F.col("LAND1").alias("country_key"),
+        F.col("REGIO").alias("region_code"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )

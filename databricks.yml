@@ -15,6 +15,10 @@ variables:
     default: connected_plant_dev
   source_schema:
     default: sap_sample
+  published_catalog:
+    default: published_uat
+  published_schema:
+    default: central_services
   notification_email:
     description: Required notification distribution list for pipeline and job failures.
 
@@ -30,6 +34,8 @@ targets:
       gold_schema: gold_dev
       source_catalog: connected_plant_uat
       source_schema: sap
+      published_catalog: published_uat
+      published_schema: central_services
     resources:
       pipelines:
         silver_fast_pipeline:
@@ -51,6 +57,10 @@ targets:
       gold_schema: gold_dev
       source_catalog: connected_plant_dev
       source_schema: sap_sample
+      # NOTE: the sample catalog has no central_services; published_* intentionally points at
+      # published_uat so plant/customer/vendor/inbound resolve (reads live UAT master data).
+      published_catalog: published_uat
+      published_schema: central_services
     resources:
       pipelines:
         silver_fast_pipeline:
@@ -66,20 +76,26 @@ targets:
     mode: production
     workspace:
       profile: DEFAULT
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: connected_plant_uat
       schema: silver
       gold_schema: gold
       source_catalog: connected_plant_uat
       source_schema: sap
+      published_catalog: published_uat
+      published_schema: central_services
 
   prod:
     mode: production
     workspace:
       profile: DEFAULT
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: connected_plant_prod
       schema: silver
       gold_schema: gold
       source_catalog: connected_plant_prod
       source_schema: sap
+      published_catalog: published_prod
+      published_schema: central_services
