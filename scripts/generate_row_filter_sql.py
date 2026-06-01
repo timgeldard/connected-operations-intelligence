@@ -42,7 +42,11 @@ TABLES = [
     "storage_location",
     "work_centre",
     "capacity_utilisation",
-    "storage_bin"
+    "storage_bin",
+    "plant",
+    "reservation_requirement",
+    "outbound_delivery",
+    "stock_at_location",
 ]
 
 TEMPLATE = """-- Unity Catalog Row Filter — plant-level access control for silver tables ({env_upper}).

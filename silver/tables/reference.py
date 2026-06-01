@@ -313,3 +313,69 @@ def storage_type():
             F.col("s.AEDATTM").alias("_replicated_at"),
         )
     )
+
+
+# ── 9. STOCK AT LOCATION (IM book stock) ──────────────────────────────────────
+# MARD — inventory-management book stock per material/plant/storage location.
+# Batch snapshot (MARD carries only AEDATTM, no run/seq/RecordActivity).
+
+@dlt.table(
+    comment="IM book stock per material, plant and storage location (MARD)",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "storage_location_code"],
+)
+@dlt.expect_all_or_drop({
+    "material_code present": "material_code IS NOT NULL",
+    "plant_code present": "plant_code IS NOT NULL",
+    "storage_location_code present": "storage_location_code IS NOT NULL",
+})
+def stock_at_location():
+    src = spark.read.table(f"{BRONZE}.storagelocationmaterial_mard")
+    return src.select(
+        strip_zeros("MATNR").alias("material_code"),
+        F.col("MATNR").alias("material_code_raw"),
+        F.col("WERKS").alias("plant_code"),
+        F.col("LGORT").alias("storage_location_code"),
+        F.col("LABST").alias("unrestricted_quantity"),
+        F.col("INSME").alias("quality_inspection_quantity"),
+        F.col("SPEME").alias("blocked_quantity"),
+        F.col("EINME").alias("restricted_use_quantity"),
+        F.col("RETME").alias("blocked_returns_quantity"),
+        F.col("UMLME").alias("in_transfer_quantity"),
+        sap_flag("LVORM").alias("is_deletion_flagged"),
+        F.col("LGPBE").alias("storage_bin"),
+        F.col("LFGJA").alias("fiscal_year"),
+        F.col("LFMON").alias("fiscal_period"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )
+
+
+# ── 10. MATERIAL VALUATION ────────────────────────────────────────────────────
+# MBEW — valuation / pricing per valuation area. Batch snapshot (AEDATTM only).
+
+@dlt.table(
+    comment="Material valuation and pricing per valuation area (MBEW)",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "material_code present": "material_code IS NOT NULL",
+    "valuation_area present": "valuation_area IS NOT NULL",
+})
+def material_valuation():
+    src = spark.read.table(f"{BRONZE}.materialvaluation_mbew")
+    return src.select(
+        strip_zeros("MATNR").alias("material_code"),
+        F.col("MATNR").alias("material_code_raw"),
+        F.col("BWKEY").alias("valuation_area"),
+        F.col("BWTAR").alias("valuation_type"),
+        F.col("VPRSV").alias("price_control_indicator"),
+        F.col("STPRS").alias("standard_price"),
+        F.col("VERPR").alias("moving_average_price"),
+        F.col("PEINH").alias("price_unit"),
+        F.col("SALK3").alias("total_stock_value"),
+        F.col("LBKUM").alias("total_valuated_stock"),
+        F.col("BKLAS").alias("valuation_class"),
+        F.col("LFGJA").alias("fiscal_year"),
+        F.col("LFMON").alias("fiscal_period"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )

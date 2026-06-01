@@ -1,4 +1,4 @@
--- Unity Catalog Row Filter â€” plant-level access control for silver tables (PROD).
+-- Unity Catalog Row Filter — plant-level access control for silver tables (PROD).
 -- Run once as a Unity Catalog admin after the first prod deploy.
 -- Requires: CREATE FUNCTION privilege on connected_plant_prod.silver.
 -- Ordering is intentional: CREATE OR REPLACE FUNCTION must run before any ALTER TABLE SET ROW FILTER.
@@ -57,4 +57,16 @@ ALTER TABLE connected_plant_prod.silver.capacity_utilisation
   SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
 
 ALTER TABLE connected_plant_prod.silver.storage_bin
+  SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_prod.silver.plant
+  SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_prod.silver.reservation_requirement
+  SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_prod.silver.outbound_delivery
+  SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_prod.silver.stock_at_location
   SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
