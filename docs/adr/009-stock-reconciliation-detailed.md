@@ -33,6 +33,12 @@ stock-category grain, no UoM normalisation, no explanation of deltas via pending
      **storage-type grain (`LGTYP` → `LGORT`)** — how SAP WM directs stock to interim storage
      locations — to resolve quant→sloc; where that is not configured, reconcile at the aggregate
      **warehouse** level (group all mapped IM slocs) rather than guessing a sloc.
+   - Columns: `im_qty, wm_qty, delta_qty, delta_value, tolerance, mismatch_reason` (enum:
+     `rounding | uom | pending_to | quant_blocked | true_variance`), `abc_classification`,
+     `valuation_class`, `last_reconciled_date`.
+2. **`silver.wm_managed_sloc`** config (`plant_code, storage_location_code, warehouse_number,
+   is_wm_managed, reconciliation_active`) — only reconcile WM-managed, active slocs. Maps the
+   warehouse↔sloc relationship WM lacks directly. **Seed/stub** + documented population.
 3. **UoM normalisation:** ingest `MARM` → `silver.material_uom_conversion`; normalise IM/WM to a
    common UoM before comparing (suppresses spurious UoM deltas).
 4. **Explain deltas:** left-join open TOs/TRs (`warehouse_transfer_order/_requirement`) keyed by

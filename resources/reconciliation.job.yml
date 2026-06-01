@@ -1,0 +1,40 @@
+resources:
+  jobs:
+    reconciliation_control:
+      name: "[${bundle.target}] Connected Plant — Reconciliation Control"
+
+      # SAP (bronze) -> Silver -> Gold tie-out + Gold grain/duplication checks.
+      # Daily after the Gold pipeline. Paused by default; unpause per target once
+      # Silver and Gold are populated. Reads bronze, silver and gold, so it needs
+      # all three source configs (the Gold pipeline only knows silver).
+      schedule:
+        quartz_cron_expression: "0 30 2 * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED
+
+      tasks:
+        - task_key: reconcile
+          environment_key: default
+          spark_python_task:
+            python_file: ../gold/recon/reconciliation_job.py
+            parameters:
+              - "--source_catalog=${var.source_catalog}"
+              - "--source_schema=${var.source_schema}"
+              - "--silver_catalog=${var.catalog}"
+              - "--silver_schema=${var.schema}"
+              - "--gold_catalog=${var.catalog}"
+              - "--gold_schema=${var.gold_schema}"
+              - "--fail_on_variance=true"
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users

@@ -11,7 +11,8 @@ periodic snapshot in either tier.
 
 import dlt
 from pyspark.sql import functions as F
-from silver.helpers import get_spark, BRONZE, strip_zeros, sap_date, sap_datetime, sap_flag
+
+from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
 
 spark = get_spark()
 
