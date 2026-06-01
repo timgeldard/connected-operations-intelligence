@@ -28,8 +28,24 @@ SNAPSHOT_TABLES = [
 ]
 
 
-def snapshot(spark: SparkSession, gold_catalog: str, gold_schema: str, retention_days: int) -> None:
+def _apply_row_filter(spark: SparkSession, snap: str, row_filter_function: str) -> None:
+    """Apply the plant row filter to a snapshot table (real RLS — snapshots are physical
+    Delta tables, so unlike the Gold MVs there is no full-refresh cost).
+
+    NOTE: this job's run-as principal MUST satisfy plant_access_filter (i.e. be a member of
+    silver_admin) — otherwise its own idempotency/retention DELETEs against an already-filtered
+    snapshot would only see the principal's plant rows and silently mis-maintain history. The
+    function's silver_admin bypass is the intended escape hatch. The principal also needs EXECUTE
+    on the function and MODIFY on the table. See docs/adr/012-gold-row-level-security.md.
+    """
+    spark.sql(f"ALTER TABLE {snap} SET ROW FILTER {row_filter_function} ON (plant_code)")
+
+
+def snapshot(spark: SparkSession, gold_catalog: str, gold_schema: str, retention_days: int,
+             row_filter_function: str = None) -> None:
     schema = gold_schema if gold_catalog == "spark_catalog" else f"{gold_catalog}.{gold_schema}"
+    # UC row filters are not supported on local spark_catalog (tests); only apply against UC.
+    apply_filter = bool(row_filter_function) and gold_catalog != "spark_catalog"
     for table in SNAPSHOT_TABLES:
         src = f"{schema}.{table}"
         snap = f"{schema}.{table}_snapshot"
@@ -62,6 +78,12 @@ def snapshot(spark: SparkSession, gold_catalog: str, gold_schema: str, retention
                 f"DELETE FROM {snap} "
                 f"WHERE snapshot_date < DATE_SUB(CURRENT_DATE(), {int(retention_days)})"
             )
+
+        # Enforce plant-level row security on the snapshot (idempotent — replaces any
+        # existing filter). Applied last so the writes/deletes above run unfiltered.
+        if apply_filter:
+            _apply_row_filter(spark, snap, row_filter_function)
+
         print(f"snapshotted {src} -> {snap}")
 
 
@@ -70,10 +92,17 @@ def main() -> None:
     parser.add_argument("--gold_catalog", required=True)
     parser.add_argument("--gold_schema", required=True)
     parser.add_argument("--retention_days", type=int, default=400)
+    parser.add_argument(
+        "--row_filter_function", default=None,
+        help="Fully-qualified plant_access_filter function to apply as a row filter to the "
+             "snapshot tables (e.g. connected_plant_uat.silver.plant_access_filter). "
+             "Omit to skip (e.g. local runs).",
+    )
     args = parser.parse_args()
 
     spark = SparkSession.builder.getOrCreate()
-    snapshot(spark, args.gold_catalog, args.gold_schema, args.retention_days)
+    snapshot(spark, args.gold_catalog, args.gold_schema, args.retention_days,
+             row_filter_function=args.row_filter_function)
 
 
 if __name__ == "__main__":

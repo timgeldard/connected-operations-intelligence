@@ -19,6 +19,10 @@ resources:
               - "--gold_catalog=${var.catalog}"
               - "--gold_schema=${var.gold_schema}"
               - "--retention_days=400"
+              # Apply plant-level row security to the physical snapshot tables. The function lives
+              # in the silver schema (created by resources/sql/row_filter_<env>.sql). The job's
+              # run-as principal must be in silver_admin (see ADR 012).
+              - "--row_filter_function=${var.catalog}.${var.schema}.plant_access_filter"
 
       environments:
         - environment_key: default
