@@ -9,7 +9,7 @@ on the aggregation results.
 import pytest
 from pyspark.sql import Row, SparkSession
 
-from tests.conftest import all_rows
+from tests.conftest import all_rows, create_df
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -17,12 +17,19 @@ def setup_silver(spark: SparkSession):
     spark.conf.set("silver_catalog", "spark_catalog")
     spark.conf.set("silver_schema", "silver")
     spark.sql("CREATE DATABASE IF NOT EXISTS silver")
+    
+    # Seed default storage type role mapping configuration table
+    _save(spark, [
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="801", role="LINESIDE"),
+    ], "storage_type_role_mapping")
+    
     yield
     spark.sql("DROP DATABASE IF EXISTS silver CASCADE")
 
 
 def _save(spark, rows, table):
-    spark.createDataFrame(rows).write.mode("overwrite").saveAsTable(f"silver.{table}")
+    create_df(spark, rows).write.mode("overwrite").saveAsTable(f"silver.{table}")
 
 
 # ── Dispensary backlog ────────────────────────────────────────────────────────
@@ -121,3 +128,29 @@ def test_stock_reconciliation_delta_and_match(spark):
     assert rows["M2"]["mismatch_class"] == "variance"
     # M1 is the higher-value line -> ABC class A
     assert rows["M1"]["abc_class"] == "A"
+
+
+# ── Line-side stock ───────────────────────────────────────────────────────────
+
+def test_lineside_stock_aggregation(spark):
+    from gold.warehouse_flow_gold import gold_lineside_stock
+
+    _save(spark, [
+        Row(plant_code="C061", warehouse_number="208", storage_type="100",
+            material_code="M1", batch_number="B1", base_uom="KG", quant_number="Q1",
+            total_quantity=50.0, available_quantity=40.0, expiry_date=None, goods_receipt_date=None),
+        Row(plant_code="C061", warehouse_number="208", storage_type="100",
+            material_code="M1", batch_number="B1", base_uom="KG", quant_number="Q2",
+            total_quantity=10.0, available_quantity=10.0, expiry_date=None, goods_receipt_date=None),
+        # Excluded storage type (not mapped in reference table to role LINESIDE)
+        Row(plant_code="C061", warehouse_number="208", storage_type="999",
+            material_code="M1", batch_number="B1", base_uom="KG", quant_number="Q3",
+            total_quantity=99.0, available_quantity=99.0, expiry_date=None, goods_receipt_date=None),
+    ], "storage_bin")
+
+    rows = all_rows(gold_lineside_stock())
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["quant_count"] == 2
+    assert r["total_qty"] == 60.0
+    assert r["available_qty"] == 50.0

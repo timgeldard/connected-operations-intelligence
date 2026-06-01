@@ -347,8 +347,23 @@ def run(spark, source_catalog, source_schema, silver_catalog, silver_schema,
                [r for r in grain_rows if r["passed"] == "FAIL"]
     if failures:
         msg = f"Reconciliation found {len(failures)} failing control(s): " + \
-              ", ".join(r["entity"] for r in failures)
+              ", ".join(str(r.get("entity", r.get("table"))) for r in failures)
         print(msg)
+        try:
+            from gold.servicenow import create_servicenow_incident
+            details = "\n".join(
+                f"- Type: {r.get('entity') or r.get('table')} | "
+                f"unexplained_delta={r.get('unexplained_delta', 'N/A')} | "
+                f"duplicate_rows={r.get('duplicate_rows', 'N/A')}"
+                for r in failures
+            )
+            create_servicenow_incident(
+                summary=f"Connected Plant pipeline control failure: {len(failures)} mismatch(es)",
+                details=f"{msg}\n\nFailure Details:\n{details}",
+                severity=4
+            )
+        except Exception as e:
+            print(f"Error calling ServiceNow integration: {e}")
         if fail_on_variance:
             raise SystemExit(msg)
     return control_rows, grain_rows

@@ -15,12 +15,6 @@ from pyspark.sql import functions as F
 
 from gold._shared import get_silver_schema, get_spark_session, gold_table_args
 
-# Storage types treated as production / line-side staging (PSA 100, palletising 801,
-# dispensary 8xx). Hard-coded for now; FOLLOW-UP: drive this from a governed storage-type
-# role config table (per warehouse/plant) for global rollout — see gold/design_spec.md
-# "Known limitations".
-_LINESIDE_PREDICATE = "(storage_type = '100' OR storage_type LIKE '8%')"
-
 
 # ── 1. DISPENSARY BACKLOG ─────────────────────────────────────────────────────
 
@@ -67,9 +61,20 @@ def gold_lineside_stock():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
     storage_bin = spark.read.table(f"{silver_schema}.storage_bin")
+    mapping = spark.read.table(f"{silver_schema}.storage_type_role_mapping")
 
-    lineside = storage_bin.filter(
-        F.col("quant_number").isNotNull() & F.expr(_LINESIDE_PREDICATE)
+    # Filter occupied bins using the conformed plant-specific lineside storage roles
+    lineside = (
+        storage_bin.filter(F.col("quant_number").isNotNull()).alias("sb")
+        .join(
+            mapping.alias("m"),
+            (F.col("sb.plant_code") == F.col("m.plant_code"))
+            & (F.col("sb.warehouse_number") == F.col("m.warehouse_number"))
+            & (F.col("sb.storage_type") == F.col("m.storage_type"))
+            & (F.col("m.role") == "LINESIDE"),
+            "inner"
+        )
+        .select("sb.*")
     )
 
     return (

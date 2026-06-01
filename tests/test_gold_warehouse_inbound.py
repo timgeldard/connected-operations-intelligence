@@ -5,7 +5,7 @@ Tests for inbound / handling-unit Gold tables (gold/warehouse_inbound_gold.py).
 import pytest
 from pyspark.sql import Row, SparkSession
 
-from tests.conftest import all_rows
+from tests.conftest import all_rows, create_df
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -18,7 +18,7 @@ def setup_silver(spark: SparkSession):
 
 
 def _save(spark, rows, table):
-    spark.createDataFrame(rows).write.mode("overwrite").saveAsTable(f"silver.{table}")
+    create_df(spark, rows).write.mode("overwrite").saveAsTable(f"silver.{table}")
 
 
 def test_inbound_open_backlog_excludes_complete_and_deleted(spark):

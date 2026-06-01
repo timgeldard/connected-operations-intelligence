@@ -70,3 +70,52 @@ def first_row(df: DataFrame) -> Dict[str, Any]:
 def all_rows(df: DataFrame) -> List[Dict[str, Any]]:
     """Return all rows as a list of dicts."""
     return [r.asDict() for r in df.collect()]
+
+
+def create_df(spark: SparkSession, rows: List[Any]) -> DataFrame:
+    """Dynamically build a Spark DataFrame with schema inference that defaults
+    entirely-NULL columns to StringType() to avoid PySparkValueError: [CANNOT_DETERMINE_TYPE].
+    """
+    from pyspark.sql.types import (
+        StructType,
+        StructField,
+        StringType,
+        DoubleType,
+        IntegerType,
+        BooleanType,
+        DateType,
+        TimestampType,
+    )
+    import datetime
+
+    if not rows:
+        return spark.createDataFrame([], StructType([]))
+    
+    # Inspect all rows to construct complete field lists and gather non-None sample values
+    fields = {}
+    for r in rows:
+        d = r.asDict() if hasattr(r, "asDict") else r
+        for k, v in d.items():
+            if k not in fields or fields[k] is None:
+                fields[k] = v
+                
+    struct_fields = []
+    for k, sample_val in fields.items():
+        if sample_val is None:
+            dt = StringType()
+        elif isinstance(sample_val, bool):
+            dt = BooleanType()
+        elif isinstance(sample_val, int):
+            dt = IntegerType()
+        elif isinstance(sample_val, float):
+            dt = DoubleType()
+        elif isinstance(sample_val, datetime.date) and not isinstance(sample_val, datetime.datetime):
+            dt = DateType()
+        elif isinstance(sample_val, datetime.datetime):
+            dt = TimestampType()
+        else:
+            dt = StringType()
+        struct_fields.append(StructField(k, dt, True))
+        
+    schema = StructType(struct_fields)
+    return spark.createDataFrame(rows, schema)

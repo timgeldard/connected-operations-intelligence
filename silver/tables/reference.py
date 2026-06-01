@@ -5,6 +5,7 @@ Reference/Master data domain tables.
 import dlt
 from pyspark.sql import Row
 from pyspark.sql import functions as F
+from pyspark.sql.types import StructType, StructField, StringType
 
 from silver.helpers import BRONZE, bronze_published, get_spark, sap_date, sap_flag, strip_zeros
 from silver.movement_types import (
@@ -403,3 +404,28 @@ def vendor():
         F.col("REGIO").alias("region_code"),
         F.col("AEDATTM").alias("_replicated_at"),
     )
+
+
+# ── 12. STORAGE TYPE ROLE MAPPING ─────────────────────────────────────────────
+
+@dlt.table(
+    name="storage_type_role_mapping",
+    comment="Mapping of storage types to specific functional roles (e.g. LINESIDE) per warehouse and plant",
+    table_properties={"delta.enableChangeDataFeed": "true"}
+)
+def storage_type_role_mapping():
+    schema = StructType([
+        StructField("plant_code", StringType(), True),
+        StructField("warehouse_number", StringType(), True),
+        StructField("storage_type", StringType(), True),
+        StructField("role", StringType(), True),
+    ])
+    data = [
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="801", role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="802", role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="803", role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="804", role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="805", role="LINESIDE"),
+    ]
+    return spark.createDataFrame(data, schema)

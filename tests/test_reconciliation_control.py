@@ -11,6 +11,7 @@ from datetime import datetime
 from pyspark.sql import Row, SparkSession
 
 from gold.recon.reconciliation_job import check_gold_grain, reconcile_entity
+from tests.conftest import create_df
 
 _T1 = datetime(2026, 1, 1)   # older version of key 1
 _T2 = datetime(2026, 2, 1)   # latest ingested watermark
@@ -18,7 +19,7 @@ _TF = datetime(2026, 12, 1)  # future bronze row silver has NOT ingested yet
 
 
 def _save(spark, rows, table):
-    spark.createDataFrame(rows).write.mode("overwrite").saveAsTable(table)
+    create_df(spark, rows).write.mode("overwrite").saveAsTable(table)
 
 
 # ── Bronze (SAP) -> silver exact tie-out ──────────────────────────────────────
