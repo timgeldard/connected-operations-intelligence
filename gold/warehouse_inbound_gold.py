@@ -2,7 +2,7 @@
 Lakeflow Spark Declarative Pipeline — Inbound & Handling-Unit Gold.
 
 Tables:
-  gold_inbound_gr_status     — open purchase-order (goods-receipt) backlog by plant/vendor
+  gold_inbound_po_backlog    — open purchase-order backlog (awaiting goods receipt) by plant/vendor
   gold_handling_unit_summary — handling-unit (SSCC) counts by plant/warehouse/status
 """
 
@@ -12,14 +12,20 @@ from pyspark.sql import functions as F
 from gold._shared import get_silver_schema, get_spark_session, gold_table_args
 
 
-# ── 1. INBOUND GR STATUS ──────────────────────────────────────────────────────
+# ── 1. INBOUND PO BACKLOG ─────────────────────────────────────────────────────
+# NOTE: this is open purchase-order *backlog* (PO items not yet flagged
+# delivery-complete), NOT true goods-receipt status. It does not consult GR history
+# (EKBE / MSEG 101), inbound deliveries/ASNs, or remaining-vs-received quantity. For a
+# real GR-status / due-quantity model, enrich with GR history; until then the name
+# reflects what it measures. See gold/design_spec.md "Pilot-grade / directional".
 
 @dlt.table(**gold_table_args(
-    comment="Open inbound purchase-order backlog (awaiting goods receipt) by plant and vendor.",
+    comment="Open inbound purchase-order backlog (PO items awaiting goods receipt) by plant and "
+            "vendor. Backlog only — does NOT use GR history / remaining quantity (see design_spec).",
     cluster_by=["plant_code", "vendor_code"],
 ))
 @dlt.expect("open value non-negative", "total_open_value >= 0.0")
-def gold_inbound_gr_status():
+def gold_inbound_po_backlog():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
     purchase_orders = spark.read.table(f"{silver_schema}.purchase_order")
