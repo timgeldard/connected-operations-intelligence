@@ -25,6 +25,12 @@ living, governed documentation that leverages native UC lineage.
 5. **Delivery:** a **post-deploy DAB job** regenerates the dictionary; CI auto-commits the
    artifacts to `docs/`; publish to a **UC Volume** for consumption. Add a runbook note on
    exploring lineage in Catalog Explorer.
+   - **Loop-prevention guardrails (mandatory for the auto-commit):** the commit must be made by a
+     dedicated **bot actor** and restricted to the `docs/` path; include a **`[skip ci]`** token in
+     the commit message **and** add a workflow condition that ignores pushes from the bot actor /
+     `docs/`-only changes, so the auto-commit cannot re-trigger the workflow. Prefer pushing to a
+     dedicated docs branch (or via PR) under branch protection rather than committing straight to
+     `main`. Document this in the runbook so the regeneration pipeline cannot self-trigger a loop.
 
 ## Consequences
 - Lineage and tags only populate **after** pipelines deploy and run on UC-enabled compute;

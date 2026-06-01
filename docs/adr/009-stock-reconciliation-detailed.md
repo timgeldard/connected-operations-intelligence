@@ -19,12 +19,20 @@ stock-category grain, no UoM normalisation, no explanation of deltas via pending
      for non-batch (batch = `__NONE__`).
    - **WM side:** `storage_bin` aggregated to plant × sloc(via warehouse↔sloc map) × warehouse ×
      material × batch × stock_category.
-   - Columns: `im_qty, wm_qty, delta_qty, delta_value, tolerance, mismatch_reason` (enum:
-     `rounding | uom | pending_to | quant_blocked | true_variance`), `abc_classification`,
-     `valuation_class`, `last_reconciled_date`.
+   - Columns: `im_qty, wm_qty, delta_qty, delta_value, tolerance, mismatch_reason`,
+     `abc_classification`, `valuation_class`, `last_reconciled_date`.
+   - **`mismatch_reason` canonical enum (single source of truth, referenced by the roadmap and
+     pre-MARM flows):** `rounding | uom | uom_unconverted | pending_to | quant_blocked |
+     true_variance`. `uom_unconverted` is the pre-MARM state (UoM conversion factors not yet
+     available, so IM/WM could not be normalised — distinct from a genuine `uom` mismatch).
 2. **`silver.wm_managed_sloc`** config (`plant_code, storage_location_code, warehouse_number,
    is_wm_managed, reconciliation_active`) — only reconcile WM-managed, active slocs. Maps the
    warehouse↔sloc relationship WM lacks directly. **Seed/stub** + documented population.
+   - **1:many warehouses:** a single `LGNUM` can map to multiple `LGORT` in the same plant, and
+     `LQUA`/`storage_bin` does not carry `LGORT` at quant level. So the mapping must be defined at
+     **storage-type grain (`LGTYP` → `LGORT`)** — how SAP WM directs stock to interim storage
+     locations — to resolve quant→sloc; where that is not configured, reconcile at the aggregate
+     **warehouse** level (group all mapped IM slocs) rather than guessing a sloc.
 3. **UoM normalisation:** ingest `MARM` → `silver.material_uom_conversion`; normalise IM/WM to a
    common UoM before comparing (suppresses spurious UoM deltas).
 4. **Explain deltas:** left-join open TOs/TRs (`warehouse_transfer_order/_requirement`) keyed by
