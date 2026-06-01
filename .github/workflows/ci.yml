@@ -28,46 +28,44 @@ jobs:
 
   validate-bundle:
     runs-on: ubuntu-latest
-    # Requires DATABRICKS_HOST and DATABRICKS_TOKEN repository secrets.
-    # Set these in: Settings → Secrets → Actions → New repository secret.
     if: github.event_name == 'pull_request'
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      # notification_email has no default (a real list must be set at deploy); supply a
+      # placeholder so `bundle validate` does not fail on the missing required variable.
+      BUNDLE_VAR_notification_email: ci-validation@kerry.com
     steps:
       - uses: actions/checkout@v4
 
       - uses: databricks/setup-cli@main
 
+      # Bundle validation needs a workspace to authenticate against. When the
+      # DATABRICKS_HOST / DATABRICKS_TOKEN repository secrets are not configured
+      # (Settings → Secrets → Actions), skip validation with a warning instead of
+      # failing the whole job. Set both secrets to enable real validation.
+      - name: Check Databricks credentials
+        id: creds
+        run: |
+          if [ -n "$DATABRICKS_HOST" ] && [ -n "$DATABRICKS_TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Bundle validation skipped::DATABRICKS_HOST/DATABRICKS_TOKEN secrets are not set; skipping databricks bundle validate. Configure them in Settings → Secrets → Actions to enable validation."
+          fi
+
       - name: Validate dev_uat_source bundle
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-          # notification_email has no default (a real list must be set at deploy); supply a
-          # placeholder so `bundle validate` does not fail on the missing required variable.
-          BUNDLE_VAR_notification_email: ci-validation@kerry.com
+        if: steps.creds.outputs.configured == 'true'
         run: databricks bundle validate -t dev_uat_source
 
       - name: Validate dev_sample bundle
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-          # notification_email has no default (a real list must be set at deploy); supply a
-          # placeholder so `bundle validate` does not fail on the missing required variable.
-          BUNDLE_VAR_notification_email: ci-validation@kerry.com
+        if: steps.creds.outputs.configured == 'true'
         run: databricks bundle validate -t dev_sample
 
       - name: Validate uat bundle
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-          # notification_email has no default (a real list must be set at deploy); supply a
-          # placeholder so `bundle validate` does not fail on the missing required variable.
-          BUNDLE_VAR_notification_email: ci-validation@kerry.com
+        if: steps.creds.outputs.configured == 'true'
         run: databricks bundle validate -t uat
 
       - name: Validate prod bundle
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-          # notification_email has no default (a real list must be set at deploy); supply a
-          # placeholder so `bundle validate` does not fail on the missing required variable.
-          BUNDLE_VAR_notification_email: ci-validation@kerry.com
+        if: steps.creds.outputs.configured == 'true'
         run: databricks bundle validate -t prod
