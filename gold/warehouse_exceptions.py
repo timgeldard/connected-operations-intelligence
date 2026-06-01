@@ -12,6 +12,8 @@ from pyspark.sql import functions as F
 from gold._shared import get_silver_schema, get_spark_session, gold_table_args
 
 # Uniform output columns shared by every exception branch (order matters for unionByName).
+# `detected_date` is appended once after the union (constant per run) and is intentionally
+# not listed here.
 _COLS = [
     "exception_type", "severity", "sla_hours", "plant_code", "warehouse_number",
     "material_code", "batch_number", "reference_id", "quantity", "age_days", "detail",
@@ -167,15 +169,16 @@ def gold_warehouse_exceptions():
     wm_agg = occupied.groupBy("plant_code", "material_code").agg(
         F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("wm_total_qty")
     )
+    # The full outer join on the key list yields a single merged plant_code/material_code
+    # column (Spark coalesces the join keys), so there is no outer-join column ambiguity.
     variance = (
         im_agg.join(wm_agg, ["plant_code", "material_code"], "full")
         .withColumn("im_total_qty", F.coalesce(F.col("im_total_qty"), F.lit(0.0)))
         .withColumn("wm_total_qty", F.coalesce(F.col("wm_total_qty"), F.lit(0.0)))
         .withColumn("delta_qty", F.col("im_total_qty") - F.col("wm_total_qty"))
-        .filter(
-            (F.abs(F.col("delta_qty")) > F.lit(0.001))
-            & (F.abs(F.col("delta_qty")) > F.abs(F.col("im_total_qty")) * 0.01)
-        )
+        # Tolerance = max(0.1 absolute units, 1% of IM): suppress rounding-noise variances on
+        # small-stock materials (matches gold_stock_reconciliation).
+        .filter(F.abs(F.col("delta_qty")) > F.greatest(F.lit(0.1), F.abs(F.col("im_total_qty")) * 0.01))
     )
     var_exc = _branch(
         variance,

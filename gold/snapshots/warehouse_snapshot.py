@@ -14,6 +14,7 @@ docs/adr/006-warehouse-snapshots.md.
 import argparse
 
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 
 # Current-state Gold tables worth trending. Each gets a partitioned *_snapshot companion.
 SNAPSHOT_TABLES = [
@@ -33,17 +34,26 @@ def snapshot(spark: SparkSession, gold_catalog: str, gold_schema: str, retention
         src = f"{schema}.{table}"
         snap = f"{schema}.{table}_snapshot"
 
-        # Create the snapshot companion (snapshot_date first, then the source columns).
-        spark.sql(
-            f"CREATE TABLE IF NOT EXISTS {snap} "
-            f"USING delta PARTITIONED BY (snapshot_date) "
-            f"AS SELECT CURRENT_DATE() AS snapshot_date, * FROM {src} WHERE 1=0"
+        # Read current state and stamp snapshot metadata. Using the DataFrame writer (not
+        # INSERT ... SELECT *) means appends resolve by COLUMN NAME, and mergeSchema lets the
+        # snapshot evolve when the source Gold table gains columns — so a Gold schema change
+        # can no longer silently corrupt or break the snapshot. See ADR 006.
+        current = (
+            spark.read.table(src)
+            .withColumn("snapshot_date", F.current_date())
+            .withColumn("snapshot_timestamp", F.current_timestamp())
         )
 
-        # Idempotent for a given day: clear today's partition, then append current state.
-        spark.sql(f"DELETE FROM {snap} WHERE snapshot_date = CURRENT_DATE()")
-        spark.sql(
-            f"INSERT INTO {snap} SELECT CURRENT_DATE() AS snapshot_date, * FROM {src}"
+        # Idempotent for a given day: clear today's partition before re-appending.
+        if spark.catalog.tableExists(snap):
+            spark.sql(f"DELETE FROM {snap} WHERE snapshot_date = CURRENT_DATE()")
+
+        (
+            current.write.format("delta")
+            .mode("append")
+            .option("mergeSchema", "true")
+            .partitionBy("snapshot_date")
+            .saveAsTable(snap)
         )
 
         # Retention: drop snapshots older than the window.

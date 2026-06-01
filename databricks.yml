@@ -57,6 +57,8 @@ targets:
       gold_schema: gold_dev
       source_catalog: connected_plant_dev
       source_schema: sap_sample
+      # NOTE: the sample catalog has no central_services; published_* intentionally points at
+      # published_uat so plant/customer/vendor/inbound resolve (reads live UAT master data).
       published_catalog: published_uat
       published_schema: central_services
     resources:

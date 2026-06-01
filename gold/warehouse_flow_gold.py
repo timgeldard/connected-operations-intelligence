@@ -16,7 +16,9 @@ from pyspark.sql import functions as F
 from gold._shared import get_silver_schema, get_spark_session, gold_table_args
 
 # Storage types treated as production / line-side staging (PSA 100, palletising 801,
-# dispensary 8xx). Used to scope line-side stock and staging views.
+# dispensary 8xx). Hard-coded for now; FOLLOW-UP: drive this from a governed storage-type
+# role config table (per warehouse/plant) for global rollout — see gold/design_spec.md
+# "Known limitations".
 _LINESIDE_PREDICATE = "(storage_type = '100' OR storage_type LIKE '8%')"
 
 
@@ -135,6 +137,7 @@ def gold_delivery_pick_status():
         .withColumn(
             "risk_band",
             F.when(F.col("is_shipped"), F.lit("green"))
+            .when(F.col("days_to_goods_issue").isNull(), F.lit("grey"))  # no planned GI date
             .when((fraction < 0.5) & (F.col("days_to_goods_issue") <= 0), F.lit("red"))
             .when((fraction < 0.8) & (F.col("days_to_goods_issue") <= 1), F.lit("amber"))
             .otherwise(F.lit("green")),
@@ -201,13 +204,14 @@ def gold_stock_reconciliation():
                 F.col("price_unit")
             ),
         )
+        # Tolerance = max(0.1 absolute units, 1% of IM) so rounding noise on small-stock
+        # materials is not flagged as a variance.
+        .withColumn("_tolerance", F.greatest(F.lit(0.1), F.abs(F.col("im_total_qty")) * 0.01))
         .withColumn(
             "mismatch_class",
-            F.when(
-                (F.col("im_total_qty") == 0)
-                | (F.abs(F.col("delta_qty")) <= F.abs(F.col("im_total_qty")) * 0.01),
-                F.lit("match"),
-            ).otherwise(F.lit("variance")),
+            F.when(F.abs(F.col("delta_qty")) <= F.col("_tolerance"), F.lit("match")).otherwise(
+                F.lit("variance")
+            ),
         )
     )
 
@@ -226,7 +230,8 @@ def gold_stock_reconciliation():
         )
         .withColumn(
             "abc_class",
-            F.when(F.col("_cum_pct") <= 0.80, F.lit("A"))
+            F.when(F.col("standard_price").isNull(), F.lit("U"))  # unpriced -> not classifiable
+            .when(F.col("_cum_pct") <= 0.80, F.lit("A"))
             .when(F.col("_cum_pct") <= 0.95, F.lit("B"))
             .otherwise(F.lit("C")),
         )
@@ -251,7 +256,11 @@ def gold_process_order_staging():
     transfer_orders = spark.read.table(f"{silver_schema}.warehouse_transfer_order")
     orders = spark.read.table(f"{silver_schema}.process_order")
 
-    # Transfer orders that stage to a production order (source reference = the order).
+    # Transfer orders that stage to a production order: in Kerry's WM config the TO source
+    # reference (LTAK-BENUM) holds the process-order number. TOs whose source reference is NOT
+    # a process order (warehouse replenishment, returns, etc.) find no match in the left join
+    # below and are dropped — they don't corrupt the result. ASSUMPTION to confirm against live
+    # LTAK reference types per plant before relying on this for KPIs.
     staging_tos = (
         transfer_orders
         .withColumn("order_number", F.col("source_reference_number"))
@@ -295,6 +304,7 @@ def gold_process_order_staging():
         .withColumn(
             "risk_band",
             F.when(F.col("to_items_total") == 0, F.lit("grey"))
+            .when(F.col("days_to_start").isNull(), F.lit("grey"))  # no scheduled start date
             .when((fraction < 0.3) & (F.col("days_to_start") <= 0), F.lit("red"))
             .when((fraction < 0.7) & (F.col("days_to_start") <= 1), F.lit("amber"))
             .otherwise(F.lit("green")),

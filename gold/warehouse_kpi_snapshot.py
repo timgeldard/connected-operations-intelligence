@@ -20,14 +20,14 @@ from gold._shared import get_silver_schema, get_spark_session, gold_table_args
 ))
 def gold_warehouse_kpi_snapshot():
     spark = get_spark_session()
-    s = get_silver_schema(spark)
+    silver_schema = get_silver_schema(spark)
 
-    process_order = spark.read.table(f"{s}.process_order")
-    transfer_requirement = spark.read.table(f"{s}.warehouse_transfer_requirement")
-    transfer_order = spark.read.table(f"{s}.warehouse_transfer_order")
-    outbound_delivery = spark.read.table(f"{s}.outbound_delivery")
-    purchase_order = spark.read.table(f"{s}.purchase_order")
-    storage_bin = spark.read.table(f"{s}.storage_bin")
+    process_order = spark.read.table(f"{silver_schema}.process_order")
+    transfer_requirement = spark.read.table(f"{silver_schema}.warehouse_transfer_requirement")
+    transfer_order = spark.read.table(f"{silver_schema}.warehouse_transfer_order")
+    outbound_delivery = spark.read.table(f"{silver_schema}.outbound_delivery")
+    purchase_order = spark.read.table(f"{silver_schema}.purchase_order")
+    storage_bin = spark.read.table(f"{silver_schema}.storage_bin")
 
     orders = (
         process_order.filter(
@@ -68,7 +68,8 @@ def gold_warehouse_kpi_snapshot():
         .agg(F.count(F.lit(1)).alias("open_inbound_item_count"))
     )
 
-    bin_key = F.concat_ws("|", "warehouse_number", "storage_type", "bin_code")
+    # struct (not concat_ws) so distinct-bin counting can't collide on a separator char.
+    bin_key = F.struct("warehouse_number", "storage_type", "bin_code")
     bins = storage_bin.groupBy("plant_code").agg(
         F.count_distinct(bin_key).alias("total_bin_count"),
         F.count_distinct(F.when(F.col("quant_number").isNotNull(), bin_key)).alias("occupied_bin_count"),

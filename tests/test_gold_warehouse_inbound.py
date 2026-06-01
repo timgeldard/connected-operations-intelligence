@@ -54,12 +54,13 @@ def test_handling_unit_summary_counts(spark):
     from gold.warehouse_inbound_gold import gold_handling_unit_summary
 
     _save(spark, [
+        # gross_weight is the VEKP header value repeated on every item of the HU.
         Row(handling_unit_number="H1", item_number="1", sscc="00353970850000000011",
             handling_unit_status="0030", reference_document_category="J", plant_code="C061",
             warehouse_number="208", delivery_number="80001", material_code="M1", gross_weight=10.0),
         Row(handling_unit_number="H1", item_number="2", sscc="00353970850000000011",
             handling_unit_status="0030", reference_document_category="J", plant_code="C061",
-            warehouse_number="208", delivery_number="80001", material_code="M2", gross_weight=5.0),
+            warehouse_number="208", delivery_number="80001", material_code="M2", gross_weight=10.0),
         Row(handling_unit_number="H2", item_number="1", sscc="00353970850000000022",
             handling_unit_status="0030", reference_document_category="J", plant_code="C061",
             warehouse_number="208", delivery_number="80002", material_code="M1", gross_weight=8.0),
@@ -73,4 +74,5 @@ def test_handling_unit_summary_counts(spark):
     assert r["distinct_hu_count"] == 2
     assert r["linked_delivery_count"] == 2
     assert r["distinct_material_count"] == 2
-    assert r["total_gross_weight"] == 23.0
+    # Header weight counted once per HU (10 for H1, 8 for H2), not once per item.
+    assert r["total_gross_weight"] == 18.0

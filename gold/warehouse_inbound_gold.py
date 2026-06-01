@@ -55,17 +55,26 @@ def gold_handling_unit_summary():
     silver_schema = get_silver_schema(spark)
     handling_units = spark.read.table(f"{silver_schema}.handling_unit")
 
-    return (
-        handling_units.groupBy(
-            "plant_code", "warehouse_number", "handling_unit_status",
-            "reference_document_category",
-        )
-        .agg(
-            F.count(F.lit(1)).alias("hu_item_count"),
-            F.count_distinct("sscc").alias("distinct_sscc_count"),
-            F.count_distinct("handling_unit_number").alias("distinct_hu_count"),
-            F.count_distinct("delivery_number").alias("linked_delivery_count"),
-            F.count_distinct("material_code").alias("distinct_material_count"),
-            F.coalesce(F.sum("gross_weight"), F.lit(0.0)).alias("total_gross_weight"),
-        )
+    group_cols = [
+        "plant_code", "warehouse_number", "handling_unit_status", "reference_document_category",
+    ]
+
+    # gross_weight is a VEKP *header* value repeated on every VEPO item row, so summing it at
+    # item grain would multiply it by the item count. Aggregate to one row per handling unit
+    # first, then sum once per HU.
+    hu_weight = (
+        handling_units.groupBy(*group_cols, "handling_unit_number")
+        .agg(F.first("gross_weight", ignorenulls=True).alias("_hu_gross_weight"))
+        .groupBy(*group_cols)
+        .agg(F.coalesce(F.sum("_hu_gross_weight"), F.lit(0.0)).alias("total_gross_weight"))
     )
+
+    counts = handling_units.groupBy(*group_cols).agg(
+        F.count(F.lit(1)).alias("hu_item_count"),
+        F.count_distinct("sscc").alias("distinct_sscc_count"),
+        F.count_distinct("handling_unit_number").alias("distinct_hu_count"),
+        F.count_distinct("delivery_number").alias("linked_delivery_count"),
+        F.count_distinct("material_code").alias("distinct_material_count"),
+    )
+
+    return counts.join(hu_weight, group_cols, "left")

@@ -104,6 +104,10 @@ dlt.create_streaming_table(
     cluster_by=["plant_code", "purchase_order_date"],
 )
 
+# NOTE (delete semantics): a header-only delete (EKKO RecordActivity='D') carries a null
+# item_number when the matching EKPO items are already purged, so SCD1 cannot match the
+# compound key to remove prior item rows. This matches the repo's other multi-source
+# streaming tables; a full header-delete cascade would need a separate header-keyed pass.
 dlt.apply_changes(
     target="purchase_order",
     source="stg_purchase_order",

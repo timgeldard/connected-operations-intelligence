@@ -183,6 +183,9 @@ dlt.create_streaming_table(
     cluster_by=["plant_code", "planned_goods_issue_date"],
 )
 
+# NOTE (delete semantics): a header-only delete (LIKP RecordActivity='D') carries a null
+# item_number if the matching LIPS items are already purged, so SCD1 cannot match the compound
+# key to remove prior item rows. Consistent with the repo's other multi-source streaming tables.
 dlt.apply_changes(
     target="outbound_delivery",
     source="stg_outbound_delivery",
