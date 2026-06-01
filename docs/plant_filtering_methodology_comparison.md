@@ -4,6 +4,14 @@
 > No repo changes are proposed for immediate implementation; the items in the Recommendation and
 > Verification sections are decisions/validations to run with the platform & governance teams.
 
+> [!TODO]
+> **Open decision — review required.** Review this comparison and decide the repo's plant-security
+> direction before any Gold/consumption work is deployed to a shared catalog. Choose one of:
+> (a) **hybrid** — engine-enforced UC row filter on Silver + enterprise `published.security.model`
+> view layer on Gold (recommended); or (b) **fully view-based** to match the platform's current
+> zero-row-filter standard. Owner: _TBD_. Target date: _TBD_. The Verification checklist below must
+> be cleared with the platform & governance teams before the decision is finalised.
+
 ## Context
 
 The IOReporting repo secures plant data with a **Unity Catalog ROW FILTER** function bound to
