@@ -28,6 +28,16 @@ night flag, cross-midnight handling) that movements/confirmations must be bucket
      (see `docs/ingestion_requests.md`).
 2. **`assign_shift(plant_code, posting_datetime)` helper** (broadcast join, not row UDF) maps a
    movement/confirmation to a `shift_id` by matching its time-of-day against the calendar's
+   `[start_time, end_time)` window valid on that date. **Cross-midnight** shifts (where
+   `start_time > end_time`, e.g. 22:00–06:00): the window test must use an **`OR`** condition
+   (`time >= start_time OR time < end_time`), **not** `AND` (a movement at 02:00 satisfies neither
+   `>= 22:00` nor the closed `AND`). `shift_date` = the calendar day the shift *starts*; so a
+   22:00–06:00 movement at 02:00 belongs to the prior day's night shift.
+   - **Timezone contract:** `start_time`/`end_time` are **plant-local**, so `posting_datetime` must
+     be compared in the plant's local zone (MKPF `CPUDT/CPUTM` are local already; if any source is
+     UTC, convert via a `plant → timezone` attribute first). DST boundaries must resolve
+     deterministically (explicit fold / strict policy) so night shifts on the changeover night are
+     bucketed consistently. The plant-timezone source is an open dependency (see roadmap).
    `[start_time, end_time)` window valid on that date. **Cross-midnight** shifts: `shift_date` =
    the calendar day the shift *starts*; a 22:00–06:00 movement at 02:00 belongs to the prior
    day's night shift.
