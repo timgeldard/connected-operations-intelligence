@@ -32,13 +32,22 @@ def _apply_row_filter(spark: SparkSession, snap: str, row_filter_function: str) 
     """Apply the plant row filter to a snapshot table (real RLS — snapshots are physical
     Delta tables, so unlike the Gold MVs there is no full-refresh cost).
 
-    NOTE: this job's run-as principal MUST satisfy plant_access_filter (i.e. be a member of
-    silver_admin) — otherwise its own idempotency/retention DELETEs against an already-filtered
-    snapshot would only see the principal's plant rows and silently mis-maintain history. The
-    function's silver_admin bypass is the intended escape hatch. The principal also needs EXECUTE
-    on the function and MODIFY on the table. See docs/adr/012-gold-row-level-security.md.
+    The job DROPs the filter while it does its own maintenance DELETEs and re-applies it here, so
+    history maintenance never reads through the filter — the run-as principal therefore does NOT
+    need to be in silver_admin (it only needs MODIFY on the table + EXECUTE on the function). The
+    table is briefly unfiltered mid-run; the job is scheduled off-hours and is the only mid-run
+    accessor. See docs/adr/012-gold-row-level-security.md.
     """
     spark.sql(f"ALTER TABLE {snap} SET ROW FILTER {row_filter_function} ON (plant_code)")
+
+
+def _drop_row_filter(spark: SparkSession, snap: str) -> None:
+    """Drop any row filter so this job's maintenance DELETEs run unfiltered. No-op (ignored) if
+    the table has no filter — e.g. after a prior run failed before re-applying it."""
+    try:
+        spark.sql(f"ALTER TABLE {snap} DROP ROW FILTER")
+    except Exception:  # noqa: BLE001 — "no row filter set" is expected and harmless
+        pass
 
 
 def snapshot(spark: SparkSession, gold_catalog: str, gold_schema: str, retention_days: int,
@@ -60,6 +69,12 @@ def snapshot(spark: SparkSession, gold_catalog: str, gold_schema: str, retention
             .withColumn("snapshot_timestamp", F.current_timestamp())
         )
 
+        # Drop any existing row filter first so the maintenance DELETEs below run unfiltered
+        # (otherwise, on day 2+ they would read through the prior run's filter and could silently
+        # mis-maintain history if the principal is not in silver_admin). Re-applied at the end.
+        if apply_filter and spark.catalog.tableExists(snap):
+            _drop_row_filter(spark, snap)
+
         # Idempotent for a given day: clear today's partition before re-appending.
         if spark.catalog.tableExists(snap):
             spark.sql(f"DELETE FROM {snap} WHERE snapshot_date = CURRENT_DATE()")
@@ -79,8 +94,8 @@ def snapshot(spark: SparkSession, gold_catalog: str, gold_schema: str, retention
                 f"WHERE snapshot_date < DATE_SUB(CURRENT_DATE(), {int(retention_days)})"
             )
 
-        # Enforce plant-level row security on the snapshot (idempotent — replaces any
-        # existing filter). Applied last so the writes/deletes above run unfiltered.
+        # Re-enforce plant-level row security on the snapshot, now that all writes/deletes for
+        # this run are done (the table existed-and-was-dropped above, or was just created).
         if apply_filter:
             _apply_row_filter(spark, snap, row_filter_function)
 

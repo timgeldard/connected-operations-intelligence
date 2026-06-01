@@ -32,11 +32,13 @@ The two cases have different physics:
    write/retention pass (idempotent). Wired via the job's `--row_filter_function` parameter.
 
 ## Consequences
-- **Run-as principal must be in `silver_admin`.** Once a snapshot table is row-filtered, the
-  snapshot job's own idempotency/retention `DELETE`s read through that filter — a non-admin
-  principal would only see its own plant rows and silently mis-maintain history. The function's
-  `silver_admin` bypass is the intended escape hatch; the principal also needs EXECUTE on the
-  function and MODIFY on the tables. (Tracked in `docs/ingestion_requests.md`.)
+- **Maintenance runs unfiltered (no `silver_admin` dependency).** The snapshot job DROPs the row
+  filter before its idempotency/retention `DELETE`s and re-applies it afterward, so history
+  maintenance never reads through the filter — the run-as principal does **not** need to be in
+  `silver_admin`; it only needs MODIFY on the snapshot tables + EXECUTE on the function. (Earlier
+  design kept the filter on and depended on `silver_admin`, which silently mis-maintained history
+  if the principal ever slipped out of the group.) The table is briefly unfiltered mid-run; the
+  job is scheduled off-hours and is the only mid-run accessor.
 - The secured-view SQL must be re-applied when Gold tables are added/renamed (keep
   `GOLD_TABLES` in the generator in sync). If the Gold schema moves to a dedicated namespace
   (the open `gold` collision decision), update `gold_schema` in the generator + the row-filter
