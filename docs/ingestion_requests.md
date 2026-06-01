@@ -39,7 +39,16 @@ Tables consumed there (already verified in UAT): `plantcode_t001w`, `customermas
 uat deploy: a **dedicated schema** for this product vs. coexist (name-collision / ownership
 risk). `dev_*` targets write to the clean `connected_plant_dev`.
 
-## 4. CI secrets (for the bundle-validate job)
+## 4. Next-phase dependencies (roadmap — see docs/data-product-roadmap.md, ADRs 008–010)
+- **Shift calendar (ADR 008):** no SAP shift master in bronze (no `TC37A`/`TC37`). Need per-plant
+  shift-calendar config (external Excel→Bronze or seeded), and optionally request `TC37A`/`TC37`
+  replication into `…sap`.
+- **Detailed reconciliation (ADR 009):** ingest **`MARM`** (UoM conversion factors) into bronze;
+  populate `silver.wm_managed_sloc` (warehouse↔sloc + WM-managed flags).
+- **Lineage/dictionary (ADR 010):** grants on `system.access.table_lineage` /
+  `system.access.column_lineage` for the principal running the dictionary generator.
+
+## 5. CI secrets (for the bundle-validate job)
 `.github/workflows/ci.yml` needs repository secrets `DATABRICKS_HOST` and `DATABRICKS_TOKEN`
 (Settings → Secrets → Actions). The `notification_email` variable is now supplied to the
 validate steps by the workflow itself.
