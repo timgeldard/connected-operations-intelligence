@@ -25,7 +25,7 @@ spark = get_spark()
 
 @dlt.table(
     comment="Material master — one row per material per plant, with descriptions and compliance attributes",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={"delta.enableChangeDataFeed": "false"},
     cluster_by=["plant_code", "material_type"],
 )
 @dlt.expect_all_or_drop({
@@ -86,7 +86,7 @@ def material():
 
 @dlt.table(
     comment="Storage locations — one row per storage location per plant",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={"delta.enableChangeDataFeed": "false"},
 )
 @dlt.expect_all_or_drop({
     "plant_code present": "plant_code IS NOT NULL",
@@ -106,7 +106,7 @@ def storage_location():
 
 @dlt.table(
     comment="Work centres — one row per work centre per plant, with descriptions",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={"delta.enableChangeDataFeed": "false"},
 )
 @dlt.expect_all_or_drop({
     "work_centre_code present": "work_centre_code IS NOT NULL",
@@ -190,7 +190,7 @@ def stg_capacity_utilisation():
 
 dlt.create_streaming_table(
     name="capacity_utilisation",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={"delta.enableChangeDataFeed": "false"},
     cluster_by=["plant_code", "valid_from_date"],
 )
 
@@ -208,7 +208,7 @@ dlt.apply_changes(
 @dlt.table(
     name="movement_type_classification",
     comment="Classification of SAP movement types for warehouse, production, and inventory reporting",
-    table_properties={"delta.enableChangeDataFeed": "true"}
+    table_properties={"delta.enableChangeDataFeed": "false"}
 )
 def movement_type_classification():
     data = [
@@ -238,7 +238,7 @@ def movement_type_classification():
 
 @dlt.table(
     comment="Plant master — one row per plant, with name, location and org assignments",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={"delta.enableChangeDataFeed": "false"},
 )
 @dlt.expect_all_or_drop({
     "plant_code present": "plant_code IS NOT NULL",
@@ -267,7 +267,7 @@ def plant():
 
 @dlt.table(
     comment="Customer master — one row per customer (sold-to/ship-to), with name and address",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={"delta.enableChangeDataFeed": "false"},
 )
 @dlt.expect_all_or_drop({
     "customer_code present": "customer_code IS NOT NULL",
@@ -293,7 +293,7 @@ def customer():
 
 @dlt.table(
     comment="WM storage types — one row per warehouse number and storage type, with description",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={"delta.enableChangeDataFeed": "false"},
 )
 @dlt.expect_all_or_drop({
     "warehouse_number present": "warehouse_number IS NOT NULL",
@@ -322,7 +322,7 @@ def storage_type():
 
 @dlt.table(
     comment="IM book stock per material, plant and storage location (MARD)",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={"delta.enableChangeDataFeed": "false"},
     cluster_by=["plant_code", "storage_location_code"],
 )
 @dlt.expect_all_or_drop({
@@ -356,7 +356,7 @@ def stock_at_location():
 
 @dlt.table(
     comment="Material valuation and pricing per valuation area (MBEW)",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={"delta.enableChangeDataFeed": "false"},
 )
 @dlt.expect_all_or_drop({
     "material_code present": "material_code IS NOT NULL",
@@ -387,7 +387,7 @@ def material_valuation():
 
 @dlt.table(
     comment="Vendor master — one row per vendor, with name and address (LFA1)",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={"delta.enableChangeDataFeed": "false"},
 )
 @dlt.expect_all_or_drop({
     "vendor_code present": "vendor_code IS NOT NULL",
@@ -411,7 +411,7 @@ def vendor():
 @dlt.table(
     name="storage_type_role_mapping",
     comment="Mapping of storage types to specific functional roles (e.g. LINESIDE) per warehouse and plant",
-    table_properties={"delta.enableChangeDataFeed": "true"}
+    table_properties={"delta.enableChangeDataFeed": "false"}
 )
 def storage_type_role_mapping():
     schema = StructType([

@@ -45,7 +45,7 @@ def gold_table_args(comment: str, cluster_by: list) -> dict:
     """
     args = {
         "comment": comment,
-        "table_properties": {"delta.enableChangeDataFeed": "true"},
+        "table_properties": {"delta.enableChangeDataFeed": "false"},
         "cluster_by": cluster_by,
     }
     if APPLY_ROW_FILTER:

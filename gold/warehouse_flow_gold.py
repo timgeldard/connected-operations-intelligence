@@ -226,7 +226,7 @@ def gold_stock_reconciliation():
     )
 
     joined = (
-        im.join(wm, ["plant_code", "material_code"], "full")
+        im.hint("skew", "plant_code").join(wm, ["plant_code", "material_code"], "full")
         .join(price, ["plant_code", "material_code"], "left")
         .withColumn("im_total_qty", F.coalesce(F.col("im_total_qty"), F.lit(0.0)))
         .withColumn("wm_total_qty", F.coalesce(F.col("wm_total_qty"), F.lit(0.0)))

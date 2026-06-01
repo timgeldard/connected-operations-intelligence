@@ -149,7 +149,10 @@ def gold_freshness_gate():
     if catalog == "spark_catalog":
         return spark.range(1).select(F.lit(0.0).alias("max_lag_minutes"))
         
-    goods_mov = spark.read.table(f"{silver_schema}.goods_movement")
+    # Optimize: restrict the scan to recent postings (last 14 days) to leverage partition pruning/Liquid clustering
+    goods_mov = spark.read.table(f"{silver_schema}.goods_movement").filter(
+        F.col("posting_date") >= F.date_sub(F.current_date(), 14)
+    )
     return (
         goods_mov.agg(
             F.max("_replicated_at").alias("latest_replication_time")
