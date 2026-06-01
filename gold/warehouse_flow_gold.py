@@ -104,7 +104,7 @@ def gold_delivery_pick_status():
     silver_schema = get_silver_schema(spark)
     deliveries = spark.read.table(f"{silver_schema}.outbound_delivery")
 
-    return (
+    picks = (
         deliveries.groupBy(
             "delivery_number", "plant_code", "warehouse_number",
             "delivery_type", "sold_to_customer", "planned_goods_issue_date",
@@ -125,6 +125,19 @@ def gold_delivery_pick_status():
             .otherwise(F.lit(None).cast("double"))
             .alias("pick_fraction"),
             (F.col("_is_shipped") == 1).alias("is_shipped"),
+        )
+    )
+
+    fraction = F.coalesce(F.col("pick_fraction"), F.lit(0.0))
+    return (
+        picks
+        .withColumn("days_to_goods_issue", F.datediff(F.col("planned_goods_issue_date"), F.current_date()))
+        .withColumn(
+            "risk_band",
+            F.when(F.col("is_shipped"), F.lit("green"))
+            .when((fraction < 0.5) & (F.col("days_to_goods_issue") <= 0), F.lit("red"))
+            .when((fraction < 0.8) & (F.col("days_to_goods_issue") <= 1), F.lit("amber"))
+            .otherwise(F.lit("green")),
         )
     )
 
@@ -255,7 +268,7 @@ def gold_process_order_staging():
         F.coalesce(F.col("is_released"), F.lit(False)) & (~F.coalesce(F.col("is_closed"), F.lit(False)))
     )
 
-    return (
+    staged = (
         active_orders.join(staging_tos, "order_number", "left")
         .select(
             "order_number",
@@ -272,5 +285,18 @@ def gold_process_order_staging():
             )
             .otherwise(F.lit(None).cast("double"))
             .alias("staging_fraction"),
+        )
+    )
+
+    fraction = F.coalesce(F.col("staging_fraction"), F.lit(0.0))
+    return (
+        staged
+        .withColumn("days_to_start", F.datediff(F.col("scheduled_start_date"), F.current_date()))
+        .withColumn(
+            "risk_band",
+            F.when(F.col("to_items_total") == 0, F.lit("grey"))
+            .when((fraction < 0.3) & (F.col("days_to_start") <= 0), F.lit("red"))
+            .when((fraction < 0.7) & (F.col("days_to_start") <= 1), F.lit("amber"))
+            .otherwise(F.lit("green")),
         )
     )
