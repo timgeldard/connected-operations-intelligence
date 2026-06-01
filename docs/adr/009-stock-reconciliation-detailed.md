@@ -1,0 +1,42 @@
+# ADR 009 — Detailed IM↔WM stock reconciliation
+
+## Status
+Proposed
+
+## Context
+`gold_stock_reconciliation` compares IM (MARD) vs WM (bins) at **plant × material** only, with a
+`max(0.1, 1% IM)` tolerance. It is not root-causeable: no storage location / warehouse / batch /
+stock-category grain, no UoM normalisation, no explanation of deltas via pending movements.
+
+**Data reality:** `MARD` (IM) is **non-batch** (material × plant × sloc). `MCHB` (already
+`silver.batch_stock`) is the **batch-level IM** (material × plant × sloc × batch). `storage_bin`
+(LQUA) is WM at quant/batch grain. UoM conversion factors (`MARM`) are **not yet in silver**.
+
+## Decision
+1. **`gold_stock_reconciliation_detailed`** at **plant × sloc × warehouse × material × batch ×
+   stock_category**:
+   - **IM side:** `batch_stock` (MCHB) for batch-managed materials; `stock_at_location` (MARD)
+     for non-batch (batch = `__NONE__`).
+   - **WM side:** `storage_bin` aggregated to plant × sloc(via warehouse↔sloc map) × warehouse ×
+     material × batch × stock_category.
+   - Columns: `im_qty, wm_qty, delta_qty, delta_value, tolerance, mismatch_reason` (enum:
+     `rounding | uom | pending_to | quant_blocked | true_variance`), `abc_classification`,
+     `valuation_class`, `last_reconciled_date`.
+2. **`silver.wm_managed_sloc`** config (`plant_code, storage_location_code, warehouse_number,
+   is_wm_managed, reconciliation_active`) — only reconcile WM-managed, active slocs. Maps the
+   warehouse↔sloc relationship WM lacks directly. **Seed/stub** + documented population.
+3. **UoM normalisation:** ingest `MARM` → `silver.material_uom_conversion`; normalise IM/WM to a
+   common UoM before comparing (suppresses spurious UoM deltas).
+4. **Explain deltas:** left-join open TOs/TRs (`warehouse_transfer_order/_requirement`) keyed by
+   material/batch; if an open movement covers the delta → `mismatch_reason = pending_to`.
+   Blocked quant → `quant_blocked`. Within tolerance → `rounding`. Tolerance configurable per
+   `material_type` (bulk vs high-value).
+5. Keep the existing coarse `gold_stock_reconciliation` as the **`gold_stock_reconciliation_summary`**
+   rollup (drill-down to detailed). Extend `gold_warehouse_exceptions` with detailed-recon rules.
+
+## Consequences
+- New dependencies: `MARM` (UoM) ingestion → silver; `wm_managed_sloc` config population.
+- Volume grows sharply at batch grain — liquid clustering / Z-order on `(plant_code,
+  storage_location_code, material_code)`; consider incremental (apply_changes) or daily snapshot.
+- Batch reconciliation is only as good as batch-level IM (MCHB) coverage; non-batch materials
+  reconcile at sloc grain.
