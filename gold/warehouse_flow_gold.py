@@ -63,11 +63,11 @@ def gold_lineside_stock():
     storage_bin = spark.read.table(f"{silver_schema}.storage_bin")
     mapping = spark.read.table(f"{silver_schema}.storage_type_role_mapping")
 
-    # Filter occupied bins using the conformed plant-specific lineside storage roles
+    # Filter occupied bins using the conformed plant-specific lineside storage roles (broadcast-optimized)
     lineside = (
         storage_bin.filter(F.col("quant_number").isNotNull()).alias("sb")
         .join(
-            mapping.alias("m"),
+            F.broadcast(mapping).alias("m"),
             (F.col("sb.plant_code") == F.col("m.plant_code"))
             & (F.col("sb.warehouse_number") == F.col("m.warehouse_number"))
             & (F.col("sb.storage_type") == F.col("m.storage_type"))
@@ -180,11 +180,11 @@ def gold_stock_reconciliation():
         )
     )
 
-    # Classify bins as physical or interim based on storage_type_role_mapping or fallback standard 9xx prefix
+    # Classify bins as physical or interim based on storage_type_role_mapping or fallback standard 9xx prefix (broadcast-optimized)
     sb_mapped = (
         storage_bin.alias("sb")
         .join(
-            mapping.alias("m"),
+            F.broadcast(mapping).alias("m"),
             (F.col("sb.plant_code") == F.col("m.plant_code"))
             & (F.col("sb.warehouse_number") == F.col("m.warehouse_number"))
             & (F.col("sb.storage_type") == F.col("m.storage_type")),

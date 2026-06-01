@@ -98,7 +98,7 @@ def gold_inbound_outbound_throughput():
     goods_movements = spark.read.table(f"{silver_schema}.goods_movement")
     classification = spark.read.table(f"{silver_schema}.movement_type_classification")
 
-    joined = goods_movements.join(classification, "movement_type_code", "inner")
+    joined = goods_movements.join(F.broadcast(classification), "movement_type_code", "inner")
     reversal_net_qty = _reversal_net_quantity()
 
     return (
