@@ -3,6 +3,11 @@ resources:
     gold_refresh_job:
       name: "[${bundle.target}] Connected Plant — Gold Refresh"
 
+      tags:
+        owner: connected-plant-team
+        cost-center: connected-plant
+        project: ops-reporting
+
       tasks:
         - task_key: refresh_silver_reference
           pipeline_task:
