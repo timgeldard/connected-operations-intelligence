@@ -174,6 +174,9 @@ SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
 | Aecorsoft columns | `AEDATTM` → `_replicated_at`; `AERUNID` → `_run_id`; `AERECNO` → `_record_seq` |
 | `RecordActivity` / `OPFLAG` | `'D'` = delete; used in `apply_as_deletes` |
 
+> [!NOTE]
+> **TODO:** Review Aecorsoft's capability to apply rules/transformations directly to fields at the replication layer (e.g. zero-stripping, date-casting). Performing these rules during replication could optimize ingestion and reduce downstream compute/storage costs (eliminating the hidden cost of executing Spark-based string manipulations and casts on every ingestion run).
+
 ---
 
 ## What belongs in Gold (not Silver)

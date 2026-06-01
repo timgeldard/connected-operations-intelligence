@@ -47,6 +47,7 @@ risk). `dev_*` targets write to the clean `connected_plant_dev`.
   populate `silver.wm_managed_sloc` (warehouse↔sloc + WM-managed flags).
 - **Lineage/dictionary (ADR 010):** grants on `system.access.table_lineage` /
   `system.access.column_lineage` for the principal running the dictionary generator.
+- **Aecorsoft Field Rules Review (Cost Optimization):** Review Aecorsoft's functionality to apply rules/transformations directly to fields at replication/ingestion time. Applying basic filters, type casting, or zero-stripping at the replication level could reduce the storage and compute costs of raw bronze staging (mitigating hidden costs of reproducing full SAP columns/rows before filtering in Silver).
 
 ## 5. CI secrets (for the bundle-validate job)
 `.github/workflows/ci.yml` needs repository secrets `DATABRICKS_HOST` and `DATABRICKS_TOKEN`

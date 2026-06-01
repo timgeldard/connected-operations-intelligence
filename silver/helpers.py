@@ -38,6 +38,10 @@ PP_PI_ORDER_CATEGORY = "40"
 # (e.g. ("ZI01", "ZI02", "ZI05")). None = keep all AUTYP='40' process orders.
 PP_PI_ORDER_TYPES = None
 
+# TODO: Review Aecorsoft functionality to apply rules directly to fields at replication
+# time (e.g. zero-stripping, date-casting). Shifting these transformations to the
+# replication layer can avoid post-ingestion Spark processing overhead and reduce
+# hidden compute/storage costs.
 def strip_zeros(col_name: str) -> Column:
     """Apply SAP ALPHA-style leading-zero removal for numeric identifiers."""
     value = F.trim(F.col(col_name).cast("string"))
