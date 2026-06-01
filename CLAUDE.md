@@ -72,7 +72,7 @@ If skills are not available, install them: `databricks aitools install`
 
 ## Key notes
 
-- `process_order` is always restricted to AUFK `AUTYP = '10'` (PP/PI process orders). `PP_PI_ORDER_TYPES` can further narrow AUART values once plant teams confirm the allowlist.
+- `process_order` is always restricted to AUFK `AUTYP = '40'` (PP/PI process orders; verified against live `connected_plant_uat.sap` — AUART values ZI01/ZI02/ZI05/…, with `AUTYP = '10'` returning zero rows in Kerry's config). `PP_PI_ORDER_TYPES` can further narrow AUART values once plant teams confirm the allowlist.
 - Dev target writes to `connected_plant_dev` catalog, UAT to `connected_plant_uat`, and Prod to `connected_plant_prod`.
 - Email recipients are parameterized via `notification_email` variable in `databricks.yml`.
 - ADRs for key design decisions live in `docs/adr/`.

@@ -6,7 +6,7 @@ import dlt
 from pyspark.sql import Row
 from pyspark.sql import functions as F
 
-from silver.helpers import BRONZE, get_spark, sap_date, sap_flag, strip_zeros
+from silver.helpers import BRONZE, bronze_published, get_spark, sap_date, sap_flag, strip_zeros
 from silver.movement_types import (
     ISSUE_MOVEMENT_TYPES,
     MOVEMENT_TYPE_MAPPING,
@@ -229,3 +229,87 @@ def movement_type_classification():
         for code, label in sorted(MOVEMENT_TYPE_MAPPING.items())
     ]
     return spark.createDataFrame(data)
+
+
+# ── 6. PLANT ──────────────────────────────────────────────────────────────────
+# Source: published / central_services (T001W is not replicated into the SAP
+# source). Read via bronze_published() so the fast/quality pipelines are unaffected.
+
+@dlt.table(
+    comment="Plant master — one row per plant, with name, location and org assignments",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "plant_code present": "plant_code IS NOT NULL",
+})
+def plant():
+    src = spark.read.table(f"{bronze_published()}.plantcode_t001w")
+    return src.select(
+        F.col("WERKS").alias("plant_code"),
+        F.col("NAME1").alias("plant_name"),
+        F.col("NAME2").alias("plant_name_2"),
+        F.col("ORT01").alias("city"),
+        F.col("LAND1").alias("country_key"),
+        F.col("REGIO").alias("region_code"),
+        F.col("BWKEY").alias("valuation_area"),
+        F.col("EKORG").alias("purchasing_org"),
+        F.col("VKORG").alias("sales_org"),
+        F.col("SPART").alias("division"),
+        strip_zeros("KUNNR").alias("plant_customer_number"),
+        strip_zeros("LIFNR").alias("plant_vendor_number"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )
+
+
+# ── 7. CUSTOMER ───────────────────────────────────────────────────────────────
+# Source: published / central_services (KNA1 is not replicated into the SAP source).
+
+@dlt.table(
+    comment="Customer master — one row per customer (sold-to/ship-to), with name and address",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "customer_code present": "customer_code IS NOT NULL",
+})
+def customer():
+    src = spark.read.table(f"{bronze_published()}.customermaster_kna1")
+    return src.select(
+        strip_zeros("KUNNR").alias("customer_code"),
+        F.col("KUNNR").alias("customer_code_raw"),
+        F.col("NAME1").alias("customer_name"),
+        F.col("NAME2").alias("customer_name_2"),
+        F.col("ORT01").alias("city"),
+        F.col("LAND1").alias("country_key"),
+        F.col("REGIO").alias("region_code"),
+        F.col("PSTLZ").alias("postal_code"),
+        F.col("STRAS").alias("street"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )
+
+
+# ── 8. STORAGE TYPE ───────────────────────────────────────────────────────────
+# WM storage-type dimension (LGTYP) with English description. From the SAP source.
+
+@dlt.table(
+    comment="WM storage types — one row per warehouse number and storage type, with description",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "warehouse_number present": "warehouse_number IS NOT NULL",
+    "storage_type present": "storage_type IS NOT NULL",
+})
+def storage_type():
+    t301 = spark.read.table(f"{BRONZE}.wm_storagetypes_t301")
+    t301t = spark.read.table(f"{BRONZE}.wm_storagetypesdescription_t301t").filter(
+        F.col("SPRAS") == "E"
+    )
+    return (
+        t301.alias("s")
+        .join(t301t.alias("t"), ["LGNUM", "LGTYP", "MANDT"], "left")
+        .select(
+            F.col("s.LGNUM").alias("warehouse_number"),
+            F.col("s.LGTYP").alias("storage_type"),
+            F.col("t.LTYPT").alias("storage_type_description"),
+            F.col("s.AEDATTM").alias("_replicated_at"),
+        )
+    )
