@@ -81,7 +81,7 @@ CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_stock_expiry_risk_secured 
       WHEN datediff(minimum_expiry_date, current_date()) < 90 THEN 'DAYS_30_90'
       ELSE 'OK'
     END AS highest_expiry_risk_bucket,
-    (datediff(minimum_expiry_date, current_date()) < coalesce(minimum_remaining_shelf_life_days, 0)) AS has_minimum_shelf_life_breach
+    coalesce(datediff(minimum_expiry_date, current_date()) < coalesce(minimum_remaining_shelf_life_days, 0), false) AS has_minimum_shelf_life_breach
   FROM connected_plant_prod.gold.gold_stock_expiry_risk
   WHERE connected_plant_prod.silver.plant_access_filter(plant_code);
 GRANT SELECT ON VIEW connected_plant_prod.gold.gold_stock_expiry_risk_secured TO `users`;

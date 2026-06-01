@@ -134,7 +134,7 @@ CUSTOM_SELECTS = {
       WHEN datediff(minimum_expiry_date, current_date()) < 90 THEN 'DAYS_30_90'
       ELSE 'OK'
     END AS highest_expiry_risk_bucket,
-    (datediff(minimum_expiry_date, current_date()) < coalesce(minimum_remaining_shelf_life_days, 0)) AS has_minimum_shelf_life_breach
+    coalesce(datediff(minimum_expiry_date, current_date()) < coalesce(minimum_remaining_shelf_life_days, 0), false) AS has_minimum_shelf_life_breach
   FROM {base}""",
 
     "gold_lineside_stock": """  SELECT

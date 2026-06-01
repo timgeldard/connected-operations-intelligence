@@ -32,7 +32,7 @@ def setup_database(spark: SparkSession):
         spark.sql(f"DROP TABLE IF EXISTS {t}")
     
     # Physically remove delta directories from spark-warehouse to prevent LOCATION_ALREADY_EXISTS conflicts
-    warehouse_dir = "/home/timgeldard/github/rad/spark-warehouse"
+    warehouse_dir = os.path.abspath("spark-warehouse")
     if os.path.exists(warehouse_dir):
         for t in tables:
             path = os.path.join(warehouse_dir, t)

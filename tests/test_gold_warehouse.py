@@ -418,7 +418,7 @@ def test_stock_expiry_risk_buckets_and_minimum_shelf_life(spark: SparkSession):
         Row(
             plant_code="1000",
             material_code="12345",
-            batch_number="B1",
+            batch_number="B2",
             base_uom="KG",
             expiry_date=today + timedelta(days=3),
             goods_receipt_date=today - timedelta(days=90),
@@ -427,7 +427,7 @@ def test_stock_expiry_risk_buckets_and_minimum_shelf_life(spark: SparkSession):
         Row(
             plant_code="1000",
             material_code="12345",
-            batch_number="B1",
+            batch_number="B3",
             base_uom="KG",
             expiry_date=today + timedelta(days=20),
             goods_receipt_date=today - timedelta(days=60),
@@ -436,7 +436,7 @@ def test_stock_expiry_risk_buckets_and_minimum_shelf_life(spark: SparkSession):
         Row(
             plant_code="1000",
             material_code="12345",
-            batch_number="B1",
+            batch_number="B4",
             base_uom="KG",
             expiry_date=today + timedelta(days=45),
             goods_receipt_date=today - timedelta(days=30),
@@ -445,7 +445,7 @@ def test_stock_expiry_risk_buckets_and_minimum_shelf_life(spark: SparkSession):
         Row(
             plant_code="1000",
             material_code="12345",
-            batch_number="B1",
+            batch_number="B5",
             base_uom="KG",
             expiry_date=today + timedelta(days=120),
             goods_receipt_date=today,
@@ -466,16 +466,51 @@ def test_stock_expiry_risk_buckets_and_minimum_shelf_life(spark: SparkSession):
     )
     spark.createDataFrame(material_data).write.mode("overwrite").saveAsTable("silver.material")
 
-    row = all_rows(gold_stock_expiry_risk())[0]
+    rows = {r["batch_number"]: r for r in all_rows(gold_stock_expiry_risk())}
+    assert len(rows) == 5
 
-    assert row["minimum_expiry_date"] == today - timedelta(days=1)
-    assert row["minimum_days_to_expiry"] == -1
-    assert row["total_stock_qty"] == 28.0
-    assert row["expired_qty"] == 2.0
-    assert row["expiry_risk_lt_7d_qty"] == 3.0
-    assert row["expiry_risk_7_30d_qty"] == 5.0
-    assert row["expiry_risk_30_90d_qty"] == 7.0
-    assert row["expiry_ok_qty"] == 11.0
-    assert row["minimum_shelf_life_breach_qty"] == 10.0
-    assert row["highest_expiry_risk_bucket"] == "EXPIRED"
-    assert row["has_minimum_shelf_life_breach"] is True
+    # B1: Expired
+    assert rows["B1"]["minimum_expiry_date"] == today - timedelta(days=1)
+    assert rows["B1"]["minimum_days_to_expiry"] == -1
+    assert rows["B1"]["total_stock_qty"] == 2.0
+    assert rows["B1"]["expired_qty"] == 2.0
+    assert rows["B1"]["highest_expiry_risk_bucket"] == "EXPIRED"
+    assert rows["B1"]["minimum_shelf_life_breach_qty"] == 2.0
+    assert rows["B1"]["has_minimum_shelf_life_breach"] is True
+
+    # B2: LT 7 Days
+    assert rows["B2"]["minimum_expiry_date"] == today + timedelta(days=3)
+    assert rows["B2"]["minimum_days_to_expiry"] == 3
+    assert rows["B2"]["total_stock_qty"] == 3.0
+    assert rows["B2"]["expiry_risk_lt_7d_qty"] == 3.0
+    assert rows["B2"]["highest_expiry_risk_bucket"] == "LT_7_DAYS"
+    assert rows["B2"]["minimum_shelf_life_breach_qty"] == 3.0
+    assert rows["B2"]["has_minimum_shelf_life_breach"] is True
+
+    # B3: Days 7 to 30
+    assert rows["B3"]["minimum_expiry_date"] == today + timedelta(days=20)
+    assert rows["B3"]["minimum_days_to_expiry"] == 20
+    assert rows["B3"]["total_stock_qty"] == 5.0
+    assert rows["B3"]["expiry_risk_7_30d_qty"] == 5.0
+    assert rows["B3"]["highest_expiry_risk_bucket"] == "DAYS_7_30"
+    assert rows["B3"]["minimum_shelf_life_breach_qty"] == 5.0
+    assert rows["B3"]["has_minimum_shelf_life_breach"] is True
+
+    # B4: Days 30 to 90 (no breach)
+    assert rows["B4"]["minimum_expiry_date"] == today + timedelta(days=45)
+    assert rows["B4"]["minimum_days_to_expiry"] == 45
+    assert rows["B4"]["total_stock_qty"] == 7.0
+    assert rows["B4"]["expiry_risk_30_90d_qty"] == 7.0
+    assert rows["B4"]["highest_expiry_risk_bucket"] == "DAYS_30_90"
+    assert rows["B4"]["minimum_shelf_life_breach_qty"] == 0.0
+    assert rows["B4"]["has_minimum_shelf_life_breach"] is False
+
+    # B5: OK (no breach)
+    assert rows["B5"]["minimum_expiry_date"] == today + timedelta(days=120)
+    assert rows["B5"]["minimum_days_to_expiry"] == 120
+    assert rows["B5"]["total_stock_qty"] == 11.0
+    assert rows["B5"]["expiry_ok_qty"] == 11.0
+    assert rows["B5"]["highest_expiry_risk_bucket"] == "OK"
+    assert rows["B5"]["minimum_shelf_life_breach_qty"] == 0.0
+    assert rows["B5"]["has_minimum_shelf_life_breach"] is False
+
