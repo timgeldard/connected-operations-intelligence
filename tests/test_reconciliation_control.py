@@ -99,6 +99,28 @@ def test_reconcile_entity_monitored_records_but_does_not_fail(spark: SparkSessio
     assert r["passed"] == "PASS"          # but does not fail the gate
 
 
+def test_reconcile_entity_exact_measure_mismatch_with_null_silver_sum(spark: SparkSession):
+    # Counts tie, but the silver measure is all-null (sum -> None). A one-sided null must NOT
+    # bypass the measure tolerance check: coalesce to 0.0 so the delta is real and it FAILs.
+    _save(spark, [
+        Row(RSNUM="1", RSPOS="1", BDMNG=100.0, AEDATTM=_T2, AERUNID="r1", AERECNO="1", RecordActivity=None),
+    ], "recon_nullmeas_bronze")
+    _save(spark, [
+        Row(reservation_number="1", reservation_item="1", required_quantity=None, _replicated_at=_T2),
+    ], "recon_nullmeas_silver")
+
+    cfg = {
+        "entity": "reservation_requirement", "bronze_table": "x",
+        "keys": ["RSNUM", "RSPOS"], "tie_mode": "exact", "has_delete": True,
+        "dq_drop": "RSNUM IS NULL OR RSPOS IS NULL",
+        "bronze_measure": "BDMNG", "silver_measure": "required_quantity",
+    }
+    r = reconcile_entity(spark, "recon_nullmeas_bronze", "recon_nullmeas_silver", cfg)
+    assert r["unexplained_delta"] == 0       # counts tie
+    assert r["measure_delta"] == 100.0       # null silver sum coalesced to 0.0
+    assert r["passed"] == "FAIL"             # measure mismatch is not silently bypassed
+
+
 # ── Gold grain / duplication ──────────────────────────────────────────────────
 
 def test_check_gold_grain_clean(spark: SparkSession):

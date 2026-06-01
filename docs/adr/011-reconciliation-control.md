@@ -46,8 +46,10 @@ silent-duplication risk is **Gold join fan-out**. Each Gold table is asserted to
 its intended grain: `duplicate_rows = row_count − distinct_grain_keys` must be 0.
 
 ### Behaviour
-- Both tables are appended per `run_date` (idempotent: clear-then-append today's partition), so
-  variances are queryable and trendable over time.
+- Both tables are written per `run_date` using Delta's atomic `replaceWhere` partition overwrite
+  (single transaction — a partial failure cannot lose the day's data; no midnight DELETE/write
+  race), so variances are queryable and trendable over time. `--run_date YYYY-MM-DD` supports
+  deterministic backfills.
 - Any `FAIL` (exact tie-out or gold duplication) raises and **fails the job** (`--fail_on_variance=true`),
   triggering the failure email — variances are detectable, not buried. Set `false` for a soft run.
 

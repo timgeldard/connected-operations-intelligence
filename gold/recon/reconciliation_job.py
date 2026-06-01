@@ -36,6 +36,7 @@ See docs/adr/011-reconciliation-control.md.
 """
 
 import argparse
+import datetime
 
 from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
@@ -225,8 +226,10 @@ def reconcile_entity(spark: SparkSession, bronze_fq: str, silver_fq: str, cfg: d
         silver_sum = silver_df.agg(
             F.sum(F.col(cfg["silver_measure"]).cast("double")).alias("s")
         ).first()["s"]
-        if bronze_sum is not None and silver_sum is not None:
-            measure_delta = float(bronze_sum) - float(silver_sum)
+        # Coalesce a missing sum (empty/all-null side) to 0.0 so a one-sided null still yields a
+        # real delta and cannot bypass the tolerance check below.
+        measure_delta = (float(bronze_sum) if bronze_sum is not None else 0.0) - \
+                        (float(silver_sum) if silver_sum is not None else 0.0)
 
     # Pass rule: exact entities must tie on count (and measure, within float tolerance);
     # monitored entities always "pass" the gate (recorded for observability only).
@@ -270,25 +273,43 @@ def check_gold_grain(spark: SparkSession, gold_fq: str, grain_keys: list) -> dic
     }
 
 
-def _write(spark, df, target, run_date_expr):
-    """Append a control batch idempotently for the run date (clear-then-append)."""
+def _write(spark, df, target, run_date):
+    """Idempotently persist a control batch for run_date. Uses Delta's atomic replaceWhere
+    partition overwrite (single transaction) so a partial failure cannot lose the day's data,
+    and a single pre-evaluated run_date avoids the midnight DELETE/write race."""
     stamped = (
-        df.withColumn("run_date", run_date_expr)
+        df.withColumn("run_date", F.lit(run_date).cast("date"))
         .withColumn("run_timestamp", F.current_timestamp())
     )
     if spark.catalog.tableExists(target):
-        spark.sql(f"DELETE FROM {target} WHERE run_date = CURRENT_DATE()")
-    (
-        stamped.write.format("delta")
-        .mode("append")
-        .option("mergeSchema", "true")
-        .partitionBy("run_date")
-        .saveAsTable(target)
-    )
+        (
+            stamped.write.format("delta")
+            .mode("overwrite")
+            .option("replaceWhere", f"run_date = '{run_date}'")
+            .option("mergeSchema", "true")
+            .saveAsTable(target)
+        )
+    else:
+        (
+            stamped.write.format("delta")
+            .mode("append")
+            .option("mergeSchema", "true")
+            .partitionBy("run_date")
+            .saveAsTable(target)
+        )
 
 
 def run(spark, source_catalog, source_schema, silver_catalog, silver_schema,
-        gold_catalog, gold_schema, fail_on_variance=True):
+        gold_catalog, gold_schema, fail_on_variance=True, run_date=None):
+    # Evaluate the run date once so every control row in this run lands in the same partition
+    # (and to support deterministic backfills via --run_date YYYY-MM-DD).
+    if run_date is None:
+        run_date_val = datetime.date.today()
+    elif isinstance(run_date, str):
+        run_date_val = datetime.datetime.strptime(run_date, "%Y-%m-%d").date()
+    else:
+        run_date_val = run_date
+
     control_rows = []
     for cfg in ENTITIES:
         bronze_fq = _fq(source_catalog, source_schema, cfg["bronze_table"])
@@ -317,10 +338,10 @@ def run(spark, source_catalog, source_schema, silver_catalog, silver_schema,
     grain_target = _fq(gold_catalog, gold_schema, "gold_grain_integrity")
     if control_rows:
         _write(spark, spark.createDataFrame(control_rows, _CONTROL_SCHEMA),
-               control_target, F.current_date())
+               control_target, run_date_val)
     if grain_rows:
         _write(spark, spark.createDataFrame(grain_rows, _GRAIN_SCHEMA),
-               grain_target, F.current_date())
+               grain_target, run_date_val)
 
     failures = [r for r in control_rows if r["passed"] == "FAIL"] + \
                [r for r in grain_rows if r["passed"] == "FAIL"]
@@ -342,6 +363,8 @@ def main() -> None:
     parser.add_argument("--gold_catalog", required=True)
     parser.add_argument("--gold_schema", required=True)
     parser.add_argument("--fail_on_variance", default="true")
+    parser.add_argument("--run_date", default=None,
+                        help="Reconciliation date as YYYY-MM-DD (default: today). Use for backfills.")
     args = parser.parse_args()
 
     spark = SparkSession.builder.getOrCreate()
@@ -351,6 +374,7 @@ def main() -> None:
         args.silver_catalog, args.silver_schema,
         args.gold_catalog, args.gold_schema,
         fail_on_variance=str(args.fail_on_variance).lower() == "true",
+        run_date=args.run_date,
     )
 
 
