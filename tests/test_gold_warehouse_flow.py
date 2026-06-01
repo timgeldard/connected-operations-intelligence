@@ -9,7 +9,7 @@ on the aggregation results.
 import pytest
 from pyspark.sql import Row, SparkSession
 
-from tests.conftest import all_rows
+from tests.conftest import all_rows, create_df
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -17,12 +17,19 @@ def setup_silver(spark: SparkSession):
     spark.conf.set("silver_catalog", "spark_catalog")
     spark.conf.set("silver_schema", "silver")
     spark.sql("CREATE DATABASE IF NOT EXISTS silver")
+    
+    # Seed default storage type role mapping configuration table
+    _save(spark, [
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="801", role="LINESIDE"),
+    ], "storage_type_role_mapping")
+    
     yield
     spark.sql("DROP DATABASE IF EXISTS silver CASCADE")
 
 
 def _save(spark, rows, table):
-    spark.createDataFrame(rows).write.mode("overwrite").saveAsTable(f"silver.{table}")
+    create_df(spark, rows).write.mode("overwrite").saveAsTable(f"silver.{table}")
 
 
 # ── Dispensary backlog ────────────────────────────────────────────────────────
@@ -104,9 +111,11 @@ def test_stock_reconciliation_delta_and_match(spark):
             restricted_use_quantity=0.0, in_transfer_quantity=0.0),
     ], "stock_at_location")
     _save(spark, [
-        # M1 WM matches IM (100); M2 WM short (30 vs 50 -> variance)
-        Row(plant_code="C061", material_code="M1", quant_number="Q1", total_quantity=100.0),
-        Row(plant_code="C061", material_code="M2", quant_number="Q2", total_quantity=30.0),
+        # M1 WM matches IM (100 total: 80 physical in 100, 20 interim in 902)
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", material_code="M1", quant_number="Q1", total_quantity=80.0),
+        Row(plant_code="C061", warehouse_number="208", storage_type="902", material_code="M1", quant_number="Q12", total_quantity=20.0),
+        # M2 WM short (30 vs 50 -> variance, all physical in 100)
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", material_code="M2", quant_number="Q2", total_quantity=30.0),
     ], "storage_bin")
     _save(spark, [
         Row(material_code="M1", valuation_area="C061", standard_price=10.0, price_unit=1),
@@ -115,9 +124,42 @@ def test_stock_reconciliation_delta_and_match(spark):
 
     rows = {r["material_code"]: r for r in all_rows(gold_stock_reconciliation())}
     assert rows["M1"]["delta_qty"] == 0.0
+    assert rows["M1"]["wm_total_qty"] == 100.0
+    assert rows["M1"]["wm_physical_qty"] == 80.0
+    assert rows["M1"]["wm_interim_qty"] == 20.0
     assert rows["M1"]["mismatch_class"] == "match"
     assert rows["M1"]["inventory_value"] == 1000.0
+    
     assert rows["M2"]["delta_qty"] == 20.0
+    assert rows["M2"]["wm_total_qty"] == 30.0
+    assert rows["M2"]["wm_physical_qty"] == 30.0
+    assert rows["M2"]["wm_interim_qty"] == 0.0
     assert rows["M2"]["mismatch_class"] == "variance"
     # M1 is the higher-value line -> ABC class A
     assert rows["M1"]["abc_class"] == "A"
+
+
+# ── Line-side stock ───────────────────────────────────────────────────────────
+
+def test_lineside_stock_aggregation(spark):
+    from gold.warehouse_flow_gold import gold_lineside_stock
+
+    _save(spark, [
+        Row(plant_code="C061", warehouse_number="208", storage_type="100",
+            material_code="M1", batch_number="B1", base_uom="KG", quant_number="Q1",
+            total_quantity=50.0, available_quantity=40.0, expiry_date=None, goods_receipt_date=None),
+        Row(plant_code="C061", warehouse_number="208", storage_type="100",
+            material_code="M1", batch_number="B1", base_uom="KG", quant_number="Q2",
+            total_quantity=10.0, available_quantity=10.0, expiry_date=None, goods_receipt_date=None),
+        # Excluded storage type (not mapped in reference table to role LINESIDE)
+        Row(plant_code="C061", warehouse_number="208", storage_type="999",
+            material_code="M1", batch_number="B1", base_uom="KG", quant_number="Q3",
+            total_quantity=99.0, available_quantity=99.0, expiry_date=None, goods_receipt_date=None),
+    ], "storage_bin")
+
+    rows = all_rows(gold_lineside_stock())
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["quant_count"] == 2
+    assert r["total_qty"] == 60.0
+    assert r["available_qty"] == 50.0

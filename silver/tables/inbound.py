@@ -100,7 +100,11 @@ def stg_purchase_order():
 
 dlt.create_streaming_table(
     name="purchase_order",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["plant_code", "purchase_order_date"],
 )
 

@@ -90,6 +90,102 @@ REVOKE_NOTE = """
 """
 
 
+CUSTOM_SELECTS = {
+    "gold_stock_expiry_risk": """  SELECT
+    plant_code,
+    material_code,
+    material_description,
+    batch_number,
+    base_uom,
+    minimum_expiry_date,
+    earliest_goods_receipt_date,
+    datediff(minimum_expiry_date, current_date()) AS minimum_days_to_expiry,
+    shelf_life_days,
+    minimum_remaining_shelf_life_days,
+    total_stock_qty,
+    coalesce(
+      CASE WHEN datediff(minimum_expiry_date, current_date()) < 0 THEN total_stock_qty END,
+      0.0
+    ) AS expired_qty,
+    coalesce(
+      CASE WHEN datediff(minimum_expiry_date, current_date()) >= 0 AND datediff(minimum_expiry_date, current_date()) < 7 THEN total_stock_qty END,
+      0.0
+    ) AS expiry_risk_lt_7d_qty,
+    coalesce(
+      CASE WHEN datediff(minimum_expiry_date, current_date()) >= 7 AND datediff(minimum_expiry_date, current_date()) < 30 THEN total_stock_qty END,
+      0.0
+    ) AS expiry_risk_7_30d_qty,
+    coalesce(
+      CASE WHEN datediff(minimum_expiry_date, current_date()) >= 30 AND datediff(minimum_expiry_date, current_date()) < 90 THEN total_stock_qty END,
+      0.0
+    ) AS expiry_risk_30_90d_qty,
+    coalesce(
+      CASE WHEN datediff(minimum_expiry_date, current_date()) >= 90 THEN total_stock_qty END,
+      0.0
+    ) AS expiry_ok_qty,
+    coalesce(
+      CASE WHEN datediff(minimum_expiry_date, current_date()) < coalesce(minimum_remaining_shelf_life_days, 0) THEN total_stock_qty END,
+      0.0
+    ) AS minimum_shelf_life_breach_qty,
+    CASE
+      WHEN datediff(minimum_expiry_date, current_date()) < 0 THEN 'EXPIRED'
+      WHEN datediff(minimum_expiry_date, current_date()) < 7 THEN 'LT_7_DAYS'
+      WHEN datediff(minimum_expiry_date, current_date()) < 30 THEN 'DAYS_7_30'
+      WHEN datediff(minimum_expiry_date, current_date()) < 90 THEN 'DAYS_30_90'
+      ELSE 'OK'
+    END AS highest_expiry_risk_bucket,
+    coalesce(datediff(minimum_expiry_date, current_date()) < coalesce(minimum_remaining_shelf_life_days, 0), false) AS has_minimum_shelf_life_breach
+  FROM {base}""",
+
+    "gold_lineside_stock": """  SELECT
+    *,
+    CASE WHEN earliest_expiry_date IS NOT NULL THEN datediff(earliest_expiry_date, current_date()) END AS min_days_to_expiry
+  FROM {base}""",
+
+    "gold_delivery_pick_status": """  SELECT
+    delivery_number,
+    plant_code,
+    warehouse_number,
+    delivery_type,
+    sold_to_customer,
+    planned_goods_issue_date,
+    line_count,
+    delivery_qty,
+    picked_qty,
+    pick_fraction,
+    is_shipped,
+    datediff(planned_goods_issue_date, current_date()) AS days_to_goods_issue,
+    CASE
+      WHEN is_shipped THEN 'green'
+      WHEN planned_goods_issue_date IS NULL THEN 'grey'
+      WHEN coalesce(pick_fraction, 0.0) < 0.5 AND datediff(planned_goods_issue_date, current_date()) <= 0 THEN 'red'
+      WHEN coalesce(pick_fraction, 0.0) < 0.8 AND datediff(planned_goods_issue_date, current_date()) <= 1 THEN 'amber'
+      ELSE 'green'
+    END AS risk_band
+  FROM {base}""",
+
+    "gold_process_order_staging": """  SELECT
+    order_number,
+    plant_code,
+    material_code,
+    order_quantity,
+    scheduled_start_date,
+    scheduled_finish_date,
+    to_items_total,
+    to_items_done,
+    staging_fraction,
+    datediff(scheduled_start_date, current_date()) AS days_to_start,
+    CASE
+      WHEN to_items_total = 0 THEN 'grey'
+      WHEN scheduled_start_date IS NULL THEN 'grey'
+      WHEN coalesce(staging_fraction, 0.0) < 0.3 AND datediff(scheduled_start_date, current_date()) <= 0 THEN 'red'
+      WHEN coalesce(staging_fraction, 0.0) < 0.7 AND datediff(scheduled_start_date, current_date()) <= 1 THEN 'amber'
+      ELSE 'green'
+    END AS risk_band
+  FROM {base}"""
+}
+
+
 def generate_sql():
     os.makedirs("resources/sql", exist_ok=True)
 
@@ -108,9 +204,13 @@ def generate_sql():
         for table in GOLD_TABLES:
             view = f"{gold}.{table}_secured"
             base = f"{gold}.{table}"
+            if table in CUSTOM_SELECTS:
+                select_clause = CUSTOM_SELECTS[table].format(base=base)
+            else:
+                select_clause = f"  SELECT * FROM {base}"
             sql += (
                 f"\nCREATE OR REPLACE VIEW {view} AS\n"
-                f"  SELECT * FROM {base}\n"
+                f"{select_clause}\n"
                 f"  WHERE {fn}(plant_code);\n"
                 f"GRANT SELECT ON VIEW {view} TO `{group}`;\n"
             )
@@ -126,3 +226,4 @@ def generate_sql():
 
 if __name__ == "__main__":
     generate_sql()
+
