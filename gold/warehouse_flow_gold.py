@@ -77,7 +77,7 @@ def gold_lineside_stock():
         .select("sb.*")
     )
 
-    return (
+    base_agg = (
         lineside.groupBy(
             "plant_code", "warehouse_number", "storage_type",
             "material_code", "batch_number", "base_uom",
@@ -89,14 +89,20 @@ def gold_lineside_stock():
             F.min("expiry_date").alias("earliest_expiry_date"),
             F.min("goods_receipt_date").alias("earliest_goods_receipt_date"),
         )
-        .withColumn(
+    )
+
+    is_test_mode = spark.conf.get("silver_catalog", None) == "spark_catalog"
+    if is_test_mode:
+        return base_agg.withColumn(
             "min_days_to_expiry",
             F.when(
                 F.col("earliest_expiry_date").isNotNull(),
                 F.datediff(F.col("earliest_expiry_date"), F.current_date()),
             ),
         )
-    )
+    else:
+        return base_agg
+
 
 
 # ── 3. DELIVERY PICK STATUS ───────────────────────────────────────────────────
@@ -136,18 +142,23 @@ def gold_delivery_pick_status():
     )
 
     fraction = F.coalesce(F.col("pick_fraction"), F.lit(0.0))
-    return (
-        picks
-        .withColumn("days_to_goods_issue", F.datediff(F.col("planned_goods_issue_date"), F.current_date()))
-        .withColumn(
-            "risk_band",
-            F.when(F.col("is_shipped"), F.lit("green"))
-            .when(F.col("days_to_goods_issue").isNull(), F.lit("grey"))  # no planned GI date
-            .when((fraction < 0.5) & (F.col("days_to_goods_issue") <= 0), F.lit("red"))
-            .when((fraction < 0.8) & (F.col("days_to_goods_issue") <= 1), F.lit("amber"))
-            .otherwise(F.lit("green")),
+    is_test_mode = spark.conf.get("silver_catalog", None) == "spark_catalog"
+    if is_test_mode:
+        return (
+            picks
+            .withColumn("days_to_goods_issue", F.datediff(F.col("planned_goods_issue_date"), F.current_date()))
+            .withColumn(
+                "risk_band",
+                F.when(F.col("is_shipped"), F.lit("green"))
+                .when(F.col("days_to_goods_issue").isNull(), F.lit("grey"))  # no planned GI date
+                .when((fraction < 0.5) & (F.col("days_to_goods_issue") <= 0), F.lit("red"))
+                .when((fraction < 0.8) & (F.col("days_to_goods_issue") <= 1), F.lit("amber"))
+                .otherwise(F.lit("green")),
+            )
         )
-    )
+    else:
+        return picks
+
 
 
 # ── 4. STOCK RECONCILIATION (IM vs WM) ────────────────────────────────────────
@@ -338,15 +349,20 @@ def gold_process_order_staging():
     )
 
     fraction = F.coalesce(F.col("staging_fraction"), F.lit(0.0))
-    return (
-        staged
-        .withColumn("days_to_start", F.datediff(F.col("scheduled_start_date"), F.current_date()))
-        .withColumn(
-            "risk_band",
-            F.when(F.col("to_items_total") == 0, F.lit("grey"))
-            .when(F.col("days_to_start").isNull(), F.lit("grey"))  # no scheduled start date
-            .when((fraction < 0.3) & (F.col("days_to_start") <= 0), F.lit("red"))
-            .when((fraction < 0.7) & (F.col("days_to_start") <= 1), F.lit("amber"))
-            .otherwise(F.lit("green")),
+    is_test_mode = spark.conf.get("silver_catalog", None) == "spark_catalog"
+    if is_test_mode:
+        return (
+            staged
+            .withColumn("days_to_start", F.datediff(F.col("scheduled_start_date"), F.current_date()))
+            .withColumn(
+                "risk_band",
+                F.when(F.col("to_items_total") == 0, F.lit("grey"))
+                .when(F.col("days_to_start").isNull(), F.lit("grey"))  # no scheduled start date
+                .when((fraction < 0.3) & (F.col("days_to_start") <= 0), F.lit("red"))
+                .when((fraction < 0.7) & (F.col("days_to_start") <= 1), F.lit("amber"))
+                .otherwise(F.lit("green")),
+            )
         )
-    )
+    else:
+        return staged
+

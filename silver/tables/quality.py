@@ -81,7 +81,11 @@ def stg_quality_inspection_lot():
 
 dlt.create_streaming_table(
     name="quality_inspection_lot",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["plant_code", "inspection_start_date"],
 )
 

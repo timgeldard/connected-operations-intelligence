@@ -70,7 +70,11 @@ def stg_reservation_requirement():
 
 dlt.create_streaming_table(
     name="reservation_requirement",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["plant_code", "requirement_date"],
 )
 
@@ -179,7 +183,11 @@ def stg_outbound_delivery():
 
 dlt.create_streaming_table(
     name="outbound_delivery",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["plant_code", "planned_goods_issue_date"],
 )
 

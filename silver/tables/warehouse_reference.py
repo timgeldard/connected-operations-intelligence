@@ -170,7 +170,11 @@ def stg_storage_bin():
 
 dlt.create_streaming_table(
     name="storage_bin",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["warehouse_number", "storage_type"],
 )
 

@@ -121,7 +121,11 @@ def stg_goods_movement():
 
 dlt.create_streaming_table(
     name="goods_movement",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["plant_code", "posting_date"],
 )
 
@@ -177,7 +181,11 @@ def stg_batch_stock():
 
 dlt.create_streaming_table(
     name="batch_stock",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["plant_code", "storage_location_code"],
 )
 
@@ -298,7 +306,11 @@ def stg_warehouse_transfer_order():
 
 dlt.create_streaming_table(
     name="warehouse_transfer_order",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["plant_code", "created_datetime"],
 )
 
@@ -412,7 +424,11 @@ def stg_warehouse_transfer_requirement():
 
 dlt.create_streaming_table(
     name="warehouse_transfer_requirement",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["plant_code", "created_datetime"],
 )
 

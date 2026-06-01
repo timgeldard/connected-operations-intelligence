@@ -126,7 +126,11 @@ def stg_process_order():
 
 dlt.create_streaming_table(
     name="process_order",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["plant_code", "scheduled_start_date"],
 )
 
@@ -244,7 +248,11 @@ def stg_process_order_operation():
 
 dlt.create_streaming_table(
     name="process_order_operation",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["plant_code", "scheduled_start_datetime"],
 )
 
@@ -295,7 +303,11 @@ def stg_pi_sheet_execution():
 
 dlt.create_streaming_table(
     name="pi_sheet_execution",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["plant_code", "pi_sheet_start_datetime"],
 )
 
@@ -370,7 +382,11 @@ def stg_downtime_event():
 
 dlt.create_streaming_table(
     name="downtime_event",
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
     cluster_by=["plant_code", "start_datetime"],
 )
 
