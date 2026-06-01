@@ -222,17 +222,20 @@ def gold_stock_reconciliation():
         joined
         .withColumn("_cum_value", F.sum("inventory_value").over(plant_window))
         .withColumn("_plant_value", F.sum("inventory_value").over(plant_total))
+        # Cumulative value % BEFORE this row, so the highest-value item is always A even when it
+        # alone exceeds 80% of plant value (avoids the boundary mis-classification).
         .withColumn(
-            "_cum_pct",
-            F.when(F.col("_plant_value") > 0, F.col("_cum_value") / F.col("_plant_value")).otherwise(
-                F.lit(1.0)
-            ),
+            "_prev_cum_pct",
+            F.when(
+                F.col("_plant_value") > 0,
+                (F.col("_cum_value") - F.col("inventory_value")) / F.col("_plant_value"),
+            ).otherwise(F.lit(0.0)),
         )
         .withColumn(
             "abc_class",
             F.when(F.col("standard_price").isNull(), F.lit("U"))  # unpriced -> not classifiable
-            .when(F.col("_cum_pct") <= 0.80, F.lit("A"))
-            .when(F.col("_cum_pct") <= 0.95, F.lit("B"))
+            .when(F.col("_prev_cum_pct") < 0.80, F.lit("A"))
+            .when(F.col("_prev_cum_pct") < 0.95, F.lit("B"))
             .otherwise(F.lit("C")),
         )
     )
