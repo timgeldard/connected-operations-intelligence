@@ -427,5 +427,10 @@ def storage_type_role_mapping():
         Row(plant_code="C061", warehouse_number="208", storage_type="803", role="LINESIDE"),
         Row(plant_code="C061", warehouse_number="208", storage_type="804", role="LINESIDE"),
         Row(plant_code="C061", warehouse_number="208", storage_type="805", role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="901", role="INTERIM"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="902", role="INTERIM"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="911", role="INTERIM"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="922", role="INTERIM"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="999", role="INTERIM"),
     ]
     return spark.createDataFrame(data, schema)

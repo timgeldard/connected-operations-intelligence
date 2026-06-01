@@ -111,9 +111,11 @@ def test_stock_reconciliation_delta_and_match(spark):
             restricted_use_quantity=0.0, in_transfer_quantity=0.0),
     ], "stock_at_location")
     _save(spark, [
-        # M1 WM matches IM (100); M2 WM short (30 vs 50 -> variance)
-        Row(plant_code="C061", material_code="M1", quant_number="Q1", total_quantity=100.0),
-        Row(plant_code="C061", material_code="M2", quant_number="Q2", total_quantity=30.0),
+        # M1 WM matches IM (100 total: 80 physical in 100, 20 interim in 902)
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", material_code="M1", quant_number="Q1", total_quantity=80.0),
+        Row(plant_code="C061", warehouse_number="208", storage_type="902", material_code="M1", quant_number="Q12", total_quantity=20.0),
+        # M2 WM short (30 vs 50 -> variance, all physical in 100)
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", material_code="M2", quant_number="Q2", total_quantity=30.0),
     ], "storage_bin")
     _save(spark, [
         Row(material_code="M1", valuation_area="C061", standard_price=10.0, price_unit=1),
@@ -122,9 +124,16 @@ def test_stock_reconciliation_delta_and_match(spark):
 
     rows = {r["material_code"]: r for r in all_rows(gold_stock_reconciliation())}
     assert rows["M1"]["delta_qty"] == 0.0
+    assert rows["M1"]["wm_total_qty"] == 100.0
+    assert rows["M1"]["wm_physical_qty"] == 80.0
+    assert rows["M1"]["wm_interim_qty"] == 20.0
     assert rows["M1"]["mismatch_class"] == "match"
     assert rows["M1"]["inventory_value"] == 1000.0
+    
     assert rows["M2"]["delta_qty"] == 20.0
+    assert rows["M2"]["wm_total_qty"] == 30.0
+    assert rows["M2"]["wm_physical_qty"] == 30.0
+    assert rows["M2"]["wm_interim_qty"] == 0.0
     assert rows["M2"]["mismatch_class"] == "variance"
     # M1 is the higher-value line -> ABC class A
     assert rows["M1"]["abc_class"] == "A"

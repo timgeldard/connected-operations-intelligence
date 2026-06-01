@@ -153,7 +153,7 @@ def gold_delivery_pick_status():
 # ── 4. STOCK RECONCILIATION (IM vs WM) ────────────────────────────────────────
 
 @dlt.table(**gold_table_args(
-    comment="IM book stock (MARD) vs WM bin stock variance, with valuation and ABC class, by plant and material.",
+    comment="IM book stock (MARD) vs WM bin stock variance, with valuation, ABC class, and interim stock split, by plant and material.",
     cluster_by=["plant_code", "material_code"],
 ))
 def gold_stock_reconciliation():
@@ -162,6 +162,7 @@ def gold_stock_reconciliation():
     mard = spark.read.table(f"{silver_schema}.stock_at_location")
     storage_bin = spark.read.table(f"{silver_schema}.storage_bin")
     valuation = spark.read.table(f"{silver_schema}.material_valuation")
+    mapping = spark.read.table(f"{silver_schema}.storage_type_role_mapping")
 
     im = (
         mard.groupBy("plant_code", "material_code")
@@ -179,10 +180,39 @@ def gold_stock_reconciliation():
         )
     )
 
+    # Classify bins as physical or interim based on storage_type_role_mapping or fallback standard 9xx prefix
+    sb_mapped = (
+        storage_bin.alias("sb")
+        .join(
+            mapping.alias("m"),
+            (F.col("sb.plant_code") == F.col("m.plant_code"))
+            & (F.col("sb.warehouse_number") == F.col("m.warehouse_number"))
+            & (F.col("sb.storage_type") == F.col("m.storage_type")),
+            "left"
+        )
+        .select(
+            "sb.*",
+            F.coalesce(
+                F.col("m.role"),
+                F.when(F.col("sb.storage_type").rlike("^9"), F.lit("INTERIM")).otherwise(F.lit("PHYSICAL"))
+            ).alias("storage_role")
+        )
+    )
+
     wm = (
-        storage_bin.filter(F.col("quant_number").isNotNull())
+        sb_mapped.filter(F.col("quant_number").isNotNull())
         .groupBy("plant_code", "material_code")
-        .agg(F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("wm_total_qty"))
+        .agg(
+            F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("wm_total_qty"),
+            F.coalesce(
+                F.sum(F.when(F.col("storage_role") == "INTERIM", F.col("total_quantity")).otherwise(0.0)),
+                F.lit(0.0)
+            ).alias("wm_interim_qty"),
+            F.coalesce(
+                F.sum(F.when(F.col("storage_role") != "INTERIM", F.col("total_quantity")).otherwise(0.0)),
+                F.lit(0.0)
+            ).alias("wm_physical_qty")
+        )
     )
 
     # Plant-level valuation: valuation area conventionally equals the plant code.
@@ -200,6 +230,8 @@ def gold_stock_reconciliation():
         .join(price, ["plant_code", "material_code"], "left")
         .withColumn("im_total_qty", F.coalesce(F.col("im_total_qty"), F.lit(0.0)))
         .withColumn("wm_total_qty", F.coalesce(F.col("wm_total_qty"), F.lit(0.0)))
+        .withColumn("wm_interim_qty", F.coalesce(F.col("wm_interim_qty"), F.lit(0.0)))
+        .withColumn("wm_physical_qty", F.coalesce(F.col("wm_physical_qty"), F.lit(0.0)))
         .withColumn("delta_qty", F.col("im_total_qty") - F.col("wm_total_qty"))
         .withColumn(
             "inventory_value",
@@ -246,8 +278,8 @@ def gold_stock_reconciliation():
     )
 
     return with_abc.select(
-        "plant_code", "material_code", "im_total_qty", "wm_total_qty", "delta_qty",
-        "standard_price", "price_unit", "inventory_value", "mismatch_class", "abc_class",
+        "plant_code", "material_code", "im_total_qty", "wm_total_qty", "wm_interim_qty", "wm_physical_qty",
+        "delta_qty", "standard_price", "price_unit", "inventory_value", "mismatch_class", "abc_class",
     )
 
 

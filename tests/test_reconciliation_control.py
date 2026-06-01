@@ -6,6 +6,9 @@ Pattern follows the other gold tests: build fake bronze/silver/gold tables in th
 local spark_catalog, call the pure functions directly, assert on the control output.
 """
 
+import pytest
+import os
+import shutil
 from datetime import datetime
 
 from pyspark.sql import Row, SparkSession
@@ -16,6 +19,36 @@ from tests.conftest import create_df
 _T1 = datetime(2026, 1, 1)   # older version of key 1
 _T2 = datetime(2026, 2, 1)   # latest ingested watermark
 _TF = datetime(2026, 12, 1)  # future bronze row silver has NOT ingested yet
+
+
+@pytest.fixture(scope="module", autouse=True)
+def setup_database(spark: SparkSession):
+    tables = [
+        "recon_resb_bronze", "recon_resb_silver", "recon_loss_bronze", "recon_loss_silver",
+        "recon_lips_bronze", "recon_lips_silver", "recon_nullmeas_bronze", "recon_nullmeas_silver",
+        "recon_gold_clean", "recon_gold_dup"
+    ]
+    for t in tables:
+        spark.sql(f"DROP TABLE IF EXISTS {t}")
+    
+    # Physically remove delta directories from spark-warehouse to prevent LOCATION_ALREADY_EXISTS conflicts
+    warehouse_dir = "/home/timgeldard/github/rad/spark-warehouse"
+    if os.path.exists(warehouse_dir):
+        for t in tables:
+            path = os.path.join(warehouse_dir, t)
+            if os.path.exists(path):
+                shutil.rmtree(path)
+                
+    yield
+    
+    for t in tables:
+        spark.sql(f"DROP TABLE IF EXISTS {t}")
+        
+    if os.path.exists(warehouse_dir):
+        for t in tables:
+            path = os.path.join(warehouse_dir, t)
+            if os.path.exists(path):
+                shutil.rmtree(path)
 
 
 def _save(spark, rows, table):
