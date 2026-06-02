@@ -53,6 +53,28 @@ def _save(spark, rows, table):
     create_df(spark, rows).write.mode("overwrite").saveAsTable(f"silver.{table}")
 
 
+def _save_empty(spark, table):
+    """Save a dummy row with zero quantities to define schema and act as empty table."""
+    if table == "stock_at_location":
+        rows = [Row(material_code="DUMMY", plant_code="DUMMY", storage_location_code="DUMMY",
+                    unrestricted_quantity=0.0, quality_inspection_quantity=0.0,
+                    blocked_quantity=0.0, restricted_use_quantity=0.0, in_transfer_quantity=0.0,
+                    blocked_returns_quantity=0.0)]
+    elif table == "batch_stock":
+        rows = [Row(material_code="DUMMY", plant_code="DUMMY", storage_location_code="DUMMY",
+                    batch_number="DUMMY", base_uom="DUMMY",
+                    unrestricted_quantity=0.0, quality_inspection_quantity=0.0,
+                    blocked_quantity=0.0, restricted_use_quantity=0.0, in_transfer_quantity=0.0,
+                    blocked_returns_quantity=0.0)]
+    elif table == "storage_bin":
+        rows = [Row(plant_code="DUMMY", warehouse_number="DUMMY", storage_type="DUMMY",
+                    material_code="DUMMY", batch_number="DUMMY", base_uom="DUMMY",
+                    stock_category_code="DUMMY", total_quantity=0.0, quant_number="DUMMY")]
+    else:
+        rows = []
+    _save(spark, rows, table)
+
+
 # ── Dispensary backlog ────────────────────────────────────────────────────────
 
 def test_dispensary_backlog_filters_and_aggregates(spark):
@@ -416,7 +438,7 @@ def test_recon_v2_matched(spark):
             material_code="M1", batch_number="B1", base_uom="KG",
             stock_category_code="", total_quantity=100.0, quant_number="Q1"),
     ], "storage_bin")
-    _save(spark, [], "stock_at_location")
+    _save_empty(spark, "stock_at_location")
     _save(spark, [Row(valuation_area="C061", material_code="M1",
                       standard_price=5.0, price_unit=1)], "material_valuation")
 
@@ -445,8 +467,8 @@ def test_recon_v2_batch_missing_in_wm(spark):
             blocked_quantity=0.0, restricted_use_quantity=0.0, in_transfer_quantity=0.0,
             blocked_returns_quantity=0.0),
     ], "batch_stock")
-    _save(spark, [], "storage_bin")
-    _save(spark, [], "stock_at_location")
+    _save_empty(spark, "storage_bin")
+    _save_empty(spark, "stock_at_location")
     _save(spark, [Row(valuation_area="C061", material_code="M2",
                       standard_price=2.0, price_unit=1)], "material_valuation")
 
@@ -473,8 +495,8 @@ def test_recon_v2_no_wm_mapping(spark):
             blocked_quantity=0.0, restricted_use_quantity=0.0, in_transfer_quantity=0.0,
             blocked_returns_quantity=0.0),
     ], "stock_at_location")
-    _save(spark, [], "batch_stock")
-    _save(spark, [], "storage_bin")
+    _save_empty(spark, "batch_stock")
+    _save_empty(spark, "storage_bin")
     _save(spark, [Row(valuation_area="C061", material_code="M3",
                       standard_price=1.0, price_unit=1)], "material_valuation")
 
@@ -483,3 +505,169 @@ def test_recon_v2_no_wm_mapping(spark):
     assert r["warehouse_number"] == "__NO_WM_MAPPING__"
     assert r["mismatch_reason"] == "WM_MANAGED_SLOC_MAPPING_MISSING"
     assert r["mismatch_severity"] == "HIGH"
+
+
+def test_recon_v2_plant_scoped_routing(spark):
+    """Same material code, batch-managed at PLANT_A but not at PLANT_B, routes correctly."""
+    from gold.warehouse_flow_gold import gold_stock_reconciliation_v2
+
+    _save(spark, [
+        Row(material_code="M_ROUTING", plant_code="PLANT_A", base_uom="KG",
+            batch_management_required=True, material_description="Mat Routing A"),
+        Row(material_code="M_ROUTING", plant_code="PLANT_B", base_uom="KG",
+            batch_management_required=False, material_description="Mat Routing B"),
+    ], "material")
+
+    # PLANT_A has batch-managed stock (routes to im_batch via MCHB)
+    _save(spark, [
+        Row(material_code="M_ROUTING", plant_code="PLANT_A", storage_location_code="1000",
+            batch_number="B_A", base_uom="KG",
+            unrestricted_quantity=100.0, quality_inspection_quantity=0.0,
+            blocked_quantity=0.0, restricted_use_quantity=0.0, in_transfer_quantity=0.0,
+            blocked_returns_quantity=0.0),
+    ], "batch_stock")
+
+    # PLANT_B has non-batch stock (routes to im_mard via MARD/stock_at_location)
+    _save(spark, [
+        Row(material_code="M_ROUTING", plant_code="PLANT_B", storage_location_code="1000",
+            unrestricted_quantity=200.0, quality_inspection_quantity=0.0,
+            blocked_quantity=0.0, restricted_use_quantity=0.0, in_transfer_quantity=0.0,
+            blocked_returns_quantity=0.0),
+    ], "stock_at_location")
+
+    _save(spark, [
+        Row(plant_code="PLANT_A", storage_location_code="1000", warehouse_number="WH_A"),
+        Row(plant_code="PLANT_B", storage_location_code="1000", warehouse_number="WH_B"),
+    ], "warehouse_storage_location_mapping")
+
+    # WM storage bin empty (so we expect mismatch exception)
+    _save_empty(spark, "storage_bin")
+
+    _save(spark, [
+        Row(valuation_area="PLANT_A", material_code="M_ROUTING", standard_price=1.0, price_unit=1),
+        Row(valuation_area="PLANT_B", material_code="M_ROUTING", standard_price=1.0, price_unit=1),
+    ], "material_valuation")
+
+    results = all_rows(gold_stock_reconciliation_v2())
+    rows = {(r["plant_code"], r["batch_number"]): r for r in results}
+
+    # Should have two entries for M_ROUTING:
+    # 1. PLANT_A, batch B_A, quantity 100.0
+    # 2. PLANT_B, batch __NONE__, quantity 200.0
+    assert ("PLANT_A", "B_A") in rows
+    assert ("PLANT_B", "__NONE__") in rows
+    assert len(rows) == 2
+
+    r_a = rows[("PLANT_A", "B_A")]
+    assert r_a["im_quantity"] == 100.0
+    assert r_a["mismatch_reason"] == "BATCH_MISSING_IN_WM"
+
+    r_b = rows[("PLANT_B", "__NONE__")]
+    assert r_b["im_quantity"] == 200.0
+    assert r_b["mismatch_reason"] == "BATCH_MISSING_IN_WM"
+
+
+def test_staging_validation_threshold_configurable(spark):
+    """The validation threshold can be configured via Spark conf."""
+    import importlib
+    import gold._shared
+    import gold.warehouse_flow_gold
+
+    # Save 10 TO headers: 9 matching, 1 not matching. Match rate = 90%
+    to_rows = []
+    for i in range(1, 10):
+        to_rows.append(Row(plant_code="P_CONF", warehouse_number="WH_CONF", transfer_order_number=f"T{i}",
+                           source_reference_type="F", source_reference_number=f"PO_{i}", created_datetime=None))
+    to_rows.append(Row(plant_code="P_CONF", warehouse_number="WH_CONF", transfer_order_number="T10",
+                       source_reference_type="F", source_reference_number="UNMATCHED", created_datetime=None))
+
+    _save(spark, to_rows, "warehouse_transfer_order")
+
+    po_rows = [Row(order_number=f"PO_{i}") for i in range(1, 10)]
+    _save(spark, po_rows, "process_order")
+
+    # 1. Test default behavior (no override or 95%) -> NOT_VALIDATED
+    spark.conf.set("staging_validation_threshold_pct", "95.0")
+    importlib.reload(gold._shared)
+    importlib.reload(gold.warehouse_flow_gold)
+    from gold.warehouse_flow_gold import gold_process_order_staging_validation
+
+    rows = {(r["plant_code"], r["warehouse_number"]): r
+            for r in all_rows(gold_process_order_staging_validation())}
+    assert rows[("P_CONF", "WH_CONF")]["validation_status"] == "NOT_VALIDATED"
+
+    # 2. Test override to 90.0% -> VALIDATED
+    spark.conf.set("staging_validation_threshold_pct", "90.0")
+    importlib.reload(gold._shared)
+    importlib.reload(gold.warehouse_flow_gold)
+    from gold.warehouse_flow_gold import gold_process_order_staging_validation
+
+    rows = {(r["plant_code"], r["warehouse_number"]): r
+            for r in all_rows(gold_process_order_staging_validation())}
+    assert rows[("P_CONF", "WH_CONF")]["validation_status"] == "VALIDATED"
+
+    # Cleanup
+    spark.conf.unset("staging_validation_threshold_pct")
+    importlib.reload(gold._shared)
+    importlib.reload(gold.warehouse_flow_gold)
+
+
+def test_recon_v2_unmapped_sloc_double_row(spark):
+    """An unmapped sloc in IM and a mapped WM entry for same material/batch creates two rows, not one."""
+    from gold.warehouse_flow_gold import gold_stock_reconciliation_v2
+
+    _save(spark, [
+        Row(material_code="M_UNMAPPED", plant_code="C061", base_uom="KG",
+            batch_management_required=True, material_description="Mat Unmapped"),
+    ], "material")
+
+    # IM row has sloc 9999 (which is not mapped in warehouse_storage_location_mapping)
+    _save(spark, [
+        Row(material_code="M_UNMAPPED", plant_code="C061", storage_location_code="9999",
+            batch_number="B_UNMAPPED", base_uom="KG",
+            unrestricted_quantity=100.0, quality_inspection_quantity=0.0,
+            blocked_quantity=0.0, restricted_use_quantity=0.0, in_transfer_quantity=0.0,
+            blocked_returns_quantity=0.0),
+    ], "batch_stock")
+
+    # WM row has warehouse 208
+    _save(spark, [
+        Row(plant_code="C061", warehouse_number="208", storage_type="100",
+            material_code="M_UNMAPPED", batch_number="B_UNMAPPED", base_uom="KG",
+            stock_category_code="", total_quantity=100.0, quant_number="Q_UNMAPPED"),
+    ], "storage_bin")
+
+    _save_empty(spark, "stock_at_location")
+
+    # We do not map 9999 to any warehouse
+    _save(spark, [
+        Row(plant_code="C061", storage_location_code="1000", warehouse_number="208"),
+    ], "warehouse_storage_location_mapping")
+
+    _save(spark, [
+        Row(valuation_area="C061", material_code="M_UNMAPPED", standard_price=1.0, price_unit=1),
+    ], "material_valuation")
+
+    results = all_rows(gold_stock_reconciliation_v2())
+    # We filter to M_UNMAPPED results
+    rows = [r for r in results if r["material_code"] == "M_UNMAPPED"]
+
+    # We expect exactly 2 rows:
+    # 1. IM side exception (warehouse = __NO_WM_MAPPING__, mismatch_reason = WM_MANAGED_SLOC_MAPPING_MISSING)
+    # 2. WM side exception (warehouse = 208, mismatch_reason = BATCH_MISSING_IN_IM)
+    assert len(rows) == 2
+
+    # Map by warehouse number
+    rows_by_wh = {r["warehouse_number"]: r for r in rows}
+    assert "__NO_WM_MAPPING__" in rows_by_wh
+    assert "208" in rows_by_wh
+
+    r_im = rows_by_wh["__NO_WM_MAPPING__"]
+    assert r_im["im_quantity"] == 100.0
+    assert r_im["wm_quantity"] == 0.0
+    assert r_im["mismatch_reason"] == "WM_MANAGED_SLOC_MAPPING_MISSING"
+
+    r_wm = rows_by_wh["208"]
+    assert r_wm["im_quantity"] == 0.0
+    assert r_wm["wm_quantity"] == 100.0
+    assert r_wm["mismatch_reason"] == "BATCH_MISSING_IN_IM"

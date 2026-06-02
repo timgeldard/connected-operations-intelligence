@@ -18,6 +18,7 @@ from pyspark.sql import functions as F
 
 from gold._shared import (
     STAGING_REFERENCE_TYPE,
+    STAGING_VALIDATION_THRESHOLD_PCT,
     get_silver_schema,
     get_spark_session,
     gold_table_args,
@@ -454,7 +455,7 @@ def gold_process_order_staging_validation():
                 F.coalesce(F.col("f_type_to_headers"), F.lit(0)) == 0,
                 F.lit("NOT_APPLICABLE"),
             )
-            .when(F.col("benum_match_pct") >= 95.0, F.lit("VALIDATED"))
+            .when(F.col("benum_match_pct") >= STAGING_VALIDATION_THRESHOLD_PCT, F.lit("VALIDATED"))
             .otherwise(F.lit("NOT_VALIDATED")),
         )
         .select(
@@ -606,7 +607,7 @@ def gold_stock_reconciliation_v2():
     stk_at_loc  = spark.read.table(f"{ss}.stock_at_location")
     mat_dim     = (
         spark.read.table(f"{ss}.material")
-        .select("material_code", "base_uom", "batch_management_required")
+        .select("plant_code", "material_code", "base_uom", "batch_management_required")
         .distinct()
     )
     storage_bin = spark.read.table(f"{ss}.storage_bin")
@@ -626,10 +627,10 @@ def gold_stock_reconciliation_v2():
     # ── IM: batch-managed materials → MCHB ───────────────────────────────────
     batch_mat_codes = mat_dim.filter(
         F.coalesce(F.col("batch_management_required"), F.lit(False))
-    ).select("material_code")
+    ).select("plant_code", "material_code")
 
     im_batch = _im_long(
-        batch_stk.join(F.broadcast(batch_mat_codes), "material_code", "inner"),
+        batch_stk.join(F.broadcast(batch_mat_codes), ["plant_code", "material_code"], "inner"),
         plant_col="plant_code", sloc_col="storage_location_code",
         mat_col="material_code", batch_col="batch_number", uom_col="base_uom",
         wh_sloc_map=wh_sloc_map,
@@ -638,10 +639,10 @@ def gold_stock_reconciliation_v2():
     # ── IM: non-batch materials → MARD + base_uom from material dim ──────────
     non_batch_mat = mat_dim.filter(
         ~F.coalesce(F.col("batch_management_required"), F.lit(False))
-    ).select("material_code", "base_uom")
+    ).select("plant_code", "material_code", "base_uom")
 
     # Single inner join filters to non-batch materials and adds base_uom in one step.
-    im_mard_base = stk_at_loc.join(F.broadcast(non_batch_mat), "material_code", "inner")
+    im_mard_base = stk_at_loc.join(F.broadcast(non_batch_mat), ["plant_code", "material_code"], "inner")
     im_mard = _im_long(
         im_mard_base,
         plant_col="plant_code", sloc_col="storage_location_code",

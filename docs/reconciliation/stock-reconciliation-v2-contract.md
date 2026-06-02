@@ -177,3 +177,4 @@ deprecated or replaced with a rollup from v2.
   for standard cases; unusual configs may need it.
 - **Material-Ledger valuation**: `delta_value` uses standard price (MBEW.STPRS), not actual
   cost. ML-reconciled values require a separate MBEW extension.
+- **Unmapped sloc double-row behaviour**: When an IM storage location has no T320 entry, the IM row carries `warehouse_number = '__NO_WM_MAPPING__'`. A WM row for the same material/batch will carry the real warehouse number. Because the full outer join matches on `warehouse_number`, these will not be linked — they appear as two separate exceptions (`WM_MANAGED_SLOC_MAPPING_MISSING` on the IM side, `BATCH_MISSING_IN_IM` on the WM side). This is conservative and correct: the root cause is missing T320 configuration. Resolution: populate T320 for the relevant sloc. Exception counts for plants with sparse T320 coverage will overstate the true number of distinct stock variances.

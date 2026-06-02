@@ -27,7 +27,6 @@ from silver.movement_types import (
     get_movement_event_category,
 )
 
-spark = get_spark()
 
 # ── 1. MATERIAL ──────────────────────────────────────────────────────────────
 
@@ -45,6 +44,7 @@ spark = get_spark()
     "material_type present": "material_type IS NOT NULL"
 })
 def material():
+    spark = get_spark()
     mara  = spark.read.table(f"{BRONZE}.materialmaster_mara")
     marc  = spark.read.table(f"{BRONZE}.materialforplant_marc")
     makt  = spark.read.table(f"{BRONZE}.materialdescription_makt").filter(
@@ -105,6 +105,7 @@ def material():
     "storage_location_code present": "storage_location_code IS NOT NULL"
 })
 def storage_location():
+    spark = get_spark()
     src = spark.read.table(f"{BRONZE}.storagelocation_t001l")
     return src.select(
         F.col("WERKS").alias("plant_code"),
@@ -125,6 +126,7 @@ def storage_location():
     "plant_code present": "plant_code IS NOT NULL"
 })
 def work_centre():
+    spark = get_spark()
     crhd = spark.read.table(f"{BRONZE}.workcenterheader_crhd")
     crtx = spark.read.table(f"{BRONZE}.workcentertext_crtx").filter(
         F.col("SPRAS") == "E"
@@ -152,6 +154,7 @@ def work_centre():
     "capacity_id present": "capacity_id IS NOT NULL"
 })
 def stg_capacity_utilisation():
+    spark = get_spark()
     kapa_changes = spark.readStream.table(
         f"{BRONZE}.shiftparametersavailablecapacity_kapa"
     ).select("KAPID", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
@@ -223,6 +226,7 @@ dlt.apply_changes(
     table_properties={"delta.enableChangeDataFeed": "true"}
 )
 def movement_type_classification():
+    spark = get_spark()
     data = [
         Row(
             movement_type_code=code,
@@ -256,6 +260,7 @@ def movement_type_classification():
     "plant_code present": "plant_code IS NOT NULL",
 })
 def plant():
+    spark = get_spark()
     src = spark.read.table(f"{bronze_published()}.plantcode_t001w")
     return src.select(
         F.col("WERKS").alias("plant_code"),
@@ -285,6 +290,7 @@ def plant():
     "customer_code present": "customer_code IS NOT NULL",
 })
 def customer():
+    spark = get_spark()
     src = spark.read.table(f"{bronze_published()}.customermaster_kna1")
     return src.select(
         strip_zeros("KUNNR").alias("customer_code"),
@@ -312,6 +318,7 @@ def customer():
     "storage_type present": "storage_type IS NOT NULL",
 })
 def storage_type():
+    spark = get_spark()
     t301 = spark.read.table(f"{BRONZE}.wm_storagetypes_t301")
     t301t = spark.read.table(f"{BRONZE}.wm_storagetypesdescription_t301t").filter(
         F.col("SPRAS") == "E"
@@ -343,6 +350,7 @@ def storage_type():
     "storage_location_code present": "storage_location_code IS NOT NULL",
 })
 def stock_at_location():
+    spark = get_spark()
     src = spark.read.table(f"{BRONZE}.storagelocationmaterial_mard")
     return src.select(
         strip_zeros("MATNR").alias("material_code"),
@@ -376,6 +384,7 @@ def stock_at_location():
     "valuation_area present": "valuation_area IS NOT NULL",
 })
 def material_valuation():
+    spark = get_spark()
     src = spark.read.table(f"{BRONZE}.materialvaluation_mbew")
     return src.select(
         strip_zeros("MATNR").alias("material_code"),
@@ -406,6 +415,7 @@ def material_valuation():
     "vendor_code present": "vendor_code IS NOT NULL",
 })
 def vendor():
+    spark = get_spark()
     src = spark.read.table(f"{bronze_published()}.vendormaster_lfa1")
     return src.select(
         strip_zeros("LIFNR").alias("vendor_code"),
@@ -427,6 +437,7 @@ def vendor():
     table_properties={"delta.enableChangeDataFeed": "true"}
 )
 def storage_type_role_mapping():
+    spark = get_spark()
     # Sourced from a GOVERNED Unity Catalog config table (admins maintain rows without editing code
     # or redeploying) when configured/present — set the `storage_role_config_table` Spark conf to its
     # fully-qualified name (the slow pipeline wires it to <catalog>.<schema>.storage_type_role_mapping_config,
@@ -490,6 +501,7 @@ def storage_type_role_mapping():
     table_properties={"delta.enableChangeDataFeed": "true"},
 )
 def recipe_process_line():
+    spark = get_spark()
     # Classification tables live in the PUBLISHED (central_services) source, NOT in the SAP source
     # (verified live: connected_plant_uat.sap has none of INOB/AUSP/CAWNT). Read via bronze_published().
     published = bronze_published()
@@ -562,6 +574,7 @@ def recipe_process_line():
     "valid_conversion": "is_valid_conversion = true",
 })
 def material_uom_conversion():
+    spark = get_spark()
     src = spark.read.table(f"{BRONZE}.materialconversion_marm")
     return src.select(
         strip_zeros("MATNR").alias("material_code"),
@@ -600,6 +613,7 @@ def material_uom_conversion():
     "warehouse_number present": "warehouse_number IS NOT NULL",
 })
 def warehouse_storage_location_mapping():
+    spark = get_spark()
     src = spark.read.table(f"{bronze_published()}.warehouseforplant_t320")
     return (
         src.select(

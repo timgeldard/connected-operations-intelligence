@@ -121,7 +121,9 @@ def gold_data_freshness_status():
         .withColumn("checked_at", F.current_timestamp())
         .select(
             "table_name", "domain", "criticality", "latest_replicated_at",
-            "max_lag_minutes", "freshness_sla_minutes", "freshness_status", "checked_at",
+            "max_lag_minutes", "freshness_sla_minutes", "freshness_status",
+            (F.col("freshness_status") == "STALE").alias("is_stale"),
+            "checked_at",
         )
     )
 

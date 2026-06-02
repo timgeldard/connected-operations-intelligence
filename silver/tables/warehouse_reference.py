@@ -196,7 +196,8 @@ def stg_storage_bin():
 dlt.create_streaming_table(
     name="storage_bin",
     comment="Physical storage bins (LAGP) with current quant occupancy (LQUA). "
-            "Snapshot-CDC: emptied bins age out as their quant keys leave the snapshot.",
+            "LQUA lacks physical delete markers (emptied quants are deleted upstream), so "
+            "snapshot-CDC is used to prune vacated bins as their occupancy keys leave the snapshot.",
     table_properties={
         "delta.enableChangeDataFeed": "true",
         "delta.autoOptimize.optimizeWrite": "true",
@@ -205,9 +206,15 @@ dlt.create_streaming_table(
     cluster_by=["warehouse_number", "storage_type"],
 )
 
+# Enforce non-negative stock quantity to catch any replication or negative-stock anomalies early
+@dlt.expect("total_quantity non-negative", "total_quantity IS NULL OR total_quantity >= 0.0")
+def storage_bin_gate():
+    # Pass-through view/wrapper to apply DLT expectations before snapshot CDC merges the changes
+    return dlt.read("stg_storage_bin")
+
 dlt.apply_changes_from_snapshot(
     target="storage_bin",
-    source="stg_storage_bin",
+    source="storage_bin_gate",
     keys=["warehouse_number", "storage_type", "bin_code", "_storage_bin_occupancy_key"],
     stored_as_scd_type=1,
 )

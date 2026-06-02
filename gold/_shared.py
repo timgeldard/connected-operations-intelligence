@@ -31,6 +31,23 @@ def get_silver_schema(spark: SparkSession) -> str:
 STAGING_REFERENCE_TYPE = "F"
 
 
+def _spark_available() -> bool:
+    try:
+        return SparkSession.getActiveSession() is not None
+    except Exception:
+        return False
+
+
+STAGING_VALIDATION_THRESHOLD_PCT: float = float(
+    # Percentage of F-type TO headers whose BENUM must match a known process order
+    # for a warehouse to be classified as VALIDATED. Default 95.0.
+    # Override via Spark conf: spark.conf.get("staging_validation_threshold_pct", "95.0")
+    SparkSession.getActiveSession().conf.get("staging_validation_threshold_pct", "95.0")
+    if _spark_available()
+    else "95.0"
+)
+
+
 def gold_table_args(comment: str, cluster_by: list) -> dict:
     """Return common decorator arguments, applying the plant row filter if configured.
 
