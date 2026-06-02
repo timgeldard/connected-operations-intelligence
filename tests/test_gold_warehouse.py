@@ -15,6 +15,7 @@ from gold.warehouse_kpis import (
     gold_transfer_order_performance,
     gold_transfer_requirement_backlog,
 )
+from scripts.generate_gold_serving_views_sql import serving_select_sql
 from silver.movement_types import (
     ISSUE_MOVEMENT_TYPES,
     MOVEMENT_TYPE_MAPPING,
@@ -466,7 +467,14 @@ def test_stock_expiry_risk_buckets_and_minimum_shelf_life(spark: SparkSession):
     )
     spark.createDataFrame(material_data).write.mode("overwrite").saveAsTable("silver.material")
 
-    rows = {r["batch_number"]: r for r in all_rows(gold_stock_expiry_risk())}
+    # The MV is now deterministic (absolute dates only); the expiry buckets/flags are served by the
+    # gold_stock_expiry_risk_live view. Verify the base omits them, then apply the serving-view SQL
+    # (single source of truth) and assert the full bucket behaviour.
+    base = gold_stock_expiry_risk()
+    assert "expired_qty" not in base.columns
+    base.createOrReplaceTempView("expiry_base_for_serving")
+    live = spark.sql(serving_select_sql("gold_stock_expiry_risk", "expiry_base_for_serving"))
+    rows = {r["batch_number"]: r for r in all_rows(live)}
     assert len(rows) == 5
 
     # B1: Expired

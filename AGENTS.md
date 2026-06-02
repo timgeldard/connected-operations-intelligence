@@ -49,6 +49,7 @@ gold/
 scripts/
   generate_row_filter_sql.py      # Silver plant row-filter SQL generator
   generate_gold_security_sql.py   # Gold secured-view SQL generator (ADR 012)
+  generate_gold_serving_views_sql.py # Gold *_live serving-view SQL (date-relative cols at query time)
 generate_data_dictionary.py       # Builds data_dictionary.md from schema_documentation.md (CI --check)
 docs/                             # ADRs, runbook, data contracts, roadmap, hardening plan, position papers
 tests/                            # Unit tests for silver helpers and gold tables

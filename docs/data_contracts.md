@@ -128,7 +128,7 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
   * Includes current bin/quant stock where material, batch, and expiry date are present.
   * Buckets quantities into expired, <7 days, 7-30 days, 30-90 days, and OK based on `expiry_date` vs current date.
   * Flags minimum shelf-life breaches using `minimum_remaining_shelf_life_days` from material master.
-* **Production/test divergence**: the production MV currently returns only the base aggregate; the expiry **bucket/flag columns are emitted only in test mode** (they use `current_date()`, which would break MV incremental refresh). Tracked for resolution in hardening Sprint 2.
+* **Date-relative columns served live**: the MV is deterministic (absolute dates only) so it stays incrementally refreshable; the expiry **bucket/flag columns** (`minimum_days_to_expiry`, `expired_qty`, `expiry_risk_*`, `minimum_shelf_life_breach_qty`, `highest_expiry_risk_bucket`, `has_minimum_shelf_life_breach`) are computed at query time by the **`gold_stock_expiry_risk_live`** serving view (`scripts/generate_gold_serving_views_sql.py`). Consumers needing risk buckets read the `_live` view.
 * **Freshness Expectation**: Batch triggered.
 
 ### 10. `gold.gold_freshness_gate`
@@ -148,14 +148,14 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Grain**: 1 row per plant × warehouse × storage type × material × batch × base UOM
 * **Source Silver Tables**: `silver.storage_bin` + `silver.storage_type_role_mapping`
 * **Purpose**: current stock staged in production / line-side storage types (roles resolved from the role-mapping config, with a standard 9xx fallback).
-* **Known Caveats**: depends on `storage_type_role_mapping` coverage. **Production/test divergence**: the production MV currently omits `min_days_to_expiry` (emitted only in test mode to keep the MV incrementally refreshable — see hardening plan Sprint 2).
+* **Known Caveats**: depends on `storage_type_role_mapping` coverage. The MV is deterministic; `min_days_to_expiry` is served at query time by the **`gold_lineside_stock_live`** view.
 
 ### 13. `gold.gold_delivery_pick_status`
 * **Status**: Pilot-grade
 * **Grain**: 1 row per outbound delivery (× plant × warehouse)
 * **Source Silver Tables**: `silver.outbound_delivery`
 * **Purpose**: pick progress (picked vs delivery quantity) and pick risk.
-* **Known Caveats**: delivery-quantity based, not TO-level picking. **Production/test divergence**: production MV omits `days_to_goods_issue` and `risk_band` (test-only; Sprint 2).
+* **Known Caveats**: delivery-quantity based, not TO-level picking. The MV is deterministic; `days_to_goods_issue` and `risk_band` are served at query time by the **`gold_delivery_pick_status_live`** view.
 
 ### 14. `gold.gold_stock_reconciliation`
 * **Status**: Pilot-grade / directional
@@ -169,7 +169,7 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Grain**: 1 row per process order
 * **Source Silver Tables**: `silver.warehouse_transfer_order` + `silver.process_order`
 * **Purpose**: component staging completion (confirmed staging TOs vs total) and start risk.
-* **Known Caveats**: **assumes TO source reference = process-order number** (LTAK-BENUM) — unconfirmed per plant. **Production/test divergence**: production MV omits `days_to_start` and `risk_band` (test-only; Sprint 2).
+* **Known Caveats**: **assumes TO source reference = process-order number** (LTAK-BENUM) — unconfirmed per plant. The MV is deterministic; `days_to_start` and `risk_band` are served at query time by the **`gold_process_order_staging_live`** view.
 
 ### 16. `gold.gold_inbound_po_backlog`
 * **Status**: Directional only
