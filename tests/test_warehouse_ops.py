@@ -40,12 +40,13 @@ _LTBK_SCHEMA = (
 )
 _LAGP_SCHEMA = (
     "LGNUM STRING, LGTYP STRING, LGPLA STRING, MANDT STRING, "
-    "LGBER STRING, MAXGW DOUBLE, SPGRU STRING, AEDATTM STRING"
+    "LGBER STRING, MAXGW DOUBLE, SPGRU STRING, AEDATTM STRING, "
+    "AERUNID STRING, AERECNO STRING, RecordActivity STRING"
 )
 _LQUA_SCHEMA = (
     "LGNUM STRING, LGTYP STRING, LGPLA STRING, MANDT STRING, "
     "LQNUM STRING, MATNR STRING, WERKS STRING, CHARG STRING, "
-    "GESME DOUBLE, VERME DOUBLE"
+    "GESME DOUBLE, VERME DOUBLE, AEDATTM STRING"
 )
 _T320_SCHEMA = (
     "LGNUM STRING, WERKS STRING, LGORT STRING, AEDATTM STRING"
@@ -294,7 +295,9 @@ def apply_storage_bin_transform(
     lqua_rows: List[Row],
     t320_rows: List[Row] = None,
 ) -> DataFrame:
-    lagp = spark.createDataFrame(lagp_rows, _LAGP_SCHEMA)
+    from pyspark.sql import Window
+
+    lagp_raw = spark.createDataFrame(lagp_rows, _LAGP_SCHEMA)
     lqua = spark.createDataFrame(lqua_rows, _LQUA_SCHEMA)
     if t320_rows is None:
         t320_rows = []
@@ -306,7 +309,23 @@ def apply_storage_bin_transform(
     )
     t320 = (
         t320_raw.groupBy("warehouse_number")
-        .agg(F.min("plant_code").alias("primary_plant_code"))
+        .agg(
+            F.min("plant_code").alias("primary_plant_code"),
+            F.count_distinct("plant_code").alias("plant_count"),
+        )
+    )
+
+    # LAGP is append-only CDC: reduce to current bin master (latest per bin, drop tombstones).
+    latest_bin = Window.partitionBy("LGNUM", "LGTYP", "LGPLA", "MANDT").orderBy(
+        F.col("AEDATTM").desc_nulls_last(),
+        F.col("AERUNID").desc_nulls_last(),
+        F.col("AERECNO").desc_nulls_last(),
+    )
+    lagp = (
+        lagp_raw.withColumn("_rn", F.row_number().over(latest_bin))
+        .filter(F.col("_rn") == 1)
+        .drop("_rn")
+        .filter(F.coalesce(F.col("RecordActivity"), F.lit("")) != "D")
     )
 
     bins_with_quants = (
@@ -332,7 +351,10 @@ def apply_storage_bin_transform(
             F.col("b.LGNUM").alias("warehouse_number"),
             F.col("b.LGTYP").alias("storage_type"),
             F.col("b.LGPLA").alias("bin_code"),
-            F.coalesce(F.col("q.WERKS"), F.col("m.primary_plant_code")).alias("plant_code"),
+            F.coalesce(
+                F.col("q.WERKS"),
+                F.when(F.col("m.plant_count") > 1, F.lit("SHARED")).otherwise(F.col("m.primary_plant_code")),
+            ).alias("plant_code"),
             F.col("b.LGBER").alias("storage_section"),
             F.col("b.MAXGW").alias("maximum_weight"),
             sap_flag("b.SPGRU").alias("is_blocked"),
@@ -343,7 +365,7 @@ def apply_storage_bin_transform(
             strip_zeros("q.CHARG").alias("batch_number"),
             F.col("q.GESME").alias("total_quantity"),
             F.col("q.VERME").alias("available_quantity"),
-            F.col("b.AEDATTM").alias("_replicated_at"),
+            F.greatest(F.col("b.AEDATTM"), F.col("q.AEDATTM")).alias("_replicated_at"),
         )
     )
 
@@ -371,10 +393,14 @@ def make_lagp(
     MAXGW=1000.0,
     SPGRU="",
     AEDATTM="2024-12-01T10:00:00",
+    AERUNID="0001",
+    AERECNO="0001",
+    RecordActivity="",
 ):
     return Row(
         LGNUM=LGNUM, LGTYP=LGTYP, LGPLA=LGPLA, MANDT=MANDT,
         LGBER=LGBER, MAXGW=MAXGW, SPGRU=SPGRU, AEDATTM=AEDATTM,
+        AERUNID=AERUNID, AERECNO=AERECNO, RecordActivity=RecordActivity,
     )
 
 
@@ -389,11 +415,12 @@ def make_lqua(
     CHARG="0000001234",
     GESME=500.0,
     VERME=500.0,
+    AEDATTM="2024-12-01T10:00:00",
 ):
     return Row(
         LGNUM=LGNUM, LGTYP=LGTYP, LGPLA=LGPLA, MANDT=MANDT,
         LQNUM=LQNUM, MATNR=MATNR, WERKS=WERKS, CHARG=CHARG,
-        GESME=GESME, VERME=VERME,
+        GESME=GESME, VERME=VERME, AEDATTM=AEDATTM,
     )
 
 
@@ -664,15 +691,48 @@ class TestStorageBin:
         assert {r["quant_number"] for r in rows} == {"000001", "000002"}
         assert {r["material_code"] for r in rows} == {"11111", "22222"}
 
-    def test_empty_bin_has_stable_internal_occupancy_key(self, spark):
+    def test_vacated_bin_ages_out_to_empty(self, spark):
+        """Core of the snapshot-CDC model: LQUA is current-state, so a quant removed in SAP
+        isn't present, and the snapshot emits the bin as a single __EMPTY__ row. On the next
+        run that quant's occupancy key is absent, so apply_changes_from_snapshot (SCD1) deletes
+        the prior occupied row — no ghost survives (there is no LQUA delete marker to rely on).
+        The mirror tests the snapshot shape; the key-absence delete is DLT behaviour."""
         df = apply_storage_bin_transform(
             spark,
-            [make_lagp(LGNUM="001", LGTYP="002", LGPLA="EMPTY-BIN")],
-            [],
+            [make_lagp(LGNUM="001", LGTYP="002", LGPLA="VACATED-BIN")],
+            [],  # quant previously here is gone from the current-state snapshot
         )
         row = first_row(df)
         assert row["quant_number"] is None
+        assert row["total_quantity"] is None
         assert row["_storage_bin_occupancy_key"] == "__EMPTY__"
+
+    def test_deleted_bin_tombstone_dropped(self, spark):
+        """A LAGP delete (RecordActivity='D') removes the bin from current state."""
+        df = apply_storage_bin_transform(
+            spark,
+            [
+                make_lagp(LGPLA="LIVE-BIN", RecordActivity=""),
+                make_lagp(LGPLA="DEAD-BIN", RecordActivity="D"),
+            ],
+            [],
+        )
+        bins = {r["bin_code"] for r in all_rows(df)}
+        assert bins == {"LIVE-BIN"}
+
+    def test_lagp_dedup_keeps_latest_version(self, spark):
+        """LAGP carries CDC history; the latest row per bin (by AEDATTM/AERUNID/AERECNO) wins."""
+        df = apply_storage_bin_transform(
+            spark,
+            [
+                make_lagp(LGPLA="BIN-X", SPGRU="", AEDATTM="2024-12-01T10:00:00", AERECNO="0001"),
+                make_lagp(LGPLA="BIN-X", SPGRU="X", AEDATTM="2024-12-02T10:00:00", AERECNO="0002"),
+            ],
+            [],
+        )
+        rows = all_rows(df)
+        assert len(rows) == 1
+        assert rows[0]["is_blocked"] is True  # later "blocked" version wins
 
     def test_empty_bin_resolves_plant_from_t320(self, spark):
         df = apply_storage_bin_transform(
@@ -697,8 +757,9 @@ class TestStorageBin:
         assert row["bin_code"] == "BIN-OCCUPIED"
         assert row["plant_code"] == "2000"
 
-    def test_shared_warehouse_resolves_primary_plant(self, spark):
-        # A shared warehouse (001 mapped to plants 1000 and 1100) resolves to the min (1000) primary plant
+    def test_shared_warehouse_marked_shared(self, spark):
+        # A warehouse mapped to >1 plant (001 → 1000 and 1100) is marked SHARED for an empty bin,
+        # so a single-plant RLS scope cannot silently mis-attribute a shared bin.
         df = apply_storage_bin_transform(
             spark,
             [make_lagp(LGNUM="001", LGTYP="001", LGPLA="BIN-SHARED")],
@@ -710,7 +771,7 @@ class TestStorageBin:
         )
         results = all_rows(df)
         assert len(results) == 1
-        assert results[0]["plant_code"] == "1000"
+        assert results[0]["plant_code"] == "SHARED"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

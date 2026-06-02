@@ -3,16 +3,36 @@ Warehouse reference and bin master tables (Reference/Slow tier).
 
 Tables: warehouse_plant_mapping, storage_bin
 
-storage_bin co-locates here (rather than Fast) because it depends on
-warehouse_plant_mapping via dlt.read(), and because its quant occupancy
-data (LQUA) is already a batch read — so occupancy freshness is a
-periodic snapshot in either tier.
+Both tables resolve current state (the slow tier is triggered), which is the
+correct model for their sources:
+
+* warehouse_plant_mapping reads T320, which lives in the published
+  (central_services) catalog as a VIEW — see bronze_published().
+* storage_bin's quant occupancy (LQUA) is a current-state snapshot maintained
+  upstream by MERGE/DELETE: it carries no Aecorsoft CDC columns
+  (AERUNID/AERECNO/RecordActivity) and is therefore NOT a valid streaming
+  source. We build the full current-state snapshot (stg_storage_bin) and feed it
+  to apply_changes_from_snapshot, which keeps storage_bin a STREAMING table (so
+  the external UC row filter persists like every other silver table) while
+  diffing snapshots: for SCD type 1 it deletes target rows whose keys are absent
+  from the latest snapshot, so vacated quants / emptied bins age out without any
+  delete marker. The bin master (LAGP) IS append-only Aecorsoft CDC, so we reduce
+  it to its current state (latest row per bin, tombstones dropped) before joining.
 """
 
 import dlt
+from pyspark.sql import Window
 from pyspark.sql import functions as F
 
-from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
+from silver.helpers import (
+    BRONZE,
+    bronze_published,
+    get_spark,
+    sap_date,
+    sap_datetime,
+    sap_flag,
+    strip_zeros,
+)
 
 spark = get_spark()
 
@@ -21,7 +41,7 @@ spark = get_spark()
 
 @dlt.table(
     name="warehouse_plant_mapping",
-    comment="Warehouse to Plant mapping (SAP T320)",
+    comment="Warehouse to Plant mapping (SAP T320, sourced from the published/central_services catalog)",
     table_properties={"delta.enableChangeDataFeed": "true"},
 )
 @dlt.expect_all_or_drop({
@@ -29,7 +49,9 @@ spark = get_spark()
     "plant_code present": "plant_code IS NOT NULL"
 })
 def warehouse_plant_mapping():
-    src = spark.read.table(f"{BRONZE}.warehouseforplant_t320")
+    # T320 is not replicated into the SAP source; it lives in central_services as a
+    # current-state view (LGNUM/WERKS/LGORT/AEDATTM, no CDC columns).
+    src = spark.read.table(f"{bronze_published()}.warehouseforplant_t320")
     return src.select(
         F.col("LGNUM").alias("warehouse_number"),
         F.col("WERKS").alias("plant_code"),
@@ -53,72 +75,66 @@ def warehouse_plant_mapping_validation():
 
 # ── 2. STORAGE BIN ────────────────────────────────────────────────────────────
 
-@dlt.view(name="stg_storage_bin")
+# Materialized (temporary=True) so it is a valid, unambiguous periodic-snapshot source for
+# apply_changes_from_snapshot — a canonical full-overwrite table per triggered run — while
+# temporary keeps it out of the published schema (it is unfiltered staging, so it must not be
+# exposed to consumers; the RLS-filtered output is storage_bin).
+@dlt.table(name="stg_storage_bin", temporary=True)
 @dlt.expect_all_or_drop({
+    # Enforce every field used in the apply_changes_from_snapshot merge key, so a row with a null
+    # key component cannot enter the snapshot and produce an invalid SCD1 key. (_storage_bin_occupancy_key
+    # is coalesced to '__EMPTY__' so is never null by construction, but is asserted for completeness.)
     "warehouse_number present": "warehouse_number IS NOT NULL",
-    "bin_code present": "bin_code IS NOT NULL"
+    "storage_type present": "storage_type IS NOT NULL",
+    "bin_code present": "bin_code IS NOT NULL",
+    "occupancy key present": "_storage_bin_occupancy_key IS NOT NULL"
 })
 def stg_storage_bin():
-    lagp_changes = spark.readStream.table(f"{BRONZE}.storagebin_lagp").select(
-        "LGNUM", "LGTYP", "LGPLA", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
+    bin_key = ["LGNUM", "LGTYP", "LGPLA", "MANDT"]
+
+    # LAGP is append-only Aecorsoft CDC (RecordActivity I/U/D, AERUNID/AERECNO sequence).
+    # Reduce to current bin master: latest row per physical bin, then drop tombstones ('D').
+    latest_bin = Window.partitionBy(*bin_key).orderBy(
+        F.col("AEDATTM").desc_nulls_last(),
+        F.col("AERUNID").desc_nulls_last(),
+        F.col("AERECNO").desc_nulls_last(),
     )
-    lqua_changes = spark.readStream.table(f"{BRONZE}.quant_lqua").select(
-        "LGNUM", "LGTYP", "LGPLA", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
-    )
-    t320_changes = (
-        spark.readStream.table(f"{BRONZE}.warehouseforplant_t320")
-        .select("LGNUM", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
-        .withColumn("LGTYP", F.lit(None).cast("string"))
-        .withColumn("LGPLA", F.lit(None).cast("string"))
+    lagp = (
+        spark.read.table(f"{BRONZE}.storagebin_lagp")
+        .withColumn("_rn", F.row_number().over(latest_bin))
+        .filter(F.col("_rn") == 1)
+        .drop("_rn")
+        .filter(F.coalesce(F.col("RecordActivity"), F.lit("")) != "D")
     )
 
-    changed_keys = lagp_changes.unionByName(lqua_changes).unionByName(t320_changes)
-    lagp = spark.read.table(f"{BRONZE}.storagebin_lagp")
+    # LQUA is already a current-state snapshot (one row per quant; upstream MERGE/DELETE).
     lqua = spark.read.table(f"{BRONZE}.quant_lqua")
-    t320 = dlt.read("warehouse_plant_mapping")
 
-    # Aggregate T320 to resolve a single primary plant per warehouse to prevent key instability/row duplication
+    # Resolve a single primary plant per warehouse (mark genuinely shared warehouses as SHARED).
     t320_agg = (
-        t320.groupBy("warehouse_number")
+        dlt.read("warehouse_plant_mapping")
+        .groupBy("warehouse_number")
         .agg(
             F.min("plant_code").alias("primary_plant_code"),
-            F.count_distinct("plant_code").alias("plant_count")
+            F.count_distinct("plant_code").alias("plant_count"),
         )
     )
 
-    bins_to_refresh = (
-        changed_keys.alias("c")
-        .join(
-            lagp.alias("b"),
-            (F.col("c.LGNUM") == F.col("b.LGNUM"))
-            & (F.col("c.MANDT") == F.col("b.MANDT"))
-            & (F.col("c.LGTYP").isNull() | (F.col("c.LGTYP") == F.col("b.LGTYP")))
-            & (F.col("c.LGPLA").isNull() | (F.col("c.LGPLA") == F.col("b.LGPLA"))),
-            "left",
-        )
-        .select(
-            "b.*",
-            F.col("c.AEDATTM").alias("_change_replicated_at"),
-            F.col("c.AERUNID").alias("_change_run_id"),
-            F.col("c.AERECNO").alias("_change_record_seq"),
-        )
-    )
-
-    bins_with_quants = (
-        bins_to_refresh.alias("b")
-        .join(lqua.alias("q"),
-              (F.col("b.LGNUM") == F.col("q.LGNUM")) &
-              (F.col("b.LGTYP") == F.col("q.LGTYP")) &
-              (F.col("b.LGPLA") == F.col("q.LGPLA")) &
-              (F.col("b.MANDT") == F.col("q.MANDT")),
-              "left")
+    bins_with_quants = lagp.alias("b").join(
+        lqua.alias("q"),
+        (F.col("b.LGNUM") == F.col("q.LGNUM"))
+        & (F.col("b.LGTYP") == F.col("q.LGTYP"))
+        & (F.col("b.LGPLA") == F.col("q.LGPLA"))
+        & (F.col("b.MANDT") == F.col("q.MANDT")),
+        "left",
     )
 
     return (
-        bins_with_quants
-        .join(t320_agg.alias("m"),
-              F.col("b.LGNUM") == F.col("m.warehouse_number"),
-              "left")
+        bins_with_quants.join(
+            t320_agg.alias("m"),
+            F.col("b.LGNUM") == F.col("m.warehouse_number"),
+            "left",
+        )
         .select(
             # ── Natural key (physical bin identity)
             F.col("b.LGNUM").alias("warehouse_number"),
@@ -143,6 +159,9 @@ def stg_storage_bin():
             F.col("b.SPGRU").alias("blocking_reason_code"),
 
             # ── Current quant (NULL if bin is empty)
+            # Stable occupancy key for the snapshot diff: each (bin, quant) is one row; an empty
+            # bin gets a single __EMPTY__ row. When a quant disappears from the LQUA snapshot its
+            # key is absent on the next run, so apply_changes_from_snapshot deletes it (SCD1).
             F.coalesce(F.col("q.LQNUM"), F.lit("__EMPTY__")).alias("_storage_bin_occupancy_key"),
             F.col("q.LQNUM").alias("quant_number"),
             strip_zeros("q.MATNR").alias("material_code"),
@@ -162,14 +181,22 @@ def stg_storage_bin():
             sap_flag("q.SKZUA").alias("is_blocked_for_stock_removal"),
             sap_flag("q.SKZUE").alias("is_blocked_for_putaway"),
 
-            F.col("b._change_replicated_at").alias("_replicated_at"),
-            F.col("b._change_run_id").alias("_run_id"),
-            F.col("b._change_record_seq").alias("_record_seq"),
+            # ── Freshness watermark: newest of bin-master / quant replication timestamps
+            F.greatest(F.col("b.AEDATTM"), F.col("q.AEDATTM")).alias("_replicated_at"),
         )
     )
 
+
+# storage_bin stays a STREAMING table (so the external UC row filter applied by
+# scripts/generate_row_filter_sql.py persists, consistent with every other silver table).
+# LQUA carries no delete marker and is not a valid streaming source, so we feed the full
+# current-state snapshot (stg_storage_bin) to apply_changes_from_snapshot: it diffs successive
+# snapshots and, for SCD type 1, DELETES target rows whose keys are absent from the latest
+# snapshot — so vacated quants / emptied bins age out automatically.
 dlt.create_streaming_table(
     name="storage_bin",
+    comment="Physical storage bins (LAGP) with current quant occupancy (LQUA). "
+            "Snapshot-CDC: emptied bins age out as their quant keys leave the snapshot.",
     table_properties={
         "delta.enableChangeDataFeed": "true",
         "delta.autoOptimize.optimizeWrite": "true",
@@ -178,10 +205,9 @@ dlt.create_streaming_table(
     cluster_by=["warehouse_number", "storage_type"],
 )
 
-dlt.apply_changes(
+dlt.apply_changes_from_snapshot(
     target="storage_bin",
     source="stg_storage_bin",
     keys=["warehouse_number", "storage_type", "bin_code", "_storage_bin_occupancy_key"],
-    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     stored_as_scd_type=1,
 )

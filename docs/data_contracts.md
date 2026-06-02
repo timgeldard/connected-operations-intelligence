@@ -26,13 +26,13 @@ This document defines the formal data contracts for the key Silver and Gold laye
 * **Freshness Expectation**: Near real-time (continuous streaming).
 
 ### 3. `silver.storage_bin`
-* **Grain**: 1 row per physical storage bin (`warehouse_number` + `storage_type` + `bin_code`)
-* **Natural Key**: `warehouse_number`, `storage_type`, `bin_code`
-* **Source SAP Tables**: `LAGP` (Bin Master) + `LQUA` (Quants / Occupancy) + `T320` (Warehouse plant mapping)
+* **Grain**: 1 row per occupancy slot — a physical bin plus its occupancy key (`warehouse_number` + `storage_type` + `bin_code` + `_storage_bin_occupancy_key`). An occupied bin yields one row per quant (`LQNUM`); an empty bin yields a single `__EMPTY__` row.
+* **Natural Key**: `warehouse_number`, `storage_type`, `bin_code`, `_storage_bin_occupancy_key`
+* **Source SAP Tables**: `LAGP` (Bin Master, append-only Aecorsoft CDC) + `LQUA` (Quants / Occupancy, current-state snapshot maintained upstream by MERGE/DELETE) + `T320` (Warehouse plant mapping, sourced from the published/`central_services` catalog as a view — not replicated into the SAP source)
 * **Join Conditions**:
-  * `LAGP` left joined with `LQUA` on `LGNUM`, `LGTYP`, `LGPLA`, and `MANDT`.
-  * Joined with `T320` aggregated by `warehouse_number` to resolve primary plant.
-* **Delete Handling**: SCD Type 1 tracking. Bins with no active stock (quant) retain bin dimensions but show `NULL` for material/quant fields.
+  * `LAGP` reduced to current bin master (latest row per bin by `AEDATTM`/`AERUNID`/`AERECNO`, tombstones `RecordActivity='D'` dropped), then left joined with `LQUA` on `LGNUM`, `LGTYP`, `LGPLA`, and `MANDT`.
+  * Joined with `T320` aggregated by `warehouse_number` (warehouses mapped to >1 plant resolve to `SHARED`).
+* **Delete Handling**: `apply_changes_from_snapshot` (SCD type 1) over the full current-state snapshot `stg_storage_bin`, on the diff key `warehouse_number` + `storage_type` + `bin_code` + `_storage_bin_occupancy_key` (`LQNUM`, or `__EMPTY__` for an unoccupied bin). `storage_bin` stays a **streaming table** so the external UC row filter persists like every other silver table. Because `LQUA` carries no delete marker, vacated quants and emptied bins age out via key-absence in the snapshot diff (the snapshot emits the bin as an `__EMPTY__` row and the prior occupied row's key is absent → deleted). Deleted bins are removed via the `LAGP` `RecordActivity='D'` tombstone filter before the snapshot.
 * **Sequence / Watermark Column**: `_replicated_at`
 * **Row-Level Security**: Filtered by primary `plant_code` (resolved dynamically).
 * **Freshness Expectation**: Daily batch (triggered) or hourly updates.
