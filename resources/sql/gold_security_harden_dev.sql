@@ -10,7 +10,7 @@ REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_availability FROM
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_transfer_requirement_backlog FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_expiry_risk FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_shift_output_summary FROM `users`;
-REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_order_otif_metrics FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_process_order_schedule_adherence FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_plant_production_quality_summary FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_dispensary_backlog FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_lineside_stock FROM `users`;

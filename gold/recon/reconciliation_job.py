@@ -150,7 +150,7 @@ GOLD_GRAINS = [
     ("gold_process_order_schedule_adherence", ["order_number"]),
     ("gold_stock_reconciliation_v2",
      ["plant_code", "warehouse_number", "material_code",
-      "batch_number", "stock_category", "base_uom"]),
+     "batch_number", "stock_category", "base_uom"]),
     ("gold_stock_reconciliation_summary_v2",
      ["plant_code", "warehouse_number", "mismatch_reason", "mismatch_severity"]),
     ("gold_shift_output_summary", ["plant_code", "posting_date", "material_code", "base_uom"]),

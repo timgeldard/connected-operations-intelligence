@@ -24,7 +24,7 @@ or directional, not yet hardened.**
         │
         ▼  Gold — triggered batch; Materialized Views (trusted aggregate layer)
    [Gold]  connected_plant.<env>.<gold_schema>
-        Production        gold_shift_output_summary · gold_order_otif_metrics · gold_plant_production_quality_summary
+        Production        gold_shift_output_summary · gold_process_order_schedule_adherence · gold_plant_production_quality_summary
         Warehouse flow    gold_transfer_order_performance · gold_inbound_outbound_throughput
                           gold_transfer_requirement_backlog · gold_dispensary_backlog · gold_lineside_stock
                           gold_delivery_pick_status · gold_process_order_staging
@@ -46,7 +46,7 @@ Maturity labels: **Production-candidate** · **Pilot-grade** (usable, known gaps
 
 | Table | Domain | Status | Key caveat |
 |---|---|---|---|
-| `gold_order_otif_metrics` | Production | Production-candidate | Process-order adherence, **not** customer OTIF; all-completed window |
+| `gold_process_order_schedule_adherence` | Production | Production-candidate | Process-order adherence, **not** customer OTIF; all-completed window |
 | `gold_transfer_order_performance` | Warehouse | Production-candidate | — |
 | `gold_inbound_outbound_throughput` | Warehouse | Production-candidate | — |
 | `gold_transfer_requirement_backlog` | Warehouse | Production-candidate | — |

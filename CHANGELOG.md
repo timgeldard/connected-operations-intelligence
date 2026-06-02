@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Renamed `gold_order_otif_metrics` → `gold_process_order_schedule_adherence`. "OTIF" is a supply-chain term for customer-delivery On-Time-In-Full; the table measures process-order schedule adherence (actual vs scheduled finish date, confirmed vs ordered quantity) and would be misread by supply-chain stakeholders. All references updated across code, tests, docs, and generated SQL.
+
 ### Added
 - `gold_stock_reconciliation_v2` — production-candidate IM↔WM reconciliation at plant × warehouse × material × batch × stock_category grain. MCHB (batch-managed) + MARD (non-batch) on IM side; LQUA/storage_bin on WM side; T320 sloc→warehouse bridge; 6-key full outer join; mismatch reasons (MATCHED/WM_MANAGED_SLOC_MAPPING_MISSING/UOM_CONVERSION_MISSING/BATCH_MISSING_IN_WM/BATCH_MISSING_IN_IM/TRUE_VARIANCE). Source validations (2026-06-02): MARD=SUM(MCHB) confirmed 750/750 at C061; T320 is 1:1 for (plant,sloc)→warehouse (996 combos, 0 with multiple warehouses); MARM confirmed ingested (materialconversion_marm, 1.57M rows).
 - `gold_stock_reconciliation_exceptions_v2` — non-reconciled rows from v2 with material description. Starting point for variance investigation.
