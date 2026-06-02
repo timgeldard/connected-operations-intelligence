@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Renamed `gold_order_otif_metrics` → `gold_process_order_schedule_adherence`. "OTIF" is a supply-chain term for customer-delivery On-Time-In-Full; the table measures process-order schedule adherence (actual vs scheduled finish date, confirmed vs ordered quantity) and would be misread by supply-chain stakeholders. All references updated across code, tests, docs, and generated SQL.
+
 ### Added
 - `gold_storage_type_role_coverage_status` — Gold table (plant × warehouse grain) classifying each warehouse as `VALIDATED`, `PARTIAL`, or `MISSING` based on whether in-use storage types are config-mapped. Refreshed every Gold run. Live UAT profiling (2026-06-02): 140 warehouses / 3,464 ST combos. Full draft seed added (see below).
 - `resources/config/storage_type_role_mapping.csv` extended with 2,026 draft rows (`review_status=PENDING`) inferred from T301T descriptions across all 153 warehouses: 364 LINESIDE (Production Supply/Dispensary/Palletising), 1,662 INTERIM (GR/GI/Shipping/Stock-Transfer areas). Existing 11 APPROVED rows (C061/208) unchanged. Requires WM config owner sign-off before promotion to APPROVED.

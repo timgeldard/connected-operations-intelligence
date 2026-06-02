@@ -61,9 +61,9 @@ Managed via Declarative Automation Bundle (DAB).
 - **Description:** Aggregated daily produced quantity (receipt type 101 minus reversals 102) and scrap quantity (movements 551/552). The historical table name is retained for compatibility; no shift dimension is present until a shift calendar is introduced.
 - **Freshness:** Depends on `silver_fast_pipeline` being healthy; the Gold refresh job does not trigger the continuous fast pipeline.
 
-### `gold_order_otif_metrics`
+### `gold_process_order_schedule_adherence`
 - **Granularity:** 1 row per process order.
-- **Description:** Internal process-order schedule-adherence metrics, comparing actual vs scheduled completion dates and ordered vs yield quantities. This is not customer-delivery OTIF.
+- **Description:** Process-order schedule-adherence metrics — actual vs scheduled completion date (`is_on_time`) and confirmed yield vs ordered quantity (`is_in_full`), per completed/closed order.
 - **Window:** All completed/closed process orders currently remain in scope; add a period grain before using this as a period-comparable KPI.
 - **Freshness:** Depends on `silver_fast_pipeline` being healthy; the Gold refresh job does not trigger the continuous fast pipeline.
 

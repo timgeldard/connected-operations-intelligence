@@ -11,7 +11,7 @@ second bronze source `published_<env>.central_services` · `seed` = config/seed 
 | Gold table | Silver dependencies | Bronze / published sources | Tier | Critical? |
 |---|---|---|---|:--:|
 | `gold_shift_output_summary` | `goods_movement`, `movement_type_classification` | MSEG/MKPF; classification (seed) | fast + seed | yes |
-| `gold_order_otif_metrics` | `process_order` | AUFK/AFKO/AFPO | fast | yes |
+| `gold_process_order_schedule_adherence` | `process_order` | AUFK/AFKO/AFPO | fast | yes |
 | `gold_plant_production_quality_summary` | `process_order`, `downtime_event` | AUFK/AFKO; downtime Z-source | fast | medium |
 | `gold_transfer_order_performance` | `warehouse_transfer_order` | LTAK/LTAP | fast | yes |
 | `gold_inbound_outbound_throughput` | `goods_movement`, `movement_type_classification` | MSEG/MKPF; classification (seed) | fast + seed | yes |

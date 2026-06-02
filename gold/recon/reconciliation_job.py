@@ -147,7 +147,7 @@ GOLD_GRAINS = [
      ["plant_code", "warehouse_number", "storage_type", "material_code", "batch_number", "base_uom"]),
     ("gold_delivery_pick_status", ["delivery_number"]),
     ("gold_process_order_staging", ["order_number"]),
-    ("gold_order_otif_metrics", ["order_number"]),
+    ("gold_process_order_schedule_adherence", ["order_number"]),
     ("gold_shift_output_summary", ["plant_code", "posting_date", "material_code", "base_uom"]),
     ("gold_plant_production_quality_summary", ["plant_code"]),
 ]
