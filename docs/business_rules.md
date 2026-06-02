@@ -56,7 +56,8 @@ Conventions: `silver` / `gold` below are the env-qualified schemas
   -- non-empty (excluding intended 9xx-fallback types) = mapping gaps
   ```
 - **Risk:** mis-classified line-side / interim stock → wrong line-side view and reconciliation interim split.
-- **Status:** Unverified (depends on config population). **Owner:** WM config owner.
+- **Live validation (connected_plant_uat, 2026-06-02):** 140 warehouses / 3,464 ST combos in bronze LAGP; only C061/warehouse 208 is partially seeded (6 non-9xx STs config-mapped, rest default to PHYSICAL fallback). `gold_storage_type_role_coverage_status` computes VALIDATED / PARTIAL / MISSING per warehouse on every Gold run and is the recommended way to track coverage going forward.
+- **Status:** Coverage infrastructure in place; per-warehouse role correctness unverified (requires WM config owner sign-off per warehouse). **Owner:** WM config owner.
 
 ## BR-MM-004 — Movement-type classification is complete
 - **Used by:** `gold_shift_output_summary`, `gold_inbound_outbound_throughput` (inner join to `movement_type_classification`)

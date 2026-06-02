@@ -174,7 +174,10 @@ def gold_stock_reconciliation():
         )
     )
 
-    # Classify bins as physical or interim based on storage_type_role_mapping or fallback standard 9xx prefix (broadcast-optimized)
+    # Classify bins as physical or interim based on storage_type_role_mapping or fallback standard
+    # 9xx prefix. role_source=CONFIG when the mapping table supplies the role; FALLBACK when the
+    # 9xx heuristic is used. If ANY occupied bin uses FALLBACK, the interim/physical split for that
+    # plant is heuristic — see gold_storage_type_role_coverage_status for per-warehouse gaps.
     sb_mapped = (
         storage_bin.alias("sb")
         .join(
@@ -189,12 +192,22 @@ def gold_stock_reconciliation():
             F.coalesce(
                 F.col("m.role"),
                 F.when(F.col("sb.storage_type").rlike("^9"), F.lit("INTERIM")).otherwise(F.lit("PHYSICAL"))
-            ).alias("storage_role")
+            ).alias("storage_role"),
+            F.when(F.col("m.role").isNotNull(), F.lit("CONFIG")).otherwise(F.lit("FALLBACK")).alias("role_source"),
         )
     )
 
+    occupied = sb_mapped.filter(F.col("quant_number").isNotNull())
+
+    # A plant is trusted for reconciliation when ALL occupied bins have CONFIG-sourced roles.
+    plant_role_trust = (
+        occupied
+        .groupBy("plant_code")
+        .agg(F.min(F.col("role_source") == "CONFIG").alias("_plant_trusted"))
+    )
+
     wm = (
-        sb_mapped.filter(F.col("quant_number").isNotNull())
+        occupied
         .groupBy("plant_code", "material_code")
         .agg(
             F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("wm_total_qty"),
@@ -271,9 +284,14 @@ def gold_stock_reconciliation():
         )
     )
 
-    return with_abc.select(
-        "plant_code", "material_code", "im_total_qty", "wm_total_qty", "wm_interim_qty", "wm_physical_qty",
-        "delta_qty", "standard_price", "price_unit", "inventory_value", "mismatch_class", "abc_class",
+    return (
+        with_abc
+        .join(F.broadcast(plant_role_trust), "plant_code", "left")
+        .select(
+            "plant_code", "material_code", "im_total_qty", "wm_total_qty", "wm_interim_qty", "wm_physical_qty",
+            "delta_qty", "standard_price", "price_unit", "inventory_value", "mismatch_class", "abc_class",
+            F.coalesce(F.col("_plant_trusted"), F.lit(False)).alias("is_operationally_trusted"),
+        )
     )
 
 
@@ -449,3 +467,70 @@ def gold_process_order_staging_validation():
         )
     )
 
+
+# ── 7. STORAGE-TYPE ROLE COVERAGE STATUS ─────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Per-plant/warehouse coverage of storage_type_role_mapping config vs in-use storage types. "
+        "VALIDATED = all active storage types are config-mapped; PARTIAL = some mapped, some not; "
+        "MISSING = no config rows for this warehouse. Use to identify gaps before relying on "
+        "gold_lineside_stock or gold_stock_reconciliation for a plant/warehouse."
+    ),
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_storage_type_role_coverage_status():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+
+    storage_bin = spark.read.table(f"{silver_schema}.storage_bin")
+    role_mapping = spark.read.table(f"{silver_schema}.storage_type_role_mapping")
+
+    # In-use storage types: every distinct ST that appears in the bin master.
+    in_use_sts = (
+        storage_bin
+        .filter(F.col("storage_type").isNotNull())
+        .select("plant_code", "warehouse_number", "storage_type")
+        .distinct()
+    )
+
+    # Mapped STs from config (the governed role-mapping table).
+    mapped_sts = (
+        role_mapping
+        .select("plant_code", "warehouse_number", "storage_type")
+        .distinct()
+        .withColumn("_is_mapped", F.lit(True))
+    )
+
+    # Flag each in-use ST as CONFIG-mapped or not.  Broadcast the small config table.
+    # in_use_sts is already distinct at (plant, warehouse, storage_type) grain so count()
+    # is correct — countDistinct() would be redundant and slower.
+    in_use_with_flag = (
+        in_use_sts
+        .join(F.broadcast(mapped_sts), ["plant_code", "warehouse_number", "storage_type"], "left")
+        .withColumn("is_mapped", F.coalesce(F.col("_is_mapped"), F.lit(False)))
+        .drop("_is_mapped")
+    )
+
+    return (
+        in_use_with_flag
+        .groupBy("plant_code", "warehouse_number")
+        .agg(
+            F.count("storage_type").alias("total_storage_types"),
+            F.sum(F.col("is_mapped").cast("int")).alias("mapped_storage_types"),
+        )
+        .withColumn("unmapped_storage_types", F.col("total_storage_types") - F.col("mapped_storage_types"))
+        .withColumn(
+            "coverage_pct",
+            F.when(
+                F.col("total_storage_types") > 0,
+                F.round(100.0 * F.col("mapped_storage_types") / F.col("total_storage_types"), 1),
+            ).otherwise(F.lit(None).cast("double")),
+        )
+        .withColumn(
+            "coverage_status",
+            F.when(F.col("mapped_storage_types") == 0, F.lit("MISSING"))
+            .when(F.col("unmapped_storage_types") == 0, F.lit("VALIDATED"))
+            .otherwise(F.lit("PARTIAL")),
+        )
+    )
