@@ -23,31 +23,25 @@ def get_silver_schema(spark: SparkSession) -> str:
     return f"{catalog}.{schema}"
 
 
-spark = get_spark_session()
-SILVER_CATALOG = spark.conf.get("silver_catalog", None)
-SILVER_SCHEMA = spark.conf.get("silver_schema", None)
-if not SILVER_CATALOG:
-    raise ValueError("silver_catalog configuration must be set in the Spark session.")
-if not SILVER_SCHEMA:
-    raise ValueError("silver_schema configuration must be set in the Spark session.")
-
-ROW_FILTER_FN = f"{SILVER_CATALOG}.{SILVER_SCHEMA}.plant_access_filter"
-# Gold runs as a trusted aggregate layer. Plant security is enforced on direct
-# Silver consumption; applying row filters here would force full MV refreshes.
-APPLY_ROW_FILTER = spark.conf.get("gold_apply_row_filter", "false").lower() == "true"
-
-
 def gold_table_args(comment: str, cluster_by: list) -> dict:
-    """Return common decorator arguments, applying the row filter if configured.
+    """Return common decorator arguments, applying the plant row filter if configured.
 
-    If gold_apply_row_filter is enabled, plant_access_filter must already exist
-    in the configured Silver schema before this pipeline is created/refreshed.
+    Spark conf is read lazily HERE rather than at module import: the DLT load phase does not
+    guarantee the session conf is populated when the module is imported, so reading it at
+    import time (and raising) could fail the whole pipeline at load with an opaque error.
+    Gold runs as a trusted aggregate layer; the row filter is OFF by default (it would force
+    full MV refreshes — see ADR 005 / ADR 012). When gold_apply_row_filter is enabled,
+    plant_access_filter must already exist in the configured Silver schema.
     """
+    spark = get_spark_session()
     args = {
         "comment": comment,
         "table_properties": {"delta.enableChangeDataFeed": "false"},
         "cluster_by": cluster_by,
     }
-    if APPLY_ROW_FILTER:
-        args["row_filter"] = f"ROW FILTER {ROW_FILTER_FN} ON (plant_code)"
+    if spark.conf.get("gold_apply_row_filter", "false").lower() == "true":
+        # Reuse get_silver_schema for consistent catalog/schema resolution (incl. the spark_catalog
+        # single-part namespace) and its conf validation, rather than duplicating it here.
+        silver_schema = get_silver_schema(spark)
+        args["row_filter"] = f"ROW FILTER {silver_schema}.plant_access_filter ON (plant_code)"
     return args

@@ -325,6 +325,11 @@ dlt.apply_changes(
 
 
 # ── 4. WAREHOUSE TRANSFER REQUIREMENT ─────────────────────────────────────────
+# NOTE (delete semantics): this table intentionally uses LTBK's native OPFLAG as the
+# change/delete signal (mapped to `record_activity`), NOT the Aecorsoft `RecordActivity`
+# used by the other tables. OPFLAG is SAP WM's own operation flag on the transfer-requirement
+# header (it carries the 'D'/delete indication for TRs); using it keeps deletes aligned with
+# SAP WM semantics. Deliberate divergence — see apply_changes below.
 
 @dlt.view(name="stg_warehouse_transfer_requirement")
 @dlt.expect_all_or_drop({

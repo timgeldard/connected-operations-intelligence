@@ -185,7 +185,16 @@ SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
 | Date strings | `YYYYMMDD` → `DATE` via `TO_DATE(col, 'yyyyMMdd')` |
 | Date+time pairs | Combined → `TIMESTAMP` via `TO_TIMESTAMP(CONCAT(date, LPAD(time,6,'0')), 'yyyyMMddHHmmss')` |
 | Aecorsoft columns | `AEDATTM` → `_replicated_at`; `AERUNID` → `_run_id`; `AERECNO` → `_record_seq` |
-| `RecordActivity` / `OPFLAG` | `'D'` = delete; used in `apply_as_deletes` |
+| `RecordActivity` / `OPFLAG` | `'D'` = delete; used in `apply_as_deletes`. **`warehouse_transfer_requirement` deliberately uses `OPFLAG`** (SAP WM's native TR operation flag) instead of `RecordActivity` — see the note in `silver/tables/warehouse_fast.py`. |
+
+> [!IMPORTANT]
+> **Ordering assumption.** Every `apply_changes` uses `sequence_by = struct(_replicated_at, _run_id,
+> _record_seq)` = (`AEDATTM`, `AERUNID`, `AERECNO`). This **assumes** the Aecorsoft run id and
+> record sequence are monotonically increasing within and across replication runs, so the latest
+> record per key wins deterministically (the run/seq are the tie-breaker for same-millisecond
+> `AEDATTM`). If Aecorsoft ever replays out of order (e.g. a burst re-load of a high-frequency table
+> such as `MCHB`), a superseded value could win. This assumption should be validated with a known
+> out-of-order replay scenario before relying on it for high-churn tables.
 
 > [!NOTE]
 > **TODO:** Review Aecorsoft's capability to apply rules/transformations directly to fields at the replication layer (e.g. zero-stripping, date-casting). Performing these rules during replication could optimize ingestion and reduce downstream compute/storage costs (eliminating the hidden cost of executing Spark-based string manipulations and casts on every ingestion run).

@@ -75,17 +75,26 @@ def snapshot(spark: SparkSession, gold_catalog: str, gold_schema: str, retention
         if apply_filter and spark.catalog.tableExists(snap):
             _drop_row_filter(spark, snap)
 
-        # Idempotent for a given day: clear today's partition before re-appending.
+        # Idempotent AND atomic for a given day: a single Delta `replaceWhere` overwrite of today's
+        # partition (one transaction) so a partial failure cannot lose existing history the way a
+        # separate DELETE-then-append could (if the delete commits but the append fails). First run
+        # (table absent) falls back to a partitioned append to establish the table.
         if spark.catalog.tableExists(snap):
-            spark.sql(f"DELETE FROM {snap} WHERE snapshot_date = CURRENT_DATE()")
-
-        (
-            current.write.format("delta")
-            .mode("append")
-            .option("mergeSchema", "true")
-            .partitionBy("snapshot_date")
-            .saveAsTable(snap)
-        )
+            (
+                current.write.format("delta")
+                .mode("overwrite")
+                .option("replaceWhere", "snapshot_date = CURRENT_DATE()")
+                .option("mergeSchema", "true")
+                .saveAsTable(snap)
+            )
+        else:
+            (
+                current.write.format("delta")
+                .mode("append")
+                .option("mergeSchema", "true")
+                .partitionBy("snapshot_date")
+                .saveAsTable(snap)
+            )
 
         # Retention: drop snapshots older than the window.
         if retention_days and retention_days > 0:

@@ -1,4 +1,9 @@
-# Copied from timgeldard/SupplyChainGraph src/supplychainpy/config/movement_types.py - single source of movement semantics.
+# SOURCE OF TRUTH: this file is the AUTHORITATIVE movement-type semantics for IOReporting.
+# It originated as a copy of timgeldard/SupplyChainGraph
+# (src/supplychainpy/config/movement_types.py). Do NOT treat that repo as the live source —
+# they will drift. Any movement-type change must be made HERE (and back-ported to SupplyChainGraph
+# if still in use); a divergence silently changes Gold throughput/output/OTIF KPIs, because
+# unclassified codes fall through to OTHER and are dropped by the inner join (see BR-MM-004).
 """
 SAP movement-type semantics derived from T156-style process definitions.
 """
