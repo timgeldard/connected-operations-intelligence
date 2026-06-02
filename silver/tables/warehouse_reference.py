@@ -75,7 +75,11 @@ def warehouse_plant_mapping_validation():
 
 # ── 2. STORAGE BIN ────────────────────────────────────────────────────────────
 
-@dlt.view(name="stg_storage_bin")
+# Materialized (temporary=True) so it is a valid, unambiguous periodic-snapshot source for
+# apply_changes_from_snapshot — a canonical full-overwrite table per triggered run — while
+# temporary keeps it out of the published schema (it is unfiltered staging, so it must not be
+# exposed to consumers; the RLS-filtered output is storage_bin).
+@dlt.table(name="stg_storage_bin", temporary=True)
 @dlt.expect_all_or_drop({
     "warehouse_number present": "warehouse_number IS NOT NULL",
     "bin_code present": "bin_code IS NOT NULL"
