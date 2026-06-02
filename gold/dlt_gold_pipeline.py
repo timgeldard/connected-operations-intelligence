@@ -139,6 +139,13 @@ def gold_plant_production_quality_summary():
     comment="Operations Overview of process orders including schedule, confirmations, PI sheet, and downtime at operation grain.",
     cluster_by=["plant_code", "scheduled_start_datetime"]
 ))
+@dlt.expect("scheduled dates ordered",
+    "scheduled_start_datetime <= scheduled_finish_datetime "
+    "OR scheduled_start_datetime IS NULL OR scheduled_finish_datetime IS NULL")
+@dlt.expect("pi_sheet duration non-negative",
+    "pi_sheet_duration_hours IS NULL OR pi_sheet_duration_hours >= 0.0")
+@dlt.expect("downtime non-negative",
+    "total_downtime_minutes >= 0.0")
 def gold_process_order_operations():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
@@ -150,13 +157,19 @@ def gold_process_order_operations():
 
     active_orders = orders.filter("is_released = true and is_closed = false").select(
         F.col("order_number").alias("order_number_ref"),
-        "plant_code",
-        "material_code",
-        "scheduled_start_date"
+        F.col("material_code").alias("order_material_code"),
+        F.col("scheduled_start_date").alias("order_scheduled_start_date"),
+        "is_released",
+        "is_closed"
     )
 
     op_downtime = downtimes.groupBy("order_number", "operation_number").agg(
         F.coalesce(F.sum("duration_minutes"), F.lit(0.0)).alias("total_downtime_minutes")
+    )
+
+    # Subset pi_sheets to avoid duplicate plant_code / metadata columns
+    pi_sheets_subset = pi_sheets.select(
+        "order_number", "operation_number", "pi_sheet_status", "duration_hours"
     )
 
     joined_ops = operations.join(
@@ -166,7 +179,7 @@ def gold_process_order_operations():
     )
 
     joined_pi = joined_ops.join(
-        pi_sheets,
+        pi_sheets_subset,
         ["order_number", "operation_number"],
         "left"
     )
@@ -181,8 +194,8 @@ def gold_process_order_operations():
             "order_number",
             "operation_number",
             "plant_code",
-            "material_code",
-            "scheduled_start_date",
+            F.col("order_material_code").alias("material_code"),
+            F.col("order_scheduled_start_date").alias("scheduled_start_date"),
             "scheduled_start_datetime",
             "scheduled_finish_datetime",
             "actual_start_datetime",
@@ -193,10 +206,12 @@ def gold_process_order_operations():
             "is_confirmed",
             "confirmed_yield_quantity",
             "confirmed_scrap_quantity",
-            F.coalesce(F.col("pi_sheet_status"), F.lit("Not Started")).alias("pi_sheet_status"),
+            "control_key",
+            "number_of_employees",
+            F.coalesce(F.col("pi_sheet_status"), F.lit("No PI Sheet")).alias("pi_sheet_status"),
             F.col("duration_hours").alias("pi_sheet_duration_hours"),
             F.coalesce(F.col("total_downtime_minutes"), F.lit(0.0)).alias("total_downtime_minutes"),
-            F.lit(True).alias("is_operationally_active")
+            (F.col("is_released") & ~F.col("is_closed")).alias("is_operationally_active")
         )
     )
 

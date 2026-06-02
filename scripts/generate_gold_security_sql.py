@@ -55,6 +55,7 @@ GOLD_TABLES = [
     "gold_shift_output_summary",
     "gold_process_order_schedule_adherence",
     "gold_plant_production_quality_summary",
+    "gold_process_order_operations",
     # warehouse_flow_gold.py
     "gold_dispensary_backlog",
     "gold_lineside_stock",

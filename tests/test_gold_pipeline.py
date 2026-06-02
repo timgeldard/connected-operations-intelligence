@@ -182,13 +182,15 @@ def test_gold_process_order_operations(spark: SparkSession):
 
     # Mock silver.process_order_operation
     po_op_data = [
-        Row(order_number="10", operation_number="0010", scheduled_start_datetime=date(2026, 6, 1), scheduled_finish_datetime=date(2026, 6, 2),
+        Row(order_number="10", operation_number="0010", plant_code="1000", scheduled_start_datetime=date(2026, 6, 1), scheduled_finish_datetime=date(2026, 6, 2),
             actual_start_datetime=date(2026, 6, 1), actual_finish_date=date(2026, 6, 2), work_centre_internal_id="WC01", planned_work=10.0,
-            actual_work=12.0, is_confirmed=True, confirmed_yield_quantity=100.0, confirmed_scrap_quantity=0.0),
+            actual_work=12.0, is_confirmed=True, confirmed_yield_quantity=100.0, confirmed_scrap_quantity=0.0,
+            control_key="PP01", number_of_employees=2.0),
         # Operation for order 20 (should be filtered out since order 20 is closed)
-        Row(order_number="20", operation_number="0010", scheduled_start_datetime=date(2026, 6, 1), scheduled_finish_datetime=date(2026, 6, 2),
+        Row(order_number="20", operation_number="0010", plant_code="1000", scheduled_start_datetime=date(2026, 6, 1), scheduled_finish_datetime=date(2026, 6, 2),
             actual_start_datetime=date(2026, 6, 1), actual_finish_date=date(2026, 6, 2), work_centre_internal_id="WC01", planned_work=10.0,
-            actual_work=12.0, is_confirmed=True, confirmed_yield_quantity=100.0, confirmed_scrap_quantity=0.0),
+            actual_work=12.0, is_confirmed=True, confirmed_yield_quantity=100.0, confirmed_scrap_quantity=0.0,
+            control_key="PP01", number_of_employees=2.0),
     ]
     spark.createDataFrame(po_op_data).write.mode("overwrite").saveAsTable("silver.process_order_operation")
 
@@ -214,6 +216,8 @@ def test_gold_process_order_operations(spark: SparkSession):
     assert row["order_number"] == "10"
     assert row["operation_number"] == "0010"
     assert row["plant_code"] == "1000"
+    assert row["control_key"] == "PP01"
+    assert row["number_of_employees"] == 2.0
     assert row["pi_sheet_status"] == "Completed"
     assert row["pi_sheet_duration_hours"] == 4.5
     assert row["total_downtime_minutes"] == 45.0

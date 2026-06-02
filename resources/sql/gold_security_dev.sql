@@ -101,6 +101,11 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_plant_production_qualit
   WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_plant_production_quality_summary_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_process_order_operations_secured AS
+  SELECT * FROM connected_plant_dev.gold_dev.gold_process_order_operations
+  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_process_order_operations_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_dispensary_backlog_secured AS
   SELECT * FROM connected_plant_dev.gold_dev.gold_dispensary_backlog
   WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
