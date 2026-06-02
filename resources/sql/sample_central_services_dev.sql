@@ -45,6 +45,7 @@ CREATE OR REPLACE TABLE connected_plant_dev.central_services.characteristicvalue
 -- ── Purchase orders (EKKO header → EKPO items, referentially consistent) ────────
 CREATE OR REPLACE TABLE connected_plant_dev.central_services.procurementorderobject_ekko AS
   SELECT * FROM published_uat.central_services.procurementorderobject_ekko
+  ORDER BY EBELN  -- deterministic sample (LIMIT alone is non-deterministic under parallel scan)
   LIMIT 20000;  -- SAMPLE_HEADERS
 
 CREATE OR REPLACE TABLE connected_plant_dev.central_services.procurementorderobject_ekpo AS
@@ -56,6 +57,7 @@ CREATE OR REPLACE TABLE connected_plant_dev.central_services.procurementorderobj
 -- ── Handling units (VEKP header → VEPO items, referentially consistent) ─────────
 CREATE OR REPLACE TABLE connected_plant_dev.central_services.handlingunit_vekp AS
   SELECT * FROM published_uat.central_services.handlingunit_vekp
+  ORDER BY VENUM  -- deterministic sample (LIMIT alone is non-deterministic under parallel scan)
   LIMIT 20000;  -- SAMPLE_HEADERS
 
 CREATE OR REPLACE TABLE connected_plant_dev.central_services.handlingunit_vepo AS
