@@ -5,6 +5,8 @@ Exercises the status logic without needing real Silver tables: pointed at a non-
 every watermark table resolves to NO_DATA and the seed table (no watermark) to STATIC.
 """
 
+import datetime
+
 from pyspark.sql import Row, SparkSession
 
 from gold.freshness import (
@@ -55,7 +57,6 @@ def test_critical_freshness_gate_blocks_stale_and_no_data(spark: SparkSession, m
 
 
 def test_data_health_summary_rolls_up_operational_signals(spark: SparkSession, monkeypatch):
-    import datetime
     import gold.freshness as freshness
 
     tables = {
