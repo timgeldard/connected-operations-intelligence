@@ -197,14 +197,14 @@ dlt.apply_changes(
 def stg_process_order_operation():
     spark = get_spark()
     afvc_changes = spark.readStream.table(f"{BRONZE}.processorderobject_afvc").select(
-        "AUFPL", "APLZL", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
+        "AUFPL", "APLZL", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
     )
     afvv_changes = spark.readStream.table(
         f"{BRONZE}.dbstructureoperationquantitydatevalues_afvv"
-    ).select("AUFPL", "APLZL", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+    ).select("AUFPL", "APLZL", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity")
     afko_changes = (
         spark.readStream.table(f"{BRONZE}.productionorderobject_afko")
-        .select("AUFPL", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+        .select("AUFPL", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity")
         .withColumn("APLZL", F.lit(None).cast("string"))
     )
 
@@ -229,6 +229,7 @@ def stg_process_order_operation():
             F.col("c.AEDATTM").alias("_change_replicated_at"),
             F.col("c.AERUNID").alias("_change_run_id"),
             F.col("c.AERECNO").alias("_change_record_seq"),
+            F.col("c.RecordActivity").alias("_change_record_activity"),
         )
     )
 
@@ -284,6 +285,9 @@ def stg_process_order_operation():
             F.col("o._change_replicated_at").alias("_replicated_at"),
             F.col("o._change_run_id").alias("_run_id"),
             F.col("o._change_record_seq").alias("_record_seq"),
+            F.coalesce(F.col("o.RecordActivity"), F.col("o._change_record_activity")).alias(
+                "record_activity"
+            ),
         )
     )
 
@@ -302,6 +306,7 @@ dlt.apply_changes(
     source="stg_process_order_operation",
     keys=["order_number", "operation_number"],
     sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
+    apply_as_deletes=F.expr("record_activity = 'D'"),
     stored_as_scd_type=1,
 )
 

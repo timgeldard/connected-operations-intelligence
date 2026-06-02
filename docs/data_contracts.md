@@ -15,6 +15,7 @@ This document defines the formal data contracts for the key Silver and Gold laye
 * **Sequence / Watermark Column**: `_replicated_at` (derived from `AEDATTM`)
 * **Row-Level Security**: Plant-level filter (`plant_access_filter`) applied to the `plant_code` column.
 * **Freshness Expectation**: Continuous execution (near real-time, within 15-minute latency).
+* **Known Caveats**: Due to the stream-static join for recipe enrichment, the `production_line` field reflects the recipe classification at the time the process order last changed (not necessarily today's classification if the recipe is reclassified later for a closed/unchanged order).
 
 ### 2. `silver.goods_movement`
 * **Grain**: 1 row per goods movement document item (`material_document_number` + `material_document_year` + `material_document_item`)
@@ -155,7 +156,7 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Grain**: 1 row per outbound delivery (× plant × warehouse)
 * **Source Silver Tables**: `silver.outbound_delivery`
 * **Purpose**: pick progress (picked vs delivery quantity) and pick risk.
-* **Known Caveats**: delivery-quantity based, not TO-level picking. The MV is deterministic; `days_to_goods_issue` and `risk_band` are served at query time by the **`gold_delivery_pick_status_live`** view. Also, a known orphan risk exists: header-only deletes (null item number) cannot be matched by the compound keys, leaving orphaned delivery items in silver.outbound_delivery.
+* **Known Caveats**: delivery-quantity based, not TO-level picking. The MV is deterministic; `days_to_goods_issue` and `risk_band` are served at query time by the **`gold_delivery_pick_status_live`** view. Also, a known orphan risk exists: header-only deletes (null item number) cannot be matched by the compound keys, leaving orphaned delivery items in silver.outbound_delivery. Additionally, the `is_shipped` flag is derived as a heuristic (`MAX(actual_goods_issue_date IS NOT NULL)`), meaning a delivery is flagged as shipped if any line has a goods-issue date, which assumes no partial/split goods issue postings occur.
 
 ### 14. `gold.gold_stock_reconciliation`
 * **Status**: Pilot-grade / directional (kept for compatibility; superseded by v2 for root-cause investigation)
@@ -171,7 +172,7 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Source Silver Tables**: `silver.batch_stock` (MCHB), `silver.stock_at_location` (MARD), `silver.material`, `silver.storage_bin`, `silver.warehouse_storage_location_mapping`, `silver.material_uom_conversion`, `silver.material_valuation`, `silver.storage_type_role_mapping`
 * **Purpose**: Root-cause-capable IM↔WM reconciliation. MCHB for batch-managed materials; MARD for non-batch. T320 bridges IM sloc→warehouse. BESTQ (blank/Q/S) mapped to UNRESTRICTED/QUALITY/BLOCKED.
 * **Mismatch reasons**: `MATCHED`, `WM_MANAGED_SLOC_MAPPING_MISSING`, `UOM_CONVERSION_MISSING`, `BATCH_MISSING_IN_WM`, `BATCH_MISSING_IN_IM`, `TRUE_VARIANCE`
-* **Known Caveats**: WM (LQUA) has no LGORT — grain omits `storage_location_code` on WM side. IN_TRANSFER and RESTRICTED stock categories not compared. Tolerance 0.1% of IM, floor 0.001. See `docs/reconciliation/stock-reconciliation-v2-contract.md`.
+* **Known Caveats**: WM (LQUA) has no LGORT — grain omits `storage_location_code` on WM side. IN_TRANSFER and RESTRICTED stock categories not compared. Tolerance 0.1% of IM, floor 0.001. See `docs/reconciliation/stock-reconciliation-v2-contract.md`. Note: storage locations without a T320 warehouse mapping receive `warehouse_number = '__NO_WM_MAPPING__'`. If a material exists in both a mapped and an unmapped storage location, it produces two separate rows in the output. Downstream BI consumers summing `abs_delta_quantity_total` must explicitly filter or group by `mismatch_reason` to avoid double-counting the unmapped locations alongside true variances.
 
 ### 14c. `gold.gold_stock_reconciliation_exceptions_v2`
 * **Status**: Production-candidate

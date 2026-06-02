@@ -25,6 +25,8 @@ def _processing_time_minutes() -> Column:
     comment="Transfer-order operator performance by warehouse, plant, date, and source storage type.",
     cluster_by=["plant_code", "confirmed_date"],
 ))
+# The 2.0 upper bound allows for legitimate SAP WM over-picking (e.g., bulk drops or split picks)
+# while serving as a data-quality guard against replication or logic anomalies.
 @dlt.expect("pick_accuracy bounded", "pick_accuracy IS NULL OR (pick_accuracy >= 0.0 AND pick_accuracy <= 2.0)")
 @dlt.expect("fully_confirmed_rate bounded", "fully_confirmed_rate >= 0.0 AND fully_confirmed_rate <= 1.0")
 def gold_transfer_order_performance():
