@@ -179,6 +179,21 @@ CREATE OR REPLACE VIEW connected_plant_uat.gold.gold_storage_type_role_coverage_
   WHERE connected_plant_uat.silver.plant_access_filter(plant_code);
 GRANT SELECT ON VIEW connected_plant_uat.gold.gold_storage_type_role_coverage_status_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_uat.gold.gold_stock_reconciliation_v2_secured AS
+  SELECT * FROM connected_plant_uat.gold.gold_stock_reconciliation_v2
+  WHERE connected_plant_uat.silver.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_uat.gold.gold_stock_reconciliation_v2_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold.gold_stock_reconciliation_exceptions_v2_secured AS
+  SELECT * FROM connected_plant_uat.gold.gold_stock_reconciliation_exceptions_v2
+  WHERE connected_plant_uat.silver.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_uat.gold.gold_stock_reconciliation_exceptions_v2_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold.gold_stock_reconciliation_summary_v2_secured AS
+  SELECT * FROM connected_plant_uat.gold.gold_stock_reconciliation_summary_v2
+  WHERE connected_plant_uat.silver.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_uat.gold.gold_stock_reconciliation_summary_v2_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_uat.gold.gold_inbound_po_backlog_secured AS
   SELECT * FROM connected_plant_uat.gold.gold_inbound_po_backlog
   WHERE connected_plant_uat.silver.plant_access_filter(plant_code);

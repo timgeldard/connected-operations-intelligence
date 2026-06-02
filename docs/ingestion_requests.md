@@ -43,8 +43,7 @@ risk). `dev_*` targets write to the clean `connected_plant_dev`.
 - **Shift calendar (ADR 008):** no SAP shift master in bronze (no `TC37A`/`TC37`). Need per-plant
   shift-calendar config (external Excel→Bronze or seeded), and optionally request `TC37A`/`TC37`
   replication into `…sap`.
-- **Detailed reconciliation (ADR 009):** ingest **`MARM`** (UoM conversion factors) into bronze;
-  populate `silver.wm_managed_sloc` (warehouse↔sloc + WM-managed flags).
+- **Detailed reconciliation (ADR 009):** ~~ingest **`MARM`**~~ — **MARM is already ingested** as `connected_plant_uat.sap.materialconversion_marm` (1.57M rows, 1.05M materials, confirmed 2026-06-02). `silver.material_uom_conversion` is now wired into the slow pipeline. Remaining dependency: populate `silver.warehouse_storage_location_mapping` (T320 already in `published_uat.central_services.warehouseforplant_t320` — also now wired).
 - **Lineage/dictionary (ADR 010):** grants on `system.access.table_lineage` /
   `system.access.column_lineage` for the principal running the dictionary generator.
 - **Aecorsoft Field Rules Review (Cost Optimization):** Review Aecorsoft's functionality to apply rules/transformations directly to fields at replication/ingestion time. Applying basic filters, type casting, or zero-stripping at the replication level could reduce the storage and compute costs of raw bronze staging (mitigating hidden costs of reproducing full SAP columns/rows before filtering in Silver).
