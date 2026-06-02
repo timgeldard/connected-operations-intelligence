@@ -67,6 +67,12 @@ Managed via Declarative Automation Bundle (DAB).
 - **Window:** All completed/closed process orders currently remain in scope; add a period grain before using this as a period-comparable KPI.
 - **Freshness:** Depends on `silver_fast_pipeline` being healthy; the Gold refresh job does not trigger the continuous fast pipeline.
 
+### `gold_process_order_operations`
+- **Granularity:** 1 row per `order_number × operation_number`.
+- **Description:** Operations Overview of process orders, including schedule windows, confirmation rates, PI sheet status/duration, and downtime event aggregates at the operation grain.
+- **Scope Filter:** Restricted to active orders (`is_released = true` and `is_closed = false`).
+- **Caveat:** `is_confirmed` is based on RUECK-presence since confirmation quantities are order-scoped in the source.
+
 ### `gold_plant_production_quality_summary`
 - **Granularity:** 1 row per plant.
 - **Description:** All-time production volumes, scrap, total downtime, and quality rate (yield / (yield + scrap)).

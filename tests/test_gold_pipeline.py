@@ -11,6 +11,7 @@ from gold.dlt_gold_pipeline import (
     gold_plant_production_quality_summary,
     gold_process_order_schedule_adherence,
     gold_shift_output_summary,
+    gold_process_order_operations,
 )
 from silver.movement_types import (
     ISSUE_MOVEMENT_TYPES,
@@ -168,3 +169,52 @@ def test_gold_plant_production_quality_summary(spark: SparkSession):
     assert row_2000["total_yield_qty"] == 0.0
     assert row_2000["total_scrap_qty"] == 0.0
     assert row_2000["quality_rate"] is None
+
+
+def test_gold_process_order_operations(spark: SparkSession):
+    # Mock silver.process_order (order_number = 10 is active, 20 is closed, 30 is not released)
+    po_data = [
+        Row(order_number="10", plant_code="1000", material_code="MAT01", scheduled_start_date=date(2026, 6, 1), is_released=True, is_closed=False),
+        Row(order_number="20", plant_code="1000", material_code="MAT01", scheduled_start_date=date(2026, 6, 1), is_released=True, is_closed=True),
+        Row(order_number="30", plant_code="1000", material_code="MAT01", scheduled_start_date=date(2026, 6, 1), is_released=False, is_closed=False),
+    ]
+    spark.createDataFrame(po_data).write.mode("overwrite").saveAsTable("silver.process_order")
+
+    # Mock silver.process_order_operation
+    po_op_data = [
+        Row(order_number="10", operation_number="0010", scheduled_start_datetime=date(2026, 6, 1), scheduled_finish_datetime=date(2026, 6, 2),
+            actual_start_datetime=date(2026, 6, 1), actual_finish_date=date(2026, 6, 2), work_centre_internal_id="WC01", planned_work=10.0,
+            actual_work=12.0, is_confirmed=True, confirmed_yield_quantity=100.0, confirmed_scrap_quantity=0.0),
+        # Operation for order 20 (should be filtered out since order 20 is closed)
+        Row(order_number="20", operation_number="0010", scheduled_start_datetime=date(2026, 6, 1), scheduled_finish_datetime=date(2026, 6, 2),
+            actual_start_datetime=date(2026, 6, 1), actual_finish_date=date(2026, 6, 2), work_centre_internal_id="WC01", planned_work=10.0,
+            actual_work=12.0, is_confirmed=True, confirmed_yield_quantity=100.0, confirmed_scrap_quantity=0.0),
+    ]
+    spark.createDataFrame(po_op_data).write.mode("overwrite").saveAsTable("silver.process_order_operation")
+
+    # Mock silver.pi_sheet_execution
+    pi_data = [
+        Row(order_number="10", operation_number="0010", pi_sheet_status="Completed", duration_hours=4.5),
+    ]
+    spark.createDataFrame(pi_data).write.mode("overwrite").saveAsTable("silver.pi_sheet_execution")
+
+    # Mock silver.downtime_event
+    dt_data = [
+        Row(order_number="10", operation_number="0010", duration_minutes=30.0),
+        Row(order_number="10", operation_number="0010", duration_minutes=15.0),
+    ]
+    spark.createDataFrame(dt_data).write.mode("overwrite").saveAsTable("silver.downtime_event")
+
+    res_df = gold_process_order_operations()
+    results = all_rows(res_df)
+
+    # Should only return operation for active order 10
+    assert len(results) == 1
+    row = results[0]
+    assert row["order_number"] == "10"
+    assert row["operation_number"] == "0010"
+    assert row["plant_code"] == "1000"
+    assert row["pi_sheet_status"] == "Completed"
+    assert row["pi_sheet_duration_hours"] == 4.5
+    assert row["total_downtime_minutes"] == 45.0
+    assert row["is_operationally_active"] is True

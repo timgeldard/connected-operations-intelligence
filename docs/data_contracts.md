@@ -231,9 +231,16 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 ### 19. `gold.gold_warehouse_kpi_snapshot`
 * **Status**: Pilot-grade
 * **Grain**: 1 row per plant
-* **Source Silver/Gold Tables**: per-plant rollup of open orders/TRs/TOs/deliveries/inbound + bin counts
+* **Source/Gold Tables**: per-plant rollup of open orders/TRs/TOs/deliveries/inbound + bin counts
 * **Purpose**: per-plant operations scorecard.
 * **Known Caveats**: mixed-grain counts assembled into one scorecard row; intended for at-a-glance status, not as a reconciled measure source.
+
+### 20. `gold.gold_process_order_operations`
+* **Status**: Production-candidate
+* **Grain**: 1 row per `order_number × operation_number`
+* **Source Silver Tables**: `silver.process_order_operation`, `silver.pi_sheet_execution`, `silver.downtime_event`, `silver.process_order`
+* **Purpose**: Operations Overview of process orders, schedule compliance, actual start/finish dates, confirm status, PI sheet execution and downtime at the operation level.
+* **Known Caveats**: `is_confirmed` is based on confirmation number presence since execution quantities are order-scoped; scoped to active/released orders only.
 
 ---
 

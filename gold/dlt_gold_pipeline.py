@@ -135,6 +135,72 @@ def gold_plant_production_quality_summary():
     )
 
 
+@dlt.table(**gold_table_args(
+    comment="Operations Overview of process orders including schedule, confirmations, PI sheet, and downtime at operation grain.",
+    cluster_by=["plant_code", "scheduled_start_datetime"]
+))
+def gold_process_order_operations():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    
+    operations = spark.read.table(f"{silver_schema}.process_order_operation")
+    pi_sheets = spark.read.table(f"{silver_schema}.pi_sheet_execution")
+    downtimes = spark.read.table(f"{silver_schema}.downtime_event")
+    orders = spark.read.table(f"{silver_schema}.process_order")
+
+    active_orders = orders.filter("is_released = true and is_closed = false").select(
+        F.col("order_number").alias("order_number_ref"),
+        "plant_code",
+        "material_code",
+        "scheduled_start_date"
+    )
+
+    op_downtime = downtimes.groupBy("order_number", "operation_number").agg(
+        F.coalesce(F.sum("duration_minutes"), F.lit(0.0)).alias("total_downtime_minutes")
+    )
+
+    joined_ops = operations.join(
+        active_orders,
+        operations.order_number == active_orders.order_number_ref,
+        "inner"
+    )
+
+    joined_pi = joined_ops.join(
+        pi_sheets,
+        ["order_number", "operation_number"],
+        "left"
+    )
+
+    return (
+        joined_pi.join(
+            op_downtime,
+            ["order_number", "operation_number"],
+            "left"
+        )
+        .select(
+            "order_number",
+            "operation_number",
+            "plant_code",
+            "material_code",
+            "scheduled_start_date",
+            "scheduled_start_datetime",
+            "scheduled_finish_datetime",
+            "actual_start_datetime",
+            "actual_finish_date",
+            "work_centre_internal_id",
+            "planned_work",
+            "actual_work",
+            "is_confirmed",
+            "confirmed_yield_quantity",
+            "confirmed_scrap_quantity",
+            F.coalesce(F.col("pi_sheet_status"), F.lit("Not Started")).alias("pi_sheet_status"),
+            F.col("duration_hours").alias("pi_sheet_duration_hours"),
+            F.coalesce(F.col("total_downtime_minutes"), F.lit(0.0)).alias("total_downtime_minutes"),
+            F.lit(True).alias("is_operationally_active")
+        )
+    )
+
+
 @dlt.view(
     name="gold_freshness_gate",
     comment="Validation view to enforce freshness guarantees. Checks the max lag of silver.goods_movement."
