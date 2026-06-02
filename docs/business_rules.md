@@ -12,7 +12,7 @@ Conventions: `silver` / `gold` below are the env-qualified schemas
 ---
 
 ## BR-PP-001 — Process orders are AUFK `AUTYP = '40'`
-- **Used by:** `silver.process_order` (→ `gold_order_otif_metrics`, `gold_shift_output_summary`, `gold_process_order_staging`, `gold_plant_production_quality_summary`)
+- **Used by:** `silver.process_order` (→ `gold_process_order_schedule_adherence`, `gold_shift_output_summary`, `gold_process_order_staging`, `gold_plant_production_quality_summary`)
 - **Source fields:** `AUFK.AUTYP`, `AUFK.AUART` (`silver.helpers.PP_PI_ORDER_CATEGORY = "40"`, `PP_PI_ORDER_TYPES = None`)
 - **Assumption:** PP-PI process orders are order category `40` (verified live: AUART ZI01/ZI02/ZI05/…; `AUTYP='10'` returns zero rows). `PP_PI_ORDER_TYPES = None` keeps **all** type-40 orders (incl. ZI10/ZI11 setup/cleaning).
 - **Plant applicability:** all plants (AUART allowlist may need to be plant-confirmed).

@@ -56,13 +56,13 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Known Caveats**: Relies on conformed classifications mapped in `movement_type_classification`. Any newly introduced custom movement codes must be classified first.
 * **Freshness Caveat**: Depends on the continuous `silver_fast_pipeline`; the Gold refresh job does not trigger that pipeline.
 
-### 2. `gold.gold_order_otif_metrics`
+### 2. `gold.gold_process_order_schedule_adherence`
 * **Grain**: 1 row per completed process order
 * **Source Silver Tables**: `silver.process_order`
 * **Schedule-Adherence Logic**:
   * `is_on_time` = 1 if `actual_finish_date <= scheduled_finish_date`, else 0.
   * `is_in_full` = 1 if `confirmed_yield_quantity >= order_quantity`, else 0.
-* **Name Caveat**: This is process-order schedule adherence, not customer-delivery OTIF.
+* **Note**: Measures process-order schedule adherence (actual vs scheduled finish, confirmed vs ordered qty). Unrelated to customer-delivery OTIF.
 * **Row-Level Security**: Gold is produced by a trusted aggregate pipeline. Apply plant-level controls at the consumption boundary.
 * **Freshness Expectation**: Batch triggered.
 * **Freshness Caveat**: Depends on the continuous `silver_fast_pipeline`; the Gold refresh job does not trigger that pipeline.

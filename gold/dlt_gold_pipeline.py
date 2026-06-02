@@ -56,7 +56,7 @@ def gold_shift_output_summary():
     cluster_by=["plant_code", "actual_finish_date"]
 ))
 @dlt.expect("order_quantity non-negative", "order_quantity >= 0.0")
-def gold_order_otif_metrics():
+def gold_process_order_schedule_adherence():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
     orders = spark.read.table(f"{silver_schema}.process_order")
@@ -73,7 +73,7 @@ def gold_order_otif_metrics():
             "confirmed_yield_quantity",
             "scheduled_finish_date",
             "actual_finish_date",
-            # Null-safe Date/OTIF comparisons
+            # Null-safe schedule-adherence comparisons
             F.when(
                 F.col("actual_finish_date").isNull() | F.col("scheduled_finish_date").isNull(),
                 F.lit(None)

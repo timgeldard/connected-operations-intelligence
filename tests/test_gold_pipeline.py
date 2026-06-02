@@ -8,8 +8,8 @@ import pytest
 from pyspark.sql import Row, SparkSession
 
 from gold.dlt_gold_pipeline import (
-    gold_order_otif_metrics,
     gold_plant_production_quality_summary,
+    gold_process_order_schedule_adherence,
     gold_shift_output_summary,
 )
 from silver.movement_types import (
@@ -85,7 +85,7 @@ def test_gold_shift_output_summary(spark: SparkSession):
     assert row["produced_quantity"] == 80.0  # 100 - 20
     assert row["scrap_quantity"] == 3.0       # 5 - 2
 
-def test_gold_order_otif_metrics(spark: SparkSession):
+def test_gold_process_order_schedule_adherence(spark: SparkSession):
     # Mock data for process_order
     process_order_data = [
         # Completed on time, in full
@@ -105,7 +105,7 @@ def test_gold_order_otif_metrics(spark: SparkSession):
     df_po = spark.createDataFrame(process_order_data)
     df_po.write.mode("overwrite").saveAsTable("silver.process_order")
 
-    res_df = gold_order_otif_metrics()
+    res_df = gold_process_order_schedule_adherence()
     results = all_rows(res_df)
 
     # Should only have completed/closed orders (1, 2, 4)

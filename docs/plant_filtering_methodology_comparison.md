@@ -71,7 +71,7 @@ WHERE EXISTS (
 
 ### Deployment-status findings (verified live — important reframing)
 - **The IOReporting repo is not deployed in this UAT workspace at all.** Its Gold table names
-  (`gold_shift_output_summary`, `gold_order_otif_metrics`, …) are absent, and its Silver is absent:
+  (`gold_shift_output_summary`, `gold_process_order_schedule_adherence`, …) are absent, and its Silver is absent:
   `connected_plant_uat.silver` holds 47 **`silver_*`-prefixed** platform tables
   (`silver_process_order`, `silver_material`, …), **not** the repo's bare-named tables
   (`process_order`, `material`, …). `connected_plant_uat.silver.process_order` does not exist.

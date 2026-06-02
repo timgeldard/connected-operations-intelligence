@@ -134,7 +134,7 @@ the AC is **not met**. Honest naming applied; enrich with GR history to fully sa
 plant/material/period *so that* I can review the order book (COOISPI header list).
 **Acceptance:** order, material, plant, order/confirmed-yield qty, scheduled vs actual dates, status;
 **scoped to PP-PI process orders (AUTYP 40)**.
-**Fulfilment: ✅ Fully (data) — `silver.process_order`** (+ `gold_order_otif_metrics`,
+**Fulfilment: ✅ Fully (data) — `silver.process_order`** (+ `gold_process_order_schedule_adherence`,
 `gold_shift_output_summary`). Header attributes and the corrected AUTYP=40 scope are present. The
 flexible COOISPI selection/layout is a **BI-layer** concern over this table. AC met at data level.
 
@@ -170,12 +170,11 @@ consumption and output (COOISPI documented-goods-movements list).
 **Fulfilment: ✅ Fully (data) — `silver.goods_movement`** (keeps `movement_type_code`, `quantity`,
 `posting_date`, debit/credit indicator, `order_number`). AC met at data level; surface as a BI list.
 
-### D6. Schedule adherence (OTIF-style)
+### D6. Process-order schedule adherence
 *As a* planner *I want* process-order schedule adherence (actual vs scheduled finish, yield vs order
-qty) *so that* I can measure delivery reliability.
+qty) *so that* I can measure production reliability.
 **Acceptance:** on-time and in-full flags per completed/closed order.
-**Fulfilment: ✅ Fully — `gold_order_otif_metrics`.** AC met. Note this is **process-order** adherence,
-not customer-delivery OTIF (named accordingly).
+**Fulfilment: ✅ Fully — `gold_process_order_schedule_adherence`.** AC met.
 
 ### D7. PEX-E-35 custom COOISPI report
 *As a* planner *I want* the Kerry-specific COOISPI report (PEX-E-35) fields, selection and layout *so

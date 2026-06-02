@@ -91,10 +91,10 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_shift_output_summary_se
   WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_shift_output_summary_secured TO `users`;
 
-CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_order_otif_metrics_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_order_otif_metrics
+CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_process_order_schedule_adherence_secured AS
+  SELECT * FROM connected_plant_dev.gold_dev.gold_process_order_schedule_adherence
   WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
-GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_order_otif_metrics_secured TO `users`;
+GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_process_order_schedule_adherence_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_plant_production_quality_summary_secured AS
   SELECT * FROM connected_plant_dev.gold_dev.gold_plant_production_quality_summary

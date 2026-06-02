@@ -53,7 +53,7 @@ GOLD_TABLES = [
     "gold_stock_expiry_risk",
     # dlt_gold_pipeline.py
     "gold_shift_output_summary",
-    "gold_order_otif_metrics",
+    "gold_process_order_schedule_adherence",
     "gold_plant_production_quality_summary",
     # warehouse_flow_gold.py
     "gold_dispensary_backlog",
