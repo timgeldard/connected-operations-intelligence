@@ -500,11 +500,12 @@ def parse_generated_date(filepath):
     --check drift comparison stable)."""
     with open(filepath, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
-            m = re.match(r"^Generated:\s*(.+?)\s*$", line.strip())
+            # Tolerate markdown bolding (e.g. **Generated:** 2026-05-30) and scan the whole file
+            # (cheap) rather than breaking early on an unexpected first heading.
+            clean = line.replace("*", "").strip()
+            m = re.match(r"^Generated:\s*(.+?)$", clean)
             if m:
-                return m.group(1)
-            if line.startswith("# ") and "Schema Documentation" not in line:
-                break
+                return m.group(1).strip()
     return None
 
 
@@ -541,7 +542,7 @@ def main():
         if os.path.exists(OUTPUT_FILE):
             with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
                 existing = f.read()
-        if existing.strip() != content.strip():
+        if existing != content:
             print(
                 f"ERROR: {OUTPUT_FILE} is out of date with {INPUT_FILE}. "
                 f"Regenerate with: python generate_data_dictionary.py",
@@ -551,7 +552,7 @@ def main():
         print(f"{OUTPUT_FILE} is up to date ({total_tables} tables, {total_cols} columns).")
         return
 
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    with open(OUTPUT_FILE, "w", encoding="utf-8", newline="\n") as f:
         f.write(content)
     print(f"Written: {OUTPUT_FILE} ({total_tables} tables, {total_cols} columns).")
 
