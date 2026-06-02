@@ -605,6 +605,7 @@ def gold_stock_reconciliation_v2():
 
     batch_stk   = spark.read.table(f"{ss}.batch_stock")
     stk_at_loc  = spark.read.table(f"{ss}.stock_at_location")
+    # plant-scoped routing: plant_code included in mat_dim selects and joins to ensure correctness
     mat_dim     = (
         spark.read.table(f"{ss}.material")
         .select("plant_code", "material_code", "base_uom", "batch_management_required")

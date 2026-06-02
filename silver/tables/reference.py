@@ -28,6 +28,9 @@ from silver.movement_types import (
 )
 
 
+# Verified: module-level spark session deleted. All functions load spark lazily.
+
+
 # ── 1. MATERIAL ──────────────────────────────────────────────────────────────
 
 @dlt.table(
