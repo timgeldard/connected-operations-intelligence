@@ -28,11 +28,11 @@ This document defines the formal data contracts for the key Silver and Gold laye
 ### 3. `silver.storage_bin`
 * **Grain**: 1 row per physical storage bin (`warehouse_number` + `storage_type` + `bin_code`)
 * **Natural Key**: `warehouse_number`, `storage_type`, `bin_code`
-* **Source SAP Tables**: `LAGP` (Bin Master) + `LQUA` (Quants / Occupancy) + `T320` (Warehouse plant mapping)
+* **Source SAP Tables**: `LAGP` (Bin Master, append-only Aecorsoft CDC) + `LQUA` (Quants / Occupancy, current-state snapshot maintained upstream by MERGE/DELETE) + `T320` (Warehouse plant mapping, sourced from the published/`central_services` catalog as a view — not replicated into the SAP source)
 * **Join Conditions**:
-  * `LAGP` left joined with `LQUA` on `LGNUM`, `LGTYP`, `LGPLA`, and `MANDT`.
-  * Joined with `T320` aggregated by `warehouse_number` to resolve primary plant.
-* **Delete Handling**: SCD Type 1 tracking. Bins with no active stock (quant) retain bin dimensions but show `NULL` for material/quant fields.
+  * `LAGP` reduced to current bin master (latest row per bin by `AEDATTM`/`AERUNID`/`AERECNO`, tombstones `RecordActivity='D'` dropped), then left joined with `LQUA` on `LGNUM`, `LGTYP`, `LGPLA`, and `MANDT`.
+  * Joined with `T320` aggregated by `warehouse_number` (warehouses mapped to >1 plant resolve to `SHARED`).
+* **Delete Handling**: Batch current-state recompute (triggered slow tier). Because `LQUA` is a current-state snapshot, a quant removed in SAP simply isn't present on the next recompute, so emptied bins age out automatically — no quant delete marker exists or is required. Empty bins retain bin dimensions with `NULL` material/quant fields; deleted bins are removed via the `LAGP` tombstone filter.
 * **Sequence / Watermark Column**: `_replicated_at`
 * **Row-Level Security**: Filtered by primary `plant_code` (resolved dynamically).
 * **Freshness Expectation**: Daily batch (triggered) or hourly updates.
