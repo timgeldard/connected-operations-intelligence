@@ -42,9 +42,10 @@ tests migrated + `tests/test_gold_serving_views.py` added; data contracts update
   return the **base aggregate** (absolute dates only; no `current_date()`). This restores prod==test
   and keeps incremental refresh.
 - Add per-table **serving views** (`<table>_live`) that compute the date-relative columns
-  (`risk_band`, `days_to_*`, expiry buckets) at query time — zero MV-refresh cost, columns available
-  live. Same generated-SQL, post-deploy pattern as the ADR 012 `*_secured` views (and composable
-  with them). Consumers read the serving view.
+  (`risk_band`, `days_to_*`, expiry buckets) at query time — zero MV-refresh cost. Each `_live`
+  view is **built ON the matching ADR 012 `*_secured` view** (not the raw MV), so it inherits the
+  plant row filter — querying `_live` directly does not bypass RLS. Run the secured-view SQL first.
+  Consumers read the `_live` (or `_secured`) view, not the base MV.
 - Tests assert the MV base schema; the band/bucket logic is covered against the serving-view
   definition (or a shared pure helper) so it stays tested. Update `docs/data_contracts.md` to point
   the date-relative columns at the serving views.
