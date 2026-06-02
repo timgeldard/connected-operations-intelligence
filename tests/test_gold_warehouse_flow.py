@@ -178,7 +178,8 @@ def test_staging_untrusted_for_unconfigured_plant(spark):
             scheduled_start_date=None, scheduled_finish_date=None,
             is_released=True, is_closed=False),
     ], "process_order")
-    _save(spark, [], "warehouse_transfer_order")
+    # warehouse_transfer_order intentionally not re-seeded: trust derives from the config table,
+    # not from whether the plant has any TOs. Parquet cannot save a schema-less empty DataFrame.
 
     rows = {r["order_number"]: r for r in all_rows(gold_process_order_staging())}
     assert rows["2001"]["is_operationally_trusted"] is False
