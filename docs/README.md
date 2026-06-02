@@ -30,10 +30,15 @@ Single entry point to the design records, specs and position papers for this dat
 - [`ingestion_requests.md`](ingestion_requests.md) — source dependencies to hand off to the
   replication/platform teams (WMA-E-50 Z-tables, MARM, second bronze source, CI secrets, etc.).
 
-## Position papers
+## Position papers & analysis
 - [`position/unity-catalog-security.md`](position/unity-catalog-security.md) — should this repo adopt
   the platform **CSM consumption-view** approach? (Recommendation: hybrid — row-level enforcement as
   the primitive + CSM-style serving views + a single unified entitlement source.)
+- [`plant_filtering_methodology_comparison.md`](plant_filtering_methodology_comparison.md) — the
+  live-verified evidence behind the position paper: traced lineage/ownership of the UAT `csm_*`
+  consumption model and `published_uat.security.model`, the "repo not deployed / zero row filters in
+  UAT" reframing, the four competing entitlement sources, a bug found in the platform
+  `user_has_plant_access` UDF, and a verification checklist.
 
 ## Requirements / traceability
 - [`user_stories/warehouse-ops-user-stories.md`](user_stories/warehouse-ops-user-stories.md) — user
