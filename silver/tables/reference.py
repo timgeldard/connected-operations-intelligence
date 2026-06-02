@@ -3,7 +3,7 @@ Reference/Master data domain tables.
 """
 
 import dlt
-from pyspark.sql import Row
+from pyspark.sql import Row, Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, StructField, StructType
 
@@ -16,16 +16,7 @@ from silver.helpers import (
     sap_flag,
     strip_zeros,
 )
-from silver.movement_types import (
-    ISSUE_MOVEMENT_TYPES,
-    MOVEMENT_TYPE_MAPPING,
-    RECEIPT_MOVEMENT_TYPES,
-    STOCK_WRITE_OFF_MOVEMENT_TYPES,
-    STOCK_WRITE_ON_MOVEMENT_TYPES,
-    T156_REVERSAL_MAPPING,
-    TRANSFER_MOVEMENT_TYPES,
-    get_movement_event_category,
-)
+from silver.movement_types import build_movement_type_classification_records
 
 # Verified: module-level spark session deleted. All functions load spark lazily.
 
@@ -229,25 +220,101 @@ dlt.apply_changes(
 )
 def movement_type_classification():
     spark = get_spark()
-    data = [
-        Row(
-            movement_type_code=code,
-            movement_label=label,
-            event_category=get_movement_event_category(code),
-            is_reversal=code in T156_REVERSAL_MAPPING,
-            is_goods_receipt=code in RECEIPT_MOVEMENT_TYPES,
-            is_goods_issue=code in ISSUE_MOVEMENT_TYPES,
-            is_transfer=code in TRANSFER_MOVEMENT_TYPES,
-            is_stock_write_on=code in STOCK_WRITE_ON_MOVEMENT_TYPES,
-            is_stock_write_off=code in STOCK_WRITE_OFF_MOVEMENT_TYPES,
-            is_production_receipt=code in {"101", "131"},
-            is_receipt_reversal=code in {"102", "132"},
-            is_scrap=code == "551",
-            is_scrap_reversal=code == "552",
+    overlay = spark.createDataFrame(build_movement_type_classification_records()).alias("overlay")
+
+    published = bronze_published()
+    t156_table = f"{published}.movementtype_t156"
+    t156t_table = f"{published}.movementtypetext2_t156t"
+
+    t156_exists = False
+    try:
+        t156_exists = spark.catalog.tableExists(t156_table)
+    except Exception:  # noqa: BLE001 - missing catalog/schema is expected in local/sample tests
+        t156_exists = False
+
+    if not t156_exists:
+        return (
+            overlay
+            .withColumn("sap_movement_description", F.lit(None).cast("string"))
+            .withColumn("sap_debit_credit_indicator", F.lit(None).cast("string"))
+            .withColumn("sap_reversal_indicator", F.lit(None).cast("string"))
+            .withColumn("classification_source", F.lit("OVERLAY_ONLY"))
         )
-        for code, label in sorted(MOVEMENT_TYPE_MAPPING.items())
-    ]
-    return spark.createDataFrame(data)
+
+    t156_raw = spark.read.table(t156_table).filter(F.col("BWART").isNotNull())
+    has_mandt = "MANDT" in t156_raw.columns
+
+    t156t_exists = False
+    try:
+        t156t_exists = spark.catalog.tableExists(t156t_table)
+    except Exception:  # noqa: BLE001 - missing catalog/schema is expected in local/sample tests
+        t156t_exists = False
+
+    if t156t_exists:
+        text_raw = spark.read.table(t156t_table).filter(
+            (F.col("SPRAS") == "E") & F.col("BWART").isNotNull()
+        )
+        join_cols = ["BWART", "MANDT"] if has_mandt and "MANDT" in text_raw.columns else ["BWART"]
+        t156_joined = t156_raw.join(text_raw, join_cols, "left")
+    else:
+        t156_joined = t156_raw.withColumn("BTEXT", F.lit(None).cast("string"))
+
+    order_cols = [F.col("MANDT")] if has_mandt else [F.lit(1)]
+    for optional_col in ("SOBKZ", "KZBEW", "KZZUG", "KZVBR"):
+        if optional_col in t156_joined.columns:
+            order_cols.append(F.col(optional_col).asc_nulls_first())
+
+    t156 = (
+        t156_joined
+        .withColumn("_movement_type_rank", F.row_number().over(Window.partitionBy("BWART").orderBy(*order_cols)))
+        .filter(F.col("_movement_type_rank") == 1)
+        .select(
+            F.col("BWART").alias("movement_type_code"),
+            F.col("SHKZG").alias("sap_debit_credit_indicator"),
+            F.col("XSTBW").alias("sap_reversal_indicator"),
+            F.col("BTEXT").alias("sap_movement_description"),
+        )
+    )
+
+    # Include every code SAP knows about plus the Kerry-confirmed overlay codes. T156-only rows are
+    # retained as OTHER/false-flag classifications instead of being absent from the reference table.
+    all_codes = (
+        t156.select("movement_type_code")
+        .unionByName(overlay.select("movement_type_code"))
+        .dropDuplicates(["movement_type_code"])
+        .alias("codes")
+    )
+
+    return (
+        all_codes
+        .join(t156.alias("sap"), F.col("codes.movement_type_code") == F.col("sap.movement_type_code"), "left")
+        .join(overlay, F.col("codes.movement_type_code") == F.col("overlay.movement_type_code"), "left")
+        .select(
+            F.col("codes.movement_type_code").alias("movement_type_code"),
+            F.coalesce(F.col("overlay.movement_label"), F.lit("UNCLASSIFIED_MOVEMENT_TYPE")).alias(
+                "movement_label"
+            ),
+            F.coalesce(F.col("overlay.event_category"), F.lit("OTHER")).alias("event_category"),
+            F.coalesce(F.col("overlay.is_reversal"), F.lit(False)).alias("is_reversal"),
+            F.coalesce(F.col("overlay.is_goods_receipt"), F.lit(False)).alias("is_goods_receipt"),
+            F.coalesce(F.col("overlay.is_goods_issue"), F.lit(False)).alias("is_goods_issue"),
+            F.coalesce(F.col("overlay.is_transfer"), F.lit(False)).alias("is_transfer"),
+            F.coalesce(F.col("overlay.is_stock_write_on"), F.lit(False)).alias("is_stock_write_on"),
+            F.coalesce(F.col("overlay.is_stock_write_off"), F.lit(False)).alias("is_stock_write_off"),
+            F.coalesce(F.col("overlay.is_production_receipt"), F.lit(False)).alias("is_production_receipt"),
+            F.coalesce(F.col("overlay.is_receipt_reversal"), F.lit(False)).alias("is_receipt_reversal"),
+            F.coalesce(F.col("overlay.is_scrap"), F.lit(False)).alias("is_scrap"),
+            F.coalesce(F.col("overlay.is_scrap_reversal"), F.lit(False)).alias("is_scrap_reversal"),
+            "sap_movement_description",
+            "sap_debit_credit_indicator",
+            "sap_reversal_indicator",
+            F.when(F.col("overlay.movement_type_code").isNotNull() & F.col("sap.movement_type_code").isNotNull(),
+                   F.lit("T156_WITH_OVERLAY"))
+            .when(F.col("overlay.movement_type_code").isNotNull(), F.lit("OVERLAY_ONLY"))
+            .otherwise(F.lit("T156_UNCLASSIFIED"))
+            .alias("classification_source"),
+        )
+    )
 
 
 # ── 6. PLANT ──────────────────────────────────────────────────────────────────

@@ -122,7 +122,7 @@ Current checks by table:
 | `storage_location` | 1 row / storage location | T001L | All |
 | `work_centre` | 1 row / work centre × plant | CRHD + CRTX | All |
 | `capacity_utilisation` | 1 row / capacity × period | KAPA + KAKO | Plant Manager |
-| `movement_type_classification` | 1 row / SAP movement type | Conformed seed from `silver/movement_types.py` | All |
+| `movement_type_classification` | 1 row / SAP movement type | T156/T156T code inventory + conformed overlay from `silver/movement_types.py` | All |
 
 > **Enrichment notes:**
 > - `process_order.production_line` (value) and `production_line_description` are derived via the SAP
@@ -164,7 +164,11 @@ Current checks by table:
 
 ## Movement Semantics
 
-`movement_type_classification` is generated from `silver/movement_types.py`, copied from the SupplyChainGraph movement taxonomy. It classifies SAP movement types into event families used by warehouse and production Gold tables:
+`movement_type_classification` reads SAP movement types from `published_<env>.central_services.movementtype_t156`
+and English movement text from `movementtypetext2_t156t` when those published tables are available,
+then overlays the conformed IOReporting taxonomy in `silver/movement_types.py`. If the published T156
+tables are absent (for local tests or a bootstrap/sample target), the table falls back to the overlay
+codes only. It classifies SAP movement types into event families used by warehouse and production Gold tables:
 
 - `GOODS_RECEIPT`
 - `GOODS_ISSUE`
@@ -176,7 +180,11 @@ Current checks by table:
 
 Reversal handling is based on the explicit `T156_REVERSAL_MAPPING` derived from labels containing `REVERSAL`; downstream warehouse volume KPIs should use event-family flags plus this reversal flag for reversal netting. Net stock movement KPIs should use `SHKZG` (`S` receipt/debit, `H` issue/credit) rather than applying both sign conventions.
 
-Site-specific `Z*` movement types are carried from the source taxonomy but must be confirmed against this SAP configuration before they are treated as final. Storage type descriptions require T301T replication; until then warehouse KPIs should use storage type codes only.
+T156-only codes that are not in the conformed overlay are retained with `event_category = 'OTHER'` and
+all KPI flags false instead of being absent from the reference table. Site-specific `Z*` movement types
+still require MM/WM/PP functional confirmation before being assigned to receipt/issue/transfer/output
+families. Storage type descriptions require T301T replication; until then warehouse KPIs should use
+storage type codes only.
 
 ---
 

@@ -22,7 +22,7 @@ sync with `FRESHNESS_CONTRACTS` in `gold/freshness.py`.
 | `purchase_order` | inbound | medium | 1440 | yes (central_services) |
 | `handling_unit` | inbound/HU | medium | 240 | yes (central_services) |
 | `material` | reference | medium | 1440 | yes |
-| `movement_type_classification` | reference | high | — | no (STATIC seed) |
+| `movement_type_classification` | reference | high | — | no (T156-backed overlay; no `_replicated_at` watermark) |
 
 ## How it works
 - **`gold_data_freshness_status`** — one row per table above: `latest_replicated_at`,
