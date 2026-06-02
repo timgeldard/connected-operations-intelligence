@@ -189,6 +189,6 @@ GRANT SELECT ON VIEW connected_plant_prod.gold.gold_warehouse_kpi_snapshot_secur
 
 -- ── Base-table access hardening ──
 -- The actual REVOKE statements are generated as a SEPARATE admin script
--- (resources/sql/gold_security_harden_<env>.sql). Apply it AFTER this script so plant-scoped users
+-- (resources/sql/gold_security_harden_prod.sql). Apply it AFTER this script so plant-scoped users
 -- can only read the row-filtered *_secured views, not the un-trimmed base Gold tables (ADR 012).
 -- It is kept separate because revoking broad access is operationally sensitive and irreversible-ish.

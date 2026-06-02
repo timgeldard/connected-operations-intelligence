@@ -86,7 +86,7 @@ TEMPLATE = """-- Unity Catalog Gold row-level security — secured serving views
 REVOKE_NOTE = """
 -- ── Base-table access hardening ──
 -- The actual REVOKE statements are generated as a SEPARATE admin script
--- (resources/sql/gold_security_harden_<env>.sql). Apply it AFTER this script so plant-scoped users
+-- (resources/sql/gold_security_harden_{env_lower}.sql). Apply it AFTER this script so plant-scoped users
 -- can only read the row-filtered *_secured views, not the un-trimmed base Gold tables (ADR 012).
 -- It is kept separate because revoking broad access is operationally sensitive and irreversible-ish.
 """
@@ -217,7 +217,7 @@ def generate_sql():
                 f"GRANT SELECT ON VIEW {view} TO `{group}`;\n"
             )
 
-        sql += REVOKE_NOTE
+        sql += REVOKE_NOTE.format(env_lower=env)
         with open(cfg["filename"], "w", encoding="utf-8", newline="\n") as f:
             f.write(sql)
         print(f"Generated: {cfg['filename']}")
@@ -233,7 +233,7 @@ def generate_sql():
         )
         for table in GOLD_TABLES:
             harden += f"REVOKE SELECT ON TABLE {gold}.{table} FROM `{group}`;\n"
-        harden_fn = cfg["filename"].replace("gold_security_", "gold_security_harden_")
+        harden_fn = os.path.join(os.path.dirname(cfg["filename"]), f"gold_security_harden_{env}.sql")
         with open(harden_fn, "w", encoding="utf-8", newline="\n") as f:
             f.write(harden)
         print(f"Generated: {harden_fn}")
