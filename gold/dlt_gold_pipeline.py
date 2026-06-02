@@ -56,6 +56,8 @@ def gold_shift_output_summary():
     cluster_by=["plant_code", "actual_finish_date"]
 ))
 @dlt.expect("order_quantity non-negative", "order_quantity >= 0.0")
+@dlt.expect("fill_rate non-negative", "fill_rate IS NULL OR fill_rate >= 0.0")
+@dlt.expect("scrap_rate bounded", "scrap_rate IS NULL OR (scrap_rate >= 0.0 AND scrap_rate <= 1.0)")
 def gold_process_order_schedule_adherence():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
@@ -87,7 +89,32 @@ def gold_process_order_schedule_adherence():
             ).when(
                 F.col("confirmed_yield_quantity") >= F.col("order_quantity"),
                 F.lit(1)
-            ).otherwise(F.lit(0)).alias("is_in_full")
+            ).otherwise(F.lit(0)).alias("is_in_full"),
+            # Start-date adherence
+            F.when(
+                F.col("actual_start_date").isNull() | F.col("scheduled_start_date").isNull(),
+                F.lit(None)
+            ).when(
+                F.col("actual_start_date") <= F.col("scheduled_start_date"),
+                F.lit(1)
+            ).otherwise(F.lit(0)).alias("is_started_on_time"),
+            # Fill rate (ratio, not just flag)
+            F.when(
+                F.col("order_quantity").isNull() | (F.col("order_quantity") == 0),
+                F.lit(None).cast("double")
+            ).otherwise(
+                F.col("confirmed_yield_quantity") / F.col("order_quantity")
+            ).alias("fill_rate"),
+            # Scrap rate
+            F.when(
+                F.col("order_quantity").isNull() | (F.col("order_quantity") == 0),
+                F.lit(None).cast("double")
+            ).otherwise(
+                F.coalesce(F.col("total_scrap_quantity"), F.lit(0.0)) / F.col("order_quantity")
+            ).alias("scrap_rate"),
+            # Production line
+            "production_line",
+            "production_line_description"
         )
     )
 
@@ -212,6 +239,97 @@ def gold_process_order_operations():
             F.col("duration_hours").alias("pi_sheet_duration_hours"),
             F.coalesce(F.col("total_downtime_minutes"), F.lit(0.0)).alias("total_downtime_minutes"),
             (F.col("is_released") & ~F.col("is_closed")).alias("is_operationally_active")
+        )
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment="Downtime events rolled to order × operation × reason grain with order context.",
+    cluster_by=["plant_code", "order_number"],
+))
+@dlt.expect("total_downtime_minutes non-negative", "total_downtime_minutes >= 0.0")
+@dlt.expect("event_count positive", "event_count > 0")
+def gold_order_downtime_summary():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    downtimes = spark.read.table(f"{silver_schema}.downtime_event")
+    orders = spark.read.table(f"{silver_schema}.process_order").select(
+        "order_number", "material_code", "scheduled_start_date", "production_line_description"
+    )
+    return (
+        downtimes
+        .groupBy(
+            "plant_code", "order_number", "operation_number",
+            "work_centre_code", "downtime_reason_code",
+            "downtime_reason_description", "sub_reason_code", "sub_reason_description",
+        )
+        .agg(
+            F.count(F.lit(1)).alias("event_count"),
+            F.coalesce(F.sum("duration_minutes"), F.lit(0.0)).alias("total_downtime_minutes"),
+            F.min("start_datetime").alias("earliest_start_datetime"),
+            F.max("end_datetime").alias("latest_end_datetime"),
+        )
+        .join(orders, "order_number", "left")
+        .select(
+            "plant_code", "order_number", "material_code",
+            "production_line_description", "scheduled_start_date",
+            "operation_number", "work_centre_code",
+            "downtime_reason_code", "downtime_reason_description",
+            "sub_reason_code", "sub_reason_description",
+            "event_count", "total_downtime_minutes",
+            "earliest_start_datetime", "latest_end_datetime",
+        )
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment="Per-component reservation status for active process orders with available stock coverage.",
+    cluster_by=["plant_code", "order_number"],
+))
+@dlt.expect("open_quantity non-negative", "open_quantity IS NULL OR open_quantity >= 0.0")
+@dlt.expect("required_quantity non-negative", "required_quantity IS NULL OR required_quantity >= 0.0")
+def gold_process_order_component_status():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    reservations = spark.read.table(f"{silver_schema}.reservation_requirement")
+    orders = spark.read.table(f"{silver_schema}.process_order").select(
+        "order_number", "plant_code", "scheduled_start_date",
+        "is_released", "is_closed", "production_line_description",
+    )
+    # Aggregate available stock to plant × material grain (broadcast-safe: small relative to reservations)
+    stock = (
+        spark.read.table(f"{silver_schema}.batch_stock")
+        .groupBy("plant_code", "material_code")
+        .agg(F.coalesce(F.sum("unrestricted_quantity"), F.lit(0.0)).alias("available_unrestricted_qty"))
+    )
+
+    open_components = reservations.filter(
+        (~F.coalesce(F.col("is_deletion_flagged"), F.lit(False)))
+        & (F.coalesce(F.col("open_quantity"), F.lit(0.0)) > 0)
+        & (F.col("movement_type_code") == "261")   # PP-PI consumption
+    ).select(
+        "order_number", "material_code", "reservation_item", "reservation_number",
+        "required_quantity", "open_quantity", "requirement_date", "production_supply_area"
+    )
+
+    return (
+        open_components
+        .join(orders, "order_number", "inner")        # inner — only components for known active orders
+        .join(F.broadcast(stock), ["plant_code", "material_code"], "left")
+        .select(
+            "order_number", "plant_code", "material_code",
+            "production_line_description", "scheduled_start_date",
+            "is_released", "is_closed",
+            F.col("reservation_item").alias("reservation_item_number"),
+            "reservation_number",
+            "required_quantity", "open_quantity", "requirement_date",
+            "production_supply_area",
+            F.coalesce(F.col("available_unrestricted_qty"), F.lit(0.0)).alias("available_unrestricted_qty"),
+            F.when(
+                F.col("open_quantity").isNull(), F.lit(None).cast("boolean")
+            ).otherwise(
+                F.coalesce(F.col("available_unrestricted_qty"), F.lit(0.0)) >= F.col("open_quantity")
+            ).alias("is_fully_covered"),
         )
     )
 

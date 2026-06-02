@@ -63,9 +63,19 @@ Managed via Declarative Automation Bundle (DAB).
 
 ### `gold_process_order_schedule_adherence`
 - **Granularity:** 1 row per process order.
-- **Description:** Process-order schedule-adherence metrics — actual vs scheduled completion date (`is_on_time`) and confirmed yield vs ordered quantity (`is_in_full`), per completed/closed order.
+- **Description:** Process-order schedule-adherence metrics — actual vs scheduled completion date (`is_on_time`), actual vs scheduled start date (`is_started_on_time`), confirmed yield vs ordered quantity (`is_in_full`), yield-to-order fill rate (`fill_rate`), scrap-to-order scrap rate (`scrap_rate`), and production line context, per completed/closed order.
 - **Window:** All completed/closed process orders currently remain in scope; add a period grain before using this as a period-comparable KPI.
 - **Freshness:** Depends on `silver_fast_pipeline` being healthy; the Gold refresh job does not trigger the continuous fast pipeline.
+
+### `gold_order_downtime_summary`
+- **Granularity:** 1 row per `order_number × operation_number × downtime_reason_code`.
+- **Description:** Downtime events rolled up to order, operation, and reason grain with production line and material context.
+- **Freshness:** Depends on `silver_fast_pipeline` downtime events and `silver_slow_pipeline` reference mappings.
+
+### `gold_process_order_component_status`
+- **Granularity:** 1 row per `order_number × reservation_item_number`.
+- **Description:** Component consumption reservation status (BWART 261) for active orders, enriched with available unrestricted plant stock and a stock coverage check.
+- **Freshness:** Depends on `silver_fast_pipeline` reservation requirements and batch stock availability.
 
 ### `gold_process_order_operations`
 - **Granularity:** 1 row per `order_number × operation_number`.
@@ -144,6 +154,8 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 | `gold_handling_unit_summary` | plant × wh × HU status × ref-doc category | HU/SSCC/delivery/material counts, gross weight (per-HU) | EXIDV = SSCC |
 | `gold_warehouse_exceptions` | exception instance | severity (1-4), sla_hours, quantity, age | UNION of 7 integrity/aging checks |
 | `gold_warehouse_kpi_snapshot` | plant | open orders/TRs/TOs/deliveries/inbound, bin counts, util % | per-plant scorecard (mixed-grain counts) |
+| `gold_order_downtime_summary` | order × operation × downtime_reason | event_count, total_downtime_minutes, start/end datetimes | downtime_event joined with process_order |
+| `gold_process_order_component_status` | order × reservation_item_number | required/open qty, available stock, is_fully_covered | RESB BWART 261 joined with process_order & batch_stock |
 
 ## Known limitations / follow-ups (warehouse product)
 

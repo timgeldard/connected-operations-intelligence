@@ -106,6 +106,16 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_process_order_operation
   WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_process_order_operations_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_order_downtime_summary_secured AS
+  SELECT * FROM connected_plant_dev.gold_dev.gold_order_downtime_summary
+  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_order_downtime_summary_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_process_order_component_status_secured AS
+  SELECT * FROM connected_plant_dev.gold_dev.gold_process_order_component_status
+  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_process_order_component_status_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_dispensary_backlog_secured AS
   SELECT * FROM connected_plant_dev.gold_dev.gold_dispensary_backlog
   WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);

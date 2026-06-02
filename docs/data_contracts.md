@@ -62,8 +62,11 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Source Silver Tables**: `silver.process_order`
 * **Schedule-Adherence Logic**:
   * `is_on_time` = 1 if `actual_finish_date <= scheduled_finish_date`, else 0.
+  * `is_started_on_time` = 1 if `actual_start_date <= scheduled_start_date`, else 0.
   * `is_in_full` = 1 if `confirmed_yield_quantity >= order_quantity`, else 0.
-* **Note**: Measures process-order schedule adherence (actual vs scheduled finish, confirmed vs ordered qty). Unrelated to customer-delivery OTIF.
+  * `fill_rate` = ratio of `confirmed_yield_quantity / order_quantity`.
+  * `scrap_rate` = ratio of `total_scrap_quantity / order_quantity`.
+* **Note**: Measures process-order schedule adherence, starting adherence, yield-to-order fill rate, scrap rate, and production line details per completed/closed order. Unrelated to customer-delivery OTIF.
 * **Row-Level Security**: Gold is produced by a trusted aggregate pipeline. Apply plant-level controls at the consumption boundary.
 * **Freshness Expectation**: Batch triggered.
 * **Freshness Caveat**: Depends on the continuous `silver_fast_pipeline`; the Gold refresh job does not trigger that pipeline.
@@ -241,6 +244,20 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Source Silver Tables**: `silver.process_order_operation`, `silver.pi_sheet_execution`, `silver.downtime_event`, `silver.process_order`
 * **Purpose**: Operations Overview of process orders, schedule compliance, actual start/finish dates, confirm status, PI sheet execution and downtime at the operation level.
 * **Known Caveats**: `is_confirmed` is based on confirmation number presence since execution quantities are order-scoped; scoped to active/released orders only.
+
+### 21. `gold.gold_order_downtime_summary`
+* **Status**: Production-candidate
+* **Grain**: 1 row per `order_number × operation_number × downtime_reason_code`
+* **Source Silver Tables**: `silver.downtime_event`, `silver.process_order`
+* **Purpose**: Downtime events rolled to order, operation, and reason grain, with order and material context.
+* **Known Caveats**: No scope filter is applied (active or closed orders are both covered to preserve historical analysis).
+
+### 22. `gold.gold_process_order_component_status`
+* **Status**: Production-candidate
+* **Grain**: 1 row per `order_number × reservation_item_number`
+* **Source Silver Tables**: `silver.reservation_requirement` (RESB), `silver.process_order`, `silver.batch_stock`
+* **Purpose**: Per-component consumption reservation status for active orders with available unrestricted plant stock and a stock coverage check.
+* **Known Caveats**: Stock availability checks are approximate (summed across all slocs in a plant); reservation components are restricted to movement type `261` (consumption).
 
 ---
 
