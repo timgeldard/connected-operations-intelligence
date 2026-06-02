@@ -359,6 +359,7 @@ def apply_storage_bin_transform(
             F.col("b.MAXGW").alias("maximum_weight"),
             sap_flag("b.SPGRU").alias("is_blocked"),
             F.col("b.SPGRU").alias("blocking_reason_code"),
+            F.coalesce(F.col("q.LQNUM"), F.lit("__EMPTY__")).alias("_storage_bin_occupancy_key"),
             F.col("q.LQNUM").alias("quant_number"),
             strip_zeros("q.MATNR").alias("material_code"),
             strip_zeros("q.CHARG").alias("batch_number"),
@@ -691,9 +692,11 @@ class TestStorageBin:
         assert {r["material_code"] for r in rows} == {"11111", "22222"}
 
     def test_vacated_bin_ages_out_to_empty(self, spark):
-        """Core of the batch-recompute model: LQUA is current-state, so a quant that has been
-        removed in SAP simply isn't present, and the bin recomputes as empty — no ghost
-        occupancy row survives (there is no delete marker on LQUA to rely on)."""
+        """Core of the snapshot-CDC model: LQUA is current-state, so a quant removed in SAP
+        isn't present, and the snapshot emits the bin as a single __EMPTY__ row. On the next
+        run that quant's occupancy key is absent, so apply_changes_from_snapshot (SCD1) deletes
+        the prior occupied row — no ghost survives (there is no LQUA delete marker to rely on).
+        The mirror tests the snapshot shape; the key-absence delete is DLT behaviour."""
         df = apply_storage_bin_transform(
             spark,
             [make_lagp(LGNUM="001", LGTYP="002", LGPLA="VACATED-BIN")],
@@ -702,6 +705,7 @@ class TestStorageBin:
         row = first_row(df)
         assert row["quant_number"] is None
         assert row["total_quantity"] is None
+        assert row["_storage_bin_occupancy_key"] == "__EMPTY__"
 
     def test_deleted_bin_tombstone_dropped(self, spark):
         """A LAGP delete (RecordActivity='D') removes the bin from current state."""

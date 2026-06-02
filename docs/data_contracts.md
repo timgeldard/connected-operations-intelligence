@@ -32,7 +32,7 @@ This document defines the formal data contracts for the key Silver and Gold laye
 * **Join Conditions**:
   * `LAGP` reduced to current bin master (latest row per bin by `AEDATTM`/`AERUNID`/`AERECNO`, tombstones `RecordActivity='D'` dropped), then left joined with `LQUA` on `LGNUM`, `LGTYP`, `LGPLA`, and `MANDT`.
   * Joined with `T320` aggregated by `warehouse_number` (warehouses mapped to >1 plant resolve to `SHARED`).
-* **Delete Handling**: Batch current-state recompute (triggered slow tier). Because `LQUA` is a current-state snapshot, a quant removed in SAP simply isn't present on the next recompute, so emptied bins age out automatically — no quant delete marker exists or is required. Empty bins retain bin dimensions with `NULL` material/quant fields; deleted bins are removed via the `LAGP` tombstone filter.
+* **Delete Handling**: `apply_changes_from_snapshot` (SCD type 1) over the full current-state snapshot `stg_storage_bin`, on the diff key `warehouse_number` + `storage_type` + `bin_code` + `_storage_bin_occupancy_key` (`LQNUM`, or `__EMPTY__` for an unoccupied bin). `storage_bin` stays a **streaming table** so the external UC row filter persists like every other silver table. Because `LQUA` carries no delete marker, vacated quants and emptied bins age out via key-absence in the snapshot diff (the snapshot emits the bin as an `__EMPTY__` row and the prior occupied row's key is absent → deleted). Deleted bins are removed via the `LAGP` `RecordActivity='D'` tombstone filter before the snapshot.
 * **Sequence / Watermark Column**: `_replicated_at`
 * **Row-Level Security**: Filtered by primary `plant_code` (resolved dynamically).
 * **Freshness Expectation**: Daily batch (triggered) or hourly updates.

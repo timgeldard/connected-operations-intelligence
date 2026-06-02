@@ -3,18 +3,21 @@ Warehouse reference and bin master tables (Reference/Slow tier).
 
 Tables: warehouse_plant_mapping, storage_bin
 
-Both tables are recomputed as batch current-state snapshots (the slow tier is
-triggered), which is the correct model for their sources:
+Both tables resolve current state (the slow tier is triggered), which is the
+correct model for their sources:
 
 * warehouse_plant_mapping reads T320, which lives in the published
   (central_services) catalog as a VIEW — see bronze_published().
 * storage_bin's quant occupancy (LQUA) is a current-state snapshot maintained
   upstream by MERGE/DELETE: it carries no Aecorsoft CDC columns
   (AERUNID/AERECNO/RecordActivity) and is therefore NOT a valid streaming
-  source. A full recompute means vacated quants simply drop out, so emptied
-  bins age out without needing a delete marker. The bin master (LAGP) IS
-  append-only Aecorsoft CDC, so we reduce it to its current state (latest row
-  per bin, tombstones dropped) before joining.
+  source. We build the full current-state snapshot (stg_storage_bin) and feed it
+  to apply_changes_from_snapshot, which keeps storage_bin a STREAMING table (so
+  the external UC row filter persists like every other silver table) while
+  diffing snapshots: for SCD type 1 it deletes target rows whose keys are absent
+  from the latest snapshot, so vacated quants / emptied bins age out without any
+  delete marker. The bin master (LAGP) IS append-only Aecorsoft CDC, so we reduce
+  it to its current state (latest row per bin, tombstones dropped) before joining.
 """
 
 import dlt
@@ -72,22 +75,12 @@ def warehouse_plant_mapping_validation():
 
 # ── 2. STORAGE BIN ────────────────────────────────────────────────────────────
 
-@dlt.table(
-    name="storage_bin",
-    comment="Physical storage bins (LAGP) with current quant occupancy (LQUA). "
-            "Batch current-state recompute: emptied bins age out automatically.",
-    table_properties={
-        "delta.enableChangeDataFeed": "true",
-        "delta.autoOptimize.optimizeWrite": "true",
-        "delta.autoOptimize.autoCompact": "true",
-    },
-    cluster_by=["warehouse_number", "storage_type"],
-)
+@dlt.view(name="stg_storage_bin")
 @dlt.expect_all_or_drop({
     "warehouse_number present": "warehouse_number IS NOT NULL",
     "bin_code present": "bin_code IS NOT NULL"
 })
-def storage_bin():
+def stg_storage_bin():
     bin_key = ["LGNUM", "LGTYP", "LGPLA", "MANDT"]
 
     # LAGP is append-only Aecorsoft CDC (RecordActivity I/U/D, AERUNID/AERECNO sequence).
@@ -157,6 +150,10 @@ def storage_bin():
             F.col("b.SPGRU").alias("blocking_reason_code"),
 
             # ── Current quant (NULL if bin is empty)
+            # Stable occupancy key for the snapshot diff: each (bin, quant) is one row; an empty
+            # bin gets a single __EMPTY__ row. When a quant disappears from the LQUA snapshot its
+            # key is absent on the next run, so apply_changes_from_snapshot deletes it (SCD1).
+            F.coalesce(F.col("q.LQNUM"), F.lit("__EMPTY__")).alias("_storage_bin_occupancy_key"),
             F.col("q.LQNUM").alias("quant_number"),
             strip_zeros("q.MATNR").alias("material_code"),
             F.col("q.MATNR").alias("material_code_raw"),
@@ -179,3 +176,29 @@ def storage_bin():
             F.greatest(F.col("b.AEDATTM"), F.col("q.AEDATTM")).alias("_replicated_at"),
         )
     )
+
+
+# storage_bin stays a STREAMING table (so the external UC row filter applied by
+# scripts/generate_row_filter_sql.py persists, consistent with every other silver table).
+# LQUA carries no delete marker and is not a valid streaming source, so we feed the full
+# current-state snapshot (stg_storage_bin) to apply_changes_from_snapshot: it diffs successive
+# snapshots and, for SCD type 1, DELETES target rows whose keys are absent from the latest
+# snapshot — so vacated quants / emptied bins age out automatically.
+dlt.create_streaming_table(
+    name="storage_bin",
+    comment="Physical storage bins (LAGP) with current quant occupancy (LQUA). "
+            "Snapshot-CDC: emptied bins age out as their quant keys leave the snapshot.",
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+    },
+    cluster_by=["warehouse_number", "storage_type"],
+)
+
+dlt.apply_changes_from_snapshot(
+    target="storage_bin",
+    source="stg_storage_bin",
+    keys=["warehouse_number", "storage_type", "bin_code", "_storage_bin_occupancy_key"],
+    stored_as_scd_type=1,
+)

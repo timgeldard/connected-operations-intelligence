@@ -85,7 +85,7 @@ Current checks by table:
 | `batch_stock` | material_code, plant_code | unrestricted_quantity ≥ 0 |
 | `warehouse_transfer_order` | warehouse_number, transfer_order_number | — |
 | `warehouse_transfer_requirement` | warehouse_number, transfer_requirement_number | required_quantity > 0 |
-| `storage_bin` | warehouse_number, storage_type, bin_code (+ quant when occupied) | — |
+| `storage_bin` | warehouse_number, storage_type, bin_code, occupancy key (LQNUM / `__EMPTY__`) | — |
 | `downtime_event` | plant_code, start_datetime | duration ≥ 0 |
 | `quality_inspection_lot` | inspection_lot_number, plant_code | material_code present, inspection dates ordered |
 | `material` | material_code, plant_code | base_uom present, material_type present |
