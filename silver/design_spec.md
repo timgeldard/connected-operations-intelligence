@@ -120,6 +120,14 @@ Current checks by table:
 > - `process_order.production_line` (value) and `production_line_description` are derived via the SAP
 >   **classification path** `AFKO → INOB → AUSP → CAWN/CAWNT`: the order's recipe/task-list (PLKO) is
 >   classified under class type **018**; the process line is the characteristic value (AUSP-`ATWRT`)
+>   with its text in `CAWNT-ATWTB`. The order links via the recipe key
+>   `OBJEK = PLNTY + rpad(PLNNR,8) + lpad(PLNAL,2)`. A **deduped recipe-key → (value, description)**
+>   map (one row per `OBJEK`) keeps the order grain fan-out-safe; no INOB/AUSP match → `NULL`
+>   (never an error). **To confirm against live data:** the `018/PLKO` class is assumed to carry the
+>   process-line characteristic — if it carries more than one, supply that characteristic's `ATINN`
+>   to disambiguate; and CAWNT English text is read with `SPRAS = 'E'` (the SAP code; the spec's
+>   `'EN'` is the language label).
+> - `material.common_material_id` (+ `_raw`) carries the common/cross-system material code `MARA-BISMT`.
 >   with its text in `CAWNT-ATWTB`. This `OBJEK → (value, description)` map is materialised once in the
 >   **slow (triggered) tier** as `silver.recipe_process_line` (one row per `OBJEK`, fan-out-safe), so
 >   the fast `process_order` stream reads a small pre-aggregated map (`recipe_process_line_table` conf)

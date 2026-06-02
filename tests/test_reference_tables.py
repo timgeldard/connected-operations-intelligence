@@ -66,7 +66,8 @@ def apply_material_transform(
             F.col("d.MAKTX").alias("material_description"),
             F.col("g.MTART").alias("material_type"),
             F.col("g.MEINS").alias("base_uom"),
-            strip_zeros("g.BISMT").alias("old_material_number"),
+            strip_zeros("g.BISMT").alias("common_material_id"),
+            F.col("g.BISMT").alias("common_material_id_raw"),
             sap_flag("g.XCHPF").alias("batch_management_required"),
             F.col("p.AEDATTM").alias("_replicated_at"),
         )
@@ -177,12 +178,14 @@ class TestMaterial:
         )
         assert first_row(df)["batch_management_required"] is True
 
-    def test_old_material_number_from_bismt(self, spark):
-        """MARA-BISMT (old/legacy material number) is carried onto silver.material."""
+    def test_common_material_id_from_bismt(self, spark):
+        """MARA-BISMT (common/cross-system material code) is carried onto silver.material."""
         df = apply_material_transform(
             spark, [make_marc()], [make_mara(BISMT="LEGACY-007")], [make_makt()]
         )
-        assert first_row(df)["old_material_number"] == "LEGACY-007"
+        row = first_row(df)
+        assert row["common_material_id"] == "LEGACY-007"
+        assert row["common_material_id_raw"] == "LEGACY-007"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
