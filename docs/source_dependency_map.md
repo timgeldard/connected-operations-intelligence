@@ -22,6 +22,7 @@ second bronze source `published_<env>.central_services` · `seed` = config/seed 
 | `gold_stock_reconciliation` | `stock_at_location`, `storage_bin`, `material_valuation`, `storage_type_role_mapping` | MARD, LQUA/LAGP, MBEW; role map (seed) | fast + slow + seed | yes |
 | `gold_process_order_staging` | `warehouse_transfer_order`, `process_order`, `process_order_staging_reference_mapping_config` | LTAK/LTAP; AUFK/AFKO; staging trust config (seed) | fast + seed | yes |
 | `gold_process_order_staging_validation` | `warehouse_transfer_order`, `process_order` | LTAK/LTAP; AUFK/AFKO | fast | yes |
+| `gold_storage_type_role_coverage_status` | `storage_bin`, `storage_type_role_mapping` | LAGP/LQUA; role map (seed) | slow + seed | yes |
 | `gold_stock_availability` | `batch_stock` | MCHB | fast | yes |
 | `gold_bin_occupancy` | `storage_bin` | LAGP/LQUA/T320 | slow | yes |
 | `gold_stock_expiry_risk` | `storage_bin`, `material` | LAGP/LQUA; MARA/MARC | slow | medium |

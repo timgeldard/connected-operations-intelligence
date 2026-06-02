@@ -144,6 +144,88 @@ def test_stock_reconciliation_delta_and_match(spark):
     assert rows["M2"]["mismatch_class"] == "variance"
     # M1 is the higher-value line -> ABC class A
     assert rows["M1"]["abc_class"] == "A"
+    # Storage type 902 is not in the config seed → FALLBACK used → plant not trusted
+    assert rows["M1"]["is_operationally_trusted"] is False
+    assert rows["M2"]["is_operationally_trusted"] is False
+
+
+def test_stock_reconciliation_trusted_when_all_config(spark):
+    """Plant is trusted when all occupied bins have CONFIG-sourced roles (no FALLBACK)."""
+    from gold.warehouse_flow_gold import gold_stock_reconciliation
+
+    _save(spark, [
+        Row(material_code="M1", plant_code="C061", storage_location_code="1000",
+            unrestricted_quantity=100.0, quality_inspection_quantity=0.0, blocked_quantity=0.0,
+            restricted_use_quantity=0.0, in_transfer_quantity=0.0),
+    ], "stock_at_location")
+    # Only storage types that ARE in the config (100=LINESIDE, 801=LINESIDE)
+    _save(spark, [
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", material_code="M1", quant_number="Q1", total_quantity=100.0),
+        Row(plant_code="C061", warehouse_number="208", storage_type="801", material_code="M1", quant_number="Q2", total_quantity=10.0),
+    ], "storage_bin")
+    _save(spark, [
+        Row(material_code="M1", valuation_area="C061", standard_price=1.0, price_unit=1),
+    ], "material_valuation")
+
+    rows = {r["material_code"]: r for r in all_rows(gold_stock_reconciliation())}
+    assert rows["M1"]["is_operationally_trusted"] is True
+
+
+# ── Storage-type role coverage status ────────────────────────────────────────
+
+def test_storage_type_role_coverage_validated(spark):
+    """All in-use STs are config-mapped → VALIDATED."""
+    from gold.warehouse_flow_gold import gold_storage_type_role_coverage_status
+
+    _save(spark, [
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", quant_number="Q1"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="801", quant_number="Q2"),
+    ], "storage_bin")
+    # Both STs are in setup_silver mapping (100=LINESIDE, 801=LINESIDE)
+
+    rows = {(r["plant_code"], r["warehouse_number"]): r
+            for r in all_rows(gold_storage_type_role_coverage_status())}
+    r = rows[("C061", "208")]
+    assert r["total_storage_types"] == 2
+    assert r["mapped_storage_types"] == 2
+    assert r["unmapped_storage_types"] == 0
+    assert r["coverage_pct"] == 100.0
+    assert r["coverage_status"] == "VALIDATED"
+
+
+def test_storage_type_role_coverage_partial(spark):
+    """Some STs mapped, some not → PARTIAL."""
+    from gold.warehouse_flow_gold import gold_storage_type_role_coverage_status
+
+    _save(spark, [
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", quant_number="Q1"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="300", quant_number="Q2"),  # unmapped
+    ], "storage_bin")
+
+    rows = {(r["plant_code"], r["warehouse_number"]): r
+            for r in all_rows(gold_storage_type_role_coverage_status())}
+    r = rows[("C061", "208")]
+    assert r["total_storage_types"] == 2
+    assert r["mapped_storage_types"] == 1
+    assert r["unmapped_storage_types"] == 1
+    assert r["coverage_status"] == "PARTIAL"
+
+
+def test_storage_type_role_coverage_missing(spark):
+    """No config rows for this warehouse → MISSING."""
+    from gold.warehouse_flow_gold import gold_storage_type_role_coverage_status
+
+    _save(spark, [
+        Row(plant_code="P749", warehouse_number="501", storage_type="100", quant_number="Q1"),
+    ], "storage_bin")
+    # P749/501 has no config entry (setup_silver only seeds C061/208)
+
+    rows = {(r["plant_code"], r["warehouse_number"]): r
+            for r in all_rows(gold_storage_type_role_coverage_status())}
+    r = rows[("P749", "501")]
+    assert r["total_storage_types"] == 1
+    assert r["mapped_storage_types"] == 0
+    assert r["coverage_status"] == "MISSING"
 
 
 # ── Line-side stock ───────────────────────────────────────────────────────────

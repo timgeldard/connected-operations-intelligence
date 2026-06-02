@@ -174,6 +174,11 @@ CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_process_order_staging_vali
   WHERE connected_plant_prod.silver.plant_access_filter(plant_code);
 GRANT SELECT ON VIEW connected_plant_prod.gold.gold_process_order_staging_validation_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_storage_type_role_coverage_status_secured AS
+  SELECT * FROM connected_plant_prod.gold.gold_storage_type_role_coverage_status
+  WHERE connected_plant_prod.silver.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_prod.gold.gold_storage_type_role_coverage_status_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_inbound_po_backlog_secured AS
   SELECT * FROM connected_plant_prod.gold.gold_inbound_po_backlog
   WHERE connected_plant_prod.silver.plant_access_filter(plant_code);

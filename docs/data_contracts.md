@@ -162,7 +162,16 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Grain**: 1 row per plant × material
 * **Source Silver Tables**: `silver.stock_at_location` (MARD), `silver.storage_bin` (WM), `silver.material_valuation` (MBEW), `silver.storage_type_role_mapping`
 * **Purpose**: IM book stock vs WM bin stock variance, valuation, ABC class, and interim/physical WM split.
-* **Known Caveats**: coarse (plant × material) grain; no storage-location/batch/UoM normalisation (MARM); tolerance `max(0.1, 1% IM)`; treat as a directional indicator pending the detailed rebuild (ADR 009). `inventory_value` is not Material-Ledger-reconciled.
+* **Columns**: includes `is_operationally_trusted` — `true` when all occupied bins for the plant have CONFIG-sourced roles (no 9xx fallback). Check `gold_storage_type_role_coverage_status` for per-warehouse mapping gaps.
+* **Known Caveats**: coarse (plant × material) grain; no storage-location/batch/UoM normalisation (MARM); tolerance `max(0.1, 1% IM)`; treat as a directional indicator pending the detailed rebuild (ADR 009). `inventory_value` is not Material-Ledger-reconciled. Unmapped non-9xx storage types default to PHYSICAL (fallback); `is_operationally_trusted=false` flags these rows.
+
+### 14a. `gold.gold_storage_type_role_coverage_status`
+* **Status**: Production
+* **Grain**: 1 row per plant × warehouse
+* **Source Silver Tables**: `silver.storage_bin` + `silver.storage_type_role_mapping`
+* **Purpose**: per-warehouse evidence of storage-type role mapping coverage; refreshed on every Gold pipeline run.
+* **Columns**: `plant_code`, `warehouse_number`, `total_storage_types`, `mapped_storage_types`, `unmapped_storage_types`, `coverage_pct`, `coverage_status`
+* **Status values**: `VALIDATED` (all in-use STs config-mapped), `PARTIAL` (some mapped, some not), `MISSING` (no config rows for this warehouse).
 
 ### 15. `gold.gold_process_order_staging`
 * **Status**: Pilot-grade (assumption validated — see `gold_process_order_staging_validation`)

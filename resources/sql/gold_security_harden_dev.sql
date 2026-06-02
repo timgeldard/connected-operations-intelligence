@@ -18,6 +18,7 @@ REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_delivery_pick_status FR
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_reconciliation FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_process_order_staging FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_process_order_staging_validation FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_storage_type_role_coverage_status FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_inbound_po_backlog FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_handling_unit_summary FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_warehouse_exceptions FROM `users`;
