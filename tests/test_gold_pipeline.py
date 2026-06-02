@@ -281,39 +281,54 @@ def test_gold_process_order_component_status(spark: SparkSession):
     res_data = [
         Row(reservation_number="R01", reservation_item="0001", order_number="10", material_code="MAT01",
             required_quantity=50.0, open_quantity=30.0, requirement_date=date(2026, 6, 1),
-            production_supply_area="PSA01", movement_type_code="261", is_deletion_flagged=False),
+            storage_location_code="SL01", production_supply_area="PSA01",
+            movement_type_code="261", is_deletion_flagged=False),
+        # Same plant/material but different storage location: plant-wide stock must not cover it.
+        Row(reservation_number="R01", reservation_item="0004", order_number="10", material_code="MAT01",
+            required_quantity=50.0, open_quantity=30.0, requirement_date=date(2026, 6, 1),
+            storage_location_code="SL02", production_supply_area="PSA01",
+            movement_type_code="261", is_deletion_flagged=False),
         # Deleted reservation (should be filtered out)
         Row(reservation_number="R01", reservation_item="0002", order_number="10", material_code="MAT01",
             required_quantity=50.0, open_quantity=30.0, requirement_date=date(2026, 6, 1),
-            production_supply_area="PSA01", movement_type_code="261", is_deletion_flagged=True),
+            storage_location_code="SL01", production_supply_area="PSA01",
+            movement_type_code="261", is_deletion_flagged=True),
         # Non-261 movement (should be filtered out)
         Row(reservation_number="R01", reservation_item="0003", order_number="10", material_code="MAT01",
             required_quantity=50.0, open_quantity=30.0, requirement_date=date(2026, 6, 1),
-            production_supply_area="PSA01", movement_type_code="101", is_deletion_flagged=False),
+            storage_location_code="SL01", production_supply_area="PSA01",
+            movement_type_code="101", is_deletion_flagged=False),
     ]
     spark.createDataFrame(res_data).write.mode("overwrite").saveAsTable("silver.reservation_requirement")
 
     # Mock batch_stock
     stock_data = [
-        # Available unrestricted stock in the plant = 40.0 (covers 30.0 open_quantity)
-        Row(plant_code="1000", material_code="MAT01", unrestricted_quantity=40.0),
+        # Only SL01 covers the first reservation; SL02 has no stock for the same material.
+        Row(plant_code="1000", storage_location_code="SL01", material_code="MAT01", unrestricted_quantity=40.0),
     ]
     spark.createDataFrame(stock_data).write.mode("overwrite").saveAsTable("silver.batch_stock")
 
     res_df = gold_process_order_component_status()
     results = all_rows(res_df)
 
-    assert len(results) == 1
-    row = results[0]
+    assert len(results) == 2
+    rows = {r["reservation_item_number"]: r for r in results}
+    row = rows["0001"]
     assert row["order_number"] == "10"
     assert row["plant_code"] == "1000"
     assert row["material_code"] == "MAT01"
     assert row["order_material_code"] == "FG01"
     assert row["reservation_item_number"] == "0001"
     assert row["reservation_number"] == "R01"
+    assert row["storage_location_code"] == "SL01"
     assert row["required_quantity"] == 50.0
     assert row["open_quantity"] == 30.0
     assert row["requirement_date"] == date(2026, 6, 1)
     assert row["production_supply_area"] == "PSA01"
     assert row["available_unrestricted_qty"] == 40.0
     assert row["is_fully_covered"] is True
+
+    uncovered = rows["0004"]
+    assert uncovered["storage_location_code"] == "SL02"
+    assert uncovered["available_unrestricted_qty"] == 0.0
+    assert uncovered["is_fully_covered"] is False

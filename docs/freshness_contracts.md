@@ -28,9 +28,10 @@ sync with `FRESHNESS_CONTRACTS` in `gold/freshness.py`.
 - **`gold_data_freshness_status`** — one row per table above: `latest_replicated_at`,
   `max_lag_minutes` (now − latest), `freshness_sla_minutes`, `freshness_status`, `checked_at`.
   Surface this on the operations dashboard so users can see "data fresh as of …" / stale warnings.
-- **`gold_critical_freshness_gate`** — `@dlt.expect_or_fail` that fails the Gold run only when a
-  **critical** table is `STALE` (`stale_critical_table_count = 0`). Non-critical lag is reported but
-  does not block, avoiding false pipeline failures while still catching silent critical-data outages.
+- **`gold_critical_freshness_gate`** — `@dlt.expect_or_fail` that fails the Gold run when a
+  **critical** table is `STALE` or `NO_DATA` (`blocking_critical_table_count = 0`). Non-critical lag
+  is reported but does not block, avoiding false pipeline failures while still catching silent
+  critical-data outages and empty critical inputs.
 
 ## Notes / follow-ups
 - SLAs are initial estimates; tune per operational tolerance.

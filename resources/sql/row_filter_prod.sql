@@ -76,3 +76,12 @@ ALTER TABLE connected_plant_prod.silver.purchase_order
 
 ALTER TABLE connected_plant_prod.silver.handling_unit
   SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_prod.silver.storage_type_role_mapping
+  SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_prod.silver.warehouse_plant_mapping
+  SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_prod.silver.warehouse_storage_location_mapping
+  SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);

@@ -124,20 +124,64 @@ def test_delivery_pick_fraction(spark):
     _save(spark, [
         Row(delivery_number="80001", item_number="10", plant_code="C061", warehouse_number="208",
             delivery_type="LF", sold_to_customer="C1", planned_goods_issue_date=None,
-            delivery_quantity=60.0, picked_quantity=30.0, actual_goods_issue_date=None),
+            delivery_quantity=6.0, sales_uom="CS", base_uom="KG",
+            delivery_quantity_base=60.0, actual_delivered_base_quantity=30.0,
+            picked_quantity=30.0, actual_goods_issue_date=None),
         Row(delivery_number="80001", item_number="20", plant_code="C061", warehouse_number="208",
             delivery_type="LF", sold_to_customer="C1", planned_goods_issue_date=None,
-            delivery_quantity=40.0, picked_quantity=40.0, actual_goods_issue_date=None),
+            delivery_quantity=4.0, sales_uom="CS", base_uom="KG",
+            delivery_quantity_base=40.0, actual_delivered_base_quantity=40.0,
+            picked_quantity=40.0, actual_goods_issue_date=None),
+        Row(delivery_number="80002", item_number="10", plant_code="C061", warehouse_number="208",
+            delivery_type="LF", sold_to_customer="C1", planned_goods_issue_date=None,
+            delivery_quantity=1.0, sales_uom="PAL", base_uom="KG",
+            delivery_quantity_base=100.0, actual_delivered_base_quantity=50.0,
+            picked_quantity=50.0, actual_goods_issue_date=None),
+        Row(delivery_number="80002", item_number="20", plant_code="C061", warehouse_number="208",
+            delivery_type="LF", sold_to_customer="C1", planned_goods_issue_date=None,
+            delivery_quantity=1.0, sales_uom="EA", base_uom="EA",
+            delivery_quantity_base=1.0, actual_delivered_base_quantity=1.0,
+            picked_quantity=1.0, actual_goods_issue_date=None),
+        Row(delivery_number="80003", item_number="10", plant_code="C061", warehouse_number="208",
+            delivery_type="LF", sold_to_customer="C1", planned_goods_issue_date=None,
+            delivery_quantity=2.0, sales_uom="CS", base_uom="KG",
+            delivery_quantity_base=None, actual_delivered_base_quantity=20.0,
+            picked_quantity=20.0, actual_goods_issue_date=None),
+        Row(delivery_number="80003", item_number="20", plant_code="C061", warehouse_number="208",
+            delivery_type="LF", sold_to_customer="C1", planned_goods_issue_date=None,
+            delivery_quantity=4.0, sales_uom="CS", base_uom="KG",
+            delivery_quantity_base=40.0, actual_delivered_base_quantity=20.0,
+            picked_quantity=20.0, actual_goods_issue_date=None),
     ], "outbound_delivery")
 
-    rows = all_rows(gold_delivery_pick_status())
-    assert len(rows) == 1
-    r = rows[0]
+    rows = {r["delivery_number"]: r for r in all_rows(gold_delivery_pick_status())}
+    assert len(rows) == 3
+    r = rows["80001"]
     assert r["line_count"] == 2
     assert r["delivery_qty"] == 100.0
     assert r["picked_qty"] == 70.0
+    assert r["base_uom_count"] == 1
+    assert r["null_delivery_base_count"] == 0
+    assert r["has_mixed_base_uom"] is False
+    assert r["has_unconverted_delivery_qty"] is False
     assert r["pick_fraction"] == 0.7
     assert r["is_shipped"] is False
+
+    mixed = rows["80002"]
+    assert mixed["base_uom_count"] == 2
+    assert mixed["null_delivery_base_count"] == 0
+    assert mixed["has_mixed_base_uom"] is True
+    assert mixed["has_unconverted_delivery_qty"] is False
+    assert mixed["pick_fraction"] is None
+
+    unconverted = rows["80003"]
+    assert unconverted["base_uom_count"] == 1
+    assert unconverted["null_delivery_base_count"] == 1
+    assert unconverted["has_mixed_base_uom"] is False
+    assert unconverted["has_unconverted_delivery_qty"] is True
+    assert unconverted["delivery_qty"] == 40.0
+    assert unconverted["picked_qty"] == 40.0
+    assert unconverted["pick_fraction"] is None
 
 
 # ── Stock reconciliation ──────────────────────────────────────────────────────

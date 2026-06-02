@@ -74,7 +74,7 @@ Managed via Declarative Automation Bundle (DAB).
 
 ### `gold_process_order_component_status`
 - **Granularity:** 1 row per `order_number × reservation_item_number`.
-- **Description:** Component consumption reservation status (BWART 261) for active orders, enriched with available unrestricted plant stock and a stock coverage check.
+- **Description:** Component consumption reservation status (BWART 261) for active orders, enriched with available unrestricted stock in the reservation storage location and a stock coverage check.
 - **Freshness:** Depends on `silver_fast_pipeline` reservation requirements and batch stock availability.
 
 ### `gold_process_order_operations`
@@ -146,7 +146,7 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 | `gold_stock_expiry_risk` | plant × material × batch × UOM | expiry buckets (expired/<7/7-30/30-90/OK) | bin stock joined to shelf-life |
 | `gold_dispensary_backlog` | plant × supply area × wh | open task/order count, open/required qty, urgency dates | RESB BWART 261, not deleted, open_qty>0 |
 | `gold_lineside_stock` | plant × wh × storage_type × material × batch × UOM | total/available qty, min days-to-expiry | occupied bins in line-side STs (`_LINESIDE_PREDICATE`) |
-| `gold_delivery_pick_status` | delivery | pick_fraction, line_count, is_shipped, `risk_band` | LIPS qty-based pick % (not TO-level); RAG: shipped→green, null GI→grey |
+| `gold_delivery_pick_status` | delivery | pick_fraction, line_count, is_shipped, `risk_band` | LIPS base-UoM pick % (not TO-level; null for mixed-base-UoM deliveries); RAG: shipped→green, null GI→grey |
 | `gold_stock_reconciliation` **[PILOT]** | plant × material | im/wm totals, delta, inventory_value, mismatch_class, abc_class | IM(MARD) vs WM(bins); coarse grain — directional only; tolerance = max(0.1, 1% IM); abc 'U' = unpriced |
 | `gold_process_order_staging` **[PILOT]** | process order | staging_fraction, to_items done/total, `risk_band` | BETYP='F' TOs; BENUM↔AUFNR validated 100% across UAT warehouses (2026-06-02) |
 | `gold_process_order_staging_validation` | plant × warehouse | total_to_headers, f_type_to_headers, benum_match_pct, validation_status | persistent VALIDATED/NOT_VALIDATED/NOT_APPLICABLE per plant/warehouse |
@@ -155,14 +155,14 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 | `gold_warehouse_exceptions` | exception instance | severity (1-4), sla_hours, quantity, age | UNION of 7 integrity/aging checks |
 | `gold_warehouse_kpi_snapshot` | plant | open orders/TRs/TOs/deliveries/inbound, bin counts, util % | per-plant scorecard (mixed-grain counts) |
 | `gold_order_downtime_summary` | order × operation × downtime_reason | event_count, total_downtime_minutes, start/end datetimes | downtime_event joined with process_order |
-| `gold_process_order_component_status` | order × reservation_item_number | required/open qty, available stock, is_fully_covered | RESB BWART 261 joined with process_order & batch_stock |
+| `gold_process_order_component_status` | order × reservation_item_number | required/open qty, storage-location stock, is_fully_covered | RESB BWART 261 joined with process_order & batch_stock |
 
 ## Known limitations / follow-ups (warehouse product)
 
 - **Stock reconciliation grain is coarse.** `gold_stock_reconciliation` compares IM (MARD) vs WM at **plant × material** only. It does not yet map WM-managed storage locations, reconcile by batch (MARD is non-batch), or normalise UoM. A `max(0.1, 1% of IM)` tolerance suppresses rounding noise, but a v2 should reconcile at plant × storage-location × warehouse × material × batch × stock-category with a WM-managed-sloc mapping and UoM normalisation.
 - **Storage-type role coverage is partial.** `gold_lineside_stock` and `gold_stock_reconciliation` read roles from `silver.storage_type_role_mapping` (governed config, backed by `storage_type_role_mapping_config`). Unmapped storage types fall back to a 9xx-prefix heuristic (INTERIM) or PHYSICAL. UAT bronze profiling (2026-06-02): 140 warehouses / 3,464 ST combos; only C061/warehouse 208 is partially seeded (6 of 28 non-9xx types mapped). `gold_stock_reconciliation.is_operationally_trusted = false` for any plant with unmapped STs. `gold_storage_type_role_coverage_status` surfaces VALIDATED / PARTIAL / MISSING per warehouse on every Gold run. Do not add roles based on profiling alone — role assignment requires WM config owner sign-off per warehouse.
 - **`gold_process_order_staging`** is scoped to BETYP='F' TOs (LTAK reference type for process-order staging). UAT validation (2026-06-02) found 100% BENUM↔AUFNR match across all warehouses. `gold_process_order_staging_validation` provides persistent per-plant/warehouse status on every Gold run.
-- **`gold_inbound_po_backlog` is a PO backlog** (renamed from `gold_inbound_gr_status`), not goods-receipt history (no EKBE/MSEG GR, schedule lines, or remaining qty). **`gold_delivery_pick_status`** is delivery-quantity based, not TO-level picking status. Names reflect this.
+- **`gold_inbound_po_backlog` is a PO backlog** (renamed from `gold_inbound_gr_status`), not goods-receipt history (no EKBE/MSEG GR, schedule lines, or remaining qty). **`gold_delivery_pick_status`** is delivery-quantity based, not TO-level picking status; it uses base-UoM quantities and suppresses delivery-level `pick_fraction` when lines mix base UoMs. Names reflect this.
 - **Gold / snapshot security (ADR 012).** Gold MVs stay trusted (row filters off to avoid MV full-refresh, per ADR-005); plant access on the MVs is served through **`<table>_secured` views** that apply `plant_access_filter(plant_code)` (`scripts/generate_gold_security_sql.py` → `resources/sql/gold_security_<env>.sql`) — the `users` group is granted the views, not the base tables. **Snapshot tables are physical Delta tables and carry a real plant row filter applied in-job** by `gold/snapshots/warehouse_snapshot.py`, which drops the filter during its own maintenance DELETEs and re-applies it (so the run-as principal needs MODIFY + EXECUTE on the function, not `silver_admin`).
 - **CDF on batch dimensions.** `plant`, `customer`, `vendor`, `storage_type`, `stock_at_location`, `material_valuation`, `handling_unit` enable Change Data Feed for consistency with the existing reference dims and potential downstream consumers, despite having no streaming consumer in this layer today.
 - **SSCC fidelity.** Handling units (VEKP/VEPO) approximate SSCC; the WMA-E-50 execution tables (`ZWM_SSCC_CREATE`, `ZTR_SPLIT`, `ZSCMWM_RFCTR`, `COCH`) are not replicated (see ADR 007).
