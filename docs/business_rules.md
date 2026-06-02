@@ -27,23 +27,16 @@ Conventions: `silver` / `gold` below are the env-qualified schemas
 - **Status:** UAT verified (AUTYP). AUART allowlist: Unverified. **Owner:** PP process owner.
 
 ## BR-WM-002 — Transfer-order source reference = process-order number
-- **Used by:** `gold_process_order_staging`
-- **Source fields:** `warehouse_transfer_order.source_reference_number` (LTAK-BENUM) ↔ `process_order.order_number`
-- **Assumption:** for staging TOs, the source reference holds the process-order number. TOs whose source ref is not a process order (replenishment/returns) find no match and are dropped.
-- **Plant applicability:** **must be confirmed per plant / warehouse** (LTAK reference-type config varies).
-- **Validation:** how many TOs' source refs actually match a process order.
-  ```sql
-  SELECT t.plant_code,
-         COUNT(*) AS to_items,
-         SUM(CASE WHEN p.order_number IS NOT NULL THEN 1 ELSE 0 END) AS matched_to_order,
-         ROUND(100.0 * SUM(CASE WHEN p.order_number IS NOT NULL THEN 1 ELSE 0 END) / COUNT(*), 1) AS pct_matched
-  FROM silver.warehouse_transfer_order t
-  LEFT JOIN silver.process_order p ON t.source_reference_number = p.order_number
-  GROUP BY t.plant_code ORDER BY to_items DESC;
-  -- a very low pct_matched in a plant means the mapping assumption does not hold there
-  ```
-- **Risk:** non-PP/PI staging TOs silently excluded; staging % and `risk_band` wrong where the mapping differs.
-- **Status:** Unverified. **Owner:** Warehouse process owner.
+- **Used by:** `gold_process_order_staging`, `gold_process_order_staging_validation`
+- **Source fields:** `warehouse_transfer_order.source_reference_number` (LTAK-BENUM) ↔ `process_order.order_number`; scoped to `source_reference_type = 'F'` (LTAK-BETYP).
+- **Assumption:** for staging TOs, LTAK-BETYP='F' identifies process-order staging and BENUM holds the process-order AUFNR. TOs with other BETYP values are not process-order staging and are excluded.
+- **Plant applicability:** validated for all warehouses with F-type staging TOs (see `gold_process_order_staging_validation`). Plants with no BETYP='F' TOs are NOT_APPLICABLE.
+- **Live validation (connected_plant_uat, 2026-06-02):**
+  - BETYP='F' ranges from ~5% (warehouse 104) to ~24% (warehouse 102) of TOs per warehouse; the remaining TOs use blank/'X'/'P'/'L'/'D'.
+  - BENUM↔AUFNR (AUTYP='40') match rate: **100% across all warehouses** with F-type TOs (zero anomalies in Q2b scan).
+  - Persistent validation: `gold_process_order_staging_validation` computes per-plant/warehouse VALIDATED / NOT_VALIDATED / NOT_APPLICABLE status on every Gold pipeline run.
+- **Risk:** non-PP/PI staging TOs silently excluded; staging % and `risk_band` wrong where the mapping differs. AUART allowlist (BR-PP-001) may include setup/cleaning orders in staging counts.
+- **Status:** UAT validated (BETYP='F' scope + BENUM match). **Owner:** Warehouse process owner.
 
 ## BR-WM-003 — Storage-type roles come from `storage_type_role_mapping` (9xx interim fallback)
 - **Used by:** `gold_lineside_stock` (role `LINESIDE`), `gold_stock_reconciliation` (interim vs physical split)

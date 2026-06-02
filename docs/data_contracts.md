@@ -165,11 +165,19 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Known Caveats**: coarse (plant × material) grain; no storage-location/batch/UoM normalisation (MARM); tolerance `max(0.1, 1% IM)`; treat as a directional indicator pending the detailed rebuild (ADR 009). `inventory_value` is not Material-Ledger-reconciled.
 
 ### 15. `gold.gold_process_order_staging`
-* **Status**: Pilot-grade
+* **Status**: Pilot-grade (assumption validated — see `gold_process_order_staging_validation`)
 * **Grain**: 1 row per process order
 * **Source Silver Tables**: `silver.warehouse_transfer_order` + `silver.process_order`
 * **Purpose**: component staging completion (confirmed staging TOs vs total) and start risk.
-* **Known Caveats**: **assumes TO source reference = process-order number** (LTAK-BENUM) — unconfirmed per plant. The MV is deterministic; `days_to_start` and `risk_band` are served at query time by the **`gold_process_order_staging_live`** view.
+* **Known Caveats**: Scoped to LTAK BETYP='F' TOs; BENUM↔AUFNR match validated at 100% across all UAT warehouses (2026-06-02). Plants with no BETYP='F' TOs show `to_items_total=0` and `staging_fraction=NULL` (classified NOT_APPLICABLE in the validation table). The MV is deterministic; `days_to_start` and `risk_band` are served at query time by the **`gold_process_order_staging_live`** view.
+
+### 15a. `gold.gold_process_order_staging_validation`
+* **Status**: Production
+* **Grain**: 1 row per plant × warehouse
+* **Source Silver Tables**: `silver.warehouse_transfer_order` + `silver.process_order`
+* **Purpose**: per-plant/warehouse evidence that the BETYP='F' + BENUM→AUFNR assumption holds; refreshed on every Gold pipeline run.
+* **Columns**: `plant_code`, `warehouse_number`, `sample_window_start`, `sample_window_end`, `total_to_headers`, `f_type_to_headers`, `f_type_benum_matched`, `benum_match_pct`, `validation_status`
+* **Status values**: `VALIDATED` (≥95% BENUM match), `NOT_VALIDATED` (F-type TOs present but low match), `NOT_APPLICABLE` (no F-type TOs for this plant/warehouse).
 
 ### 16. `gold.gold_inbound_po_backlog`
 * **Status**: Directional only

@@ -23,6 +23,14 @@ def get_silver_schema(spark: SparkSession) -> str:
     return f"{catalog}.{schema}"
 
 
+# LTAK reference type that identifies process-order staging TOs.  When BETYP='F',
+# BENUM holds the AUFNR (process-order number).  All other BETYP values (blank,
+# 'X', 'P', 'L', 'D', …) do not carry a process-order reference in BENUM.
+# Validated live (connected_plant_uat, 2026-06-02): 100% BENUM↔AUFNR match across
+# 105 warehouse/plant combos; see gold_process_order_staging_validation.
+STAGING_REFERENCE_TYPE = "F"
+
+
 def gold_table_args(comment: str, cluster_by: list) -> dict:
     """Return common decorator arguments, applying the plant row filter if configured.
 

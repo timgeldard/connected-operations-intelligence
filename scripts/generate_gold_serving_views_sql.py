@@ -56,6 +56,7 @@ SERVING_VIEWS = {
         ("days_to_start", _DAYS_TO_START),
         ("risk_band",
          "CASE "
+         "WHEN NOT coalesce(b.is_operationally_trusted, false) THEN 'unvalidated' "
          "WHEN b.to_items_total = 0 THEN 'grey' "
          f"WHEN {_DAYS_TO_START} IS NULL THEN 'grey' "
          f"WHEN coalesce(b.staging_fraction, 0.0) < 0.3 AND {_DAYS_TO_START} <= 0 THEN 'red' "

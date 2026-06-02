@@ -48,18 +48,20 @@ def test_process_order_staging_live_risk_band(spark: SparkSession):
     today = _today(spark)
     # First row fully populated so Spark infers column types cleanly (later rows may hold nulls).
     base = spark.createDataFrame([
-        Row(order_number="O2", to_items_total=4, staging_fraction=0.2, scheduled_start_date=today),
-        Row(order_number="O0", to_items_total=0, staging_fraction=None, scheduled_start_date=today),
-        Row(order_number="O1", to_items_total=4, staging_fraction=0.5, scheduled_start_date=None),
-        Row(order_number="O3", to_items_total=4, staging_fraction=0.5, scheduled_start_date=today + timedelta(days=1)),
-        Row(order_number="O4", to_items_total=4, staging_fraction=0.9, scheduled_start_date=today + timedelta(days=5)),
+        Row(order_number="O2", to_items_total=4, staging_fraction=0.2, scheduled_start_date=today,    is_operationally_trusted=True),
+        Row(order_number="O0", to_items_total=0, staging_fraction=None, scheduled_start_date=today,   is_operationally_trusted=True),
+        Row(order_number="O1", to_items_total=4, staging_fraction=0.5, scheduled_start_date=None,     is_operationally_trusted=True),
+        Row(order_number="O3", to_items_total=4, staging_fraction=0.5, scheduled_start_date=today + timedelta(days=1), is_operationally_trusted=True),
+        Row(order_number="O4", to_items_total=4, staging_fraction=0.9, scheduled_start_date=today + timedelta(days=5), is_operationally_trusted=True),
+        Row(order_number="OU", to_items_total=4, staging_fraction=0.9, scheduled_start_date=today + timedelta(days=5), is_operationally_trusted=False),
     ])
     rows = {r["order_number"]: r for r in all_rows(_serve(spark, "gold_process_order_staging", base))}
-    assert rows["O0"]["risk_band"] == "grey"    # no staging TOs
-    assert rows["O1"]["risk_band"] == "grey"    # no scheduled start
-    assert rows["O2"]["risk_band"] == "red"     # frac < 0.3 and starts today
-    assert rows["O3"]["risk_band"] == "amber"   # frac < 0.7 and starts tomorrow
+    assert rows["O0"]["risk_band"] == "grey"         # no staging TOs
+    assert rows["O1"]["risk_band"] == "grey"         # no scheduled start
+    assert rows["O2"]["risk_band"] == "red"          # frac < 0.3 and starts today
+    assert rows["O3"]["risk_band"] == "amber"        # frac < 0.7 and starts tomorrow
     assert rows["O4"]["risk_band"] == "green"
+    assert rows["OU"]["risk_band"] == "unvalidated"  # plant not validated — no trust
     assert rows["O2"]["days_to_start"] == 0
     assert rows["O4"]["days_to_start"] == 5
 

@@ -25,7 +25,7 @@ CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_process_order_staging_live
 SELECT
   b.*,
   datediff(b.scheduled_start_date, current_date()) AS days_to_start,
-  CASE WHEN b.to_items_total = 0 THEN 'grey' WHEN datediff(b.scheduled_start_date, current_date()) IS NULL THEN 'grey' WHEN coalesce(b.staging_fraction, 0.0) < 0.3 AND datediff(b.scheduled_start_date, current_date()) <= 0 THEN 'red' WHEN coalesce(b.staging_fraction, 0.0) < 0.7 AND datediff(b.scheduled_start_date, current_date()) <= 1 THEN 'amber' ELSE 'green' END AS risk_band
+  CASE WHEN NOT coalesce(b.is_operationally_trusted, false) THEN 'unvalidated' WHEN b.to_items_total = 0 THEN 'grey' WHEN datediff(b.scheduled_start_date, current_date()) IS NULL THEN 'grey' WHEN coalesce(b.staging_fraction, 0.0) < 0.3 AND datediff(b.scheduled_start_date, current_date()) <= 0 THEN 'red' WHEN coalesce(b.staging_fraction, 0.0) < 0.7 AND datediff(b.scheduled_start_date, current_date()) <= 1 THEN 'amber' ELSE 'green' END AS risk_band
 FROM connected_plant_prod.gold.gold_process_order_staging_secured AS b;
 GRANT SELECT ON VIEW connected_plant_prod.gold.gold_process_order_staging_live TO `users`;
 

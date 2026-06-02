@@ -16,7 +16,7 @@ from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, StructField, StructType
 
-from silver.helpers import sap_date, sap_datetime, sap_flag, strip_zeros
+from silver.helpers import PP_PI_ORDER_CATEGORY, sap_date, sap_datetime, sap_flag, strip_zeros
 from tests.conftest import all_rows, first_row
 
 # Explicit schemas prevent inference failures when rows contain None fields
@@ -125,7 +125,7 @@ def apply_process_order_transform(
             ) == F.col("pl._objek"),
             "left",
         )
-        .filter(F.col("k.AUTYP") == "40")
+        .filter(F.col("k.AUTYP") == PP_PI_ORDER_CATEGORY)
         .select(
             strip_zeros("k.AUFNR").alias("order_number"),
             F.col("k.WERKS").alias("plant_code"),
@@ -507,3 +507,63 @@ class TestProcessOrderLineEnrichment:
             recipe_map_rows=[make_recipe_line(recipe_object_key="25000012301")],
         )
         assert len(all_rows(df)) == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Process-order scope rule guard
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestProcessOrderScopeRule:
+    """Guard against code↔doc drift on the PP-PI order-scope constant.
+
+    BR-PP-001: process orders are AUFK AUTYP='40'.  AUTYP='10' returns zero rows in
+    Kerry's SAP configuration.  A wrong value here silently empties every production KPI.
+    """
+
+    def test_pp_pi_order_category_is_40(self):
+        """Explicit pin: PP_PI_ORDER_CATEGORY must be '40' (verified live against
+        connected_plant_uat.sap).  Fails fast if someone changes the constant."""
+        assert PP_PI_ORDER_CATEGORY == "40"
+
+    def test_autyp_10_excluded(self, spark):
+        """AUTYP='10' (the initially wrong value) must yield zero rows."""
+        df = apply_process_order_transform(
+            spark,
+            [make_aufk(AUTYP="10", AUART="ZI01", AUFNR="000000000099")],
+            [],
+        )
+        assert len(all_rows(df)) == 0
+
+    def test_business_rules_doc_matches_constant(self):
+        """docs/business_rules.md (BR-PP-001) must cite the same AUTYP value as
+        PP_PI_ORDER_CATEGORY in silver/helpers.py — the docs↔code drift guard."""
+        import pathlib
+        import re
+
+        doc = pathlib.Path(__file__).parent.parent / "docs" / "business_rules.md"
+        text = doc.read_text(encoding="utf-8")
+        m = re.search(r'PP_PI_ORDER_CATEGORY\s*=\s*"([^"]+)"', text)
+        assert m is not None, (
+            "docs/business_rules.md BR-PP-001 does not contain a PP_PI_ORDER_CATEGORY reference"
+        )
+        assert m.group(1) == PP_PI_ORDER_CATEGORY, (
+            f"docs/business_rules.md cites AUTYP '{m.group(1)}' "
+            f"but silver/helpers.PP_PI_ORDER_CATEGORY = '{PP_PI_ORDER_CATEGORY}'"
+        )
+
+    def test_runbook_doc_matches_constant(self):
+        """docs/runbook.md §7 must cite PP_PI_ORDER_CATEGORY with the correct value.
+        This is the test that would have caught the P0 doc↔code drift (runbook had '10')."""
+        import pathlib
+        import re
+
+        doc = pathlib.Path(__file__).parent.parent / "docs" / "runbook.md"
+        text = doc.read_text(encoding="utf-8")
+        m = re.search(r'PP_PI_ORDER_CATEGORY\s*=\s*"([^"]+)"', text)
+        assert m is not None, (
+            "docs/runbook.md §7 does not contain a PP_PI_ORDER_CATEGORY reference"
+        )
+        assert m.group(1) == PP_PI_ORDER_CATEGORY, (
+            f"docs/runbook.md cites AUTYP '{m.group(1)}' "
+            f"but silver/helpers.PP_PI_ORDER_CATEGORY = '{PP_PI_ORDER_CATEGORY}'"
+        )

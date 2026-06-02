@@ -23,6 +23,13 @@ def setup_silver(spark: SparkSession):
         Row(plant_code="C061", warehouse_number="208", storage_type="100", role="LINESIDE"),
         Row(plant_code="C061", warehouse_number="208", storage_type="801", role="LINESIDE"),
     ], "storage_type_role_mapping")
+
+    # Seed staging reference mapping: C061 is trusted (validated warehouse); P001 absent = untrusted
+    _save(spark, [
+        Row(plant_code="C061", warehouse_number="208",
+            staging_reference_strategy="BENUM_EQUALS_AUFNR", is_validated=True,
+            validated_by="profiling-2026-06-02", validated_at=None, notes=None),
+    ], "process_order_staging_reference_mapping_config")
     
     yield
     spark.sql("DROP DATABASE IF EXISTS silver CASCADE")
@@ -140,6 +147,131 @@ def test_stock_reconciliation_delta_and_match(spark):
 
 
 # ── Line-side stock ───────────────────────────────────────────────────────────
+
+# ── Process order staging trust (is_operationally_trusted) ───────────────────
+
+def test_staging_trusted_for_configured_plant(spark):
+    """Plant in config with is_validated=true → is_operationally_trusted=true."""
+    from gold.warehouse_flow_gold import gold_process_order_staging
+
+    _save(spark, [
+        Row(order_number="1001", plant_code="C061", material_code="M1", order_quantity=100.0,
+            scheduled_start_date=None, scheduled_finish_date=None,
+            is_released=True, is_closed=False),
+    ], "process_order")
+    _save(spark, [
+        Row(warehouse_number="208", transfer_order_number="T1", item_number="1",
+            source_reference_type="F", source_reference_number="1001",
+            item_status="Open", created_datetime=None),
+    ], "warehouse_transfer_order")
+
+    rows = {r["order_number"]: r for r in all_rows(gold_process_order_staging())}
+    assert rows["1001"]["is_operationally_trusted"] is True
+
+
+def test_staging_untrusted_for_unconfigured_plant(spark):
+    """Plant absent from config → is_operationally_trusted=false (no silent default to trusted)."""
+    from gold.warehouse_flow_gold import gold_process_order_staging
+
+    _save(spark, [
+        Row(order_number="2001", plant_code="UNKNOWN", material_code="M1", order_quantity=50.0,
+            scheduled_start_date=None, scheduled_finish_date=None,
+            is_released=True, is_closed=False),
+    ], "process_order")
+    _save(spark, [], "warehouse_transfer_order")
+
+    rows = {r["order_number"]: r for r in all_rows(gold_process_order_staging())}
+    assert rows["2001"]["is_operationally_trusted"] is False
+
+
+# ── Process order staging validation ─────────────────────────────────────────
+
+def test_staging_validation_validated(spark):
+    """A warehouse with F-type TOs that all match process orders → VALIDATED."""
+    from gold.warehouse_flow_gold import gold_process_order_staging_validation
+
+    _save(spark, [
+        Row(plant_code="C061", warehouse_number="208", transfer_order_number="T1",
+            source_reference_type="F", source_reference_number="1001", created_datetime=None),
+        Row(plant_code="C061", warehouse_number="208", transfer_order_number="T1",
+            source_reference_type="F", source_reference_number="1001", created_datetime=None),  # dupe item same TO
+        Row(plant_code="C061", warehouse_number="208", transfer_order_number="T2",
+            source_reference_type="F", source_reference_number="1002", created_datetime=None),
+        Row(plant_code="C061", warehouse_number="208", transfer_order_number="T3",
+            source_reference_type="X", source_reference_number="9999", created_datetime=None),  # non-F
+    ], "warehouse_transfer_order")
+    _save(spark, [
+        Row(order_number="1001"), Row(order_number="1002"),
+    ], "process_order")
+
+    rows = {(r["plant_code"], r["warehouse_number"]): r
+            for r in all_rows(gold_process_order_staging_validation())}
+    r = rows[("C061", "208")]
+    assert r["total_to_headers"] == 3       # T1, T2, T3
+    assert r["f_type_to_headers"] == 2      # T1, T2 (BETYP=F)
+    assert r["f_type_benum_matched"] == 2   # both resolve to known orders
+    assert r["benum_match_pct"] == 100.0
+    assert r["validation_status"] == "VALIDATED"
+
+
+def test_staging_validation_not_applicable(spark):
+    """A warehouse with zero F-type TOs → NOT_APPLICABLE."""
+    from gold.warehouse_flow_gold import gold_process_order_staging_validation
+
+    _save(spark, [
+        Row(plant_code="P749", warehouse_number="501", transfer_order_number="T9",
+            source_reference_type="X", source_reference_number="9999", created_datetime=None),
+    ], "warehouse_transfer_order")
+    _save(spark, [Row(order_number="9999")], "process_order")
+
+    rows = {(r["plant_code"], r["warehouse_number"]): r
+            for r in all_rows(gold_process_order_staging_validation())}
+    r = rows[("P749", "501")]
+    assert r["f_type_to_headers"] == 0
+    assert r["benum_match_pct"] is None
+    assert r["validation_status"] == "NOT_APPLICABLE"
+
+
+def test_staging_validation_not_validated(spark):
+    """A warehouse with F-type TOs where BENUM does not resolve → NOT_VALIDATED."""
+    from gold.warehouse_flow_gold import gold_process_order_staging_validation
+
+    _save(spark, [
+        Row(plant_code="P001", warehouse_number="201", transfer_order_number="TX",
+            source_reference_type="F", source_reference_number="9999", created_datetime=None),
+    ], "warehouse_transfer_order")
+    _save(spark, [Row(order_number="DIFFERENT")], "process_order")
+
+    rows = {(r["plant_code"], r["warehouse_number"]): r
+            for r in all_rows(gold_process_order_staging_validation())}
+    r = rows[("P001", "201")]
+    assert r["f_type_to_headers"] == 1
+    assert r["f_type_benum_matched"] == 0
+    assert r["benum_match_pct"] == 0.0
+    assert r["validation_status"] == "NOT_VALIDATED"
+
+
+def test_staging_validation_deduplicates_to_headers(spark):
+    """Multiple LTAP items under the same TO header count as one TO, not many."""
+    from gold.warehouse_flow_gold import gold_process_order_staging_validation
+
+    _save(spark, [
+        Row(plant_code="C061", warehouse_number="208", transfer_order_number="T1",
+            source_reference_type="F", source_reference_number="1001", created_datetime=None),
+        Row(plant_code="C061", warehouse_number="208", transfer_order_number="T1",
+            source_reference_type="F", source_reference_number="1001", created_datetime=None),
+        Row(plant_code="C061", warehouse_number="208", transfer_order_number="T1",
+            source_reference_type="F", source_reference_number="1001", created_datetime=None),
+    ], "warehouse_transfer_order")
+    _save(spark, [Row(order_number="1001")], "process_order")
+
+    rows = {(r["plant_code"], r["warehouse_number"]): r
+            for r in all_rows(gold_process_order_staging_validation())}
+    r = rows[("C061", "208")]
+    assert r["total_to_headers"] == 1       # 3 items → 1 header
+    assert r["f_type_to_headers"] == 1
+    assert r["f_type_benum_matched"] == 1
+
 
 def test_lineside_stock_aggregation(spark):
     from gold.warehouse_flow_gold import gold_lineside_stock

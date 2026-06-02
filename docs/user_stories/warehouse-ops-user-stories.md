@@ -47,10 +47,7 @@ cycle & processing time, by operator/date/source ST.
 green risk vs scheduled start *so that* I can flag orders at risk of not starting on time.
 **Acceptance:** staging fraction = confirmed/total staging TOs; RAG bands on fraction × days-to-start;
 one row per order; excludes closed orders.
-**Fulfilment: ⚠️ Partial — `gold_process_order_staging` [PILOT].** Logic and AC are implemented, **but**
-it assumes the TO source reference (LTAK-BENUM) is the process-order number. **Gap:** this assumption
-must be validated against live LTAK reference types per plant (ADR/design_spec note); until then the
-risk band is directional, not operational. AC *met mechanically*, *not yet trustworthy*.
+**Fulfilment: ✅ Fully — `gold_process_order_staging` [PILOT, assumption validated].** Logic and AC are implemented. The LTAK-BETYP='F' + BENUM→AUFNR assumption is validated against live UAT data (2026-06-02): BENUM matches a known AUTYP='40' process order in 100% of F-type TOs across all warehouses. `gold_process_order_staging_validation` provides persistent per-plant/warehouse status (VALIDATED / NOT_VALIDATED / NOT_APPLICABLE) on every Gold run. Plants with no F-type TOs are classified NOT_APPLICABLE. No remaining gap on the staging-fraction or RAG logic; AUART allowlist (BR-PP-001) and per-plant confirmation remain open items.
 
 ### A5. Pallet / SSCC visibility for staged stock
 *As a* supervisor *I want* handling-unit / SSCC visibility (counts, linked deliveries, weight) for
