@@ -431,7 +431,15 @@ def storage_type_role_mapping():
         StructField("role", StringType(), True),
     ])
     config_table = spark.conf.get("storage_role_config_table", None)
-    if config_table and spark.catalog.tableExists(config_table):
+    # tableExists can raise (CATALOG_NOT_FOUND / SCHEMA_NOT_FOUND) during DLT compile before the
+    # target schema exists (initial bootstrap) — treat any failure as "not present" and fall back.
+    table_exists = False
+    if config_table:
+        try:
+            table_exists = spark.catalog.tableExists(config_table)
+        except Exception:  # noqa: BLE001 — missing catalog/schema is expected pre-bootstrap
+            table_exists = False
+    if table_exists:
         return (
             spark.read.table(config_table)
             .filter(

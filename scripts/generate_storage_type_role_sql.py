@@ -28,6 +28,8 @@ _COLS = ["plant_code", "warehouse_number", "storage_type", "role",
 
 
 def _sql_literal(col, val):
+    if val is not None:
+        val = val.strip()  # tolerate accidental CSV whitespace (e.g. 'APPROVED ' breaking filters)
     if val is None or val == "":
         return "NULL"
     if col in ("valid_from", "valid_to"):
@@ -55,9 +57,16 @@ def generate_sql():
             f"-- Reseed from the CSV (idempotent full refresh of the seeded plant(s)):\n"
             f"DELETE FROM {table} WHERE owner = 'wm-config-owner';\n"
         )
-        for r in rows:
-            vals = ", ".join(_sql_literal(c, r.get(c)) for c in _COLS)
-            sql += f"INSERT INTO {table} ({', '.join(_COLS)}) VALUES ({vals});\n"
+        if rows:
+            # Single multi-row INSERT (one Delta commit) rather than one INSERT per row, which would
+            # create many small files / commits.
+            value_tuples = [
+                "(" + ", ".join(_sql_literal(c, r.get(c)) for c in _COLS) + ")" for r in rows
+            ]
+            sql += (
+                f"INSERT INTO {table} ({', '.join(_COLS)}) VALUES\n  "
+                + ",\n  ".join(value_tuples) + ";\n"
+            )
         out = os.path.join(repo_root, f"resources/sql/storage_type_role_mapping_{env}.sql")
         with open(out, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(sql)
