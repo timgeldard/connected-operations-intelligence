@@ -54,7 +54,7 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
   * `scrap_quantity` = sum of quantities where `is_scrap = True` minus `is_scrap_reversal = True`.
 * **Row-Level Security**: Gold is produced by a trusted aggregate pipeline. Apply plant-level controls at the consumption boundary.
 * **Freshness Expectation**: Triggered pipeline execution (bundled job schedule: three times daily).
-* **Known Caveats**: Relies on conformed classifications mapped in `movement_type_classification`. Any newly introduced custom movement codes must be classified first.
+* **Known Caveats**: Relies on conformed classifications mapped in `movement_type_classification`. T156-only movement codes are retained as `OTHER` with false KPI flags; any newly introduced custom movement code must be functionally classified before it contributes to output or throughput measures.
 * **Freshness Caveat**: Depends on the continuous `silver_fast_pipeline`; the Gold refresh job does not trigger that pipeline.
 
 ### 2. `gold.gold_process_order_schedule_adherence`

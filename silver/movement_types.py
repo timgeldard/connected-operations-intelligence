@@ -8,7 +8,7 @@
 SAP movement-type semantics derived from T156-style process definitions.
 """
 
-from typing import Set
+from typing import Iterable, Set
 
 MOVEMENT_TYPE_MAPPING = {
     # ===== GOODS RECEIPTS =====
@@ -289,6 +289,36 @@ def get_movement_event_category(movement_type: str) -> str:
     if movement_type in INITIAL_ENTRY_MOVEMENT_TYPES:
         return "INITIAL_ENTRY"
     return "OTHER"
+
+
+def build_movement_type_classification_records(
+    movement_types: Iterable[str] | None = None,
+) -> list[dict]:
+    """Build conformed IOReporting movement-type classification records.
+
+    T156 is the SAP source of valid BWART codes, but it does not encode the reporting event
+    families used by Gold KPIs. This helper centralizes the conformed overlay so the Silver DLT
+    table and unit-test fixtures do not duplicate the same flag logic.
+    """
+    codes = sorted(set(movement_types or MOVEMENT_TYPE_MAPPING.keys()))
+    return [
+        {
+            "movement_type_code": code,
+            "movement_label": MOVEMENT_TYPE_MAPPING.get(code, "UNCLASSIFIED_MOVEMENT_TYPE"),
+            "event_category": get_movement_event_category(code),
+            "is_reversal": code in T156_REVERSAL_MAPPING,
+            "is_goods_receipt": code in RECEIPT_MOVEMENT_TYPES,
+            "is_goods_issue": code in ISSUE_MOVEMENT_TYPES,
+            "is_transfer": code in TRANSFER_MOVEMENT_TYPES,
+            "is_stock_write_on": code in STOCK_WRITE_ON_MOVEMENT_TYPES,
+            "is_stock_write_off": code in STOCK_WRITE_OFF_MOVEMENT_TYPES,
+            "is_production_receipt": code in {"101", "131"},
+            "is_receipt_reversal": code in {"102", "132"},
+            "is_scrap": code == "551",
+            "is_scrap_reversal": code == "552",
+        }
+        for code in codes
+    ]
 
 
 def is_reversal(movement_type: str) -> bool:

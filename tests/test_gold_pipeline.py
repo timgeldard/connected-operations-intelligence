@@ -3,28 +3,19 @@ Tests for the gold layer DLT transformations.
 """
 
 from datetime import date, datetime
- 
+
 import pytest
 from pyspark.sql import Row, SparkSession
- 
+
 from gold.dlt_gold_pipeline import (
+    gold_order_downtime_summary,
     gold_plant_production_quality_summary,
+    gold_process_order_component_status,
+    gold_process_order_operations,
     gold_process_order_schedule_adherence,
     gold_shift_output_summary,
-    gold_process_order_operations,
-    gold_order_downtime_summary,
-    gold_process_order_component_status,
 )
-from silver.movement_types import (
-    ISSUE_MOVEMENT_TYPES,
-    MOVEMENT_TYPE_MAPPING,
-    RECEIPT_MOVEMENT_TYPES,
-    STOCK_WRITE_OFF_MOVEMENT_TYPES,
-    STOCK_WRITE_ON_MOVEMENT_TYPES,
-    T156_REVERSAL_MAPPING,
-    TRANSFER_MOVEMENT_TYPES,
-    get_movement_event_category,
-)
+from silver.movement_types import build_movement_type_classification_records
 from tests.conftest import all_rows
 
 
@@ -37,24 +28,7 @@ def setup_databases(spark: SparkSession):
     spark.sql("CREATE DATABASE IF NOT EXISTS silver")
 
     # Mock data for conformed movement type classification
-    classification_data = [
-        Row(
-            movement_type_code=code,
-            movement_label=MOVEMENT_TYPE_MAPPING[code],
-            event_category=get_movement_event_category(code),
-            is_reversal=code in T156_REVERSAL_MAPPING,
-            is_goods_receipt=code in RECEIPT_MOVEMENT_TYPES,
-            is_goods_issue=code in ISSUE_MOVEMENT_TYPES,
-            is_transfer=code in TRANSFER_MOVEMENT_TYPES,
-            is_stock_write_on=code in STOCK_WRITE_ON_MOVEMENT_TYPES,
-            is_stock_write_off=code in STOCK_WRITE_OFF_MOVEMENT_TYPES,
-            is_production_receipt=code in {"101", "131"},
-            is_receipt_reversal=code in {"102", "132"},
-            is_scrap=code == "551",
-            is_scrap_reversal=code == "552",
-        )
-        for code in ["101", "102", "201", "551", "552"]
-    ]
+    classification_data = build_movement_type_classification_records(["101", "102", "201", "551", "552"])
     spark.createDataFrame(classification_data).write.mode("overwrite").saveAsTable("silver.movement_type_classification")
 
     yield

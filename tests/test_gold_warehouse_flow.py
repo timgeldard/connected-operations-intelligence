@@ -570,6 +570,7 @@ def test_recon_v2_plant_scoped_routing(spark):
 def test_staging_validation_threshold_configurable(spark):
     """The validation threshold can be configured via Spark conf."""
     import importlib
+
     import gold._shared
     import gold.warehouse_flow_gold
 

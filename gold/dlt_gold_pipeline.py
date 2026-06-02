@@ -176,7 +176,7 @@ def gold_plant_production_quality_summary():
 def gold_process_order_operations():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    
+
     operations = spark.read.table(f"{silver_schema}.process_order_operation")
     pi_sheets = spark.read.table(f"{silver_schema}.pi_sheet_execution")
     downtimes = spark.read.table(f"{silver_schema}.downtime_event")
