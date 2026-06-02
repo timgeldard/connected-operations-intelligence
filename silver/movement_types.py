@@ -182,6 +182,7 @@ MOVEMENT_CATEGORIES = {
         "222",
         "551",
         "552",
+        "Z01",
     ],
 }
 
@@ -225,6 +226,7 @@ ISSUE_MOVEMENT_TYPES: Set[str] = {
     "552",
     "601",
     "602",
+    "Z01",
 }
 
 TRANSFER_MOVEMENT_TYPES: Set[str] = {
