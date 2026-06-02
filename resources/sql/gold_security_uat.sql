@@ -187,24 +187,8 @@ CREATE OR REPLACE VIEW connected_plant_uat.gold.gold_warehouse_kpi_snapshot_secu
   WHERE connected_plant_uat.silver.plant_access_filter(plant_code);
 GRANT SELECT ON VIEW connected_plant_uat.gold.gold_warehouse_kpi_snapshot_secured TO `users`;
 
--- ── Optional hardening: ensure consumers cannot read the un-trimmed base tables ──
--- Direct SELECT on the base Gold tables should be limited to the data-product owner / admins.
--- Uncomment to explicitly revoke base-table access from the consumer group (no-op if never granted):
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_transfer_order_performance FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_inbound_outbound_throughput FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_bin_occupancy FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_stock_availability FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_transfer_requirement_backlog FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_stock_expiry_risk FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_shift_output_summary FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_order_otif_metrics FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_plant_production_quality_summary FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_dispensary_backlog FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_lineside_stock FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_delivery_pick_status FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_stock_reconciliation FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_process_order_staging FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_inbound_po_backlog FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_handling_unit_summary FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_warehouse_exceptions FROM `users`;
--- REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_warehouse_kpi_snapshot FROM `users`;
+-- ── Base-table access hardening ──
+-- The actual REVOKE statements are generated as a SEPARATE admin script
+-- (resources/sql/gold_security_harden_<env>.sql). Apply it AFTER this script so plant-scoped users
+-- can only read the row-filtered *_secured views, not the un-trimmed base Gold tables (ADR 012).
+-- It is kept separate because revoking broad access is operationally sensitive and irreversible-ish.
