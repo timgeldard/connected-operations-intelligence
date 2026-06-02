@@ -26,8 +26,8 @@ This document defines the formal data contracts for the key Silver and Gold laye
 * **Freshness Expectation**: Near real-time (continuous streaming).
 
 ### 3. `silver.storage_bin`
-* **Grain**: 1 row per physical storage bin (`warehouse_number` + `storage_type` + `bin_code`)
-* **Natural Key**: `warehouse_number`, `storage_type`, `bin_code`
+* **Grain**: 1 row per occupancy slot — a physical bin plus its occupancy key (`warehouse_number` + `storage_type` + `bin_code` + `_storage_bin_occupancy_key`). An occupied bin yields one row per quant (`LQNUM`); an empty bin yields a single `__EMPTY__` row.
+* **Natural Key**: `warehouse_number`, `storage_type`, `bin_code`, `_storage_bin_occupancy_key`
 * **Source SAP Tables**: `LAGP` (Bin Master, append-only Aecorsoft CDC) + `LQUA` (Quants / Occupancy, current-state snapshot maintained upstream by MERGE/DELETE) + `T320` (Warehouse plant mapping, sourced from the published/`central_services` catalog as a view — not replicated into the SAP source)
 * **Join Conditions**:
   * `LAGP` reduced to current bin master (latest row per bin by `AEDATTM`/`AERUNID`/`AERECNO`, tombstones `RecordActivity='D'` dropped), then left joined with `LQUA` on `LGNUM`, `LGTYP`, `LGPLA`, and `MANDT`.

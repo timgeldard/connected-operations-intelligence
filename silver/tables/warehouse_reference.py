@@ -81,8 +81,13 @@ def warehouse_plant_mapping_validation():
 # exposed to consumers; the RLS-filtered output is storage_bin).
 @dlt.table(name="stg_storage_bin", temporary=True)
 @dlt.expect_all_or_drop({
+    # Enforce every field used in the apply_changes_from_snapshot merge key, so a row with a null
+    # key component cannot enter the snapshot and produce an invalid SCD1 key. (_storage_bin_occupancy_key
+    # is coalesced to '__EMPTY__' so is never null by construction, but is asserted for completeness.)
     "warehouse_number present": "warehouse_number IS NOT NULL",
-    "bin_code present": "bin_code IS NOT NULL"
+    "storage_type present": "storage_type IS NOT NULL",
+    "bin_code present": "bin_code IS NOT NULL",
+    "occupancy key present": "_storage_bin_occupancy_key IS NOT NULL"
 })
 def stg_storage_bin():
     bin_key = ["LGNUM", "LGTYP", "LGPLA", "MANDT"]

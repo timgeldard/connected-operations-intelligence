@@ -38,7 +38,7 @@ ${var.source_catalog}.${var.source_schema} (Bronze — Aecorsoft Delta replicati
 | Decision | Choice | Rationale |
 |---|---|---|
 | Pipeline mode | **Continuous** | Near real-time delivery; Aecorsoft replicates incrementally |
-| Change strategy | **SCD Type 1** via `dlt.apply_changes` | Operational state — current values matter, not history |
+| Change strategy | **SCD Type 1** via `dlt.apply_changes` (exception: `storage_bin` uses `apply_changes_from_snapshot` over a full current-state snapshot, because its `LQUA` occupancy source is a current-state snapshot with no delete marker) | Operational state — current values matter, not history |
 | Clustering | **Liquid clustering** on `plant_code` + date | Auto-compacts; no manual tuning at 100+ plant scale |
 | CDC source | `RecordActivity` / `OPFLAG` where present; `AEDATTM`, `AERUNID`, `AERECNO` sequence otherwise | Handles deletes from SAP where flagged and preserves deterministic event ordering |
 | Multi-source joins | **Trigger-stream refresh** | Header/detail/reference changes emit affected keys, then rows are rebuilt from latest replicated tables to avoid stale stream-static enrichment |
@@ -171,8 +171,9 @@ SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
 ```
 
 ### Storage Bin Row-Level Security
-* **Current Status:** Filtered by the plant-level row filter using the derived `plant_code`. Occupied bins prefer the quant plant; empty bins derive plant from the warehouse-to-plant mapping.
-* **Risk:** Shared warehouses are assigned to a deterministic primary plant for empty bins until a warehouse-level access model exists.
+* **Current Status:** Filtered by the plant-level row filter using the derived `plant_code`. Occupied bins prefer the quant plant; empty bins derive plant from the warehouse-to-plant mapping. A warehouse mapped to **more than one plant** resolves an empty bin's `plant_code` to the sentinel `SHARED` (rather than guessing a single plant), so a single-plant access scope cannot silently see a shared bin.
+* **Ingestion note:** `storage_bin` is built by `apply_changes_from_snapshot` (SCD type 1) over a full current-state snapshot, so it remains a **streaming table** and the external row filter persists exactly as for the `dlt.apply_changes` tables — see the catalogue note and `docs/data_contracts.md`.
+* **Risk:** `SHARED`-tagged empty bins are not visible to any single-plant scope until a warehouse-level access model exists.
 * **Mitigation:** Review shared-warehouse assignments with plant operations before granting broad direct access to `storage_bin`.
 
 ---
