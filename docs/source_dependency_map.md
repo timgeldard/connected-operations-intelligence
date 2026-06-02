@@ -26,7 +26,7 @@ second bronze source `published_<env>.central_services` · `seed` = config/seed 
 | `gold_stock_expiry_risk` | `storage_bin`, `material` | LAGP/LQUA; MARA/MARC | slow | medium |
 | `gold_inbound_po_backlog` | `purchase_order` | EKKO/EKPO (**published**) | published | medium |
 | `gold_handling_unit_summary` | `handling_unit` | VEKP/VEPO (**published**) | published | medium |
-| `gold_warehouse_exceptions` | multi: `storage_bin`, `batch_stock`, `warehouse_transfer_order`, reconciliation inputs | LAGP/LQUA, MCHB, LTAK/LTAP, MARD/MBEW | fast + slow + seed | yes |
+| `gold_warehouse_exceptions` | multi: `storage_bin`, `batch_stock`, `warehouse_transfer_order`, `warehouse_transfer_requirement`, reconciliation inputs | LAGP/LQUA, MCHB, LTAK/LTAP, LTBK/LTBP, MARD/MBEW | fast + slow + seed | yes |
 | `gold_warehouse_kpi_snapshot` | rollup of the above (orders/TRs/TOs/deliveries/inbound/bins) | as above | mixed | medium |
 
 ## Notes
