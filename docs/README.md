@@ -24,7 +24,11 @@ Single entry point to the design records, specs and position papers for this dat
 | 011 | SAP→Silver→Gold reconciliation control | **PR #20** |
 | 012 | Gold & snapshot row-level security | **PR #22** |
 
-## Roadmap & dependencies
+## Hardening & roadmap
+- [`hardening-plan.md`](hardening-plan.md) — active hardening-sprint scope guard (current objective +
+  deferred items + sprint sequencing). **Read before adding scope.**
+- [`source_dependency_map.md`](source_dependency_map.md) — per-Gold-table Silver/bronze dependencies,
+  pipeline tier, and criticality.
 - [`data-product-roadmap.md`](data-product-roadmap.md) — phased plan for the next-phase initiatives
   (shift calendar, reconciliation depth, data dictionary/lineage), file map, sequencing, effort.
 - [`ingestion_requests.md`](ingestion_requests.md) — source dependencies to hand off to the

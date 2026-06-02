@@ -36,10 +36,38 @@ silver/
   helpers.py                      # Shared DLT helpers and constants
   design_spec.md                  # Silver architecture and table catalogue
 gold/
-  dlt_gold_pipeline.py            # Gold aggregate definitions (daily output, schedule adherence, quality)
-  design_spec.md                  # Gold architecture and KPI specs
+  dlt_gold_pipeline.py            # Production gold (daily output, OTIF, plant quality, freshness gate)
+  warehouse_kpis.py               # TO performance, throughput, bin occupancy, stock availability, TR backlog, expiry risk
+  warehouse_flow_gold.py          # Dispensary backlog, line-side stock, delivery pick, stock reconciliation, PO staging
+  warehouse_inbound_gold.py       # Inbound PO backlog, handling-unit summary
+  warehouse_exceptions.py         # Warehouse data-integrity / aging exceptions (severity + SLA)
+  warehouse_kpi_snapshot.py       # Per-plant operations scorecard
+  _shared.py                      # gold_table_args, get_silver_schema, row-filter wiring
+  recon/reconciliation_job.py     # SAP->Silver->Gold reconciliation control (standalone job, not globbed)
+  snapshots/warehouse_snapshot.py # Daily current-state snapshot job (not globbed)
+  design_spec.md                  # Gold architecture, table catalogue, status labels, limitations
+scripts/
+  generate_row_filter_sql.py      # Silver plant row-filter SQL generator
+  generate_gold_security_sql.py   # Gold secured-view SQL generator (ADR 012)
+generate_data_dictionary.py       # Builds data_dictionary.md from schema_documentation.md (CI --check)
+docs/                             # ADRs, runbook, data contracts, roadmap, hardening plan, position papers
 tests/                            # Unit tests for silver helpers and gold tables
 ```
+
+> Only top-level `gold/*.py` is picked up by the Gold pipeline glob; `gold/recon/` and
+> `gold/snapshots/` are standalone jobs (separate `resources/*.job.yml`).
+
+## Scope freeze (active — see docs/hardening-plan.md)
+
+The repo is in a **hardening sprint**. Do **not** add a new Gold table unless ALL hold:
+1. its Silver dependency already exists,
+2. the table grain is documented (`gold/design_spec.md`),
+3. unit tests are added,
+4. a `docs/data_contracts.md` entry is added,
+5. its freshness impact is assessed.
+
+Also frozen: security/access-model redesign, new SAP domains, and net-new functional scope. See
+`docs/hardening-plan.md` for the current sprint objective and deferred list.
 
 ## Development workflow
 

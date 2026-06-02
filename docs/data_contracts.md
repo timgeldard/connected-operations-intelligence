@@ -121,18 +121,83 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Snapshot Caveat**: Daily append snapshots are intentionally not part of this contract until retention and scheduling requirements are agreed.
 
 ### 9. `gold.gold_stock_expiry_risk`
+* **Status**: Pilot-grade
 * **Grain**: 1 row per plant × material × batch × base UOM
 * **Source Silver Tables**: `silver.storage_bin` + `silver.material`
 * **Aggregation Logic**:
   * Includes current bin/quant stock where material, batch, and expiry date are present.
   * Buckets quantities into expired, <7 days, 7-30 days, 30-90 days, and OK based on `expiry_date` vs current date.
   * Flags minimum shelf-life breaches using `minimum_remaining_shelf_life_days` from material master.
+* **Production/test divergence**: the production MV currently returns only the base aggregate; the expiry **bucket/flag columns are emitted only in test mode** (they use `current_date()`, which would break MV incremental refresh). Tracked for resolution in hardening Sprint 2.
 * **Freshness Expectation**: Batch triggered.
 
 ### 10. `gold.gold_freshness_gate`
 * **Type**: DLT Validation View
 * **Source Silver Tables**: `silver.goods_movement`
 * **SLA Constraint**: Fails the Gold pipeline execution run dynamically via `@dlt.expect_or_fail` if the maximum data replication latency exceeds 120 minutes.
+
+### 11. `gold.gold_dispensary_backlog`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × production supply area × warehouse
+* **Source Silver Tables**: `silver.reservation_requirement` (+ `silver.process_order` for scheduled start)
+* **Purpose**: open line-pick (dispensary) backlog — RESB movement `261`, not deletion-flagged, open qty > 0.
+* **Freshness Expectation**: Batch triggered.
+
+### 12. `gold.gold_lineside_stock`
+* **Status**: Pilot-grade
+* **Grain**: 1 row per plant × warehouse × storage type × material × batch × base UOM
+* **Source Silver Tables**: `silver.storage_bin` + `silver.storage_type_role_mapping`
+* **Purpose**: current stock staged in production / line-side storage types (roles resolved from the role-mapping config, with a standard 9xx fallback).
+* **Known Caveats**: depends on `storage_type_role_mapping` coverage. **Production/test divergence**: the production MV currently omits `min_days_to_expiry` (emitted only in test mode to keep the MV incrementally refreshable — see hardening plan Sprint 2).
+
+### 13. `gold.gold_delivery_pick_status`
+* **Status**: Pilot-grade
+* **Grain**: 1 row per outbound delivery (× plant × warehouse)
+* **Source Silver Tables**: `silver.outbound_delivery`
+* **Purpose**: pick progress (picked vs delivery quantity) and pick risk.
+* **Known Caveats**: delivery-quantity based, not TO-level picking. **Production/test divergence**: production MV omits `days_to_goods_issue` and `risk_band` (test-only; Sprint 2).
+
+### 14. `gold.gold_stock_reconciliation`
+* **Status**: Pilot-grade / directional
+* **Grain**: 1 row per plant × material
+* **Source Silver Tables**: `silver.stock_at_location` (MARD), `silver.storage_bin` (WM), `silver.material_valuation` (MBEW), `silver.storage_type_role_mapping`
+* **Purpose**: IM book stock vs WM bin stock variance, valuation, ABC class, and interim/physical WM split.
+* **Known Caveats**: coarse (plant × material) grain; no storage-location/batch/UoM normalisation (MARM); tolerance `max(0.1, 1% IM)`; treat as a directional indicator pending the detailed rebuild (ADR 009). `inventory_value` is not Material-Ledger-reconciled.
+
+### 15. `gold.gold_process_order_staging`
+* **Status**: Pilot-grade
+* **Grain**: 1 row per process order
+* **Source Silver Tables**: `silver.warehouse_transfer_order` + `silver.process_order`
+* **Purpose**: component staging completion (confirmed staging TOs vs total) and start risk.
+* **Known Caveats**: **assumes TO source reference = process-order number** (LTAK-BENUM) — unconfirmed per plant. **Production/test divergence**: production MV omits `days_to_start` and `risk_band` (test-only; Sprint 2).
+
+### 16. `gold.gold_inbound_po_backlog`
+* **Status**: Directional only
+* **Grain**: 1 row per plant × vendor × purchasing org
+* **Source Silver Tables**: `silver.purchase_order` (EKKO/EKPO, from `central_services`)
+* **Purpose**: open inbound PO backlog (items not delivery-complete).
+* **Known Caveats**: this is **PO backlog, not goods-receipt status** — no GR history (EKBE/MSEG 101), inbound delivery/ASN, or remaining-quantity. A true receipt model is designed separately (Phase 9).
+
+### 17. `gold.gold_handling_unit_summary`
+* **Status**: Pilot-grade
+* **Grain**: 1 row per plant × warehouse × HU status × reference-document category
+* **Source Silver Tables**: `silver.handling_unit` (VEKP/VEPO, from `central_services`)
+* **Purpose**: handling-unit / SSCC counts and gross weight (gross weight aggregated at HU-header grain).
+* **Known Caveats**: SSCC is **approximated** from VEKP `EXIDV`; WMA-E-50 execution detail (pre-generated SSCC, pallet-ID, TR-split) is not replicated (ADR 007 / ingestion requests).
+
+### 18. `gold.gold_warehouse_exceptions`
+* **Status**: Pilot-grade
+* **Grain**: 1 row per exception instance (uniform-schema UNION of integrity/aging checks)
+* **Source Silver Tables**: stock/bin/TO/TR/reconciliation inputs (multi-source)
+* **Purpose**: negative stock, expired-with-stock, aged QI/blocked, aged open TOs, IM/WM variance — with severity (1–4) and SLA hours.
+* **Known Caveats**: severity/SLA thresholds need business validation; the IM/WM-variance branch inherits the coarse reconciliation grain.
+
+### 19. `gold.gold_warehouse_kpi_snapshot`
+* **Status**: Pilot-grade
+* **Grain**: 1 row per plant
+* **Source Silver/Gold Tables**: per-plant rollup of open orders/TRs/TOs/deliveries/inbound + bin counts
+* **Purpose**: per-plant operations scorecard.
+* **Known Caveats**: mixed-grain counts assembled into one scorecard row; intended for at-a-glance status, not as a reconciled measure source.
 
 ---
 
