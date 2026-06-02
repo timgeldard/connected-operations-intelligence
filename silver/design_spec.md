@@ -63,6 +63,14 @@ Managed via Declarative Automation Bundle (DAB). See `docs/adr/001-dab-bundle-de
 | **uat** | `connected_plant_uat` | `silver` | `connected_plant_uat` | `sap` |
 | **prod** | `connected_plant_prod` | `silver` | `connected_plant_prod` | `sap` |
 
+> **Published (`central_services`) source per target.** The published-master readers (`plant`, `customer`,
+> `vendor`, `purchase_order`, `handling_unit`, `warehouse_plant_mapping`, `recipe_process_line`) read
+> `${var.published_catalog}.${var.published_schema}`. `uat`/`prod` use their own `central_services`;
+> `dev_uat_source` uses `published_uat.central_services` (live UAT master). **`dev_sample` is fully
+> isolated:** it reads a sampled `connected_plant_dev.central_services`, seeded once from
+> `resources/sql/sample_central_services_dev.sql` (run by an admin with read on `published_uat` and write
+> on `connected_plant_dev`). So at runtime `dev_sample` touches only `connected_plant_dev`.
+
 ---
 
 ## Data Quality
