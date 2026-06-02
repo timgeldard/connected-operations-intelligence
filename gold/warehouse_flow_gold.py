@@ -561,32 +561,32 @@ _RECON_V2_TOLERANCE_FLOOR = 0.001
 
 def _im_long(df, plant_col, sloc_col, mat_col, batch_col, uom_col, wh_sloc_map):
     """Normalise an IM source to (plant, warehouse, material, batch, stock_category, base_uom, quantity) grain.
-    Uses union to unpivot the three stock categories to avoid F.stack alias fragility."""
-    base = (
+    Single pass using F.explode on an array of structs — avoids rescanning the source three times."""
+    keys = ["plant_code", "warehouse_number", "material_code", "batch_number", "base_uom"]
+    return (
         df
         .join(F.broadcast(wh_sloc_map), [plant_col, sloc_col], "left")
+        .withColumn("plant_code",     F.col(plant_col))
         .withColumn("warehouse_number",
                     F.coalesce(F.col("warehouse_number"), F.lit("__NO_WM_MAPPING__")))
-    )
-    keys = ["plant_code", "warehouse_number", "material_code", "batch_number", "base_uom"]
-
-    def _chunk(qty_col, category):
-        return (
-            base
-            .withColumn("plant_code",     F.col(plant_col))
-            .withColumn("material_code",  F.col(mat_col))
-            .withColumn("batch_number",   F.col(batch_col) if batch_col else F.lit("__NONE__"))
-            .withColumn("base_uom",       F.col(uom_col) if uom_col else F.lit(None).cast("string"))
-            .withColumn("stock_category", F.lit(category))
-            .withColumn("quantity",       F.coalesce(F.col(qty_col), F.lit(0.0)))
-            .filter(F.col("quantity") != 0)
-            .select(*keys, "stock_category", "quantity")
+        .withColumn("material_code",  F.col(mat_col))
+        .withColumn("batch_number",   F.col(batch_col) if batch_col else F.lit("__NONE__"))
+        .withColumn("base_uom",       F.col(uom_col) if uom_col else F.lit(None).cast("string"))
+        .withColumn("_cats", F.array(
+            F.struct(F.lit("UNRESTRICTED").alias("s"),
+                     F.coalesce(F.col("unrestricted_quantity"),      F.lit(0.0)).alias("q")),
+            F.struct(F.lit("QUALITY").alias("s"),
+                     F.coalesce(F.col("quality_inspection_quantity"), F.lit(0.0)).alias("q")),
+            F.struct(F.lit("BLOCKED").alias("s"),
+                     F.coalesce(F.col("blocked_quantity"),            F.lit(0.0)).alias("q")),
+        ))
+        .select(*keys, F.explode("_cats").alias("_cat"))
+        .select(
+            *keys,
+            F.col("_cat.s").alias("stock_category"),
+            F.col("_cat.q").alias("quantity"),
         )
-
-    return (
-        _chunk("unrestricted_quantity",      "UNRESTRICTED")
-        .unionByName(_chunk("quality_inspection_quantity", "QUALITY"))
-        .unionByName(_chunk("blocked_quantity",            "BLOCKED"))
+        .filter(F.col("quantity") != 0)
     )
 
 
@@ -611,11 +611,8 @@ def gold_stock_reconciliation_v2():
     )
     storage_bin = spark.read.table(f"{ss}.storage_bin")
     wh_sloc_map = spark.read.table(f"{ss}.warehouse_storage_location_mapping")
-    uom_conv_materials = (
-        spark.read.table(f"{ss}.material_uom_conversion")
-        .select("material_code").distinct()
-        .withColumn("_has_uom_conv", F.lit(True))
-    )
+    # silver.material_uom_conversion (MARM) is wired into the pipeline for detection
+    # purposes but not used in mismatch classification — see comment below.
     price_dim = (
         spark.read.table(f"{ss}.material_valuation")
         .groupBy(F.col("valuation_area").alias("plant_code"), "material_code")
@@ -693,29 +690,20 @@ def gold_stock_reconciliation_v2():
                     F.col("abs_delta_quantity") <= F.col("tolerance_quantity"))
     )
 
-    # ── UoM-missing flag (MARM detection only — both sides already in base UoM) ─
-    # Materials absent from MARM — used to detect UOM_CONVERSION_MISSING.
-    # Impact is usually zero (both MARD and LQUA store in base UoM) but non-zero
-    # for materials with unusual configurations.
-    no_uom_flag = (
-        mat_dim.select("material_code")
-        .join(uom_conv_materials, "material_code", "left")
-        .filter(F.col("_has_uom_conv").isNull())
-        .select("material_code")
-        .withColumn("_uom_missing", F.lit(True))
-    )
-
     # ── Mismatch reason ───────────────────────────────────────────────────────
+    # NOTE: UOM_CONVERSION_MISSING is intentionally NOT used here. MARM only contains
+    # entries for materials WITH alternative UoMs — absence means "base-UoM-only material",
+    # not a conversion problem. Both MARD and LQUA already store in base UoM, so no
+    # conversion is needed. Flagging absent-MARM materials as UOM issues would mask
+    # TRUE_VARIANCE for the majority of standard materials. (UOM_CONVERSION_MISSING is
+    # kept as a documented allowed-value for future use if alt-UoM transactions appear.)
     recon = (
         recon
-        .join(F.broadcast(no_uom_flag), "material_code", "left")
         .withColumn("mismatch_reason",
             F.when(F.col("is_reconciled"),
                    F.lit("MATCHED"))
             .when(F.col("warehouse_number") == "__NO_WM_MAPPING__",
                   F.lit("WM_MANAGED_SLOC_MAPPING_MISSING"))
-            .when(F.col("_uom_missing").isNotNull(),
-                  F.lit("UOM_CONVERSION_MISSING"))
             .when((F.col("im_quantity") > 0) & (F.col("wm_quantity") == 0),
                   F.lit("BATCH_MISSING_IN_WM"))
             .when((F.col("wm_quantity") > 0) & (F.col("im_quantity") == 0),
@@ -725,12 +713,10 @@ def gold_stock_reconciliation_v2():
         .withColumn("mismatch_severity",
             F.when(F.col("mismatch_reason") == "MATCHED",
                    F.lit("INFO"))
-            .when(F.col("mismatch_reason").isin(
-                      "UOM_CONVERSION_MISSING", "BATCH_MISSING_IN_WM", "BATCH_MISSING_IN_IM"),
+            .when(F.col("mismatch_reason").isin("BATCH_MISSING_IN_WM", "BATCH_MISSING_IN_IM"),
                   F.lit("MEDIUM"))
             .otherwise(F.lit("HIGH")),
         )
-        .drop("_uom_missing")
     )
 
     # ── Trust: warehouse trusted when all occupied STs are CONFIG-mapped ──────
@@ -751,7 +737,7 @@ def gold_stock_reconciliation_v2():
     # ── Valuation ─────────────────────────────────────────────────────────────
     return (
         recon
-        .join(F.broadcast(price_dim), ["plant_code", "material_code"], "left")
+        .join(price_dim, ["plant_code", "material_code"], "left")
         .join(F.broadcast(wh_trust),  ["plant_code", "warehouse_number"], "left")
         .withColumn("delta_value",
             F.col("delta_quantity")

@@ -147,7 +147,7 @@ Filters `is_reconciled = false`. Adds `material_description` from `silver.materi
 
 ### `gold_stock_reconciliation_summary_v2` (DLT view)
 Grain: plant × warehouse × mismatch_reason × mismatch_severity.
-Measures: `exception_count`, `abs_delta_quantity_total`, `delta_value_total`.
+Measures: `exception_count`, `abs_delta_quantity_total`, `abs_delta_value_total`.
 
 ---
 
