@@ -32,6 +32,16 @@ PRs #24/#25 moved `current_date()`-derived columns out of the production MV path
 incrementally refreshable, re-adding them only in test mode. So production currently **omits**:
 `gold_lineside_stock.min_days_to_expiry`; `gold_delivery_pick_status.days_to_goods_issue`,
 `risk_band`; `gold_process_order_staging.days_to_start`, `risk_band`; and the
-`gold_stock_expiry_risk` bucket/flag columns. Sprint 1 **documents** this; Sprint 2 resolves it
-(live serving view over the MV — parallels the ADR 012 secured-view pattern — vs computing in the
-snapshot job; the live-vs-daily read path is the user's call).
+`gold_stock_expiry_risk` bucket/flag columns. Sprint 1 **documents** this.
+
+**Sprint 2 resolution (decided): live serving views over the MVs.**
+- Make the four MVs deterministic — drop the `is_test_mode` branches so production and test both
+  return the **base aggregate** (absolute dates only; no `current_date()`). This restores prod==test
+  and keeps incremental refresh.
+- Add per-table **serving views** (`<table>_live`) that compute the date-relative columns
+  (`risk_band`, `days_to_*`, expiry buckets) at query time — zero MV-refresh cost, columns available
+  live. Same generated-SQL, post-deploy pattern as the ADR 012 `*_secured` views (and composable
+  with them). Consumers read the serving view.
+- Tests assert the MV base schema; the band/bucket logic is covered against the serving-view
+  definition (or a shared pure helper) so it stays tested. Update `docs/data_contracts.md` to point
+  the date-relative columns at the serving views.
