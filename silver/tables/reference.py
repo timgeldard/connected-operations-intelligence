@@ -7,7 +7,15 @@ from pyspark.sql import Row
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StructField, StringType
 
-from silver.helpers import BRONZE, bronze_published, get_spark, sap_date, sap_flag, strip_zeros
+from silver.helpers import (
+    BRONZE,
+    PROCESS_LINE_ATINN,
+    bronze_published,
+    get_spark,
+    sap_date,
+    sap_flag,
+    strip_zeros,
+)
 from silver.movement_types import (
     ISSUE_MOVEMENT_TYPES,
     MOVEMENT_TYPE_MAPPING,
@@ -466,3 +474,66 @@ def storage_type_role_mapping():
         Row(plant_code="C061", warehouse_number="208", storage_type="999", role="INTERIM"),
     ]
     return spark.createDataFrame(data, schema)
+
+
+# ── 13. RECIPE PROCESS LINE ───────────────────────────────────────────────────
+
+@dlt.table(
+    name="recipe_process_line",
+    comment="Recipe/task-list (PLKO) → process-line classification map (SAP class type 018: "
+            "recipe key → INOB → AUSP value → CAWNT English text). One row per recipe object key. "
+            "process_order joins this for production_line enrichment. Lives in the slow (triggered) "
+            "tier so the fast process_order stream reads a small pre-aggregated map instead of "
+            "re-scanning AUSP every microbatch.",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+def recipe_process_line():
+    # Classification tables live in the PUBLISHED (central_services) source, NOT in the SAP source
+    # (verified live: connected_plant_uat.sap has none of INOB/AUSP/CAWNT). Read via bronze_published().
+    published = bronze_published()
+    inob = (
+        spark.read.table(f"{published}.internalnumberobjectlink_inob")
+        .filter((F.col("KLART") == "018") & (F.col("OBTAB") == "PLKO"))
+        .select(F.col("OBJEK").alias("_objek"), F.col("CUOBJ").alias("_cuobj"))
+    )
+    # If PROCESS_LINE_ATINN is configured, select only that characteristic (avoids picking the wrong
+    # one when the 018/PLKO class carries multiple characteristics). Default None = take what's present.
+    ausp = spark.read.table(f"{published}.objectcharacteristics_ausp").filter(F.col("KLART") == "018")
+    if PROCESS_LINE_ATINN is not None:
+        ausp = ausp.filter(F.col("ATINN") == PROCESS_LINE_ATINN)
+    ausp = ausp.select(
+        F.col("OBJEK").alias("_cuobj"),
+        F.col("ATINN").alias("_atinn"),
+        F.col("ATZHL").alias("_atzhl"),
+        F.col("ATWRT").alias("_atwrt"),
+    )
+    # CAWNT description in English ('E' is the SAP language code — consistent with MAKT/CRTX elsewhere).
+    cawnt = (
+        spark.read.table(f"{published}.characteristicvaluedescription_cawnt")
+        .filter(F.col("SPRAS") == "E")
+        .select(
+            F.col("ATINN").alias("_atinn"),
+            F.col("ATZHL").alias("_atzhl"),
+            F.col("ATWTB").alias("_atwtb"),
+        )
+    )
+    # Pick value + description TOGETHER via a struct so the description always belongs to the
+    # selected value (independent F.max() on each could mix them across characteristics).
+    return (
+        inob.join(ausp, "_cuobj", "inner")
+        .join(cawnt, ["_atinn", "_atzhl"], "left")
+        .groupBy("_objek")
+        .agg(
+            F.max(
+                F.struct(
+                    F.col("_atwrt").alias("production_line"),
+                    F.col("_atwtb").alias("production_line_description"),
+                )
+            ).alias("_pl")
+        )
+        .select(
+            F.col("_objek").alias("recipe_object_key"),
+            F.col("_pl.production_line").alias("production_line"),
+            F.col("_pl.production_line_description").alias("production_line_description"),
+        )
+    )

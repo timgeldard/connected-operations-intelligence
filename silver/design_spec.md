@@ -38,7 +38,7 @@ ${var.source_catalog}.${var.source_schema} (Bronze — Aecorsoft Delta replicati
 | Decision | Choice | Rationale |
 |---|---|---|
 | Pipeline mode | **Continuous** | Near real-time delivery; Aecorsoft replicates incrementally |
-| Change strategy | **SCD Type 1** via `dlt.apply_changes` | Operational state — current values matter, not history |
+| Change strategy | **SCD Type 1** via `dlt.apply_changes` (exception: `storage_bin` uses `apply_changes_from_snapshot` over a full current-state snapshot, because its `LQUA` occupancy source is a current-state snapshot with no delete marker) | Operational state — current values matter, not history |
 | Clustering | **Liquid clustering** on `plant_code` + date | Auto-compacts; no manual tuning at 100+ plant scale |
 | CDC source | `RecordActivity` / `OPFLAG` where present; `AEDATTM`, `AERUNID`, `AERECNO` sequence otherwise | Handles deletes from SAP where flagged and preserves deterministic event ordering |
 | Multi-source joins | **Trigger-stream refresh** | Header/detail/reference changes emit affected keys, then rows are rebuilt from latest replicated tables to avoid stale stream-static enrichment |
@@ -85,7 +85,7 @@ Current checks by table:
 | `batch_stock` | material_code, plant_code | unrestricted_quantity ≥ 0 |
 | `warehouse_transfer_order` | warehouse_number, transfer_order_number | — |
 | `warehouse_transfer_requirement` | warehouse_number, transfer_requirement_number | required_quantity > 0 |
-| `storage_bin` | warehouse_number, storage_type, bin_code, occupancy key | — |
+| `storage_bin` | warehouse_number, storage_type, bin_code, occupancy key (LQNUM / `__EMPTY__`) | — |
 | `downtime_event` | plant_code, start_datetime | duration ≥ 0 |
 | `quality_inspection_lot` | inspection_lot_number, plant_code | material_code present, inspection dates ordered |
 | `material` | material_code, plant_code | base_uom present, material_type present |
@@ -99,14 +99,15 @@ Current checks by table:
 
 | Silver Table | Granularity | Primary SAP Sources | Personas |
 |---|---|---|---|
-| `process_order` | 1 row / order | AUFK + AFKO (+ INOB/AUSP/CAWNT → process line) | Plant Manager, Supervisor |
+| `process_order` | 1 row / order | AUFK + AFKO (+ `recipe_process_line` → process line) | Plant Manager, Supervisor |
 | `process_order_operation` | 1 row / operation per order | AFVC + AFVV + AFKO | Supervisor, Operative |
+| `recipe_process_line` | 1 row / recipe object key (OBJEK) | INOB + AUSP + CAWNT (central_services, class type 018) | (internal reference) |
 | `pi_sheet_execution` | 1 row / PI sheet execution per operation | ZMANPEX_E04_002 | Supervisor, Operative |
 | `goods_movement` | 1 row / material document line | MSEG + MKPF | Plant Manager, Supervisor |
 | `batch_stock` | 1 row / batch × plant × storage location | MCHB | Supervisor, Operative |
 | `warehouse_transfer_order` | 1 row / transfer order item | LTAK + LTAP | Supervisor, Operative |
 | `warehouse_transfer_requirement` | 1 row / transfer requirement item | LTBK + LTBP | Supervisor |
-| `storage_bin` | 1 row / bin occupancy slot; multiple quants in the same bin produce multiple rows | LAGP + LQUA | Supervisor, Operative |
+| `storage_bin` | 1 row / bin occupancy slot; multiple quants in the same bin produce multiple rows | LAGP + LQUA (+ T320 from central_services for plant mapping) | Supervisor, Operative |
 | `downtime_event` | 1 row / downtime event | ZPEXPM_DWNT | Plant Manager, Supervisor |
 | `quality_inspection_lot` | 1 row / inspection lot | QALS + QMIH + QAMV | Plant Manager, Supervisor |
 | `material` | 1 row / material × plant | MARA + MARC + MAKT | All |
@@ -127,6 +128,29 @@ Current checks by table:
 >   to disambiguate; and CAWNT English text is read with `SPRAS = 'E'` (the SAP code; the spec's
 >   `'EN'` is the language label).
 > - `material.common_material_id` (+ `_raw`) carries the common/cross-system material code `MARA-BISMT`.
+>   with its text in `CAWNT-ATWTB`. This `OBJEK → (value, description)` map is materialised once in the
+>   **slow (triggered) tier** as `silver.recipe_process_line` (one row per `OBJEK`, fan-out-safe), so
+>   the fast `process_order` stream reads a small pre-aggregated map (`recipe_process_line_table` conf)
+>   instead of re-scanning the large `AUSP` every microbatch. `process_order`
+>   links via the recipe key `OBJEK = PLNTY + rpad(PLNNR,8) + lpad(PLNAL,2)` — kept byte-identical to
+>   the map key; no match → `NULL` (never an error). Verified live (uat): 99.6% of `AUTYP='40'` orders
+>   resolve a non-NULL line; map ≈ 85k rows.
+>   - **Read unconditionally + deploy order:** the fast pipeline is continuous, so `stg_process_order`
+>     is built once at graph time. It therefore reads the map **without** a `tableExists` guard (a guard
+>     would bake an empty fallback into the plan for the life of the update, silently NULL-ing every line
+>     until restart). Consequence: the **slow pipeline must build `recipe_process_line` before the
+>     continuous fast pipeline first starts** (DABs deploy both but cannot order their runs) — on first
+>     deploy, run the slow pipeline once, then start fast. Steady-state map updates propagate to the
+>     running fast pipeline per microbatch (stream-static join).
+>   - **Freshness trade-off:** an order is enriched only when *that order* changes (SCD1), using the
+>     last slow-run snapshot of the map. An order created against a recipe classified between two slow
+>     runs gets `NULL` until it next changes. Recipes normally predate orders, so the window is narrow;
+>     keep the slow cadence frequent enough to bound it.
+>   - **To confirm against live data:** the `018/PLKO` class is assumed to carry the process-line
+>     characteristic — if it carries more than one, set the `PROCESS_LINE_ATINN` helper constant to that
+>     characteristic's `ATINN` to disambiguate; CAWNT English text is read with `SPRAS = 'E'` (the SAP
+>     code; the spec's `'EN'` is the language label).
+> - `material.old_material_number` (+ `_raw`) carries the legacy material number `MARA-BISMT`.
 
 ---
 
@@ -171,8 +195,9 @@ SET ROW FILTER connected_plant_prod.silver.plant_access_filter ON (plant_code);
 ```
 
 ### Storage Bin Row-Level Security
-* **Current Status:** Filtered by the plant-level row filter using the derived `plant_code`. Occupied bins prefer the quant plant; empty bins derive plant from the warehouse-to-plant mapping.
-* **Risk:** Shared warehouses are assigned to a deterministic primary plant for empty bins until a warehouse-level access model exists.
+* **Current Status:** Filtered by the plant-level row filter using the derived `plant_code`. Occupied bins prefer the quant plant; empty bins derive plant from the warehouse-to-plant mapping. A warehouse mapped to **more than one plant** resolves an empty bin's `plant_code` to the sentinel `SHARED` (rather than guessing a single plant), so a single-plant access scope cannot silently see a shared bin.
+* **Ingestion note:** `storage_bin` is built by `apply_changes_from_snapshot` (SCD type 1) over a full current-state snapshot, so it remains a **streaming table** and the external row filter persists exactly as for the `dlt.apply_changes` tables — see the catalogue note and `docs/data_contracts.md`.
+* **Risk:** `SHARED`-tagged empty bins are not visible to any single-plant scope until a warehouse-level access model exists.
 * **Mitigation:** Review shared-warehouse assignments with plant operations before granting broad direct access to `storage_bin`.
 
 ---

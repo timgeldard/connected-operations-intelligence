@@ -14,6 +14,7 @@ from typing import List
 
 from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import StringType, StructField, StructType
 
 from silver.helpers import sap_date, sap_datetime, sap_flag, strip_zeros
 from tests.conftest import all_rows, first_row
@@ -39,19 +40,14 @@ _CAWNT_SCHEMA = "ATINN STRING, ATZHL STRING, SPRAS STRING, ATWTB STRING"
 
 # ── Shared transformation (mirrors stg_process_order logic) ─────────────────
 
-def apply_process_order_transform(
+def apply_recipe_process_line_transform(
     spark: SparkSession,
-    aufk_rows: List[Row],
-    afko_rows: List[Row],
     inob_rows: List[Row] = None,
     ausp_rows: List[Row] = None,
     cawnt_rows: List[Row] = None,
 ) -> DataFrame:
-    """Build a DataFrame that replicates the stg_process_order staging view, including the
-    classification-based process-line enrichment (AFKO → INOB → AUSP → CAWNT)."""
-    aufk = spark.createDataFrame(aufk_rows, _AUFK_SCHEMA)
-    afko = spark.createDataFrame(afko_rows, _AFKO_SCHEMA)
-
+    """Replicate the slow-tier silver.recipe_process_line table: INOB → AUSP → CAWNT (class type
+    018) reduced to one row per recipe object key, with production_line (+ English description)."""
     inob = (
         spark.createDataFrame(inob_rows or [], _INOB_SCHEMA)
         .filter((F.col("KLART") == "018") & (F.col("OBTAB") == "PLKO"))
@@ -69,9 +65,9 @@ def apply_process_order_transform(
         .select(F.col("ATINN").alias("_atinn"), F.col("ATZHL").alias("_atzhl"),
                 F.col("ATWTB").alias("_atwtb"))
     )
-    # One row per recipe OBJEK (no order-grain fan-out); value+description picked together via a
-    # struct so they stay consistent (mirrors stg_process_order).
-    process_line_map = (
+    # One row per recipe OBJEK (no fan-out); value+description picked together via a struct so they
+    # stay consistent (mirrors recipe_process_line).
+    return (
         inob.join(ausp, "_cuobj", "inner")
         .join(cawnt, ["_atinn", "_atzhl"], "left")
         .groupBy("_objek")
@@ -83,7 +79,38 @@ def apply_process_order_transform(
                 )
             ).alias("_pl")
         )
-        .select("_objek", "_pl.production_line", "_pl.production_line_description")
+        .select(
+            F.col("_objek").alias("recipe_object_key"),
+            F.col("_pl.production_line").alias("production_line"),
+            F.col("_pl.production_line_description").alias("production_line_description"),
+        )
+    )
+
+
+_RECIPE_MAP_SCHEMA = StructType([
+    StructField("recipe_object_key", StringType(), True),
+    StructField("production_line", StringType(), True),
+    StructField("production_line_description", StringType(), True),
+])
+
+
+def apply_process_order_transform(
+    spark: SparkSession,
+    aufk_rows: List[Row],
+    afko_rows: List[Row],
+    recipe_map_rows: List[Row] = None,
+) -> DataFrame:
+    """Replicate stg_process_order: join AUFK+AFKO and enrich production_line from the pre-built
+    recipe_process_line map (recipe_object_key → production_line[/description]), joined by
+    OBJEK = PLNTY + rpad(PLNNR,8) + lpad(PLNAL,2). Mirrors the refactored fast stream, which reads
+    the slow-tier map instead of computing the classification inline."""
+    aufk = spark.createDataFrame(aufk_rows, _AUFK_SCHEMA)
+    afko = spark.createDataFrame(afko_rows, _AFKO_SCHEMA)
+
+    process_line_map = spark.createDataFrame(recipe_map_rows or [], _RECIPE_MAP_SCHEMA).select(
+        F.col("recipe_object_key").alias("_objek"),
+        F.col("production_line"),
+        F.col("production_line_description"),
     )
 
     return (
@@ -171,6 +198,13 @@ def make_ausp(OBJEK="000000000001", KLART="018", ATINN="0000000111",
 def make_cawnt(ATINN="0000000111", ATZHL="0001", SPRAS="E", ATWTB="Process Line 07") -> Row:
     """CAWNT: English text for the characteristic value."""
     return Row(ATINN=ATINN, ATZHL=ATZHL, SPRAS=SPRAS, ATWTB=ATWTB)
+
+
+def make_recipe_line(recipe_object_key="25000012301", production_line="LINE_07",
+                     production_line_description="Process Line 07") -> Row:
+    """A row of the slow-tier recipe_process_line map (recipe_object_key = OBJEK)."""
+    return Row(recipe_object_key=recipe_object_key, production_line=production_line,
+               production_line_description=production_line_description)
 
 
 def make_afko(
@@ -385,35 +419,29 @@ class TestProcessOrderJoin:
 # Process-line enrichment — SAP classification path (AFKO → INOB → AUSP → CAWNT)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestProcessOrderLineEnrichment:
-    def test_process_line_resolved_via_classification(self, spark):
-        # Recipe key OBJEK = PLNTY + rpad(PLNNR,8) + lpad(PLNAL,2) = "2"+"50000123"+"01".
-        df = apply_process_order_transform(
+class TestRecipeProcessLine:
+    """The slow-tier recipe_process_line map build (INOB → AUSP → CAWNT, class type 018)."""
+
+    def test_map_resolved_via_classification(self, spark):
+        df = apply_recipe_process_line_transform(
             spark,
-            [make_aufk()],
-            [make_afko(PLNTY="2", PLNNR="50000123", PLNAL="01")],
             inob_rows=[make_inob(OBJEK="25000012301", CUOBJ="C1")],
             ausp_rows=[make_ausp(OBJEK="C1", ATINN="A1", ATZHL="0001", ATWRT="LINE_07")],
             cawnt_rows=[make_cawnt(ATINN="A1", ATZHL="0001", ATWTB="Process Line 07")],
         )
         row = first_row(df)
+        assert row["recipe_object_key"] == "25000012301"
         assert row["production_line"] == "LINE_07"
         assert row["production_line_description"] == "Process Line 07"
 
-    def test_process_line_null_when_no_inob_match(self, spark):
-        df = apply_process_order_transform(
-            spark, [make_aufk()], [make_afko()], inob_rows=[], ausp_rows=[], cawnt_rows=[]
-        )
-        row = first_row(df)
-        assert row["production_line"] is None
-        assert row["production_line_description"] is None
+    def test_map_empty_when_no_inob(self, spark):
+        df = apply_recipe_process_line_transform(spark, inob_rows=[], ausp_rows=[], cawnt_rows=[])
+        assert len(all_rows(df)) == 0
 
-    def test_process_line_value_set_but_description_null_when_no_cawnt(self, spark):
+    def test_map_value_set_but_description_null_when_no_cawnt(self, spark):
         """Value present, no CAWNT text → value set, description NULL (spec STEP 5)."""
-        df = apply_process_order_transform(
+        df = apply_recipe_process_line_transform(
             spark,
-            [make_aufk()],
-            [make_afko(PLNTY="2", PLNNR="50000123", PLNAL="01")],
             inob_rows=[make_inob(OBJEK="25000012301", CUOBJ="C1")],
             ausp_rows=[make_ausp(OBJEK="C1", ATINN="A1", ATZHL="0001", ATWRT="LINE_07")],
             cawnt_rows=[],
@@ -422,17 +450,60 @@ class TestProcessOrderLineEnrichment:
         assert row["production_line"] == "LINE_07"
         assert row["production_line_description"] is None
 
-    def test_classification_does_not_fan_out_order_grain(self, spark):
-        """Multiple characteristics on the same classification object must not duplicate the order."""
-        df = apply_process_order_transform(
+    def test_map_one_row_per_objek(self, spark):
+        """Multiple characteristics on the same classification object collapse to one map row."""
+        df = apply_recipe_process_line_transform(
             spark,
-            [make_aufk(AUFNR="000000000001")],
-            [make_afko(AUFNR="000000000001", PLNTY="2", PLNNR="50000123", PLNAL="01")],
             inob_rows=[make_inob(OBJEK="25000012301", CUOBJ="C1")],
             ausp_rows=[
                 make_ausp(OBJEK="C1", ATINN="A1", ATZHL="0001", ATWRT="LINE_07"),
                 make_ausp(OBJEK="C1", ATINN="A2", ATZHL="0001", ATWRT="ATTR_X"),
             ],
             cawnt_rows=[make_cawnt(ATINN="A1", ATZHL="0001", ATWTB="Process Line 07")],
+        )
+        assert len(all_rows(df)) == 1
+
+
+class TestProcessOrderLineEnrichment:
+    """process_order joining the pre-built recipe_process_line map by OBJEK."""
+
+    def test_process_line_resolved_from_map(self, spark):
+        # Recipe key OBJEK = PLNTY + rpad(PLNNR,8) + lpad(PLNAL,2) = "2"+"50000123"+"01".
+        df = apply_process_order_transform(
+            spark,
+            [make_aufk()],
+            [make_afko(PLNTY="2", PLNNR="50000123", PLNAL="01")],
+            recipe_map_rows=[make_recipe_line(recipe_object_key="25000012301",
+                                              production_line="LINE_07",
+                                              production_line_description="Process Line 07")],
+        )
+        row = first_row(df)
+        assert row["production_line"] == "LINE_07"
+        assert row["production_line_description"] == "Process Line 07"
+
+    def test_process_line_null_when_no_map_match(self, spark):
+        df = apply_process_order_transform(spark, [make_aufk()], [make_afko()], recipe_map_rows=[])
+        row = first_row(df)
+        assert row["production_line"] is None
+        assert row["production_line_description"] is None
+
+    def test_process_line_null_when_objek_differs(self, spark):
+        """Guard against silent OBJEK-construction drift: a non-matching key resolves NULL, not a
+        wrong line. (The map key must equal PLNTY+rpad(PLNNR,8)+lpad(PLNAL,2) byte-for-byte.)"""
+        df = apply_process_order_transform(
+            spark,
+            [make_aufk()],
+            [make_afko(PLNTY="2", PLNNR="50000123", PLNAL="01")],
+            recipe_map_rows=[make_recipe_line(recipe_object_key="9999999999")],
+        )
+        assert first_row(df)["production_line"] is None
+
+    def test_map_join_does_not_fan_out_order_grain(self, spark):
+        """A single map row per OBJEK keeps the order grain (exactly one row)."""
+        df = apply_process_order_transform(
+            spark,
+            [make_aufk(AUFNR="000000000001")],
+            [make_afko(AUFNR="000000000001", PLNTY="2", PLNNR="50000123", PLNAL="01")],
+            recipe_map_rows=[make_recipe_line(recipe_object_key="25000012301")],
         )
         assert len(all_rows(df)) == 1
