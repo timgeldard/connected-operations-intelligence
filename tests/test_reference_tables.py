@@ -67,6 +67,7 @@ def apply_material_transform(
             F.col("g.MTART").alias("material_type"),
             F.col("g.MEINS").alias("base_uom"),
             strip_zeros("g.BISMT").alias("common_material_id"),
+            F.col("g.BISMT").alias("common_material_id_raw"),
             sap_flag("g.XCHPF").alias("batch_management_required"),
             F.col("p.AEDATTM").alias("_replicated_at"),
         )
@@ -182,7 +183,9 @@ class TestMaterial:
         df = apply_material_transform(
             spark, [make_marc()], [make_mara(BISMT="LEGACY-007")], [make_makt()]
         )
-        assert first_row(df)["common_material_id"] == "LEGACY-007"
+        row = first_row(df)
+        assert row["common_material_id"] == "LEGACY-007"
+        assert row["common_material_id_raw"] == "LEGACY-007"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
