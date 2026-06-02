@@ -34,7 +34,10 @@ incrementally refreshable, re-adding them only in test mode. So production curre
 `risk_band`; `gold_process_order_staging.days_to_start`, `risk_band`; and the
 `gold_stock_expiry_risk` bucket/flag columns. Sprint 1 **documents** this.
 
-**Sprint 2 resolution (decided): live serving views over the MVs.**
+**Sprint 2 resolution (DONE — live serving views over the MVs).** Implemented on
+`chore/hardening-sprint-2-divergence`: MVs made deterministic; `<table>_live` serving views added
+(`scripts/generate_gold_serving_views_sql.py` → `resources/sql/gold_serving_views_<env>.sql`);
+tests migrated + `tests/test_gold_serving_views.py` added; data contracts updated.
 - Make the four MVs deterministic — drop the `is_test_mode` branches so production and test both
   return the **base aggregate** (absolute dates only; no `current_date()`). This restores prod==test
   and keeps incremental refresh.

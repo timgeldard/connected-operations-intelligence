@@ -54,10 +54,10 @@ Maturity labels: **Production-candidate** · **Pilot-grade** (usable, known gaps
 | `gold_bin_occupancy` | Stock | Production-candidate | — |
 | `gold_stock_availability` | Stock | Production-candidate | — |
 | `gold_plant_production_quality_summary` | Production | Pilot-grade | All-time window; no period grain |
-| `gold_stock_expiry_risk` | Stock | Pilot-grade | **Prod MV omits expiry buckets** (test-only; Phase 2) |
-| `gold_lineside_stock` | Warehouse | Pilot-grade | Storage-type roles from config (9xx fallback); **prod MV omits `min_days_to_expiry`** |
-| `gold_delivery_pick_status` | Warehouse | Pilot-grade | **Prod MV omits `risk_band`/`days_to_goods_issue`** (Phase 2) |
-| `gold_process_order_staging` | Warehouse | Pilot-grade | Assumes TO source ref = process order; **prod MV omits `risk_band`/`days_to_start`** |
+| `gold_stock_expiry_risk` | Stock | Pilot-grade | Expiry buckets via `gold_stock_expiry_risk_live` view |
+| `gold_lineside_stock` | Warehouse | Pilot-grade | Storage-type roles from config (9xx fallback); `min_days_to_expiry` via `_live` view |
+| `gold_delivery_pick_status` | Warehouse | Pilot-grade | `risk_band`/`days_to_goods_issue` via `gold_delivery_pick_status_live` view |
+| `gold_process_order_staging` | Warehouse | Pilot-grade | Assumes TO source ref = process order; `risk_band`/`days_to_start` via `_live` view |
 | `gold_stock_reconciliation` | Recon | Pilot-grade / directional | Plant×material grain; no MARM/UoM; interim/physical split via role map |
 | `gold_handling_unit_summary` | Inbound/HU | Pilot-grade | SSCC approximated from VEKP/VEPO |
 | `gold_warehouse_exceptions` | Exceptions | Pilot-grade | Severity/SLA rules need business validation |
@@ -65,9 +65,10 @@ Maturity labels: **Production-candidate** · **Pilot-grade** (usable, known gaps
 | `gold_inbound_po_backlog` | Inbound | Directional only | Open-PO backlog, **not** GR status (no EKBE/MSEG 101) |
 | `gold_shift_output_summary` | Production | Compatibility only | No shift dimension yet — daily output under a legacy name |
 
-> ⚠️ Several tables have a **production/test schema divergence**: `current_date()`-derived columns
-> are emitted only in test mode (to keep MVs incrementally refreshable). Tracked for resolution in
-> Sprint 2 — see [`docs/hardening-plan.md`](docs/hardening-plan.md).
+> Date-relative columns (`risk_band`, `days_to_*`, expiry buckets) are **served by `<table>_live`
+> views** (computed at query time) so the base MVs stay deterministic / incrementally refreshable —
+> consumers needing those columns read the `_live` view. (`scripts/generate_gold_serving_views_sql.py`;
+> hardening plan Phase 2.)
 
 ## Quick start
 
