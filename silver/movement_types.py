@@ -300,7 +300,7 @@ def build_movement_type_classification_records(
     families used by Gold KPIs. This helper centralizes the conformed overlay so the Silver DLT
     table and unit-test fixtures do not duplicate the same flag logic.
     """
-    codes = sorted(set(movement_types or MOVEMENT_TYPE_MAPPING.keys()))
+    codes = sorted(set(movement_types if movement_types is not None else MOVEMENT_TYPE_MAPPING.keys()))
     return [
         {
             "movement_type_code": code,

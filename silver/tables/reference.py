@@ -3,7 +3,7 @@ Reference/Master data domain tables.
 """
 
 import dlt
-from pyspark.sql import Row
+from pyspark.sql import Row, Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, StructField, StructType
 
@@ -241,15 +241,8 @@ def movement_type_classification():
             .withColumn("classification_source", F.lit("OVERLAY_ONLY"))
         )
 
-    t156 = (
-        spark.read.table(t156_table)
-        .filter(F.col("BWART").isNotNull())
-        .groupBy(F.col("BWART").alias("movement_type_code"))
-        .agg(
-            F.first("SHKZG", ignorenulls=True).alias("sap_debit_credit_indicator"),
-            F.first("XSTBW", ignorenulls=True).alias("sap_reversal_indicator"),
-        )
-    )
+    t156_raw = spark.read.table(t156_table).filter(F.col("BWART").isNotNull())
+    has_mandt = "MANDT" in t156_raw.columns
 
     t156t_exists = False
     try:
@@ -258,15 +251,30 @@ def movement_type_classification():
         t156t_exists = False
 
     if t156t_exists:
-        text = (
-            spark.read.table(t156t_table)
-            .filter((F.col("SPRAS") == "E") & F.col("BWART").isNotNull())
-            .groupBy(F.col("BWART").alias("movement_type_code"))
-            .agg(F.first("BTEXT", ignorenulls=True).alias("sap_movement_description"))
+        text_raw = spark.read.table(t156t_table).filter(
+            (F.col("SPRAS") == "E") & F.col("BWART").isNotNull()
         )
-        t156 = t156.join(text, "movement_type_code", "left")
+        join_cols = ["BWART", "MANDT"] if has_mandt and "MANDT" in text_raw.columns else ["BWART"]
+        t156_joined = t156_raw.join(text_raw, join_cols, "left")
     else:
-        t156 = t156.withColumn("sap_movement_description", F.lit(None).cast("string"))
+        t156_joined = t156_raw.withColumn("BTEXT", F.lit(None).cast("string"))
+
+    order_cols = [F.col("MANDT")] if has_mandt else [F.lit(1)]
+    for optional_col in ("SOBKZ", "KZBEW", "KZZUG", "KZVBR"):
+        if optional_col in t156_joined.columns:
+            order_cols.append(F.col(optional_col).asc_nulls_first())
+
+    t156 = (
+        t156_joined
+        .withColumn("_movement_type_rank", F.row_number().over(Window.partitionBy("BWART").orderBy(*order_cols)))
+        .filter(F.col("_movement_type_rank") == 1)
+        .select(
+            F.col("BWART").alias("movement_type_code"),
+            F.col("SHKZG").alias("sap_debit_credit_indicator"),
+            F.col("XSTBW").alias("sap_reversal_indicator"),
+            F.col("BTEXT").alias("sap_movement_description"),
+        )
+    )
 
     # Include every code SAP knows about plus the Kerry-confirmed overlay codes. T156-only rows are
     # retained as OTHER/false-flag classifications instead of being absent from the reference table.
@@ -279,10 +287,10 @@ def movement_type_classification():
 
     return (
         all_codes
-        .join(t156.alias("sap"), "movement_type_code", "left")
-        .join(overlay, "movement_type_code", "left")
+        .join(t156.alias("sap"), F.col("codes.movement_type_code") == F.col("sap.movement_type_code"), "left")
+        .join(overlay, F.col("codes.movement_type_code") == F.col("overlay.movement_type_code"), "left")
         .select(
-            "movement_type_code",
+            F.col("codes.movement_type_code").alias("movement_type_code"),
             F.coalesce(F.col("overlay.movement_label"), F.lit("UNCLASSIFIED_MOVEMENT_TYPE")).alias(
                 "movement_label"
             ),
