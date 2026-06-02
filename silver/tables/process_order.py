@@ -9,6 +9,8 @@ from silver.helpers import (
     BRONZE,
     PP_PI_ORDER_CATEGORY,
     PP_PI_ORDER_TYPES,
+    PROCESS_LINE_ATINN,
+    bronze_published,
     get_spark,
     sap_date,
     sap_datetime,
@@ -45,31 +47,39 @@ def stg_process_order():
     afko = spark.read.table(f"{BRONZE}.productionorderobject_afko")
 
     # ── Process-line enrichment — SAP classification path (AFKO → INOB → AUSP → CAWN/CAWNT) ──
-    # Authoritative derivation. The recipe/task-list (PLKO) the order references is classified under
-    # class type 018; the process line is a characteristic VALUE (AUSP-ATWRT) on that classification,
-    # with the English text in CAWNT-ATWTB. Build a deduped recipe-key → (value, description) map
-    # (one row per OBJEK, so the join cannot fan out the order grain) and attach it via the order's
-    # recipe key OBJEK = PLNTY + rpad(PLNNR,8) + lpad(PLNAL,2). Misses (no INOB/AUSP/CAWNT match)
-    # resolve to NULL — never an error (per spec STEPs 3/5).
+    # The recipe/task-list (PLKO) the order references is classified under class type 018; the
+    # process line is a characteristic VALUE (AUSP-ATWRT), with English text in CAWNT-ATWTB.
+    # IMPORTANT: these classification tables live in the PUBLISHED (central_services) source, NOT in
+    # the SAP source (verified live: connected_plant_uat.sap has none of INOB/AUSP/CAWNT — they are
+    # in published_uat.central_services). They are therefore read via bronze_published(); the fast
+    # pipeline now configures published_catalog/schema. Build a deduped recipe-key → (value,
+    # description) map (one row per OBJEK so the join cannot fan out the order grain), keyed by
+    # OBJEK = PLNTY + rpad(PLNNR,8) + lpad(PLNAL,2). Misses resolve to NULL — never an error.
+    # FOLLOW-UP: these static reads (incl. a large AUSP) run each trigger and only refresh existing
+    # orders when a related order changes — consider materialising a slow-tier `recipe_process_line`
+    # reference table and joining to it instead (out of the fast stream).
+    published = bronze_published()
     inob = (
-        spark.read.table(f"{BRONZE}.internalnumberobjectlink_inob")
+        spark.read.table(f"{published}.internalnumberobjectlink_inob")
         .filter((F.col("KLART") == "018") & (F.col("OBTAB") == "PLKO"))
         .select(F.col("OBJEK").alias("_objek"), F.col("CUOBJ").alias("_cuobj"))
     )
-    ausp = (
-        spark.read.table(f"{BRONZE}.objectcharacteristics_ausp")
-        .filter(F.col("KLART") == "018")
-        .select(
-            F.col("OBJEK").alias("_cuobj"),
-            F.col("ATINN").alias("_atinn"),
-            F.col("ATZHL").alias("_atzhl"),
-            F.col("ATWRT").alias("_atwrt"),
-        )
+    # If PROCESS_LINE_ATINN is configured, select only that characteristic (avoids picking the
+    # wrong one when the 018/PLKO class carries multiple characteristics). Default None = take what
+    # is present (deduped below).
+    ausp = spark.read.table(f"{published}.objectcharacteristics_ausp").filter(F.col("KLART") == "018")
+    if PROCESS_LINE_ATINN is not None:
+        ausp = ausp.filter(F.col("ATINN") == PROCESS_LINE_ATINN)
+    ausp = ausp.select(
+        F.col("OBJEK").alias("_cuobj"),
+        F.col("ATINN").alias("_atinn"),
+        F.col("ATZHL").alias("_atzhl"),
+        F.col("ATWRT").alias("_atwrt"),
     )
-    # CAWNT description in English. NOTE: this bronze stores SPRAS as the SAP code 'E' (the spec's
-    # 'EN' is the language label) — consistent with the MAKT/CRTX filters elsewhere in silver.
+    # CAWNT description in English. NOTE: SPRAS filtered as the SAP code 'E' (the spec's 'EN' is the
+    # language label) — consistent with the MAKT/CRTX filters elsewhere in silver.
     cawnt = (
-        spark.read.table(f"{BRONZE}.characteristicvaluedescription_cawnt")
+        spark.read.table(f"{published}.characteristicvaluedescription_cawnt")
         .filter(F.col("SPRAS") == "E")
         .select(
             F.col("ATINN").alias("_atinn"),
@@ -77,9 +87,6 @@ def stg_process_order():
             F.col("ATWTB").alias("_atwtb"),
         )
     )
-    # One row per recipe OBJEK. ASSUMPTION to confirm against live data: the 018/PLKO class carries
-    # the process-line characteristic; if it carries more than one characteristic, supply the
-    # process-line ATINN to disambiguate rather than relying on this deterministic pick.
     process_line_map = (
         inob.join(ausp, "_cuobj", "inner")
         .join(cawnt, ["_atinn", "_atzhl"], "left")

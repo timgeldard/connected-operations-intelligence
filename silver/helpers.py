@@ -38,6 +38,12 @@ PP_PI_ORDER_CATEGORY = "40"
 # (e.g. ("ZI01", "ZI02", "ZI05")). None = keep all AUTYP='40' process orders.
 PP_PI_ORDER_TYPES = None
 
+# Process-line characteristic (classification path AFKO→INOB→AUSP→CAWNT). The 018/PLKO recipe
+# classification may carry several characteristics; set this to the internal characteristic id
+# (AUSP/CABN-ATINN) of the process-line characteristic to select it unambiguously. None = take the
+# (single) characteristic present — confirm against live AUSP/CABN before relying on it.
+PROCESS_LINE_ATINN = None
+
 # TODO: Review Aecorsoft functionality to apply rules directly to fields at replication
 # time (e.g. zero-stripping, date-casting). Shifting these transformations to the
 # replication layer can avoid post-ingestion Spark processing overhead and reduce

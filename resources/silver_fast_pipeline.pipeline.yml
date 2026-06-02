@@ -19,6 +19,11 @@ resources:
       configuration:
         source_catalog: ${var.source_catalog}
         source_schema: ${var.source_schema}
+        # process_order reads the SAP classification tables (INOB/AUSP/CAWNT) for process-line
+        # enrichment; those live in the published/central_services source, so the fast pipeline
+        # needs the published source configured (same as the slow pipeline).
+        published_catalog: ${var.published_catalog}
+        published_schema: ${var.published_schema}
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting

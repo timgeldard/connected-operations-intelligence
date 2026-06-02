@@ -286,13 +286,14 @@ def gold_process_order_staging():
     transfer_orders = spark.read.table(f"{silver_schema}.warehouse_transfer_order")
     orders = spark.read.table(f"{silver_schema}.process_order")
 
-    # Transfer orders that stage to a production order: in Kerry's WM config the TO source
-    # reference (LTAK-BENUM) holds the process-order number. TOs whose source reference is NOT
-    # a process order (warehouse replenishment, returns, etc.) find no match in the left join
-    # below and are dropped — they don't corrupt the result. ASSUMPTION to confirm against live
-    # LTAK reference types per plant before relying on this for KPIs.
+    # Transfer orders that stage to a PRODUCTION ORDER are those with reference type LTAK-BETYP='F';
+    # only then does the source reference (BENUM) hold the process-order number. Verified live in
+    # connected_plant_uat: BETYP='F' is ~7% of TOs (the rest are blank/'X'/'P'/'L'/'D'), so without
+    # this filter non-production TOs whose BENUM collides with an order number would be miscounted.
+    # source_reference_type is LTAK-BETYP (see silver.warehouse_transfer_order).
     staging_tos = (
         transfer_orders
+        .filter(F.col("source_reference_type") == "F")
         .withColumn("order_number", F.col("source_reference_number"))
         .groupBy("order_number")
         .agg(

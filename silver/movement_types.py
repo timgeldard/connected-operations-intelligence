@@ -92,7 +92,13 @@ MOVEMENT_TYPE_MAPPING = {
     "561": "INITIAL_ENTRY_OF_STOCK",
     "562": "REVERSAL_INITIAL_ENTRY_OF_STOCK",
     # ===== CUSTOM Z-MOVEMENTS =====
-    # TODO: Confirm these site-specific custom codes against this SAP configuration.
+    # TODO (needs Kerry SAP config): classify the high-volume custom codes seen LIVE in
+    # connected_plant_uat.sap.inventorymovement_mseg. UNMAPPED today → OTHER → DROPPED from
+    # throughput/output KPIs (BR-MM-004): Z12 (~354k), X09 (~146k), Y02 (~66k), Z95 (~65k),
+    # Z44 (~26k), Z99 (~21k), Z96 (~19k), Z80 (~15k), Y01 (~14k). Also Z01 (~10.3M) and Z11 (~148k)
+    # are mapped below but NOT placed in any MOVEMENT_CATEGORIES / event-family set, so they too fall
+    # through to OTHER. Each needs its SAP semantics (receipt/issue/transfer/adjustment + direction)
+    # confirmed before being added to the category/event sets — do not guess.
     "Z01": "CUSTOM_BULK_DROP",
     "Z61": "DUV_STOCK_WRITE_OFF",
     "Z62": "DUV_STOCK_WRITE_ON",
