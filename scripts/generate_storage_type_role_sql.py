@@ -56,6 +56,9 @@ def generate_sql():
             "  storage_type_description STRING,\n"
             "  role STRING, valid_from DATE, valid_to DATE, owner STRING, review_status STRING\n"
             ") USING DELTA;\n\n"
+            "-- Schema evolution: add columns added after initial deploy (idempotent).\n"
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS plant_name STRING;\n"
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS storage_type_description STRING;\n\n"
             f"-- Reseed from the CSV (idempotent full refresh of the seeded plant(s)):\n"
             f"DELETE FROM {table} WHERE owner = 'wm-config-owner';\n"
         )

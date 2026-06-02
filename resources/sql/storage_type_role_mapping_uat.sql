@@ -9,6 +9,10 @@ CREATE TABLE IF NOT EXISTS connected_plant_uat.silver.storage_type_role_mapping_
   role STRING, valid_from DATE, valid_to DATE, owner STRING, review_status STRING
 ) USING DELTA;
 
+-- Schema evolution: add columns added after initial deploy (idempotent).
+ALTER TABLE connected_plant_uat.silver.storage_type_role_mapping_config ADD COLUMN IF NOT EXISTS plant_name STRING;
+ALTER TABLE connected_plant_uat.silver.storage_type_role_mapping_config ADD COLUMN IF NOT EXISTS storage_type_description STRING;
+
 -- Reseed from the CSV (idempotent full refresh of the seeded plant(s)):
 DELETE FROM connected_plant_uat.silver.storage_type_role_mapping_config WHERE owner = 'wm-config-owner';
 INSERT INTO connected_plant_uat.silver.storage_type_role_mapping_config (plant_code, plant_name, warehouse_number, storage_type, storage_type_description, role, valid_from, valid_to, owner, review_status) VALUES
