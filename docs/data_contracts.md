@@ -158,8 +158,8 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Status**: Pilot-grade
 * **Grain**: 1 row per outbound delivery (× plant × warehouse)
 * **Source Silver Tables**: `silver.outbound_delivery`
-* **Purpose**: pick progress (picked vs delivery quantity) and pick risk.
-* **Known Caveats**: delivery-quantity based, not TO-level picking. The MV is deterministic; `days_to_goods_issue` and `risk_band` are served at query time by the **`gold_delivery_pick_status_live`** view. Also, a known orphan risk exists: header-only deletes (null item number) cannot be matched by the compound keys, leaving orphaned delivery items in silver.outbound_delivery. Additionally, the `is_shipped` flag is derived as a heuristic (`MAX(actual_goods_issue_date IS NOT NULL)`), meaning a delivery is flagged as shipped if any line has a goods-issue date, which assumes no partial/split goods issue postings occur.
+* **Purpose**: pick progress using base-UoM delivery and picked quantities, plus pick risk.
+* **Known Caveats**: delivery-quantity based, not TO-level picking. `pick_fraction` is null when a delivery mixes base UoMs because the delivery-level quantity ratio would be invalid. The MV is deterministic; `days_to_goods_issue` and `risk_band` are served at query time by the **`gold_delivery_pick_status_live`** view. Also, a known orphan risk exists: header-only deletes (null item number) cannot be matched by the compound keys, leaving orphaned delivery items in silver.outbound_delivery. Additionally, the `is_shipped` flag is derived as a heuristic (`MAX(actual_goods_issue_date IS NOT NULL)`), meaning a delivery is flagged as shipped if any line has a goods-issue date, which assumes no partial/split goods issue postings occur.
 
 ### 14. `gold.gold_stock_reconciliation`
 * **Status**: Pilot-grade / directional (kept for compatibility; superseded by v2 for root-cause investigation)
@@ -256,8 +256,8 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Status**: Production-candidate
 * **Grain**: 1 row per `order_number × reservation_item_number`
 * **Source Silver Tables**: `silver.reservation_requirement` (RESB), `silver.process_order`, `silver.batch_stock`
-* **Purpose**: Per-component consumption reservation status for active orders with available unrestricted plant stock and a stock coverage check.
-* **Known Caveats**: Stock availability checks are approximate (summed across all slocs in a plant); reservation components are restricted to movement type `261` (consumption).
+* **Purpose**: Per-component consumption reservation status for active orders with available unrestricted stock in the reservation storage location and a stock coverage check.
+* **Known Caveats**: Stock availability checks are storage-location aware but not batch-aware; reservation components are restricted to movement type `261` (consumption).
 
 ---
 

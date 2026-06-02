@@ -176,7 +176,7 @@ def gold_plant_production_quality_summary():
 def gold_process_order_operations():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    
+
     operations = spark.read.table(f"{silver_schema}.process_order_operation")
     pi_sheets = spark.read.table(f"{silver_schema}.pi_sheet_execution")
     downtimes = spark.read.table(f"{silver_schema}.downtime_event")
@@ -297,10 +297,11 @@ def gold_process_order_component_status():
         "is_released", "is_closed", "production_line_description",
         F.col("material_code").alias("order_material_code"),
     )
-    # Aggregate available stock to plant × material grain (broadcast-safe: small relative to reservations)
+    # Aggregate available stock to plant × storage location × material grain so stock elsewhere in
+    # the plant does not incorrectly cover a dispensary/component reservation.
     stock = (
         spark.read.table(f"{silver_schema}.batch_stock")
-        .groupBy("plant_code", "material_code")
+        .groupBy("plant_code", "storage_location_code", "material_code")
         .agg(F.coalesce(F.sum("unrestricted_quantity"), F.lit(0.0)).alias("available_unrestricted_qty"))
     )
 
@@ -310,20 +311,21 @@ def gold_process_order_component_status():
         & (F.col("movement_type_code") == "261")   # PP-PI consumption
     ).select(
         "order_number", "material_code", "reservation_item", "reservation_number",
-        "required_quantity", "open_quantity", "requirement_date", "production_supply_area"
+        "storage_location_code", "required_quantity", "open_quantity", "requirement_date",
+        "production_supply_area"
     )
 
     return (
         open_components
         .join(orders, "order_number", "inner")        # inner — only components for known active orders
-        .join(F.broadcast(stock), ["plant_code", "material_code"], "left")
+        .join(F.broadcast(stock), ["plant_code", "storage_location_code", "material_code"], "left")
         .select(
             "order_number", "plant_code", "material_code", "order_material_code",
             "production_line_description", "scheduled_start_date",
             "is_released", "is_closed",
             F.col("reservation_item").alias("reservation_item_number"),
             "reservation_number",
-            "required_quantity", "open_quantity", "requirement_date",
+            "storage_location_code", "required_quantity", "open_quantity", "requirement_date",
             "production_supply_area",
             F.coalesce(F.col("available_unrestricted_qty"), F.lit(0.0)).alias("available_unrestricted_qty"),
             F.when(

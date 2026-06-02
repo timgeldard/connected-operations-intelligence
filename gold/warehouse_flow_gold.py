@@ -125,8 +125,9 @@ def gold_delivery_pick_status():
         )
         .agg(
             F.count(F.lit(1)).alias("line_count"),
-            F.coalesce(F.sum("delivery_quantity"), F.lit(0.0)).alias("delivery_qty"),
-            F.coalesce(F.sum("picked_quantity"), F.lit(0.0)).alias("picked_qty"),
+            F.coalesce(F.sum("delivery_quantity_base"), F.lit(0.0)).alias("delivery_qty"),
+            F.coalesce(F.sum("actual_delivered_base_quantity"), F.lit(0.0)).alias("picked_qty"),
+            F.count_distinct("base_uom").alias("base_uom_count"),
             F.max(F.when(F.col("actual_goods_issue_date").isNotNull(), F.lit(1)).otherwise(F.lit(0))).alias(
                 "_is_shipped"
             ),
@@ -134,8 +135,12 @@ def gold_delivery_pick_status():
         .select(
             "delivery_number", "plant_code", "warehouse_number", "delivery_type",
             "sold_to_customer", "planned_goods_issue_date", "line_count",
-            "delivery_qty", "picked_qty",
-            F.when(F.col("delivery_qty") != 0, F.col("picked_qty") / F.col("delivery_qty"))
+            "delivery_qty", "picked_qty", "base_uom_count",
+            (F.col("base_uom_count") > 1).alias("has_mixed_base_uom"),
+            F.when(
+                (F.col("delivery_qty") != 0) & (F.col("base_uom_count") <= 1),
+                F.col("picked_qty") / F.col("delivery_qty"),
+            )
             .otherwise(F.lit(None).cast("double"))
             .alias("pick_fraction"),
             (F.col("_is_shipped") == 1).alias("is_shipped"),

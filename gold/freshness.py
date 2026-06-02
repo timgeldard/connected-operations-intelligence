@@ -8,8 +8,8 @@ stale KPIs with no signal. This module adds:
   gold_data_freshness_status  — one row per monitored Silver dependency: latest replication time,
                                 lag minutes, SLA, and a FRESH/STALE/NO_DATA/STATIC status. Intended
                                 for an operations "data freshness" panel.
-  gold_critical_freshness_gate — fails the Gold run (@dlt.expect_or_fail) only when a CRITICAL table
-                                is STALE, so non-critical lag does not block the pipeline.
+  gold_critical_freshness_gate — fails the Gold run (@dlt.expect_or_fail) when a CRITICAL table is
+                                STALE or has NO_DATA, so empty critical inputs cannot pass silently.
 
 Contracts (table → domain → criticality → SLA minutes) are documented in
 docs/freshness_contracts.md and must be kept in sync with FRESHNESS_CONTRACTS below.
@@ -130,12 +130,15 @@ def gold_data_freshness_status():
 
 @dlt.view(
     name="gold_critical_freshness_gate",
-    comment="Fails the Gold run if any CRITICAL Silver dependency is STALE (non-critical lag does not block).",
+    comment="Fails the Gold run if any CRITICAL Silver dependency is STALE or NO_DATA.",
 )
-@dlt.expect_or_fail("critical_data_is_fresh", "stale_critical_table_count = 0")
+@dlt.expect_or_fail("critical_data_is_available_and_fresh", "blocking_critical_table_count = 0")
 def gold_critical_freshness_gate():
     return (
         dlt.read("gold_data_freshness_status")
-        .filter((F.col("criticality") == "critical") & (F.col("freshness_status") == "STALE"))
-        .agg(F.count(F.lit(1)).alias("stale_critical_table_count"))
+        .filter(
+            (F.col("criticality") == "critical")
+            & (F.col("freshness_status").isin("STALE", "NO_DATA"))
+        )
+        .agg(F.count(F.lit(1)).alias("blocking_critical_table_count"))
     )
