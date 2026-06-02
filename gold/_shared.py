@@ -40,11 +40,8 @@ def gold_table_args(comment: str, cluster_by: list) -> dict:
         "cluster_by": cluster_by,
     }
     if spark.conf.get("gold_apply_row_filter", "false").lower() == "true":
-        catalog = spark.conf.get("silver_catalog", None)
-        schema = spark.conf.get("silver_schema", None)
-        if not catalog or not schema:
-            raise ValueError(
-                "silver_catalog/silver_schema must be set when gold_apply_row_filter is enabled."
-            )
-        args["row_filter"] = f"ROW FILTER {catalog}.{schema}.plant_access_filter ON (plant_code)"
+        # Reuse get_silver_schema for consistent catalog/schema resolution (incl. the spark_catalog
+        # single-part namespace) and its conf validation, rather than duplicating it here.
+        silver_schema = get_silver_schema(spark)
+        args["row_filter"] = f"ROW FILTER {silver_schema}.plant_access_filter ON (plant_code)"
     return args
