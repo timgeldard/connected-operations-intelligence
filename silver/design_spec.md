@@ -122,11 +122,18 @@ Current checks by table:
 >   classified under class type **018**; the process line is the characteristic value (AUSP-`ATWRT`)
 >   with its text in `CAWNT-ATWTB`. This `OBJEK → (value, description)` map is materialised once in the
 >   **slow (triggered) tier** as `silver.recipe_process_line` (one row per `OBJEK`, fan-out-safe), so
->   the fast `process_order` stream reads a small pre-aggregated map (`recipe_process_line_table` conf,
->   `tableExists`-guarded) instead of re-scanning the large `AUSP` every microbatch. `process_order`
+>   the fast `process_order` stream reads a small pre-aggregated map (`recipe_process_line_table` conf)
+>   instead of re-scanning the large `AUSP` every microbatch. `process_order`
 >   links via the recipe key `OBJEK = PLNTY + rpad(PLNNR,8) + lpad(PLNAL,2)` — kept byte-identical to
 >   the map key; no match → `NULL` (never an error). Verified live (uat): 99.6% of `AUTYP='40'` orders
 >   resolve a non-NULL line; map ≈ 85k rows.
+>   - **Read unconditionally + deploy order:** the fast pipeline is continuous, so `stg_process_order`
+>     is built once at graph time. It therefore reads the map **without** a `tableExists` guard (a guard
+>     would bake an empty fallback into the plan for the life of the update, silently NULL-ing every line
+>     until restart). Consequence: the **slow pipeline must build `recipe_process_line` before the
+>     continuous fast pipeline first starts** (DABs deploy both but cannot order their runs) — on first
+>     deploy, run the slow pipeline once, then start fast. Steady-state map updates propagate to the
+>     running fast pipeline per microbatch (stream-static join).
 >   - **Freshness trade-off:** an order is enriched only when *that order* changes (SCD1), using the
 >     last slow-run snapshot of the map. An order created against a recipe classified between two slow
 >     runs gets `NULL` until it next changes. Recipes normally predate orders, so the window is narrow;

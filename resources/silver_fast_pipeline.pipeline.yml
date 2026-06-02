@@ -22,8 +22,11 @@ resources:
         # process_order reads the process-line classification map from the slow-tier
         # silver.recipe_process_line reference table (built by the slow pipeline from
         # central_services INOB/AUSP/CAWNT) instead of scanning AUSP itself — so the fast pipeline
-        # no longer needs the published/central_services source configured. It reads the map by
-        # name (tableExists-guarded; NULL process line until the slow pipeline first builds it).
+        # no longer needs the published/central_services source configured. The map is read
+        # UNCONDITIONALLY (no tableExists guard — this is a continuous pipeline; a guard would bake an
+        # empty fallback into the plan for the life of the update). DEPLOY ORDER: run the slow pipeline
+        # once (to create recipe_process_line) BEFORE first starting this continuous fast pipeline,
+        # otherwise it fails loud at startup with table-not-found.
         recipe_process_line_table: ${var.catalog}.${var.schema}.recipe_process_line
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant

@@ -4,7 +4,6 @@ Process Order domain tables.
 
 import dlt
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType, StructField, StructType
 
 from silver.helpers import (
     BRONZE,
@@ -48,36 +47,32 @@ def stg_process_order():
     # ── Process-line enrichment — read the slow-tier recipe_process_line reference map ──
     # The heavy SAP classification (AFKO → INOB → AUSP → CAWNT, class type 018) is materialised by the
     # slow pipeline into silver.recipe_process_line (one row per recipe object key). This fast stream
-    # reads that small pre-aggregated map instead of scanning AUSP every microbatch, then joins by the
-    # recipe key OBJEK = PLNTY + rpad(PLNNR,8) + lpad(PLNAL,2). The table is owned by a DIFFERENT
-    # pipeline, so we read it by name (recipe_process_line_table conf) with a tableExists guard and
-    # fall back to an empty map (production_line resolves NULL) until the slow pipeline has built it.
-    # TRADE-OFF: an order is enriched only when that order changes (SCD1), using the last slow-run
-    # snapshot of the map — so an order created against a recipe classified between two slow runs gets
-    # NULL until it next changes. Recipes normally predate orders, so the window is narrow; keep the
-    # slow cadence frequent enough to bound it.
+    # reads that small pre-aggregated map (recipe_process_line_table conf) and joins by the recipe key
+    # OBJEK = PLNTY + rpad(PLNNR,8) + lpad(PLNAL,2).
+    #
+    # Read UNCONDITIONALLY — no tableExists guard. This is a CONTINUOUS pipeline, so stg_process_order
+    # is evaluated ONCE at graph build; a tableExists guard would bake an empty-map fallback into the
+    # plan for the life of the update if the table were missing at startup, silently resolving every
+    # production_line to NULL until the next restart. Reading unconditionally instead fails loud at
+    # startup if the map is absent (explicit and fixable), and — as a stream-static join — picks up the
+    # slow pipeline's map updates per microbatch once the table exists.
+    # DEPLOY ORDER: the slow pipeline must have built recipe_process_line before this continuous pipeline
+    # starts (DABs deploy both pipelines but cannot order their *runs*); on first deploy, run the slow
+    # pipeline once, then start the fast pipeline. See resources/silver_fast_pipeline.pipeline.yml.
+    # ENRICHMENT TRADE-OFF: an order is enriched only when that order changes (SCD1), using the last
+    # slow-run snapshot of the map — so an order created against a recipe classified between two slow
+    # runs gets NULL until it next changes. Recipes normally predate orders, so the window is narrow.
     recipe_table = spark.conf.get("recipe_process_line_table", None)
-    recipe_table_exists = False
-    if recipe_table:
-        try:
-            recipe_table_exists = spark.catalog.tableExists(recipe_table)
-        except Exception:  # noqa: BLE001 — missing catalog/schema is expected pre-bootstrap
-            recipe_table_exists = False
-    if recipe_table_exists:
-        process_line_map = spark.read.table(recipe_table).select(
-            F.col("recipe_object_key").alias("_objek"),
-            F.col("production_line"),
-            F.col("production_line_description"),
+    if not recipe_table:
+        raise ValueError(
+            "recipe_process_line_table configuration must be set "
+            "(see resources/silver_fast_pipeline.pipeline.yml)."
         )
-    else:
-        process_line_map = spark.createDataFrame(
-            [],
-            StructType([
-                StructField("_objek", StringType(), True),
-                StructField("production_line", StringType(), True),
-                StructField("production_line_description", StringType(), True),
-            ]),
-        )
+    process_line_map = spark.read.table(recipe_table).select(
+        F.col("recipe_object_key").alias("_objek"),
+        F.col("production_line"),
+        F.col("production_line_description"),
+    )
 
     is_delete = F.coalesce(F.col("k.RecordActivity"), F.col("c.RecordActivity")) == "D"
     order_type_filter = (
