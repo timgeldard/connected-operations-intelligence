@@ -320,18 +320,12 @@ def gold_process_order_staging():
     staging_config = spark.read.table(
         f"{silver_schema}.process_order_staging_reference_mapping_config"
     )
+    # F.min on booleans returns False if any row is False, True if all are True —
+    # so a plant is trusted only when every configured warehouse has is_validated=true.
     plant_trust = (
         staging_config
         .groupBy("plant_code")
-        .agg(
-            F.max(F.col("is_validated").cast("int")).alias("_has_validated"),
-            F.sum(F.when(~F.col("is_validated"), F.lit(1)).otherwise(F.lit(0))).alias("_not_validated_count"),
-        )
-        .withColumn(
-            "_plant_trusted",
-            (F.col("_has_validated") == 1) & (F.col("_not_validated_count") == 0),
-        )
-        .select("plant_code", "_plant_trusted")
+        .agg(F.min("is_validated").alias("_plant_trusted"))
     )
 
     staged = (
@@ -383,15 +377,15 @@ def gold_process_order_staging_validation():
         .distinct()
     )
 
-    # Header-level totals per plant/warehouse.  BENUM/BETYP are LTAK header fields; dedup to one
-    # row per TO header before aggregating so a multi-item TO counts as one source reference.
+    # Header-level totals per plant/warehouse.  BENUM/BETYP are LTAK header fields; aggregate
+    # at the (plant, warehouse, TO-number) grain first so a multi-item TO counts once.
     to_header_totals = (
         transfer_orders
-        .select(
-            "plant_code", "warehouse_number", "transfer_order_number",
-            "source_reference_type", "created_datetime",
+        .groupBy("plant_code", "warehouse_number", "transfer_order_number")
+        .agg(
+            F.first("source_reference_type").alias("source_reference_type"),
+            F.min("created_datetime").alias("created_datetime"),
         )
-        .dropDuplicates(["plant_code", "warehouse_number", "transfer_order_number"])
         .groupBy("plant_code", "warehouse_number")
         .agg(
             F.count(F.lit(1)).alias("total_to_headers"),
@@ -402,15 +396,13 @@ def gold_process_order_staging_validation():
         )
     )
 
-    # Distinct F-type TO headers with their BENUM — one row per TO header.
+    # One row per F-type TO header — deterministic by picking the max(benum) in case of
+    # data anomalies; in practice all items under a header carry the same BENUM.
     f_to_headers = (
         transfer_orders
         .filter(F.col("source_reference_type") == STAGING_REFERENCE_TYPE)
-        .select(
-            "plant_code", "warehouse_number", "transfer_order_number",
-            F.col("source_reference_number").alias("benum"),
-        )
-        .dropDuplicates(["plant_code", "warehouse_number", "transfer_order_number"])
+        .groupBy("plant_code", "warehouse_number", "transfer_order_number")
+        .agg(F.max("source_reference_number").alias("benum"))
     )
 
     # Match count: F-type TO headers whose BENUM resolves to a known process order.
@@ -418,10 +410,7 @@ def gold_process_order_staging_validation():
         f_to_headers
         .join(order_keys, F.col("benum") == F.col("_po_number"), "left")
         .groupBy("plant_code", "warehouse_number")
-        .agg(
-            F.sum(F.when(F.col("_po_number").isNotNull(), F.lit(1)).otherwise(F.lit(0)))
-             .alias("f_type_benum_matched"),
-        )
+        .agg(F.count("_po_number").alias("f_type_benum_matched"))
     )
 
     return (
