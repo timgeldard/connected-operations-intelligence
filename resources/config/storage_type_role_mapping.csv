@@ -1,0 +1,12 @@
+plant_code,warehouse_number,storage_type,role,valid_from,valid_to,owner,review_status
+C061,208,100,LINESIDE,2024-01-01,,wm-config-owner,APPROVED
+C061,208,801,LINESIDE,2024-01-01,,wm-config-owner,APPROVED
+C061,208,802,LINESIDE,2024-01-01,,wm-config-owner,APPROVED
+C061,208,803,LINESIDE,2024-01-01,,wm-config-owner,APPROVED
+C061,208,804,LINESIDE,2024-01-01,,wm-config-owner,APPROVED
+C061,208,805,LINESIDE,2024-01-01,,wm-config-owner,APPROVED
+C061,208,901,INTERIM,2024-01-01,,wm-config-owner,APPROVED
+C061,208,902,INTERIM,2024-01-01,,wm-config-owner,APPROVED
+C061,208,911,INTERIM,2024-01-01,,wm-config-owner,APPROVED
+C061,208,922,INTERIM,2024-01-01,,wm-config-owner,APPROVED
+C061,208,999,INTERIM,2024-01-01,,wm-config-owner,APPROVED

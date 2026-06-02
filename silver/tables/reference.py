@@ -418,12 +418,31 @@ def vendor():
     table_properties={"delta.enableChangeDataFeed": "true"}
 )
 def storage_type_role_mapping():
+    # Sourced from a GOVERNED Unity Catalog config table (admins maintain rows without editing code
+    # or redeploying) when configured/present — set the `storage_role_config_table` Spark conf to its
+    # fully-qualified name (the slow pipeline wires it to <catalog>.<schema>.storage_type_role_mapping_config,
+    # seeded from resources/config/storage_type_role_mapping.csv via
+    # scripts/generate_storage_type_role_sql.py). Only APPROVED, in-window rows are used. Falls back
+    # to a small embedded bootstrap seed so the pipeline never breaks before the config table exists.
     schema = StructType([
         StructField("plant_code", StringType(), True),
         StructField("warehouse_number", StringType(), True),
         StructField("storage_type", StringType(), True),
         StructField("role", StringType(), True),
     ])
+    config_table = spark.conf.get("storage_role_config_table", None)
+    if config_table and spark.catalog.tableExists(config_table):
+        return (
+            spark.read.table(config_table)
+            .filter(
+                (F.upper(F.col("review_status")) == "APPROVED")
+                & (F.col("valid_from").isNull() | (F.col("valid_from") <= F.current_date()))
+                & (F.col("valid_to").isNull() | (F.col("valid_to") > F.current_date()))
+            )
+            .select("plant_code", "warehouse_number", "storage_type", "role")
+        )
+
+    # Bootstrap fallback (C061 / warehouse 208) — used only until the governed config table exists.
     data = [
         Row(plant_code="C061", warehouse_number="208", storage_type="100", role="LINESIDE"),
         Row(plant_code="C061", warehouse_number="208", storage_type="801", role="LINESIDE"),
