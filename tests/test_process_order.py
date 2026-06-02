@@ -69,13 +69,21 @@ def apply_process_order_transform(
         .select(F.col("ATINN").alias("_atinn"), F.col("ATZHL").alias("_atzhl"),
                 F.col("ATWTB").alias("_atwtb"))
     )
-    # One row per recipe OBJEK so the join cannot fan out the order grain (mirrors stg_process_order).
+    # One row per recipe OBJEK (no order-grain fan-out); value+description picked together via a
+    # struct so they stay consistent (mirrors stg_process_order).
     process_line_map = (
         inob.join(ausp, "_cuobj", "inner")
         .join(cawnt, ["_atinn", "_atzhl"], "left")
         .groupBy("_objek")
-        .agg(F.max("_atwrt").alias("production_line"),
-             F.max("_atwtb").alias("production_line_description"))
+        .agg(
+            F.max(
+                F.struct(
+                    F.col("_atwrt").alias("production_line"),
+                    F.col("_atwtb").alias("production_line_description"),
+                )
+            ).alias("_pl")
+        )
+        .select("_objek", "_pl.production_line", "_pl.production_line_description")
     )
 
     return (

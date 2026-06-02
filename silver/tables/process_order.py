@@ -87,14 +87,21 @@ def stg_process_order():
             F.col("ATWTB").alias("_atwtb"),
         )
     )
+    # Pick value + description TOGETHER via a struct so the description always belongs to the
+    # selected value (independent F.max() on each could mix them across characteristics).
     process_line_map = (
         inob.join(ausp, "_cuobj", "inner")
         .join(cawnt, ["_atinn", "_atzhl"], "left")
         .groupBy("_objek")
         .agg(
-            F.max("_atwrt").alias("production_line"),
-            F.max("_atwtb").alias("production_line_description"),
+            F.max(
+                F.struct(
+                    F.col("_atwrt").alias("production_line"),
+                    F.col("_atwtb").alias("production_line_description"),
+                )
+            ).alias("_pl")
         )
+        .select("_objek", "_pl.production_line", "_pl.production_line_description")
     )
 
     is_delete = F.coalesce(F.col("k.RecordActivity"), F.col("c.RecordActivity")) == "D"
