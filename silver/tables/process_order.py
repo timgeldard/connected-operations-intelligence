@@ -44,6 +44,18 @@ def stg_process_order():
     aufk = spark.read.table(f"{BRONZE}.ordermaster_aufk")
     afko = spark.read.table(f"{BRONZE}.productionorderobject_afko")
 
+    # Process-line enrichment: PRO_LINE_DES ("process line description") exists ONLY on the downtime
+    # Z-table (the sole source), keyed by work centre. Derive a deduped (plant, work-centre) ->
+    # process-line map — one row per (WERKS, ARBPL) so the join cannot fan out the order grain — and
+    # attach it to the order's MAIN work centre (AUFK-VAPLZ). Coverage is limited to work centres
+    # present in downtime data; orders whose main work centre is unmapped get NULL.
+    process_line_map = (
+        spark.read.table(f"{BRONZE}.downtime_zpexpm_dwnt")
+        .filter(F.col("ARBPL").isNotNull() & F.col("PRO_LINE_DES").isNotNull())
+        .groupBy("WERKS", "ARBPL")
+        .agg(F.max("PRO_LINE_DES").alias("production_line_description"))
+    )
+
     is_delete = F.coalesce(F.col("k.RecordActivity"), F.col("c.RecordActivity")) == "D"
     order_type_filter = (
         F.col("k.AUART").isin(PP_PI_ORDER_TYPES)
@@ -56,6 +68,11 @@ def stg_process_order():
         changed_keys.alias("c")
         .join(aufk.alias("k"), ["AUFNR", "MANDT"], "left")
         .join(afko.alias("h"), ["AUFNR", "MANDT"], "left")
+        .join(
+            process_line_map.alias("pl"),
+            (F.col("k.WERKS") == F.col("pl.WERKS")) & (F.col("k.VAPLZ") == F.col("pl.ARBPL")),
+            "left",
+        )
         .filter(process_order_filter)
         .select(
             # ── Natural key
@@ -74,6 +91,7 @@ def stg_process_order():
             strip_zeros("k.PROCNR").alias("production_process_number"),
             F.col("k.PROCNR").alias("production_process_number_raw"),
             F.col("k.VAPLZ").alias("main_work_centre_code"),
+            F.col("pl.production_line_description").alias("production_line_description"),
 
             # ── Material & quantity (AFKO)
             strip_zeros("h.PLNBEZ").alias("material_code"),

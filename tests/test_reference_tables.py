@@ -26,7 +26,7 @@ _MARC_SCHEMA = (
 _MARA_SCHEMA = (
     "MATNR STRING, MANDT STRING, MTART STRING, MATKL STRING, MEINS STRING, "
     "NTGEW DOUBLE, BRGEW DOUBLE, GEWEI STRING, MHDRZ DOUBLE, MHDLP DOUBLE, "
-    "XCHPF STRING, IPRKZ STRING, STOFF STRING"
+    "XCHPF STRING, IPRKZ STRING, STOFF STRING, BISMT STRING"
 )
 _MAKT_SCHEMA = "MATNR STRING, MANDT STRING, SPRAS STRING, MAKTX STRING"
 _T001L_SCHEMA = "WERKS STRING, LGORT STRING, LGOBE STRING, AEDATTM STRING"
@@ -66,6 +66,7 @@ def apply_material_transform(
             F.col("d.MAKTX").alias("material_description"),
             F.col("g.MTART").alias("material_type"),
             F.col("g.MEINS").alias("base_uom"),
+            strip_zeros("g.BISMT").alias("old_material_number"),
             sap_flag("g.XCHPF").alias("batch_management_required"),
             F.col("p.AEDATTM").alias("_replicated_at"),
         )
@@ -103,11 +104,12 @@ def make_mara(
     XCHPF="X",
     IPRKZ="",
     STOFF="",
+    BISMT="OLD-12345",
 ):
     return Row(
         MATNR=MATNR, MANDT=MANDT, MTART=MTART, MATKL=MATKL, MEINS=MEINS,
         NTGEW=NTGEW, BRGEW=BRGEW, GEWEI=GEWEI, MHDRZ=MHDRZ, MHDLP=MHDLP,
-        XCHPF=XCHPF, IPRKZ=IPRKZ, STOFF=STOFF,
+        XCHPF=XCHPF, IPRKZ=IPRKZ, STOFF=STOFF, BISMT=BISMT,
     )
 
 
@@ -174,6 +176,13 @@ class TestMaterial:
             [make_makt()],
         )
         assert first_row(df)["batch_management_required"] is True
+
+    def test_old_material_number_from_bismt(self, spark):
+        """MARA-BISMT (old/legacy material number) is carried onto silver.material."""
+        df = apply_material_transform(
+            spark, [make_marc()], [make_mara(BISMT="LEGACY-007")], [make_makt()]
+        )
+        assert first_row(df)["old_material_number"] == "LEGACY-007"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

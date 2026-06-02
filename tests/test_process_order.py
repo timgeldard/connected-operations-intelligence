@@ -23,9 +23,11 @@ from tests.conftest import all_rows, first_row
 _AUFK_SCHEMA = (
     "AUFNR STRING, MANDT STRING, WERKS STRING, AUART STRING, AUTYP STRING, KTEXT STRING, "
     "ERDAT STRING, ERNAM STRING, PHAS0 STRING, PHAS1 STRING, PHAS2 STRING, "
-    "PHAS3 STRING, LOEKZ STRING, KDAUF STRING, STDAT STRING, "
+    "PHAS3 STRING, LOEKZ STRING, KDAUF STRING, STDAT STRING, VAPLZ STRING, "
     "RecordActivity STRING, AEDATTM STRING"
 )
+# Downtime Z-table — the (work-centre -> process-line) source for header enrichment.
+_DWNT_SCHEMA = "WERKS STRING, ARBPL STRING, PRO_LINE_DES STRING"
 _AFKO_SCHEMA = (
     "AUFNR STRING, MANDT STRING, PLNBEZ STRING, GAMNG DOUBLE, GMEIN STRING, "
     "GSTRS STRING, GLTRS STRING, GSUZS STRING, GLUZS STRING, "
@@ -39,18 +41,34 @@ def apply_process_order_transform(
     spark: SparkSession,
     aufk_rows: List[Row],
     afko_rows: List[Row],
+    line_rows: List[Row] = None,
 ) -> DataFrame:
     """Build a DataFrame that replicates the stg_process_order staging view."""
     aufk = spark.createDataFrame(aufk_rows, _AUFK_SCHEMA)
     afko = spark.createDataFrame(afko_rows, _AFKO_SCHEMA)
+    # Deduped (plant, work-centre) -> process-line map, one row per (WERKS, ARBPL) so the join
+    # cannot fan out the order grain (mirrors stg_process_order).
+    process_line_map = (
+        spark.createDataFrame(line_rows or [], _DWNT_SCHEMA)
+        .filter(F.col("ARBPL").isNotNull() & F.col("PRO_LINE_DES").isNotNull())
+        .groupBy("WERKS", "ARBPL")
+        .agg(F.max("PRO_LINE_DES").alias("production_line_description"))
+    )
 
     return (
         aufk.alias("k")
         .join(afko.alias("h"), ["AUFNR", "MANDT"], "left")
+        .join(
+            process_line_map.alias("pl"),
+            (F.col("k.WERKS") == F.col("pl.WERKS")) & (F.col("k.VAPLZ") == F.col("pl.ARBPL")),
+            "left",
+        )
         .filter(F.col("k.AUTYP") == "40")
         .select(
             strip_zeros("k.AUFNR").alias("order_number"),
             F.col("k.WERKS").alias("plant_code"),
+            F.col("k.VAPLZ").alias("main_work_centre_code"),
+            F.col("pl.production_line_description").alias("production_line_description"),
             F.col("k.AUART").alias("order_type_code"),
             F.col("k.KTEXT").alias("order_description"),
             strip_zeros("h.PLNBEZ").alias("material_code"),
@@ -90,6 +108,7 @@ def make_aufk(
     LOEKZ="",
     KDAUF="0000012345",
     STDAT="20241201",
+    VAPLZ="LINE-A",
     RecordActivity="I",
     AEDATTM="2024-12-01T10:00:00",
 ) -> Row:
@@ -97,9 +116,14 @@ def make_aufk(
         AUFNR=AUFNR, MANDT=MANDT, WERKS=WERKS, AUART=AUART, AUTYP=AUTYP,
         KTEXT=KTEXT, ERDAT=ERDAT, ERNAM=ERNAM,
         PHAS0=PHAS0, PHAS1=PHAS1, PHAS2=PHAS2, PHAS3=PHAS3,
-        LOEKZ=LOEKZ, KDAUF=KDAUF, STDAT=STDAT,
+        LOEKZ=LOEKZ, KDAUF=KDAUF, STDAT=STDAT, VAPLZ=VAPLZ,
         RecordActivity=RecordActivity, AEDATTM=AEDATTM,
     )
+
+
+def make_downtime(WERKS="1000", ARBPL="LINE-A", PRO_LINE_DES="Chocolate Line 1") -> Row:
+    """Downtime Z-table row — source of the (work-centre -> process-line) mapping."""
+    return Row(WERKS=WERKS, ARBPL=ARBPL, PRO_LINE_DES=PRO_LINE_DES)
 
 
 def make_afko(
@@ -304,3 +328,39 @@ class TestProcessOrderJoin:
             [],
         )
         assert len(all_rows(df)) == 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Process-line enrichment (header ← main work centre ← downtime PRO_LINE_DES)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestProcessOrderLineEnrichment:
+    def test_production_line_enriched_via_main_work_centre(self, spark):
+        df = apply_process_order_transform(
+            spark,
+            [make_aufk(WERKS="1000", VAPLZ="MIX-01")],
+            [make_afko()],
+            [make_downtime(WERKS="1000", ARBPL="MIX-01", PRO_LINE_DES="Mixing Line 1")],
+        )
+        row = first_row(df)
+        assert row["main_work_centre_code"] == "MIX-01"
+        assert row["production_line_description"] == "Mixing Line 1"
+
+    def test_production_line_null_when_work_centre_unmapped(self, spark):
+        df = apply_process_order_transform(
+            spark, [make_aufk(VAPLZ="UNKNOWN-WC")], [make_afko()], []
+        )
+        assert first_row(df)["production_line_description"] is None
+
+    def test_line_map_does_not_fan_out_order_grain(self, spark):
+        """Multiple downtime rows for the same work centre must not duplicate the order."""
+        df = apply_process_order_transform(
+            spark,
+            [make_aufk(AUFNR="000000000001", WERKS="1000", VAPLZ="MIX-01")],
+            [make_afko(AUFNR="000000000001")],
+            [
+                make_downtime(WERKS="1000", ARBPL="MIX-01", PRO_LINE_DES="Mixing Line 1"),
+                make_downtime(WERKS="1000", ARBPL="MIX-01", PRO_LINE_DES="Mixing Line 1"),
+            ],
+        )
+        assert len(all_rows(df)) == 1

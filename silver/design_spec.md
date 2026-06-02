@@ -99,7 +99,7 @@ Current checks by table:
 
 | Silver Table | Granularity | Primary SAP Sources | Personas |
 |---|---|---|---|
-| `process_order` | 1 row / order | AUFK + AFKO | Plant Manager, Supervisor |
+| `process_order` | 1 row / order | AUFK + AFKO (+ ZPEXPM_DWNT → process line) | Plant Manager, Supervisor |
 | `process_order_operation` | 1 row / operation per order | AFVC + AFVV + AFKO | Supervisor, Operative |
 | `pi_sheet_execution` | 1 row / PI sheet execution per operation | ZMANPEX_E04_002 | Supervisor, Operative |
 | `goods_movement` | 1 row / material document line | MSEG + MKPF | Plant Manager, Supervisor |
@@ -114,6 +114,14 @@ Current checks by table:
 | `work_centre` | 1 row / work centre × plant | CRHD + CRTX | All |
 | `capacity_utilisation` | 1 row / capacity × period | KAPA + KAKO | Plant Manager |
 | `movement_type_classification` | 1 row / SAP movement type | Conformed seed from `silver/movement_types.py` | All |
+
+> **Enrichment notes:**
+> - `process_order.production_line_description` is derived from the downtime Z-table
+>   (`ZPEXPM_DWNT` — the only `PRO_LINE_DES` source) via a **deduped (plant, work-centre) → process
+>   line** map (one row per `WERKS`+`ARBPL`, so it cannot fan out the order grain) joined on the
+>   order's main work centre (`AUFK-VAPLZ`). Coverage is limited to work centres present in downtime
+>   data; unmapped orders get `NULL`.
+> - `material.old_material_number` (+ `_raw`) carries the legacy material number `MARA-BISMT`.
 
 ---
 
