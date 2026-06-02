@@ -76,3 +76,12 @@ ALTER TABLE connected_plant_dev.silver_dev.purchase_order
 
 ALTER TABLE connected_plant_dev.silver_dev.handling_unit
   SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_dev.silver_dev.storage_type_role_mapping
+  SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_dev.silver_dev.warehouse_plant_mapping
+  SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);
+
+ALTER TABLE connected_plant_dev.silver_dev.warehouse_storage_location_mapping
+  SET ROW FILTER connected_plant_dev.silver_dev.plant_access_filter ON (plant_code);

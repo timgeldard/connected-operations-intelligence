@@ -27,7 +27,6 @@ from silver.movement_types import (
     get_movement_event_category,
 )
 
-
 # Verified: module-level spark session deleted. All functions load spark lazily.
 
 

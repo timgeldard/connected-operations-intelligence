@@ -13,7 +13,6 @@ from pyspark.sql import functions as F
 
 from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
 
-
 # ── 1. RESERVATION REQUIREMENT ────────────────────────────────────────────────
 # RESB — component reservations for production orders. Single streaming source
 # (carries RecordActivity for deletes). Dispensary line-pick tasks are the subset
@@ -88,8 +87,9 @@ dlt.apply_changes(
 
 
 # ── 2. OUTBOUND DELIVERY ──────────────────────────────────────────────────────
-# LIKP (header) + LIPS (item). Item grain. Pick progress (LGMNG vs LFIMG) is
-# summarised in Gold. Mirrors the warehouse_transfer_order multi-source idiom.
+# LIKP (header) + LIPS (item). Item grain. Pick progress is summarised in Gold
+# using base-UoM quantities (LGMNG and LFIMG converted via UMVKZ/UMVKN).
+# Mirrors the warehouse_transfer_order multi-source idiom.
 
 @dlt.view(name="stg_outbound_delivery")
 @dlt.expect("delivery_number present", "delivery_number IS NOT NULL")
@@ -151,9 +151,28 @@ def stg_outbound_delivery():
             F.col("i.CHARG").alias("batch_number_raw"),
 
             # ── Quantities (pick progress)
+            # LFIMG is in sales UoM (VRKME); LGMNG is in stock/base UoM (MEINS).
+            # Keep the original sales quantity for reconciliation, and expose a
+            # base-UoM denominator for pick-progress KPIs.
             F.col("i.LFIMG").alias("delivery_quantity"),
-            F.col("i.LGMNG").alias("picked_quantity"),
+            F.col("i.VRKME").alias("sales_uom"),
+            F.col("i.UMVKZ").alias("sales_to_base_uom_numerator"),
+            F.col("i.UMVKN").alias("sales_to_base_uom_denominator"),
             F.col("i.MEINS").alias("base_uom"),
+            F.when(F.col("i.LFIMG").isNull(), F.lit(None).cast("double"))
+            .when(F.col("i.VRKME") == F.col("i.MEINS"), F.col("i.LFIMG").cast("double"))
+            .when(
+                F.col("i.UMVKZ").isNotNull()
+                & F.col("i.UMVKN").isNotNull()
+                & (F.col("i.UMVKN") != 0),
+                F.col("i.LFIMG").cast("double")
+                * F.col("i.UMVKZ").cast("double")
+                / F.col("i.UMVKN").cast("double"),
+            )
+            .otherwise(F.lit(None).cast("double"))
+            .alias("delivery_quantity_base"),
+            F.col("i.LGMNG").alias("actual_delivered_base_quantity"),
+            F.col("i.LGMNG").alias("picked_quantity"),
             F.col("i.NTGEW").alias("net_weight"),
             F.col("i.BRGEW").alias("gross_weight"),
             F.col("i.GEWEI").alias("weight_unit"),

@@ -10,7 +10,6 @@ from pyspark.sql import functions as F
 
 from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
 
-
 # ── 1. GOODS MOVEMENT ────────────────────────────────────────────────────────
 
 

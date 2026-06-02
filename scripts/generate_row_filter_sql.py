@@ -49,6 +49,9 @@ TABLES = [
     "stock_at_location",
     "purchase_order",
     "handling_unit",
+    "storage_type_role_mapping",
+    "warehouse_plant_mapping",
+    "warehouse_storage_location_mapping",
 ]
 
 TEMPLATE = """-- Unity Catalog Row Filter — plant-level access control for silver tables ({env_upper}).
