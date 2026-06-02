@@ -44,16 +44,50 @@ def stg_process_order():
     aufk = spark.read.table(f"{BRONZE}.ordermaster_aufk")
     afko = spark.read.table(f"{BRONZE}.productionorderobject_afko")
 
-    # Process-line enrichment: PRO_LINE_DES ("process line description") exists ONLY on the downtime
-    # Z-table (the sole source), keyed by work centre. Derive a deduped (plant, work-centre) ->
-    # process-line map — one row per (WERKS, ARBPL) so the join cannot fan out the order grain — and
-    # attach it to the order's MAIN work centre (AUFK-VAPLZ). Coverage is limited to work centres
-    # present in downtime data; orders whose main work centre is unmapped get NULL.
+    # ── Process-line enrichment — SAP classification path (AFKO → INOB → AUSP → CAWN/CAWNT) ──
+    # Authoritative derivation. The recipe/task-list (PLKO) the order references is classified under
+    # class type 018; the process line is a characteristic VALUE (AUSP-ATWRT) on that classification,
+    # with the English text in CAWNT-ATWTB. Build a deduped recipe-key → (value, description) map
+    # (one row per OBJEK, so the join cannot fan out the order grain) and attach it via the order's
+    # recipe key OBJEK = PLNTY + rpad(PLNNR,8) + lpad(PLNAL,2). Misses (no INOB/AUSP/CAWNT match)
+    # resolve to NULL — never an error (per spec STEPs 3/5).
+    inob = (
+        spark.read.table(f"{BRONZE}.internalnumberobjectlink_inob")
+        .filter((F.col("KLART") == "018") & (F.col("OBTAB") == "PLKO"))
+        .select(F.col("OBJEK").alias("_objek"), F.col("CUOBJ").alias("_cuobj"))
+    )
+    ausp = (
+        spark.read.table(f"{BRONZE}.objectcharacteristics_ausp")
+        .filter(F.col("KLART") == "018")
+        .select(
+            F.col("OBJEK").alias("_cuobj"),
+            F.col("ATINN").alias("_atinn"),
+            F.col("ATZHL").alias("_atzhl"),
+            F.col("ATWRT").alias("_atwrt"),
+        )
+    )
+    # CAWNT description in English. NOTE: this bronze stores SPRAS as the SAP code 'E' (the spec's
+    # 'EN' is the language label) — consistent with the MAKT/CRTX filters elsewhere in silver.
+    cawnt = (
+        spark.read.table(f"{BRONZE}.characteristicvaluedescription_cawnt")
+        .filter(F.col("SPRAS") == "E")
+        .select(
+            F.col("ATINN").alias("_atinn"),
+            F.col("ATZHL").alias("_atzhl"),
+            F.col("ATWTB").alias("_atwtb"),
+        )
+    )
+    # One row per recipe OBJEK. ASSUMPTION to confirm against live data: the 018/PLKO class carries
+    # the process-line characteristic; if it carries more than one characteristic, supply the
+    # process-line ATINN to disambiguate rather than relying on this deterministic pick.
     process_line_map = (
-        spark.read.table(f"{BRONZE}.downtime_zpexpm_dwnt")
-        .filter(F.col("ARBPL").isNotNull() & F.col("PRO_LINE_DES").isNotNull())
-        .groupBy("WERKS", "ARBPL")
-        .agg(F.max("PRO_LINE_DES").alias("production_line_description"))
+        inob.join(ausp, "_cuobj", "inner")
+        .join(cawnt, ["_atinn", "_atzhl"], "left")
+        .groupBy("_objek")
+        .agg(
+            F.max("_atwrt").alias("production_line"),
+            F.max("_atwtb").alias("production_line_description"),
+        )
     )
 
     is_delete = F.coalesce(F.col("k.RecordActivity"), F.col("c.RecordActivity")) == "D"
@@ -70,7 +104,11 @@ def stg_process_order():
         .join(afko.alias("h"), ["AUFNR", "MANDT"], "left")
         .join(
             process_line_map.alias("pl"),
-            (F.col("k.WERKS") == F.col("pl.WERKS")) & (F.col("k.VAPLZ") == F.col("pl.ARBPL")),
+            F.concat(
+                F.coalesce(F.col("h.PLNTY"), F.lit("")),
+                F.rpad(F.coalesce(F.col("h.PLNNR"), F.lit("")), 8, " "),
+                F.lpad(F.coalesce(F.col("h.PLNAL"), F.lit("")), 2, "0"),
+            ) == F.col("pl._objek"),
             "left",
         )
         .filter(process_order_filter)
@@ -91,6 +129,7 @@ def stg_process_order():
             strip_zeros("k.PROCNR").alias("production_process_number"),
             F.col("k.PROCNR").alias("production_process_number_raw"),
             F.col("k.VAPLZ").alias("main_work_centre_code"),
+            F.col("pl.production_line").alias("production_line"),
             F.col("pl.production_line_description").alias("production_line_description"),
 
             # ── Material & quantity (AFKO)
