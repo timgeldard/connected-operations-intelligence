@@ -17,7 +17,7 @@ def setup_silver(spark: SparkSession):
     spark.conf.set("silver_catalog", "spark_catalog")
     spark.conf.set("silver_schema", "silver")
     spark.sql("CREATE DATABASE IF NOT EXISTS silver")
-    
+
     # Seed default storage type role mapping configuration table
     _save(spark, [
         Row(plant_code="C061", warehouse_number="208", storage_type="100", role="LINESIDE"),
@@ -30,7 +30,7 @@ def setup_silver(spark: SparkSession):
             staging_reference_strategy="BENUM_EQUALS_AUFNR", is_validated=True,
             validated_by="profiling-2026-06-02", validated_at=None, notes=None),
     ], "process_order_staging_reference_mapping_config")
-    
+
     yield
     spark.sql("DROP DATABASE IF EXISTS silver CASCADE")
 
@@ -136,7 +136,7 @@ def test_stock_reconciliation_delta_and_match(spark):
     assert rows["M1"]["wm_interim_qty"] == 20.0
     assert rows["M1"]["mismatch_class"] == "match"
     assert rows["M1"]["inventory_value"] == 1000.0
-    
+
     assert rows["M2"]["delta_qty"] == 20.0
     assert rows["M2"]["wm_total_qty"] == 30.0
     assert rows["M2"]["wm_physical_qty"] == 30.0

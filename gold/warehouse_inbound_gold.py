@@ -11,7 +11,6 @@ from pyspark.sql import functions as F
 
 from gold._shared import get_silver_schema, get_spark_session, gold_table_args
 
-
 # ── 1. INBOUND PO BACKLOG ─────────────────────────────────────────────────────
 # NOTE: this is open purchase-order *backlog* (PO items not yet flagged
 # delivery-complete), NOT true goods-receipt status. It does not consult GR history

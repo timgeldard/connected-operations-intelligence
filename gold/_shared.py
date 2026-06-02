@@ -16,7 +16,7 @@ def get_silver_schema(spark: SparkSession) -> str:
         raise ValueError("silver_catalog configuration must be set in the Spark session.")
     if not schema:
         raise ValueError("silver_schema configuration must be set in the Spark session.")
-    
+
     # Local Spark (spark_catalog) requires single-part namespace (database.table)
     if catalog == "spark_catalog":
         return schema

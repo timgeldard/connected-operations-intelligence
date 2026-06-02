@@ -144,11 +144,11 @@ def gold_freshness_gate():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
     catalog = spark.conf.get("silver_catalog", None)
-    
+
     # If in local test mode, return a dummy DataFrame to bypass real-time checks
     if catalog == "spark_catalog":
         return spark.range(1).select(F.lit(0.0).alias("max_lag_minutes"))
-        
+
     # Optimize: restrict the scan to recent postings (last 14 days) to leverage partition pruning/Liquid clustering
     goods_mov = spark.read.table(f"{silver_schema}.goods_movement").filter(
         F.col("posting_date") >= F.date_sub(F.current_date(), 14)

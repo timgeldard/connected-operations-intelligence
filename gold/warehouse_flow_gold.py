@@ -20,7 +20,6 @@ from gold._shared import (
     gold_table_args,
 )
 
-
 # ── 1. DISPENSARY BACKLOG ─────────────────────────────────────────────────────
 
 @dlt.table(**gold_table_args(
