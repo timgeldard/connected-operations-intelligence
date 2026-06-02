@@ -126,7 +126,7 @@ Current checks by table:
 >   process-line characteristic — if it carries more than one, supply that characteristic's `ATINN`
 >   to disambiguate; and CAWNT English text is read with `SPRAS = 'E'` (the SAP code; the spec's
 >   `'EN'` is the language label).
-> - `material.old_material_number` (+ `_raw`) carries the legacy material number `MARA-BISMT`.
+> - `material.common_material_id` (+ `_raw`) carries the common/cross-system material code `MARA-BISMT`.
 
 ---
 

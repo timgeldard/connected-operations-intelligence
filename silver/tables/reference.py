@@ -57,9 +57,10 @@ def material():
             F.col("g.MTART").alias("material_type"),
             F.col("g.MATKL").alias("material_group"),
             F.col("g.MEINS").alias("base_uom"),
-            # Old / legacy material number (MARA-BISMT) — kept for cross-referencing legacy systems.
-            strip_zeros("g.BISMT").alias("old_material_number"),
-            F.col("g.BISMT").alias("old_material_number_raw"),
+            # Common material code (MARA-BISMT) — the cross-system / common material identifier
+            # used to reconcile this material across source systems.
+            strip_zeros("g.BISMT").alias("common_material_id"),
+            F.col("g.BISMT").alias("common_material_id_raw"),
 
             # ── Physical attributes
             F.col("g.NTGEW").alias("net_weight"),
