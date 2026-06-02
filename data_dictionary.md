@@ -750,6 +750,22 @@ The following BC tables are imported specifically to support **data enrichment**
 
 ---
 
+## Reporting Layer Addendum
+
+The generated SAP source dictionary above is complemented by curated reporting-layer objects maintained in the repository contracts and Gold/Semantic SQL definitions.
+
+| Layer | Object | Grain | Purpose |
+|---|---|---|---|
+| Gold | `gold_data_freshness_status` | one row per monitored Silver dependency | Freshness SLA status for Gold pipeline dependencies |
+| Gold | `gold_data_health_summary` | one row per health area | Operational health rollup across freshness, validation, reconciliation, and expectations |
+| Gold | `gold_inbound_po_backlog_enhanced` | plant x vendor x purchasing_org | Open inbound PO backlog with PO-linked GR quantity, remaining quantity, and putaway evidence |
+| Gold | `gold_stock_reconciliation_summary` | plant x warehouse x mismatch_reason x mismatch_severity | Canonical IM-to-WM stock reconciliation summary for consumption |
+| Semantic | `semantic_plant_operations_kpi` | one row per plant | Curated plant operations KPI rollup |
+| Semantic | `semantic_warehouse_performance` | plant x warehouse | Curated warehouse execution and inbound backlog KPI rollup |
+| Semantic | `semantic_stock_health` | one row per plant | Curated stock availability, expiry, and reconciliation health rollup |
+
+---
+
 ## Schema: `connected_plant_uat.sap`
 
 **Tables:** 154

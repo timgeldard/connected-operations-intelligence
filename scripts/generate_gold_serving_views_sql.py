@@ -33,6 +33,7 @@ ENVIRONMENTS = {
 _DAYS_TO_GI = "datediff(b.planned_goods_issue_date, current_date())"
 _DAYS_TO_START = "datediff(b.scheduled_start_date, current_date())"
 _DAYS_TO_EXPIRY = "datediff(b.minimum_expiry_date, current_date())"
+_DAYS_SINCE_PO = "datediff(current_date(), b.earliest_po_date)"
 
 # table -> [(output_column, sql_expression_over_base_alias_b)]. Mirrors the pre-Phase-2 test-mode
 # logic exactly so behaviour is unchanged — only the location moves (MV -> serving view).
@@ -92,6 +93,17 @@ SERVING_VIEWS = {
         ("has_minimum_shelf_life_breach",
          f"coalesce(CASE WHEN {_DAYS_TO_EXPIRY} < coalesce(b.minimum_remaining_shelf_life_days, 0) "
          "THEN b.total_stock_qty END, 0.0) > 0"),
+    ],
+    "gold_inbound_po_backlog_enhanced": [
+        ("oldest_po_age_days",
+         f"CASE WHEN b.earliest_po_date IS NOT NULL THEN {_DAYS_SINCE_PO} END"),
+        ("inbound_backlog_risk_band",
+         "CASE "
+         "WHEN b.remaining_open_qty <= 0 THEN 'green' "
+         f"WHEN {_DAYS_SINCE_PO} IS NULL THEN 'grey' "
+         f"WHEN {_DAYS_SINCE_PO} >= 30 THEN 'red' "
+         f"WHEN {_DAYS_SINCE_PO} >= 14 THEN 'amber' "
+         "ELSE 'green' END"),
     ],
 }
 

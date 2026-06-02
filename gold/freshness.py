@@ -33,6 +33,9 @@ from gold._shared import get_silver_schema, get_spark_session
 FRESHNESS_CONTRACTS = [
     {"table": "goods_movement", "domain": "production/warehouse", "criticality": "critical", "sla_minutes": 120, "has_watermark": True},
     {"table": "process_order", "domain": "production", "criticality": "critical", "sla_minutes": 120, "has_watermark": True},
+    {"table": "process_order_operation", "domain": "production", "criticality": "high", "sla_minutes": 120, "has_watermark": True},
+    {"table": "pi_sheet_execution", "domain": "production", "criticality": "high", "sla_minutes": 240, "has_watermark": True},
+    {"table": "downtime_event", "domain": "production/quality", "criticality": "high", "sla_minutes": 120, "has_watermark": True},
     {"table": "warehouse_transfer_order", "domain": "warehouse", "criticality": "critical", "sla_minutes": 120, "has_watermark": True},
     {"table": "warehouse_transfer_requirement", "domain": "warehouse", "criticality": "critical", "sla_minutes": 120, "has_watermark": True},
     {"table": "storage_bin", "domain": "stock/warehouse", "criticality": "critical", "sla_minutes": 120, "has_watermark": True},
@@ -44,6 +47,8 @@ FRESHNESS_CONTRACTS = [
     {"table": "handling_unit", "domain": "inbound/HU", "criticality": "medium", "sla_minutes": 240, "has_watermark": True},
     {"table": "material", "domain": "reference", "criticality": "medium", "sla_minutes": 1440, "has_watermark": True},
     {"table": "movement_type_classification", "domain": "reference", "criticality": "high", "sla_minutes": 0, "has_watermark": False},
+    {"table": "storage_type_role_mapping", "domain": "reference/config", "criticality": "high", "sla_minutes": 0, "has_watermark": False},
+    {"table": "process_order_staging_reference_mapping_config", "domain": "reference/config", "criticality": "high", "sla_minutes": 0, "has_watermark": False},
 ]
 
 _CONTRACTS_SCHEMA = StructType([
@@ -141,4 +146,190 @@ def gold_critical_freshness_gate():
             & (F.col("freshness_status").isin("STALE", "NO_DATA"))
         )
         .agg(F.count(F.lit(1)).alias("blocking_critical_table_count"))
+    )
+
+
+@dlt.table(
+    name="gold_data_health_summary",
+    comment=(
+        "Gold observability rollup for freshness, expectations, config coverage, staging "
+        "validation, and stock reconciliation health."
+    ),
+    table_properties={"delta.enableChangeDataFeed": "false"},
+    cluster_by=["health_area"],
+)
+def gold_data_health_summary():
+    """Summarise the operational health signals emitted by the Gold pipeline.
+
+    DLT expectation metrics are stored in the pipeline event log, not in a materialized table
+    that can be safely joined during planning. The expectation row below makes that ownership
+    explicit while the other rows roll up tables that are already persisted in Gold.
+    """
+    spark = get_spark_session()
+
+    freshness = dlt.read("gold_data_freshness_status")
+    freshness_summary = (
+        freshness
+        .agg(
+            F.count(F.lit(1)).alias("monitored_table_count"),
+            F.sum(
+                F.when(
+                    (F.col("criticality") == "critical")
+                    & (F.col("freshness_status").isin("STALE", "NO_DATA")),
+                    F.lit(1),
+                ).otherwise(F.lit(0))
+            ).alias("critical_issue_count"),
+            F.sum(
+                F.when(
+                    (F.col("criticality") != "critical")
+                    & (F.col("freshness_status").isin("STALE", "NO_DATA")),
+                    F.lit(1),
+                ).otherwise(F.lit(0))
+            ).alias("warning_issue_count"),
+            F.max("checked_at").alias("latest_observed_at"),
+        )
+        .withColumn(
+            "health_status",
+            F.when(F.col("critical_issue_count") > 0, F.lit("FAIL"))
+            .when(F.col("warning_issue_count") > 0, F.lit("WARN"))
+            .otherwise(F.lit("OK")),
+        )
+        .select(
+            F.lit("freshness").alias("health_area"),
+            "health_status",
+            F.col("monitored_table_count").alias("affected_row_count"),
+            "critical_issue_count",
+            "warning_issue_count",
+            "latest_observed_at",
+            F.concat(
+                F.lit("monitored Silver dependencies="),
+                F.col("monitored_table_count").cast("string"),
+            ).alias("details"),
+        )
+    )
+
+    storage_coverage = dlt.read("gold_storage_type_role_coverage_status")
+    storage_summary = (
+        storage_coverage
+        .agg(
+            F.count(F.lit(1)).alias("warehouse_count"),
+            F.sum(F.when(F.col("coverage_status") == "MISSING", F.lit(1)).otherwise(F.lit(0))).alias(
+                "critical_issue_count"
+            ),
+            F.sum(F.when(F.col("coverage_status") == "PARTIAL", F.lit(1)).otherwise(F.lit(0))).alias(
+                "warning_issue_count"
+            ),
+        )
+        .withColumn("latest_observed_at", F.current_timestamp())
+        .withColumn(
+            "health_status",
+            F.when(F.col("critical_issue_count") > 0, F.lit("FAIL"))
+            .when(F.col("warning_issue_count") > 0, F.lit("WARN"))
+            .otherwise(F.lit("OK")),
+        )
+        .select(
+            F.lit("storage_type_role_coverage").alias("health_area"),
+            "health_status",
+            F.col("warehouse_count").alias("affected_row_count"),
+            "critical_issue_count",
+            "warning_issue_count",
+            "latest_observed_at",
+            F.lit("MISSING/PARTIAL storage-type role mappings affect lineside and reconciliation trust").alias(
+                "details"
+            ),
+        )
+    )
+
+    staging_validation = dlt.read("gold_process_order_staging_validation")
+    staging_summary = (
+        staging_validation
+        .agg(
+            F.count(F.lit(1)).alias("warehouse_count"),
+            F.sum(F.when(F.col("validation_status") == "NOT_VALIDATED", F.lit(1)).otherwise(F.lit(0))).alias(
+                "critical_issue_count"
+            ),
+            F.sum(F.when(F.col("validation_status") == "NOT_APPLICABLE", F.lit(1)).otherwise(F.lit(0))).alias(
+                "warning_issue_count"
+            ),
+            F.max("sample_window_end").alias("latest_observed_at"),
+        )
+        .withColumn(
+            "health_status",
+            F.when(F.col("critical_issue_count") > 0, F.lit("FAIL"))
+            .when(F.col("warning_issue_count") > 0, F.lit("WARN"))
+            .otherwise(F.lit("OK")),
+        )
+        .select(
+            F.lit("process_order_staging_validation").alias("health_area"),
+            "health_status",
+            F.col("warehouse_count").alias("affected_row_count"),
+            "critical_issue_count",
+            "warning_issue_count",
+            "latest_observed_at",
+            F.lit("BETYP='F' source-reference validation for process-order staging").alias("details"),
+        )
+    )
+
+    reconciliation = dlt.read("gold_stock_reconciliation_summary_v2")
+    reconciliation_summary = (
+        reconciliation
+        .agg(
+            F.coalesce(F.sum("exception_count"), F.lit(0)).alias("affected_row_count"),
+            F.coalesce(
+                F.sum(
+                    F.when(
+                        F.col("mismatch_severity").isin("HIGH", "CRITICAL"),
+                        F.col("exception_count"),
+                    ).otherwise(F.lit(0))
+                ),
+                F.lit(0),
+            ).alias("critical_issue_count"),
+            F.coalesce(
+                F.sum(
+                    F.when(
+                        ~F.col("mismatch_severity").isin("INFO", "HIGH", "CRITICAL"),
+                        F.col("exception_count"),
+                    ).otherwise(F.lit(0))
+                ),
+                F.lit(0),
+            ).alias("warning_issue_count"),
+            F.coalesce(F.sum("abs_delta_quantity_total"), F.lit(0.0)).alias("abs_delta_quantity_total"),
+        )
+        .withColumn("latest_observed_at", F.current_timestamp())
+        .withColumn(
+            "health_status",
+            F.when(F.col("critical_issue_count") > 0, F.lit("FAIL"))
+            .when(F.col("warning_issue_count") > 0, F.lit("WARN"))
+            .otherwise(F.lit("OK")),
+        )
+        .select(
+            F.lit("stock_reconciliation").alias("health_area"),
+            "health_status",
+            "affected_row_count",
+            "critical_issue_count",
+            "warning_issue_count",
+            "latest_observed_at",
+            F.concat(
+                F.lit("absolute delta quantity total="),
+                F.round(F.col("abs_delta_quantity_total"), 3).cast("string"),
+            ).alias("details"),
+        )
+    )
+
+    expectation_summary = spark.range(1).select(
+        F.lit("expectations").alias("health_area"),
+        F.lit("EVENT_LOG").alias("health_status"),
+        F.lit(None).cast("long").alias("affected_row_count"),
+        F.lit(None).cast("long").alias("critical_issue_count"),
+        F.lit(None).cast("long").alias("warning_issue_count"),
+        F.current_timestamp().alias("latest_observed_at"),
+        F.lit("DLT expectation violations are available in the pipeline event log").alias("details"),
+    )
+
+    return (
+        freshness_summary
+        .unionByName(storage_summary)
+        .unionByName(staging_summary)
+        .unionByName(reconciliation_summary)
+        .unionByName(expectation_summary)
     )

@@ -209,10 +209,20 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_su
   WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_summary_v2_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_summary_secured AS
+  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_reconciliation_summary
+  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_summary_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_inbound_po_backlog_secured AS
   SELECT * FROM connected_plant_dev.gold_dev.gold_inbound_po_backlog
   WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_inbound_po_backlog_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_inbound_po_backlog_enhanced_secured AS
+  SELECT * FROM connected_plant_dev.gold_dev.gold_inbound_po_backlog_enhanced
+  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_inbound_po_backlog_enhanced_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_handling_unit_summary_secured AS
   SELECT * FROM connected_plant_dev.gold_dev.gold_handling_unit_summary

@@ -75,3 +75,26 @@ def test_lineside_stock_live_days_to_expiry(spark: SparkSession):
     rows = {r["warehouse_number"]: r for r in all_rows(_serve(spark, "gold_lineside_stock", base))}
     assert rows["W1"]["min_days_to_expiry"] == 5
     assert rows["W2"]["min_days_to_expiry"] is None
+
+
+def test_inbound_po_backlog_enhanced_live_aging_band(spark: SparkSession):
+    today = _today(spark)
+    base = spark.createDataFrame([
+        Row(purchase_group="old", earliest_po_date=today - timedelta(days=30), remaining_open_qty=10.0),
+        Row(purchase_group="mid", earliest_po_date=today - timedelta(days=14), remaining_open_qty=10.0),
+        Row(purchase_group="new", earliest_po_date=today - timedelta(days=2), remaining_open_qty=10.0),
+        Row(purchase_group="done", earliest_po_date=today - timedelta(days=60), remaining_open_qty=0.0),
+        Row(purchase_group="unknown", earliest_po_date=None, remaining_open_qty=10.0),
+    ])
+
+    rows = {
+        r["purchase_group"]: r
+        for r in all_rows(_serve(spark, "gold_inbound_po_backlog_enhanced", base))
+    }
+
+    assert rows["old"]["oldest_po_age_days"] == 30
+    assert rows["old"]["inbound_backlog_risk_band"] == "red"
+    assert rows["mid"]["inbound_backlog_risk_band"] == "amber"
+    assert rows["new"]["inbound_backlog_risk_band"] == "green"
+    assert rows["done"]["inbound_backlog_risk_band"] == "green"
+    assert rows["unknown"]["inbound_backlog_risk_band"] == "grey"

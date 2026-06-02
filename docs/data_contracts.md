@@ -135,10 +135,20 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Date-relative columns served live**: the MV is deterministic (absolute dates only) so it stays incrementally refreshable; the expiry **bucket/flag columns** (`minimum_days_to_expiry`, `expired_qty`, `expiry_risk_*`, `minimum_shelf_life_breach_qty`, `highest_expiry_risk_bucket`, `has_minimum_shelf_life_breach`) are computed at query time by the **`gold_stock_expiry_risk_live`** serving view (`scripts/generate_gold_serving_views_sql.py`). Consumers needing risk buckets read the `_live` view.
 * **Freshness Expectation**: Batch triggered.
 
-### 10. `gold.gold_freshness_gate`
-* **Type**: DLT Validation View
-* **Source Silver Tables**: `silver.goods_movement`
-* **SLA Constraint**: Fails the Gold pipeline execution run dynamically via `@dlt.expect_or_fail` if the maximum data replication latency exceeds 120 minutes.
+### 10. `gold.gold_data_freshness_status`
+* **Status**: Production
+* **Grain**: 1 row per monitored Silver dependency
+* **Source Silver Tables**: monitored dependencies listed in `gold.freshness.FRESHNESS_CONTRACTS`
+* **Purpose**: reports dependency freshness status (`FRESH`, `STALE`, `NO_DATA`, `STATIC`) with latest `_replicated_at`, lag minutes, SLA, domain, and criticality.
+* **SLA Constraint**: `gold_critical_freshness_gate` fails the Gold pipeline when any critical dependency is `STALE` or `NO_DATA`.
+* **Known Caveats**: DLT expectation metrics are stored in the pipeline event log, not in this table.
+
+### 10a. `gold.gold_data_health_summary`
+* **Status**: Production
+* **Grain**: 1 row per health area (`freshness`, `expectations`, `storage_type_role_coverage`, `process_order_staging_validation`, `stock_reconciliation`)
+* **Source Tables**: `gold_data_freshness_status`, `gold_storage_type_role_coverage_status`, `gold_process_order_staging_validation`, `gold_stock_reconciliation_summary_v2`, plus the DLT event log for expectation details.
+* **Purpose**: concise operations scorecard of critical/warning issue counts and latest observed timestamps for Gold data-product health.
+* **Known Caveats**: the `expectations` row points to the pipeline event log because expectation violations are not persisted as a Gold table.
 
 ### 11. `gold.gold_dispensary_backlog`
 * **Status**: Production-candidate
@@ -187,6 +197,12 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Grain**: 1 row per plant × warehouse × mismatch_reason × mismatch_severity
 * **Purpose**: Operational scorecard of unreconciled stock by reason and severity.
 
+### 14e. `gold.gold_stock_reconciliation_summary`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × warehouse × mismatch_reason × mismatch_severity
+* **Source Gold Tables**: `gold_stock_reconciliation_summary_v2`
+* **Purpose**: canonical consumption-facing summary of IM↔WM reconciliation with `reconciliation_status` (`RECONCILED`, `REVIEW`, `ACTION_REQUIRED`).
+
 ### 14a. `gold.gold_storage_type_role_coverage_status`
 * **Status**: Production
 * **Grain**: 1 row per plant × warehouse
@@ -216,6 +232,14 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Source Silver Tables**: `silver.purchase_order` (EKKO/EKPO, from `central_services`)
 * **Purpose**: open inbound PO backlog (items not delivery-complete).
 * **Known Caveats**: this is **PO backlog, not goods-receipt status** — no GR history (EKBE/MSEG 101), inbound delivery/ASN, or remaining-quantity. A true receipt model is designed separately (Phase 9).
+
+### 16a. `gold.gold_inbound_po_backlog_enhanced`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × vendor × purchasing org
+* **Source Silver Tables**: `silver.purchase_order`, `silver.goods_movement`, `silver.movement_type_classification`, `silver.warehouse_transfer_order`
+* **Purpose**: open inbound PO backlog enriched with PO-linked 103/104 goods-receipt quantity, remaining open quantity, QA item count, and putaway TO evidence.
+* **Aging**: base MV carries deterministic age anchors (`earliest_po_date`, `latest_gr_posting_date`, `oldest_putaway_to_created_datetime`); date-relative `oldest_po_age_days` and `inbound_backlog_risk_band` are served by `gold_inbound_po_backlog_enhanced_live`.
+* **Known Caveats**: GR linkage requires `silver.goods_movement.purchase_order_number` and `purchase_order_item`. Putaway TO linkage is best-effort via `warehouse_transfer_order.source_reference_number = purchase_order_number` because LTAP/LTAK do not provide a normalized PO item key in the current Silver model.
 
 ### 17. `gold.gold_handling_unit_summary`
 * **Status**: Pilot-grade
@@ -255,9 +279,31 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 ### 22. `gold.gold_process_order_component_status`
 * **Status**: Production-candidate
 * **Grain**: 1 row per `order_number × reservation_item_number`
-* **Source Silver Tables**: `silver.reservation_requirement` (RESB), `silver.process_order`, `silver.batch_stock`
+* **Source Silver Tables**: `silver.reservation_requirement` (RESB), `silver.movement_type_classification`, `silver.process_order`, `silver.batch_stock`
 * **Purpose**: Per-component consumption reservation status for active orders with available unrestricted stock in the reservation storage location and a stock coverage check.
-* **Known Caveats**: Stock availability checks are storage-location aware but not batch-aware; reservation components are restricted to movement type `261` (consumption).
+* **Known Caveats**: Stock availability checks are storage-location aware but not batch-aware; reservation components are restricted by `movement_type_classification.is_production_consumption` (currently BWART `261`).
+
+---
+
+## Semantic / Consumption Layer
+
+### S1. `semantic.semantic_plant_operations_kpi`
+* **Type**: SQL view
+* **Grain**: 1 row per plant
+* **Source Gold Views**: `gold_process_order_schedule_adherence_secured`, `gold_plant_production_quality_summary_secured`, `gold_process_order_component_status_secured`
+* **Purpose**: plant operations KPI rollup for completed orders, on-time/in-full counts, quality, downtime, and component coverage.
+
+### S2. `semantic.semantic_warehouse_performance`
+* **Type**: SQL view
+* **Grain**: 1 row per plant × warehouse, with plant-level inbound measures repeated across warehouse rows when applicable
+* **Source Gold Views**: `gold_transfer_order_performance_secured`, `gold_transfer_requirement_backlog_secured`, `gold_inbound_po_backlog_enhanced_live`
+* **Purpose**: warehouse execution scorecard combining TO performance, TR backlog, and inbound PO backlog aging.
+
+### S3. `semantic.semantic_stock_health`
+* **Type**: SQL view
+* **Grain**: 1 row per plant
+* **Source Gold Views**: `gold_stock_availability_secured`, `gold_stock_expiry_risk_live`, `gold_stock_reconciliation_summary_secured`
+* **Purpose**: stock health rollup across availability, expiry exposure, and reconciliation exceptions.
 
 ---
 

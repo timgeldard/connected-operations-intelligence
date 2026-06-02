@@ -129,6 +129,52 @@ SAP_MODULE_NAMES = {
 }
 
 
+REPORTING_LAYER_TABLES = [
+    {
+        "layer": "Gold",
+        "object": "gold_data_freshness_status",
+        "grain": "one row per monitored Silver dependency",
+        "purpose": "Freshness SLA status for Gold pipeline dependencies",
+    },
+    {
+        "layer": "Gold",
+        "object": "gold_data_health_summary",
+        "grain": "one row per health area",
+        "purpose": "Operational health rollup across freshness, validation, reconciliation, and expectations",
+    },
+    {
+        "layer": "Gold",
+        "object": "gold_inbound_po_backlog_enhanced",
+        "grain": "plant x vendor x purchasing_org",
+        "purpose": "Open inbound PO backlog with PO-linked GR quantity, remaining quantity, and putaway evidence",
+    },
+    {
+        "layer": "Gold",
+        "object": "gold_stock_reconciliation_summary",
+        "grain": "plant x warehouse x mismatch_reason x mismatch_severity",
+        "purpose": "Canonical IM-to-WM stock reconciliation summary for consumption",
+    },
+    {
+        "layer": "Semantic",
+        "object": "semantic_plant_operations_kpi",
+        "grain": "one row per plant",
+        "purpose": "Curated plant operations KPI rollup",
+    },
+    {
+        "layer": "Semantic",
+        "object": "semantic_warehouse_performance",
+        "grain": "plant x warehouse",
+        "purpose": "Curated warehouse execution and inbound backlog KPI rollup",
+    },
+    {
+        "layer": "Semantic",
+        "object": "semantic_stock_health",
+        "grain": "one row per plant",
+        "purpose": "Curated stock availability, expiry, and reconciliation health rollup",
+    },
+]
+
+
 def derive_sap_info(raw_name):
     """Return (sap_table, source_type, module) for a raw BQ table name."""
     name = raw_name
@@ -412,6 +458,23 @@ def build_dictionary(schemas, source_generated):
                 f"| {source_type} | {tdata['column_count']} |"
             )
 
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    lines.append("## Reporting Layer Addendum")
+    lines.append("")
+    lines.append(
+        "The generated SAP source dictionary above is complemented by curated reporting-layer "
+        "objects maintained in the repository contracts and Gold/Semantic SQL definitions."
+    )
+    lines.append("")
+    lines.append("| Layer | Object | Grain | Purpose |")
+    lines.append("|---|---|---|---|")
+    for entry in REPORTING_LAYER_TABLES:
+        lines.append(
+            f"| {entry['layer']} | `{entry['object']}` | {entry['grain']} | {entry['purpose']} |"
+        )
     lines.append("")
     lines.append("---")
     lines.append("")

@@ -26,7 +26,9 @@ def setup_databases(spark: SparkSession):
     spark.conf.set("silver_schema", "silver")
     spark.sql("CREATE DATABASE IF NOT EXISTS silver")
 
-    classification_data = build_movement_type_classification_records(["101", "102", "201", "202", "311", "701", "702"])
+    classification_data = build_movement_type_classification_records(
+        ["101", "102", "103", "201", "202", "311", "701", "702", "Z01"]
+    )
     spark.createDataFrame(classification_data).write.mode("overwrite").saveAsTable(
         "silver.movement_type_classification"
     )
@@ -144,6 +146,13 @@ def test_inbound_outbound_throughput_reversal_netting_and_transfer_exclusion(spa
             plant_code="1000",
             storage_location_code="SL01",
             posting_date=date(2026, 5, 30),
+            movement_type_code="103",
+            quantity=25.0,
+        ),
+        Row(
+            plant_code="1000",
+            storage_location_code="SL01",
+            posting_date=date(2026, 5, 30),
             movement_type_code="201",
             quantity=40.0,
         ),
@@ -175,6 +184,13 @@ def test_inbound_outbound_throughput_reversal_netting_and_transfer_exclusion(spa
             movement_type_code="702",
             quantity=2.0,
         ),
+        Row(
+            plant_code="1000",
+            storage_location_code="SL01",
+            posting_date=date(2026, 5, 30),
+            movement_type_code="Z01",
+            quantity=12.0,
+        ),
     ]
     spark.createDataFrame(goods_movement_data).write.mode("overwrite").saveAsTable(
         "silver.goods_movement"
@@ -182,12 +198,12 @@ def test_inbound_outbound_throughput_reversal_netting_and_transfer_exclusion(spa
 
     row = all_rows(gold_inbound_outbound_throughput())[0]
 
-    assert row["movement_line_count"] == 7
-    assert row["inbound_qty"] == 0.0
-    assert row["outbound_qty"] == 30.0
+    assert row["movement_line_count"] == 9
+    assert row["inbound_qty"] == 25.0
+    assert row["outbound_qty"] == 42.0
     assert row["transfer_qty"] == 25.0
     assert row["adjustment_qty"] == 5.0
-    assert row["net_qty"] == -30.0
+    assert row["net_qty"] == -17.0
 
 
 def test_bin_occupancy_current_state_counts_and_stock(spark: SparkSession):

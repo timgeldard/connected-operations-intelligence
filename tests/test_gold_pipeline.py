@@ -28,7 +28,7 @@ def setup_databases(spark: SparkSession):
     spark.sql("CREATE DATABASE IF NOT EXISTS silver")
 
     # Mock data for conformed movement type classification
-    classification_data = build_movement_type_classification_records(["101", "102", "201", "551", "552"])
+    classification_data = build_movement_type_classification_records(["101", "102", "201", "261", "551", "552"])
     spark.createDataFrame(classification_data).write.mode("overwrite").saveAsTable("silver.movement_type_classification")
 
     yield

@@ -292,6 +292,9 @@ def gold_process_order_component_status():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
     reservations = spark.read.table(f"{silver_schema}.reservation_requirement")
+    classification = spark.read.table(f"{silver_schema}.movement_type_classification").select(
+        "movement_type_code", "is_production_consumption"
+    )
     orders = spark.read.table(f"{silver_schema}.process_order").select(
         "order_number", "plant_code", "scheduled_start_date",
         "is_released", "is_closed", "production_line_description",
@@ -305,10 +308,14 @@ def gold_process_order_component_status():
         .agg(F.coalesce(F.sum("unrestricted_quantity"), F.lit(0.0)).alias("available_unrestricted_qty"))
     )
 
-    open_components = reservations.filter(
-        (~F.coalesce(F.col("is_deletion_flagged"), F.lit(False)))
-        & (F.coalesce(F.col("open_quantity"), F.lit(0.0)) > 0)
-        & (F.col("movement_type_code") == "261")   # PP-PI consumption
+    open_components = (
+        reservations
+        .join(F.broadcast(classification), "movement_type_code", "inner")
+        .filter(
+            (~F.coalesce(F.col("is_deletion_flagged"), F.lit(False)))
+            & (F.coalesce(F.col("open_quantity"), F.lit(0.0)) > 0)
+            & F.coalesce(F.col("is_production_consumption"), F.lit(False))
+        )
     ).select(
         "order_number", "material_code", "reservation_item", "reservation_number",
         "storage_location_code", "required_quantity", "open_quantity", "requirement_date",
