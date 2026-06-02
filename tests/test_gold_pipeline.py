@@ -298,7 +298,8 @@ def test_gold_process_order_component_status(spark: SparkSession):
     # Mock process_order
     po_data = [
         Row(order_number="10", plant_code="1000", scheduled_start_date=date(2026, 6, 1),
-            is_released=True, is_closed=False, production_line_description="Line 1 Desc"),
+            is_released=True, is_closed=False, production_line_description="Line 1 Desc",
+            material_code="FG01"),
     ]
     spark.createDataFrame(po_data).write.mode("overwrite").saveAsTable("silver.process_order")
 
@@ -333,6 +334,7 @@ def test_gold_process_order_component_status(spark: SparkSession):
     assert row["order_number"] == "10"
     assert row["plant_code"] == "1000"
     assert row["material_code"] == "MAT01"
+    assert row["order_material_code"] == "FG01"
     assert row["reservation_item_number"] == "0001"
     assert row["reservation_number"] == "R01"
     assert row["required_quantity"] == 50.0

@@ -248,7 +248,7 @@ def gold_process_order_operations():
     cluster_by=["plant_code", "order_number"],
 ))
 @dlt.expect("total_downtime_minutes non-negative", "total_downtime_minutes >= 0.0")
-@dlt.expect("event_count positive", "event_count > 0")
+@dlt.expect("has_recorded_duration", "total_downtime_minutes > 0.0")
 def gold_order_downtime_summary():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
@@ -295,6 +295,7 @@ def gold_process_order_component_status():
     orders = spark.read.table(f"{silver_schema}.process_order").select(
         "order_number", "plant_code", "scheduled_start_date",
         "is_released", "is_closed", "production_line_description",
+        F.col("material_code").alias("order_material_code"),
     )
     # Aggregate available stock to plant × material grain (broadcast-safe: small relative to reservations)
     stock = (
@@ -317,7 +318,7 @@ def gold_process_order_component_status():
         .join(orders, "order_number", "inner")        # inner — only components for known active orders
         .join(F.broadcast(stock), ["plant_code", "material_code"], "left")
         .select(
-            "order_number", "plant_code", "material_code",
+            "order_number", "plant_code", "material_code", "order_material_code",
             "production_line_description", "scheduled_start_date",
             "is_released", "is_closed",
             F.col("reservation_item").alias("reservation_item_number"),
