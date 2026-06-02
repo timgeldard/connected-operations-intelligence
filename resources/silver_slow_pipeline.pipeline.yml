@@ -11,11 +11,19 @@ resources:
       channel: CURRENT
       development: false
 
+      tags:
+        owner: connected-plant-team
+        cost-center: connected-plant
+        project: ops-reporting
+
       configuration:
         source_catalog: ${var.source_catalog}
         source_schema: ${var.source_schema}
         published_catalog: ${var.published_catalog}
         published_schema: ${var.published_schema}
+        pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
+        pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
+        pipelines.defaultTableProperties.custom_tags.project: ops-reporting
 
       libraries:
         - file:

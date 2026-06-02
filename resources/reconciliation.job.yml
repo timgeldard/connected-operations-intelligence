@@ -3,6 +3,11 @@ resources:
     reconciliation_control:
       name: "[${bundle.target}] Connected Plant — Reconciliation Control"
 
+      tags:
+        owner: connected-plant-team
+        cost-center: connected-plant
+        project: ops-reporting
+
       # SAP (bronze) -> Silver -> Gold tie-out + Gold grain/duplication checks.
       # Daily after the Gold pipeline. Paused by default; unpause per target once
       # Silver and Gold are populated. Reads bronze, silver and gold, so it needs

@@ -3,6 +3,11 @@ resources:
     warehouse_snapshot:
       name: "[${bundle.target}] Connected Plant — Warehouse Snapshot"
 
+      tags:
+        owner: connected-plant-team
+        cost-center: connected-plant
+        project: ops-reporting
+
       # Daily append of current-state warehouse Gold into *_snapshot companions.
       # Paused by default; unpause per target once the Gold tables are populated.
       schedule:
