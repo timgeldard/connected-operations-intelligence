@@ -23,8 +23,8 @@ ENVIRONMENTS = {
 }
 
 CSV_PATH = "resources/config/storage_type_role_mapping.csv"
-_COLS = ["plant_code", "warehouse_number", "storage_type", "storage_type_description",
-         "role", "valid_from", "valid_to", "owner", "review_status"]
+_COLS = ["plant_code", "plant_name", "warehouse_number", "storage_type",
+         "storage_type_description", "role", "valid_from", "valid_to", "owner", "review_status"]
 
 
 def _sql_literal(col, val):
@@ -51,7 +51,8 @@ def generate_sql():
             "-- Run once as a UC admin; thereafter maintain rows directly (or re-seed from the CSV).\n"
             "-- The silver.storage_type_role_mapping DLT table reads APPROVED, in-window rows from here.\n\n"
             f"CREATE TABLE IF NOT EXISTS {table} (\n"
-            "  plant_code STRING, warehouse_number STRING, storage_type STRING,\n"
+            "  plant_code STRING, plant_name STRING,\n"
+            "  warehouse_number STRING, storage_type STRING,\n"
             "  storage_type_description STRING,\n"
             "  role STRING, valid_from DATE, valid_to DATE, owner STRING, review_status STRING\n"
             ") USING DELTA;\n\n"
