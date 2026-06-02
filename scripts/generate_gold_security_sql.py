@@ -63,6 +63,9 @@ GOLD_TABLES = [
     "gold_process_order_staging",
     "gold_process_order_staging_validation",
     "gold_storage_type_role_coverage_status",
+    "gold_stock_reconciliation_v2",
+    "gold_stock_reconciliation_exceptions_v2",
+    "gold_stock_reconciliation_summary_v2",
     # warehouse_inbound_gold.py
     "gold_inbound_po_backlog",
     "gold_handling_unit_summary",

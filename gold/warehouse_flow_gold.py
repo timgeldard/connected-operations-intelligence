@@ -2,11 +2,14 @@
 Lakeflow Spark Declarative Pipeline — Warehouse Flow Gold.
 
 Tables:
-  gold_dispensary_backlog      — open line-pick (dispensary) demand by plant / supply area
-  gold_lineside_stock          — current stock staged in production / line-side storage types
-  gold_delivery_pick_status    — outbound delivery pick progress
-  gold_stock_reconciliation    — IM (MARD) vs WM (bins) variance, valuation and ABC class
-  gold_process_order_staging   — process-order component staging completion
+  gold_dispensary_backlog                   — open line-pick (dispensary) demand by plant / supply area
+  gold_lineside_stock                       — current stock staged in production / line-side storage types
+  gold_delivery_pick_status                 — outbound delivery pick progress
+  gold_stock_reconciliation                 — IM (MARD) vs WM (bins) variance, valuation and ABC class (v1, plant×material, kept for compatibility)
+  gold_process_order_staging                — process-order component staging completion
+  gold_stock_reconciliation_v2              — detailed IM↔WM reconciliation at plant×warehouse×material×batch×stock_category grain
+  gold_stock_reconciliation_exceptions_v2  — filter of v2 where is_reconciled=false, with material description
+  gold_stock_reconciliation_summary_v2     — v2 rolled up by plant×warehouse×mismatch_reason×severity
 """
 
 import dlt
@@ -532,5 +535,284 @@ def gold_storage_type_role_coverage_status():
             F.when(F.col("mapped_storage_types") == 0, F.lit("MISSING"))
             .when(F.col("unmapped_storage_types") == 0, F.lit("VALIDATED"))
             .otherwise(F.lit("PARTIAL")),
+        )
+    )
+
+
+# ── 8. STOCK RECONCILIATION V2 ────────────────────────────────────────────────
+# Detailed IM↔WM reconciliation at plant × warehouse × material × batch × stock_category.
+#
+# Design decisions (see docs/reconciliation/stock-reconciliation-v2-contract.md):
+# • WM grain: LQUA has no LGORT — WM stock is warehouse-grain only. T320 bridges
+#   IM sloc→warehouse (1:1); the reverse warehouse→sloc is 1:many so sloc is NOT on the
+#   output. This is the best achievable grain from current sources.
+# • IM routing: batch-managed materials use MCHB (silver.batch_stock); non-batch use MARD
+#   (silver.stock_at_location) with batch='__NONE__'. MARD.LABST = SUM(MCHB.CLABS) verified
+#   at C061 (750/750 combos, 2026-06-02) — using both would double-count.
+# • Stock categories compared: UNRESTRICTED, QUALITY, BLOCKED (WM BESTQ: blank/Q/S).
+#   RESTRICTED, IN_TRANSFER, RETURNS_BLOCKED have no WM equivalent → IM-only, excluded.
+# • UoM: MARM wired but both MARD and LQUA store in base UoM — conversion is detection-only.
+# • Tolerance: 0.1% of IM qty, floor 0.001.
+
+# Tolerance: 0.1% of IM quantity, floor 0.001 (tighter than v1's 1%/0.1).
+_RECON_V2_TOLERANCE_PCT = 0.001
+_RECON_V2_TOLERANCE_FLOOR = 0.001
+
+
+def _im_long(df, plant_col, sloc_col, mat_col, batch_col, uom_col, wh_sloc_map):
+    """Normalise an IM source to (plant, warehouse, material, batch, stock_category, base_uom, quantity) grain.
+    Single pass using F.explode on an array of structs — avoids rescanning the source three times."""
+    keys = ["plant_code", "warehouse_number", "material_code", "batch_number", "base_uom"]
+    return (
+        df
+        .join(F.broadcast(wh_sloc_map), [plant_col, sloc_col], "left")
+        .withColumn("plant_code",     F.col(plant_col))
+        .withColumn("warehouse_number",
+                    F.coalesce(F.col("warehouse_number"), F.lit("__NO_WM_MAPPING__")))
+        .withColumn("material_code",  F.col(mat_col))
+        .withColumn("batch_number",   F.col(batch_col) if batch_col else F.lit("__NONE__"))
+        .withColumn("base_uom",       F.col(uom_col) if uom_col else F.lit(None).cast("string"))
+        .withColumn("_cats", F.array(
+            F.struct(F.lit("UNRESTRICTED").alias("s"),
+                     F.coalesce(F.col("unrestricted_quantity"),      F.lit(0.0)).alias("q")),
+            F.struct(F.lit("QUALITY").alias("s"),
+                     F.coalesce(F.col("quality_inspection_quantity"), F.lit(0.0)).alias("q")),
+            F.struct(F.lit("BLOCKED").alias("s"),
+                     F.coalesce(F.col("blocked_quantity"),            F.lit(0.0)).alias("q")),
+        ))
+        .select(*keys, F.explode("_cats").alias("_cat"))
+        .select(
+            *keys,
+            F.col("_cat.s").alias("stock_category"),
+            F.col("_cat.q").alias("quantity"),
+        )
+        .filter(F.col("quantity") != 0)
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Detailed IM↔WM stock reconciliation at plant × warehouse × material × batch × "
+        "stock_category grain. Compares MCHB/MARD (IM) with LQUA/storage_bin (WM). "
+        "See docs/reconciliation/stock-reconciliation-v2-contract.md."
+    ),
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_stock_reconciliation_v2():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    batch_stk   = spark.read.table(f"{ss}.batch_stock")
+    stk_at_loc  = spark.read.table(f"{ss}.stock_at_location")
+    mat_dim     = (
+        spark.read.table(f"{ss}.material")
+        .select("material_code", "base_uom", "batch_management_required")
+        .distinct()
+    )
+    storage_bin = spark.read.table(f"{ss}.storage_bin")
+    wh_sloc_map = spark.read.table(f"{ss}.warehouse_storage_location_mapping")
+    # silver.material_uom_conversion (MARM) is wired into the pipeline for detection
+    # purposes but not used in mismatch classification — see comment below.
+    price_dim = (
+        spark.read.table(f"{ss}.material_valuation")
+        .groupBy(F.col("valuation_area").alias("plant_code"), "material_code")
+        .agg(
+            F.first("standard_price", ignorenulls=True).alias("unit_price"),
+            F.first("price_unit",     ignorenulls=True).alias("price_unit"),
+        )
+    )
+    role_mapping = spark.read.table(f"{ss}.storage_type_role_mapping")
+
+    # ── IM: batch-managed materials → MCHB ───────────────────────────────────
+    batch_mat_codes = mat_dim.filter(
+        F.coalesce(F.col("batch_management_required"), F.lit(False))
+    ).select("material_code")
+
+    im_batch = _im_long(
+        batch_stk.join(F.broadcast(batch_mat_codes), "material_code", "inner"),
+        plant_col="plant_code", sloc_col="storage_location_code",
+        mat_col="material_code", batch_col="batch_number", uom_col="base_uom",
+        wh_sloc_map=wh_sloc_map,
+    )
+
+    # ── IM: non-batch materials → MARD + base_uom from material dim ──────────
+    non_batch_mat = mat_dim.filter(
+        ~F.coalesce(F.col("batch_management_required"), F.lit(False))
+    ).select("material_code", "base_uom")
+
+    # Single inner join filters to non-batch materials and adds base_uom in one step.
+    im_mard_base = stk_at_loc.join(F.broadcast(non_batch_mat), "material_code", "inner")
+    im_mard = _im_long(
+        im_mard_base,
+        plant_col="plant_code", sloc_col="storage_location_code",
+        mat_col="material_code", batch_col=None, uom_col="base_uom",
+        wh_sloc_map=wh_sloc_map,
+    )
+
+    im = (
+        im_batch.unionByName(im_mard)
+        .groupBy("plant_code", "warehouse_number", "material_code",
+                  "batch_number", "stock_category", "base_uom")
+        .agg(F.sum("quantity").alias("im_quantity"))
+    )
+
+    # ── WM: from storage_bin (LQUA). BESTQ: blank→UNRESTRICTED, Q→QUALITY, S→BLOCKED ─
+    bestq_map = F.create_map(
+        F.lit(""),  F.lit("UNRESTRICTED"),
+        F.lit("Q"), F.lit("QUALITY"),
+        F.lit("S"), F.lit("BLOCKED"),
+    )
+    wm = (
+        storage_bin.filter(F.col("quant_number").isNotNull())
+        .withColumn("stock_category",
+                    bestq_map.getItem(F.coalesce(F.col("stock_category_code"), F.lit(""))))
+        .filter(F.col("stock_category").isNotNull())
+        .groupBy("plant_code", "warehouse_number", "material_code",
+                  "batch_number", "stock_category", "base_uom")
+        .agg(F.sum("total_quantity").alias("wm_quantity"))
+    )
+
+    # ── Full outer join ───────────────────────────────────────────────────────
+    _keys = ["plant_code", "warehouse_number", "material_code",
+             "batch_number", "stock_category", "base_uom"]
+    recon = (
+        im.join(wm, _keys, "full")
+        .withColumn("im_quantity", F.coalesce(F.col("im_quantity"), F.lit(0.0)))
+        .withColumn("wm_quantity", F.coalesce(F.col("wm_quantity"), F.lit(0.0)))
+        .withColumn("delta_quantity",     F.col("wm_quantity") - F.col("im_quantity"))
+        .withColumn("abs_delta_quantity", F.abs(F.col("delta_quantity")))
+        .withColumn("tolerance_quantity",
+                    F.greatest(
+                        F.lit(_RECON_V2_TOLERANCE_FLOOR),
+                        F.abs(F.col("im_quantity")) * F.lit(_RECON_V2_TOLERANCE_PCT),
+                    ))
+        .withColumn("is_reconciled",
+                    F.col("abs_delta_quantity") <= F.col("tolerance_quantity"))
+    )
+
+    # ── Mismatch reason ───────────────────────────────────────────────────────
+    # NOTE: UOM_CONVERSION_MISSING is intentionally NOT used here. MARM only contains
+    # entries for materials WITH alternative UoMs — absence means "base-UoM-only material",
+    # not a conversion problem. Both MARD and LQUA already store in base UoM, so no
+    # conversion is needed. Flagging absent-MARM materials as UOM issues would mask
+    # TRUE_VARIANCE for the majority of standard materials. (UOM_CONVERSION_MISSING is
+    # kept as a documented allowed-value for future use if alt-UoM transactions appear.)
+    recon = (
+        recon
+        .withColumn("mismatch_reason",
+            F.when(F.col("is_reconciled"),
+                   F.lit("MATCHED"))
+            .when(F.col("warehouse_number") == "__NO_WM_MAPPING__",
+                  F.lit("WM_MANAGED_SLOC_MAPPING_MISSING"))
+            .when((F.col("im_quantity") > 0) & (F.col("wm_quantity") == 0),
+                  F.lit("BATCH_MISSING_IN_WM"))
+            .when((F.col("wm_quantity") > 0) & (F.col("im_quantity") == 0),
+                  F.lit("BATCH_MISSING_IN_IM"))
+            .otherwise(F.lit("TRUE_VARIANCE")),
+        )
+        .withColumn("mismatch_severity",
+            F.when(F.col("mismatch_reason") == "MATCHED",
+                   F.lit("INFO"))
+            .when(F.col("mismatch_reason").isin("BATCH_MISSING_IN_WM", "BATCH_MISSING_IN_IM"),
+                  F.lit("MEDIUM"))
+            .otherwise(F.lit("HIGH")),
+        )
+    )
+
+    # ── Trust: warehouse trusted when all occupied STs are CONFIG-mapped ──────
+    wh_trust = (
+        storage_bin.filter(F.col("quant_number").isNotNull())
+        .select("plant_code", "warehouse_number", "storage_type").distinct()
+        .join(
+            F.broadcast(
+                role_mapping.select("plant_code", "warehouse_number", "storage_type")
+                .withColumn("_mapped", F.lit(True))
+            ),
+            ["plant_code", "warehouse_number", "storage_type"], "left",
+        )
+        .groupBy("plant_code", "warehouse_number")
+        .agg(F.min(F.coalesce(F.col("_mapped"), F.lit(False))).alias("_wh_trusted"))
+    )
+
+    # ── Valuation ─────────────────────────────────────────────────────────────
+    return (
+        recon
+        .join(price_dim, ["plant_code", "material_code"], "left")
+        .join(F.broadcast(wh_trust),  ["plant_code", "warehouse_number"], "left")
+        .withColumn("delta_value",
+            F.col("delta_quantity")
+            * F.coalesce(F.col("unit_price"), F.lit(0.0))
+            / F.when(
+                F.coalesce(F.col("price_unit"), F.lit(0)).cast("double") == 0, F.lit(1.0)
+            ).otherwise(F.col("price_unit").cast("double")),
+        )
+        .select(
+            "plant_code", "warehouse_number", "material_code", "batch_number",
+            "stock_category", "base_uom",
+            "im_quantity", "wm_quantity", "delta_quantity",
+            "abs_delta_quantity", "tolerance_quantity", "is_reconciled",
+            "unit_price", "price_unit", "delta_value",
+            "mismatch_reason", "mismatch_severity",
+            F.coalesce(F.col("_wh_trusted"), F.lit(False)).alias("is_operationally_trusted"),
+        )
+    )
+
+
+# ── 9. STOCK RECONCILIATION EXCEPTIONS V2 ─────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Non-reconciled rows from gold_stock_reconciliation_v2, enriched with "
+        "material description. Use as the starting point for variance investigation."
+    ),
+    cluster_by=["plant_code", "mismatch_severity"],
+))
+def gold_stock_reconciliation_exceptions_v2():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    recon = dlt.read("gold_stock_reconciliation_v2")
+    mat_desc = (
+        spark.read.table(f"{ss}.material")
+        .select("material_code", "material_description")
+        .distinct()
+    )
+
+    return (
+        recon
+        .filter(~F.col("is_reconciled"))
+        .join(F.broadcast(mat_desc), "material_code", "left")
+        .select(
+            "plant_code", "warehouse_number",
+            "material_code", "material_description",
+            "batch_number", "stock_category", "base_uom",
+            "im_quantity", "wm_quantity", "delta_quantity",
+            "abs_delta_quantity", "delta_value",
+            "mismatch_reason", "mismatch_severity",
+            "is_operationally_trusted",
+        )
+    )
+
+
+# ── 10. STOCK RECONCILIATION SUMMARY V2 ──────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Summary of gold_stock_reconciliation_v2 rolled up by "
+        "plant × warehouse × mismatch_reason × mismatch_severity."
+    ),
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_stock_reconciliation_summary_v2():
+    recon = dlt.read("gold_stock_reconciliation_v2")
+    return (
+        recon
+        .groupBy("plant_code", "warehouse_number", "mismatch_reason", "mismatch_severity")
+        .agg(
+            F.count(F.lit(1)).alias("row_count"),
+            F.sum(F.when(~F.col("is_reconciled"), F.lit(1)).otherwise(F.lit(0)))
+             .alias("exception_count"),
+            F.coalesce(F.sum("abs_delta_quantity"), F.lit(0.0)).alias("abs_delta_quantity_total"),
+            F.coalesce(F.sum(F.abs(F.col("delta_value"))), F.lit(0.0)).alias("abs_delta_value_total"),
         )
     )

@@ -26,6 +26,18 @@ def setup_silver(spark: SparkSession):
             storage_type="801", storage_type_description="Palletising (for Prodc.)", role="LINESIDE"),
     ], "storage_type_role_mapping")
 
+    # Seed warehouse_storage_location_mapping (T320) — needed for recon v2
+    _save(spark, [
+        Row(plant_code="C061", storage_location_code="1000", warehouse_number="208"),
+        Row(plant_code="C061", storage_location_code="2000", warehouse_number="208"),
+    ], "warehouse_storage_location_mapping")
+
+    # Seed material_uom_conversion (MARM) — needed for UOM detection in recon v2
+    _save(spark, [
+        Row(material_code="M1", alternate_uom="KG", numerator=1.0, denominator=1.0,
+            conversion_factor_to_base=1.0, is_valid_conversion=True),
+    ], "material_uom_conversion")
+
     # Seed staging reference mapping: C061 is trusted (validated warehouse); P001 absent = untrusted
     _save(spark, [
         Row(plant_code="C061", warehouse_number="208",
@@ -380,3 +392,94 @@ def test_lineside_stock_aggregation(spark):
     assert r["quant_count"] == 2
     assert r["total_qty"] == 60.0
     assert r["available_qty"] == 50.0
+
+
+# ── Stock reconciliation v2 ───────────────────────────────────────────────────
+
+def test_recon_v2_matched(spark):
+    """Batch-managed material with matching IM (MCHB) and WM quantities → MATCHED."""
+    from gold.warehouse_flow_gold import gold_stock_reconciliation_v2
+
+    _save(spark, [
+        Row(material_code="M1", plant_code="C061", base_uom="KG",
+            batch_management_required=True, material_description="Mat 1"),
+    ], "material")
+    _save(spark, [
+        Row(material_code="M1", plant_code="C061", storage_location_code="1000",
+            batch_number="B1", base_uom="KG",
+            unrestricted_quantity=100.0, quality_inspection_quantity=0.0,
+            blocked_quantity=0.0, restricted_use_quantity=0.0, in_transfer_quantity=0.0,
+            blocked_returns_quantity=0.0),
+    ], "batch_stock")
+    _save(spark, [
+        Row(plant_code="C061", warehouse_number="208", storage_type="100",
+            material_code="M1", batch_number="B1", base_uom="KG",
+            stock_category_code="", total_quantity=100.0, quant_number="Q1"),
+    ], "storage_bin")
+    _save(spark, [], "stock_at_location")
+    _save(spark, [Row(valuation_area="C061", material_code="M1",
+                      standard_price=5.0, price_unit=1)], "material_valuation")
+
+    rows = {r["batch_number"]: r for r in all_rows(gold_stock_reconciliation_v2())}
+    r = rows["B1"]
+    assert r["im_quantity"] == 100.0
+    assert r["wm_quantity"] == 100.0
+    assert r["delta_quantity"] == 0.0
+    assert r["is_reconciled"] is True
+    assert r["mismatch_reason"] == "MATCHED"
+    assert r["mismatch_severity"] == "INFO"
+
+
+def test_recon_v2_batch_missing_in_wm(spark):
+    """IM has stock, WM has nothing → BATCH_MISSING_IN_WM."""
+    from gold.warehouse_flow_gold import gold_stock_reconciliation_v2
+
+    _save(spark, [
+        Row(material_code="M2", plant_code="C061", base_uom="KG",
+            batch_management_required=True, material_description="Mat 2"),
+    ], "material")
+    _save(spark, [
+        Row(material_code="M2", plant_code="C061", storage_location_code="1000",
+            batch_number="B2", base_uom="KG",
+            unrestricted_quantity=50.0, quality_inspection_quantity=0.0,
+            blocked_quantity=0.0, restricted_use_quantity=0.0, in_transfer_quantity=0.0,
+            blocked_returns_quantity=0.0),
+    ], "batch_stock")
+    _save(spark, [], "storage_bin")
+    _save(spark, [], "stock_at_location")
+    _save(spark, [Row(valuation_area="C061", material_code="M2",
+                      standard_price=2.0, price_unit=1)], "material_valuation")
+
+    rows = {r["batch_number"]: r for r in all_rows(gold_stock_reconciliation_v2())}
+    r = rows["B2"]
+    assert r["im_quantity"] == 50.0
+    assert r["wm_quantity"] == 0.0
+    assert r["is_reconciled"] is False
+    assert r["mismatch_reason"] == "BATCH_MISSING_IN_WM"
+    assert r["mismatch_severity"] == "MEDIUM"
+
+
+def test_recon_v2_no_wm_mapping(spark):
+    """Non-batch material in a sloc with no T320 WM mapping → WM_MANAGED_SLOC_MAPPING_MISSING."""
+    from gold.warehouse_flow_gold import gold_stock_reconciliation_v2
+
+    _save(spark, [
+        Row(material_code="M3", plant_code="C061", base_uom="KG",
+            batch_management_required=False, material_description="Mat 3"),
+    ], "material")
+    _save(spark, [
+        Row(material_code="M3", plant_code="C061", storage_location_code="9999",  # no T320 entry
+            unrestricted_quantity=10.0, quality_inspection_quantity=0.0,
+            blocked_quantity=0.0, restricted_use_quantity=0.0, in_transfer_quantity=0.0,
+            blocked_returns_quantity=0.0),
+    ], "stock_at_location")
+    _save(spark, [], "batch_stock")
+    _save(spark, [], "storage_bin")
+    _save(spark, [Row(valuation_area="C061", material_code="M3",
+                      standard_price=1.0, price_unit=1)], "material_valuation")
+
+    rows = {r["material_code"]: r for r in all_rows(gold_stock_reconciliation_v2())}
+    r = rows["M3"]
+    assert r["warehouse_number"] == "__NO_WM_MAPPING__"
+    assert r["mismatch_reason"] == "WM_MANAGED_SLOC_MAPPING_MISSING"
+    assert r["mismatch_severity"] == "HIGH"

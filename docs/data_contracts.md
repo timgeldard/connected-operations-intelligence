@@ -158,12 +158,30 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Known Caveats**: delivery-quantity based, not TO-level picking. The MV is deterministic; `days_to_goods_issue` and `risk_band` are served at query time by the **`gold_delivery_pick_status_live`** view.
 
 ### 14. `gold.gold_stock_reconciliation`
-* **Status**: Pilot-grade / directional
+* **Status**: Pilot-grade / directional (kept for compatibility; superseded by v2 for root-cause investigation)
 * **Grain**: 1 row per plant × material
 * **Source Silver Tables**: `silver.stock_at_location` (MARD), `silver.storage_bin` (WM), `silver.material_valuation` (MBEW), `silver.storage_type_role_mapping`
 * **Purpose**: IM book stock vs WM bin stock variance, valuation, ABC class, and interim/physical WM split.
 * **Columns**: includes `is_operationally_trusted` — `true` when all occupied bins for the plant have CONFIG-sourced roles (no 9xx fallback). Check `gold_storage_type_role_coverage_status` for per-warehouse mapping gaps.
-* **Known Caveats**: coarse (plant × material) grain; no storage-location/batch/UoM normalisation (MARM); tolerance `max(0.1, 1% IM)`; treat as a directional indicator pending the detailed rebuild (ADR 009). `inventory_value` is not Material-Ledger-reconciled. Unmapped non-9xx storage types default to PHYSICAL (fallback); `is_operationally_trusted=false` flags these rows.
+* **Known Caveats**: coarse (plant × material) grain; no storage-location/batch/UoM normalisation; tolerance `max(0.1, 1% IM)`; treat as a directional indicator. `inventory_value` is not Material-Ledger-reconciled.
+
+### 14b. `gold.gold_stock_reconciliation_v2`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × warehouse × material × batch × stock_category × base_uom
+* **Source Silver Tables**: `silver.batch_stock` (MCHB), `silver.stock_at_location` (MARD), `silver.material`, `silver.storage_bin`, `silver.warehouse_storage_location_mapping`, `silver.material_uom_conversion`, `silver.material_valuation`, `silver.storage_type_role_mapping`
+* **Purpose**: Root-cause-capable IM↔WM reconciliation. MCHB for batch-managed materials; MARD for non-batch. T320 bridges IM sloc→warehouse. BESTQ (blank/Q/S) mapped to UNRESTRICTED/QUALITY/BLOCKED.
+* **Mismatch reasons**: `MATCHED`, `WM_MANAGED_SLOC_MAPPING_MISSING`, `UOM_CONVERSION_MISSING`, `BATCH_MISSING_IN_WM`, `BATCH_MISSING_IN_IM`, `TRUE_VARIANCE`
+* **Known Caveats**: WM (LQUA) has no LGORT — grain omits `storage_location_code` on WM side. IN_TRANSFER and RESTRICTED stock categories not compared. Tolerance 0.1% of IM, floor 0.001. See `docs/reconciliation/stock-reconciliation-v2-contract.md`.
+
+### 14c. `gold.gold_stock_reconciliation_exceptions_v2`
+* **Status**: Production-candidate
+* **Grain**: Same as v2, filtered to `is_reconciled = false`, enriched with material description
+* **Purpose**: Starting point for variance investigation.
+
+### 14d. `gold.gold_stock_reconciliation_summary_v2`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × warehouse × mismatch_reason × mismatch_severity
+* **Purpose**: Operational scorecard of unreconciled stock by reason and severity.
 
 ### 14a. `gold.gold_storage_type_role_coverage_status`
 * **Status**: Production

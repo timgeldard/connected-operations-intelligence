@@ -1,7 +1,16 @@
 # ADR 009 — Detailed IM↔WM stock reconciliation
 
 ## Status
-Proposed
+Accepted — implemented as `gold_stock_reconciliation_v2` (2026-06-02).
+
+> **Note:** Implementation differs from the original proposal in two respects:
+> 1. The table is named `gold_stock_reconciliation_v2` (side-by-side with v1) rather than
+>    `gold_stock_reconciliation_detailed`, as decided by the PR author.
+> 2. The sloc grain is not achieved in v2. LQUA has no LGORT; T320 confirms (plant, sloc) → warehouse
+>    is 1:1 but warehouse → sloc is 1:many — so WM stock can only be attributed to a warehouse grain.
+>    The proposed `silver.wm_managed_sloc` config is replaced by `silver.warehouse_storage_location_mapping`
+>    (T320 as-is). Sloc-grain reconciliation remains a future follow-up.
+> 3. MARM is confirmed ingested (`materialconversion_marm`) — "not yet in silver" note below is stale.
 
 ## Context
 `gold_stock_reconciliation` compares IM (MARD) vs WM (bins) at **plant × material** only, with a

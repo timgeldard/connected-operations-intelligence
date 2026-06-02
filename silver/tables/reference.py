@@ -539,3 +539,73 @@ def recipe_process_line():
             F.col("_pl.production_line_description").alias("production_line_description"),
         )
     )
+
+
+# ── 14. MATERIAL UOM CONVERSION ───────────────────────────────────────────────
+# MARM — alternate-unit conversion factors per material.
+# Verified ingested in UAT: `materialconversion_marm` (1.57M rows, 1.05M materials,
+# 76 alt UoMs, zero zero-denominators, 2026-06-02).
+# Conversion direction confirmed: qty_base = qty_alt × UMREZ / UMREN.
+
+@dlt.table(
+    name="material_uom_conversion",
+    comment=(
+        "SAP MARM alternate-unit conversion factors. "
+        "qty_in_base_uom = qty_in_alt_uom * numerator / denominator. "
+        "Base UoM per material is MARA-MEINS, available in silver.material.base_uom."
+    ),
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "material_code present": "material_code IS NOT NULL",
+    "alternate_uom present": "alternate_uom IS NOT NULL",
+    "valid_conversion": "is_valid_conversion = true",
+})
+def material_uom_conversion():
+    src = spark.read.table(f"{BRONZE}.materialconversion_marm")
+    return src.select(
+        strip_zeros("MATNR").alias("material_code"),
+        F.col("MATNR").alias("material_code_raw"),
+        F.col("MEINH").alias("alternate_uom"),
+        F.col("UMREZ").cast("double").alias("numerator"),
+        F.col("UMREN").cast("double").alias("denominator"),
+        F.when(
+            F.col("UMREN").cast("double") != 0,
+            F.col("UMREZ").cast("double") / F.col("UMREN").cast("double"),
+        ).otherwise(F.lit(None).cast("double")).alias("conversion_factor_to_base"),
+        (F.col("UMREN").cast("double") != 0).alias("is_valid_conversion"),
+        F.col("AEDATTM").alias("_replicated_at"),
+    )
+
+
+# ── 15. WAREHOUSE STORAGE LOCATION MAPPING ────────────────────────────────────
+# T320 — warehouse ↔ storage-location mapping from the published (central_services) catalog.
+# Every (plant, storage_location) maps to exactly one warehouse (verified UAT 2026-06-02:
+# 996 distinct plant/sloc combos, 0 with multiple warehouses).
+# The reverse (warehouse → sloc) is 1:many; this table maps sloc → warehouse only.
+
+@dlt.table(
+    name="warehouse_storage_location_mapping",
+    comment=(
+        "T320 storage-location to warehouse mapping (from central_services). "
+        "Every (plant, storage_location) maps to exactly 1 warehouse; "
+        "one warehouse may serve multiple storage-locations. "
+        "Used to bridge IM sloc-grain data to WM warehouse-grain data."
+    ),
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "plant_code present": "plant_code IS NOT NULL",
+    "storage_location_code present": "storage_location_code IS NOT NULL",
+    "warehouse_number present": "warehouse_number IS NOT NULL",
+})
+def warehouse_storage_location_mapping():
+    src = spark.read.table(f"{bronze_published()}.warehouseforplant_t320")
+    return (
+        src.select(
+            F.col("WERKS").alias("plant_code"),
+            F.col("LGORT").alias("storage_location_code"),
+            F.col("LGNUM").alias("warehouse_number"),
+        )
+        .distinct()
+    )

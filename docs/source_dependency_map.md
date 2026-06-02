@@ -20,6 +20,9 @@ second bronze source `published_<env>.central_services` · `seed` = config/seed 
 | `gold_lineside_stock` | `storage_bin`, `storage_type_role_mapping` | LAGP/LQUA/T320; role map (seed) | slow + seed | medium |
 | `gold_delivery_pick_status` | `outbound_delivery` | LIKP/LIPS | fast | medium |
 | `gold_stock_reconciliation` | `stock_at_location`, `storage_bin`, `material_valuation`, `storage_type_role_mapping` | MARD, LQUA/LAGP, MBEW; role map (seed) | fast + slow + seed | yes |
+| `gold_stock_reconciliation_v2` | `batch_stock`, `stock_at_location`, `material`, `storage_bin`, `warehouse_storage_location_mapping`, `material_uom_conversion`, `material_valuation`, `storage_type_role_mapping` | MCHB, MARD, LQUA/LAGP, T320 (published), MARM, MBEW | fast + slow + seed + published | yes |
+| `gold_stock_reconciliation_exceptions_v2` | reads from `gold_stock_reconciliation_v2` + `material` | — | — | yes |
+| `gold_stock_reconciliation_summary_v2` | reads from `gold_stock_reconciliation_v2` | — | — | yes |
 | `gold_process_order_staging` | `warehouse_transfer_order`, `process_order`, `process_order_staging_reference_mapping_config` | LTAK/LTAP; AUFK/AFKO; staging trust config (seed) | fast + seed | yes |
 | `gold_process_order_staging_validation` | `warehouse_transfer_order`, `process_order` | LTAK/LTAP; AUFK/AFKO | fast | yes |
 | `gold_storage_type_role_coverage_status` | `storage_bin`, `storage_type_role_mapping` | LAGP/LQUA; role map (seed) | slow + seed | yes |

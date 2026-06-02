@@ -19,6 +19,9 @@ REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_stock_reconciliation FROM `
 REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_process_order_staging FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_process_order_staging_validation FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_storage_type_role_coverage_status FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_stock_reconciliation_v2 FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_stock_reconciliation_exceptions_v2 FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_stock_reconciliation_summary_v2 FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_inbound_po_backlog FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_handling_unit_summary FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold.gold_warehouse_exceptions FROM `users`;
