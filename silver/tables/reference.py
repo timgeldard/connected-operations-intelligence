@@ -437,6 +437,7 @@ def storage_type_role_mapping():
         StructField("plant_code", StringType(), True),
         StructField("warehouse_number", StringType(), True),
         StructField("storage_type", StringType(), True),
+        StructField("storage_type_description", StringType(), True),
         StructField("role", StringType(), True),
     ])
     config_table = spark.conf.get("storage_role_config_table", None)
@@ -456,22 +457,22 @@ def storage_type_role_mapping():
                 & (F.col("valid_from").isNull() | (F.col("valid_from") <= F.current_date()))
                 & (F.col("valid_to").isNull() | (F.col("valid_to") > F.current_date()))
             )
-            .select("plant_code", "warehouse_number", "storage_type", "role")
+            .select("plant_code", "warehouse_number", "storage_type", "storage_type_description", "role")
         )
 
     # Bootstrap fallback (C061 / warehouse 208) — used only until the governed config table exists.
     data = [
-        Row(plant_code="C061", warehouse_number="208", storage_type="100", role="LINESIDE"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="801", role="LINESIDE"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="802", role="LINESIDE"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="803", role="LINESIDE"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="804", role="LINESIDE"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="805", role="LINESIDE"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="901", role="INTERIM"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="902", role="INTERIM"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="911", role="INTERIM"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="922", role="INTERIM"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="999", role="INTERIM"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", storage_type_description="Production Supply",          role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="801", storage_type_description="Palletising (for Prodc.)",    role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="802", storage_type_description="Palletising (for Dispn.)",    role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="803", storage_type_description=None,                          role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="804", storage_type_description=None,                          role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="805", storage_type_description=None,                          role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="901", storage_type_description="GR Area for Production",      role="INTERIM"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="902", storage_type_description="GR Area External Rcpts",      role="INTERIM"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="911", storage_type_description=None,                          role="INTERIM"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="922", storage_type_description="Posting Change Area",         role="INTERIM"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="999", storage_type_description="Differences",                 role="INTERIM"),
     ]
     return spark.createDataFrame(data, schema)
 

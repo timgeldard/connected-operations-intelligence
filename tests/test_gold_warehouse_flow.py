@@ -20,8 +20,10 @@ def setup_silver(spark: SparkSession):
 
     # Seed default storage type role mapping configuration table
     _save(spark, [
-        Row(plant_code="C061", warehouse_number="208", storage_type="100", role="LINESIDE"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="801", role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="100",
+            storage_type_description="Production Supply", role="LINESIDE"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="801",
+            storage_type_description="Palletising (for Prodc.)", role="LINESIDE"),
     ], "storage_type_role_mapping")
 
     # Seed staging reference mapping: C061 is trusted (validated warehouse); P001 absent = untrusted
