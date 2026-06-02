@@ -1,7 +1,8 @@
 # IOReporting Data Dictionary
 
-**Generated:** 2026-05-30  
-**Source:** `schema_documentation.md`
+<!-- AUTO-GENERATED from schema_documentation.md by generate_data_dictionary.py — do not edit by hand. CI runs `python generate_data_dictionary.py --check` to keep it in sync. -->
+
+**Source:** `schema_documentation.md` (source snapshot generated 2026-05-30)
 
 ---
 
@@ -41432,3 +41433,4 @@ The following BC tables are imported specifically to support **data enrichment**
 | 13 | `Prdha_Desc` | `STRING` | — |
 
 ---
+

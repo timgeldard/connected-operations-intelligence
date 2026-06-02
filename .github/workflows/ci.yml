@@ -23,6 +23,9 @@ jobs:
       - name: Lint
         run: ruff check silver/ gold/ tests/
 
+      - name: Data dictionary up to date
+        run: python generate_data_dictionary.py --check
+
       - name: Test
         run: pytest
 

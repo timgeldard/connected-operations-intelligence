@@ -306,13 +306,20 @@ def module_label(mod):
     return name
 
 
-def generate_dictionary(schemas, output_file):
+def build_dictionary(schemas, source_generated):
     lines = []
 
     lines.append("# IOReporting Data Dictionary")
     lines.append("")
-    lines.append("**Generated:** 2026-05-30  ")
-    lines.append("**Source:** `schema_documentation.md`")
+    lines.append(
+        "<!-- AUTO-GENERATED from schema_documentation.md by generate_data_dictionary.py — "
+        "do not edit by hand. CI runs `python generate_data_dictionary.py --check` to keep it in sync. -->"
+    )
+    lines.append("")
+    if source_generated:
+        lines.append(f"**Source:** `schema_documentation.md` (source snapshot generated {source_generated})")
+    else:
+        lines.append("**Source:** `schema_documentation.md`")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -484,26 +491,70 @@ def generate_dictionary(schemas, output_file):
             lines.append("---")
             lines.append("")
 
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+    return "\n".join(lines) + "\n"
 
-    print(f"Written: {output_file}")
+
+def parse_generated_date(filepath):
+    """Read the 'Generated: <date>' line from the source schema dump, if present, so the
+    dictionary's date tracks the source snapshot deterministically (no wall-clock — keeps the
+    --check drift comparison stable)."""
+    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            m = re.match(r"^Generated:\s*(.+?)\s*$", line.strip())
+            if m:
+                return m.group(1)
+            if line.startswith("# ") and "Schema Documentation" not in line:
+                break
+    return None
+
+
+def main():
+    import argparse
+    import os
+    import sys
+
+    # Always operate relative to the repo root (this script lives there), so it runs the same
+    # locally and in CI regardless of the caller's working directory.
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+    parser = argparse.ArgumentParser(
+        description="Generate data_dictionary.md from schema_documentation.md."
+    )
+    parser.add_argument(
+        "--check", action="store_true",
+        help="Verify the committed data_dictionary.md is in sync with schema_documentation.md "
+             "and exit non-zero if stale (used by CI). Does not write.",
+    )
+    args = parser.parse_args()
+
+    schemas = parse_file(INPUT_FILE)
+    source_generated = parse_generated_date(INPUT_FILE)
+    content = build_dictionary(schemas, source_generated)
+
     total_tables = sum(len(d["tables"]) for d in schemas.values())
     total_cols = sum(
-        sum(t["column_count"] for t in d["tables"].values())
-        for d in schemas.values()
+        sum(t["column_count"] for t in d["tables"].values()) for d in schemas.values()
     )
-    print(f"Total tables: {total_tables}")
-    print(f"Total columns: {total_cols}")
+
+    if args.check:
+        existing = ""
+        if os.path.exists(OUTPUT_FILE):
+            with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+                existing = f.read()
+        if existing.strip() != content.strip():
+            print(
+                f"ERROR: {OUTPUT_FILE} is out of date with {INPUT_FILE}. "
+                f"Regenerate with: python generate_data_dictionary.py",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(f"{OUTPUT_FILE} is up to date ({total_tables} tables, {total_cols} columns).")
+        return
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        f.write(content)
+    print(f"Written: {OUTPUT_FILE} ({total_tables} tables, {total_cols} columns).")
 
 
 if __name__ == "__main__":
-    import os
-    os.chdir("/home/timgeldard/github/rad")
-    print("Parsing schema documentation...")
-    schemas = parse_file(INPUT_FILE)
-    print(f"Found {len(schemas)} schemas")
-    for s, d in schemas.items():
-        print(f"  {s}: {len(d['tables'])} tables")
-    print("Generating data dictionary...")
-    generate_dictionary(schemas, OUTPUT_FILE)
+    main()
