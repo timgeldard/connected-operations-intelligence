@@ -15,9 +15,6 @@ from pyspark.sql import functions as F
 
 from silver.helpers import bronze_published, get_spark, sap_date, sap_flag, strip_zeros
 
-spark = get_spark()
-
-
 # ── 1. PURCHASE ORDER ─────────────────────────────────────────────────────────
 
 @dlt.view(name="stg_purchase_order")
@@ -26,6 +23,7 @@ spark = get_spark()
     "item_number present": "item_number IS NOT NULL OR record_activity = 'D'",
 })
 def stg_purchase_order():
+    spark = get_spark()
     published = bronze_published()
     ekko_changes = spark.readStream.table(f"{published}.procurementorderobject_ekko").select(
         "EBELN", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
@@ -136,6 +134,7 @@ dlt.apply_changes(
     "item_number present": "item_number IS NOT NULL",
 })
 def handling_unit():
+    spark = get_spark()
     published = bronze_published()
     vekp = spark.read.table(f"{published}.handlingunit_vekp")
     vepo = spark.read.table(f"{published}.handlingunit_vepo")

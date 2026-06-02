@@ -5,14 +5,23 @@ from pyspark.sql import functions as F
 def get_spark() -> SparkSession:
     return SparkSession.builder.getOrCreate()
 
-spark = get_spark()
-source_catalog = spark.conf.get("source_catalog", None)
-source_schema = spark.conf.get("source_schema", None)
-if not source_catalog:
-    raise ValueError("source_catalog configuration must be set in the Spark session.")
-if not source_schema:
-    raise ValueError("source_schema configuration must be set in the Spark session.")
-BRONZE = f"{source_catalog}.{source_schema}"
+
+class BronzePath:
+    def __str__(self) -> str:
+        spark = get_spark()
+        source_catalog = spark.conf.get("source_catalog", None)
+        source_schema = spark.conf.get("source_schema", None)
+        if not source_catalog:
+            raise ValueError("source_catalog configuration must be set in the Spark session.")
+        if not source_schema:
+            raise ValueError("source_schema configuration must be set in the Spark session.")
+        return f"{source_catalog}.{source_schema}"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
+BRONZE = BronzePath()
 
 
 def bronze_published() -> str:
@@ -20,6 +29,7 @@ def bronze_published() -> str:
     customer KNA1) that lives in the published / central_services catalog rather
     than the SAP source. Read lazily so pipelines that do not use it (fast,
     quality) are not required to configure published_catalog/published_schema."""
+    spark = get_spark()
     catalog = spark.conf.get("published_catalog", None)
     schema = spark.conf.get("published_schema", None)
     if not catalog or not schema:

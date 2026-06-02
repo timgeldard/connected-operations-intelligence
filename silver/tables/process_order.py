@@ -16,8 +16,6 @@ from silver.helpers import (
     strip_zeros,
 )
 
-spark = get_spark()
-
 # ── 1. PROCESS ORDER ─────────────────────────────────────────────────────────
 
 @dlt.view(name="stg_process_order")
@@ -31,6 +29,7 @@ spark = get_spark()
     "actual dates ordered": "actual_start_date <= actual_finish_date OR actual_start_date IS NULL OR actual_finish_date IS NULL OR record_activity = 'D'"
 })
 def stg_process_order():
+    spark = get_spark()
     aufk_changes = spark.readStream.table(f"{BRONZE}.ordermaster_aufk").select(
         "AUFNR", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
     )
@@ -196,6 +195,7 @@ dlt.apply_changes(
     "scheduled dates ordered": "scheduled_start_datetime <= scheduled_finish_datetime OR scheduled_start_datetime IS NULL OR scheduled_finish_datetime IS NULL"
 })
 def stg_process_order_operation():
+    spark = get_spark()
     afvc_changes = spark.readStream.table(f"{BRONZE}.processorderobject_afvc").select(
         "AUFPL", "APLZL", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
     )
@@ -316,6 +316,7 @@ dlt.apply_changes(
     "start before end": "pi_sheet_start_datetime <= pi_sheet_end_datetime OR pi_sheet_end_datetime IS NULL"
 })
 def stg_pi_sheet_execution():
+    spark = get_spark()
     src = spark.readStream.table(
         f"{BRONZE}.actualpistartenddatetime_zmanpex_e04_002"
     )
@@ -371,6 +372,7 @@ dlt.apply_changes(
     "duration non-negative": "duration_minutes >= 0"
 })
 def stg_downtime_event():
+    spark = get_spark()
     src = spark.readStream.table(f"{BRONZE}.downtime_zpexpm_dwnt")
     start_datetime = sap_datetime("ZAUSVN", "ZAUZTV")
     end_datetime = sap_datetime("ZAUSBS", "ZAUZTB")

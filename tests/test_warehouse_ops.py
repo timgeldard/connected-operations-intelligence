@@ -61,7 +61,7 @@ _MSEG_SCHEMA = (
     "BWART STRING, MENGE DOUBLE, MEINS STRING, RecordActivity STRING, AEDATTM STRING"
 )
 _MKPF_SCHEMA = (
-    "MBLNR STRING, MJAHR STRING, MANDT STRING, BUDAT STRING, BLDAT STRING"
+    "MBLNR STRING, MJAHR STRING, MANDT STRING, BUDAT STRING, BLDAT STRING, RecordActivity STRING"
 )
 
 
@@ -91,7 +91,7 @@ def apply_goods_movement_transform(
             sap_date("h.BUDAT").alias("posting_date"),
             sap_date("h.BLDAT").alias("document_date"),
             F.col("s.AEDATTM").alias("_replicated_at"),
-            F.col("s.RecordActivity").alias("record_activity"),
+            F.coalesce(F.col("s.RecordActivity"), F.col("h.RecordActivity")).alias("record_activity"),
         )
     )
 
@@ -121,8 +121,9 @@ def make_mkpf(
     MANDT="100",
     BUDAT="20241201",
     BLDAT="20241201",
+    RecordActivity="I",
 ):
-    return Row(MBLNR=MBLNR, MJAHR=MJAHR, MANDT=MANDT, BUDAT=BUDAT, BLDAT=BLDAT)
+    return Row(MBLNR=MBLNR, MJAHR=MJAHR, MANDT=MANDT, BUDAT=BUDAT, BLDAT=BLDAT, RecordActivity=RecordActivity)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -133,6 +134,16 @@ class TestGoodsMovementCDC:
     def test_record_activity_delete_flagged(self, spark):
         df = apply_goods_movement_transform(
             spark, [make_mseg(RecordActivity="D")], [make_mkpf()]
+        )
+        assert first_row(df)["record_activity"] == "D"
+
+    def test_record_activity_cascade_delete(self, spark):
+        # MKPF header delete (RecordActivity='D') with null MSEG RecordActivity (e.g. 'I' or null)
+        # resolves to record_activity='D' for all MSEG lines to cascade-delete the document.
+        df = apply_goods_movement_transform(
+            spark,
+            [make_mseg(RecordActivity=None)],
+            [make_mkpf(RecordActivity="D")]
         )
         assert first_row(df)["record_activity"] == "D"
 

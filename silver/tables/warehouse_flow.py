@@ -13,8 +13,6 @@ from pyspark.sql import functions as F
 
 from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
 
-spark = get_spark()
-
 
 # ── 1. RESERVATION REQUIREMENT ────────────────────────────────────────────────
 # RESB — component reservations for production orders. Single streaming source
@@ -27,6 +25,7 @@ spark = get_spark()
     "reservation_item present": "reservation_item IS NOT NULL",
 })
 def stg_reservation_requirement():
+    spark = get_spark()
     src = spark.readStream.table(f"{BRONZE}.reservationrequirement_resb")
     return src.select(
         # ── Natural key
@@ -93,11 +92,12 @@ dlt.apply_changes(
 # summarised in Gold. Mirrors the warehouse_transfer_order multi-source idiom.
 
 @dlt.view(name="stg_outbound_delivery")
+@dlt.expect("delivery_number present", "delivery_number IS NOT NULL")
 @dlt.expect_all_or_drop({
-    "delivery_number present": "delivery_number IS NOT NULL",
     "item_number present": "item_number IS NOT NULL OR record_activity = 'D'",
 })
 def stg_outbound_delivery():
+    spark = get_spark()
     likp_changes = spark.readStream.table(f"{BRONZE}.deliveryobjects_likp").select(
         "VBELN", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
     )

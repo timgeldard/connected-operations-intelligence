@@ -7,8 +7,6 @@ from pyspark.sql import functions as F
 
 from silver.helpers import BRONZE, get_spark, sap_date, sap_flag, strip_zeros
 
-spark = get_spark()
-
 # ── 1. QUALITY INSPECTION LOT ────────────────────────────────────────────────
 
 @dlt.view(name="stg_quality_inspection_lot")
@@ -21,6 +19,7 @@ spark = get_spark()
     "inspection dates ordered": "inspection_start_date <= inspection_end_date OR inspection_start_date IS NULL OR inspection_end_date IS NULL"
 })
 def stg_quality_inspection_lot():
+    spark = get_spark()
     qals_changes = spark.readStream.table(f"{BRONZE}.inspection_qals").select(
         "PRUEFLOS", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
     )

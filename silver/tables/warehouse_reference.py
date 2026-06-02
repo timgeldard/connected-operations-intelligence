@@ -34,9 +34,6 @@ from silver.helpers import (
     strip_zeros,
 )
 
-spark = get_spark()
-
-
 # ── 1. WAREHOUSE PLANT MAPPING ────────────────────────────────────────────────
 
 @dlt.table(
@@ -49,6 +46,7 @@ spark = get_spark()
     "plant_code present": "plant_code IS NOT NULL"
 })
 def warehouse_plant_mapping():
+    spark = get_spark()
     # T320 is not replicated into the SAP source; it lives in central_services as a
     # current-state view (LGNUM/WERKS/LGORT/AEDATTM, no CDC columns).
     src = spark.read.table(f"{bronze_published()}.warehouseforplant_t320")
@@ -90,6 +88,7 @@ def warehouse_plant_mapping_validation():
     "occupancy key present": "_storage_bin_occupancy_key IS NOT NULL"
 })
 def stg_storage_bin():
+    spark = get_spark()
     bin_key = ["LGNUM", "LGTYP", "LGPLA", "MANDT"]
 
     # LAGP is append-only Aecorsoft CDC (RecordActivity I/U/D, AERUNID/AERECNO sequence).

@@ -155,7 +155,7 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Grain**: 1 row per outbound delivery (× plant × warehouse)
 * **Source Silver Tables**: `silver.outbound_delivery`
 * **Purpose**: pick progress (picked vs delivery quantity) and pick risk.
-* **Known Caveats**: delivery-quantity based, not TO-level picking. The MV is deterministic; `days_to_goods_issue` and `risk_band` are served at query time by the **`gold_delivery_pick_status_live`** view.
+* **Known Caveats**: delivery-quantity based, not TO-level picking. The MV is deterministic; `days_to_goods_issue` and `risk_band` are served at query time by the **`gold_delivery_pick_status_live`** view. Also, a known orphan risk exists: header-only deletes (null item number) cannot be matched by the compound keys, leaving orphaned delivery items in silver.outbound_delivery.
 
 ### 14. `gold.gold_stock_reconciliation`
 * **Status**: Pilot-grade / directional (kept for compatibility; superseded by v2 for root-cause investigation)

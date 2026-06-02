@@ -10,8 +10,6 @@ from pyspark.sql import functions as F
 
 from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
 
-spark = get_spark()
-
 
 # ── 1. GOODS MOVEMENT ────────────────────────────────────────────────────────
 
@@ -25,14 +23,19 @@ spark = get_spark()
     "movement_type_code present": "movement_type_code IS NOT NULL OR record_activity = 'D'"
 })
 def stg_goods_movement():
+    spark = get_spark()
     mseg_changes = spark.readStream.table(f"{BRONZE}.inventorymovement_mseg").select(
         "MBLNR", "MJAHR", "MANDT", "ZEILE", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
     )
+    # NOTE (delete propagation): A header-only delete from MKPF (RecordActivity='D')
+    # will propagate to changed_keys with a null ZEILE, fanning out to all MSEG lines
+    # for that document. In stg_goods_movement, this resolves as record_activity = 'D'
+    # for all joined lines via coalesce, resulting in a cascade-delete of all line items
+    # in the target goods_movement table.
     mkpf_changes = (
         spark.readStream.table(f"{BRONZE}.materialdocument_mkpf")
-        .select("MBLNR", "MJAHR", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+        .select("MBLNR", "MJAHR", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity")
         .withColumn("ZEILE", F.lit(None).cast("string"))
-        .withColumn("RecordActivity", F.lit(None).cast("string"))
     )
 
     changed_keys = mseg_changes.unionByName(mkpf_changes)
@@ -150,6 +153,7 @@ dlt.apply_changes(
     "unrestricted quantity non-negative": "unrestricted_quantity >= 0"
 })
 def stg_batch_stock():
+    spark = get_spark()
     src = spark.readStream.table(f"{BRONZE}.batchstock_mchb")
     return src.select(
         strip_zeros("MATNR").alias("material_code"),
@@ -206,6 +210,7 @@ dlt.apply_changes(
     "transfer_order_number present": "transfer_order_number IS NOT NULL"
 })
 def stg_warehouse_transfer_order():
+    spark = get_spark()
     ltak_changes = spark.readStream.table(f"{BRONZE}.transferorderobjects_ltak").select(
         "LGNUM", "TANUM", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "RecordActivity"
     )
@@ -340,6 +345,7 @@ dlt.apply_changes(
     "required quantity positive": "required_quantity > 0 OR record_activity = 'D'"
 })
 def stg_warehouse_transfer_requirement():
+    spark = get_spark()
     ltbk_changes = spark.readStream.table(f"{BRONZE}.transferrequirementobjects_ltbk").select(
         "LGNUM", "TBNUM", "MANDT", "AEDATTM", "AERUNID", "AERECNO", "OPFLAG"
     )
