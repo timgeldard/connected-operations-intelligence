@@ -15,6 +15,8 @@ Contracts (table → domain → criticality → SLA minutes) are documented in
 docs/freshness_contracts.md and must be kept in sync with FRESHNESS_CONTRACTS below.
 """
 
+from functools import reduce
+
 import dlt
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
@@ -44,13 +46,11 @@ FRESHNESS_CONTRACTS = [
     {"table": "movement_type_classification", "domain": "reference", "criticality": "high", "sla_minutes": 0, "has_watermark": False},
 ]
 
-_SCHEMA = StructType([
+_CONTRACTS_SCHEMA = StructType([
     StructField("table_name", StringType()),
     StructField("domain", StringType()),
     StructField("criticality", StringType()),
     StructField("freshness_sla_minutes", IntegerType()),
-    StructField("latest_replicated_at", TimestampType()),
-    StructField("_base_status", StringType()),
 ])
 
 
@@ -63,41 +63,66 @@ def gold_data_freshness_status():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
 
-    records = []
+    # Build a pure, LAZY plan (no Spark actions during DLT planning): one max(_replicated_at) query
+    # per watermarked table, unioned, then joined to the contracts metadata. (Using .first() per
+    # table here would fire sequential Spark jobs at pipeline-planning time — a DLT anti-pattern that
+    # risks driver instability/startup failures.) tableExists is a metastore lookup, not a job.
+    watermark_queries = []
     for c in FRESHNESS_CONTRACTS:
-        fq = f"{silver_schema}.{c['table']}"
-        latest = None
-        base_status = None  # None → computed (FRESH/STALE) from the lag below
+        table_name = c["table"]
+        fq = f"{silver_schema}.{table_name}"
         if not c["has_watermark"]:
-            base_status = "STATIC"
+            q = spark.range(1).select(
+                F.lit(table_name).alias("table_name"),
+                F.lit(None).cast(TimestampType()).alias("latest_replicated_at"),
+                F.lit("STATIC").alias("_base_status"),
+            )
         elif not spark.catalog.tableExists(fq):
-            base_status = "NO_DATA"
+            q = spark.range(1).select(
+                F.lit(table_name).alias("table_name"),
+                F.lit(None).cast(TimestampType()).alias("latest_replicated_at"),
+                F.lit("NO_DATA").alias("_base_status"),
+            )
         else:
-            latest = spark.read.table(fq).agg(F.max("_replicated_at").alias("m")).first()["m"]
-            if latest is None:
-                base_status = "NO_DATA"
-        records.append(
-            (c["table"], c["domain"], c["criticality"], int(c["sla_minutes"]), latest, base_status)
-        )
+            q = (
+                spark.read.table(fq)
+                .agg(F.max("_replicated_at").alias("latest_replicated_at"))
+                .select(
+                    F.lit(table_name).alias("table_name"),
+                    F.col("latest_replicated_at"),
+                    F.when(F.col("latest_replicated_at").isNull(), F.lit("NO_DATA"))
+                    .otherwise(F.lit(None).cast(StringType()))
+                    .alias("_base_status"),
+                )
+            )
+        watermark_queries.append(q)
 
-    df = spark.createDataFrame(records, _SCHEMA)
-    df = df.withColumn(
-        "max_lag_minutes",
-        F.when(
-            F.col("latest_replicated_at").isNotNull(),
-            (F.unix_timestamp(F.current_timestamp()) - F.unix_timestamp("latest_replicated_at")) / 60.0,
-        ),
+    watermarks = reduce(lambda a, b: a.unionByName(b), watermark_queries)
+    contracts = spark.createDataFrame(
+        [(c["table"], c["domain"], c["criticality"], int(c["sla_minutes"])) for c in FRESHNESS_CONTRACTS],
+        _CONTRACTS_SCHEMA,
     )
-    df = df.withColumn(
-        "freshness_status",
-        F.when(F.col("_base_status").isNotNull(), F.col("_base_status"))
-        .when(F.col("max_lag_minutes") > F.col("freshness_sla_minutes"), F.lit("STALE"))
-        .otherwise(F.lit("FRESH")),
-    )
-    df = df.withColumn("checked_at", F.current_timestamp())
-    return df.select(
-        "table_name", "domain", "criticality", "latest_replicated_at",
-        "max_lag_minutes", "freshness_sla_minutes", "freshness_status", "checked_at",
+
+    return (
+        contracts.join(watermarks, "table_name", "inner")
+        .withColumn(
+            "max_lag_minutes",
+            F.when(
+                F.col("latest_replicated_at").isNotNull(),
+                (F.unix_timestamp(F.current_timestamp()) - F.unix_timestamp("latest_replicated_at")) / 60.0,
+            ),
+        )
+        .withColumn(
+            "freshness_status",
+            F.when(F.col("_base_status").isNotNull(), F.col("_base_status"))
+            .when(F.col("max_lag_minutes") > F.col("freshness_sla_minutes"), F.lit("STALE"))
+            .otherwise(F.lit("FRESH")),
+        )
+        .withColumn("checked_at", F.current_timestamp())
+        .select(
+            "table_name", "domain", "criticality", "latest_replicated_at",
+            "max_lag_minutes", "freshness_sla_minutes", "freshness_status", "checked_at",
+        )
     )
 
 
