@@ -286,7 +286,7 @@ def gold_stock_reconciliation():
 
     return (
         with_abc
-        .join(plant_role_trust, "plant_code", "left")
+        .join(F.broadcast(plant_role_trust), "plant_code", "left")
         .select(
             "plant_code", "material_code", "im_total_qty", "wm_total_qty", "wm_interim_qty", "wm_physical_qty",
             "delta_qty", "standard_price", "price_unit", "inventory_value", "mismatch_class", "abc_class",
@@ -502,10 +502,12 @@ def gold_storage_type_role_coverage_status():
         .withColumn("_is_mapped", F.lit(True))
     )
 
-    # Flag each in-use ST as CONFIG-mapped or not.
+    # Flag each in-use ST as CONFIG-mapped or not.  Broadcast the small config table.
+    # in_use_sts is already distinct at (plant, warehouse, storage_type) grain so count()
+    # is correct — countDistinct() would be redundant and slower.
     in_use_with_flag = (
         in_use_sts
-        .join(mapped_sts, ["plant_code", "warehouse_number", "storage_type"], "left")
+        .join(F.broadcast(mapped_sts), ["plant_code", "warehouse_number", "storage_type"], "left")
         .withColumn("is_mapped", F.coalesce(F.col("_is_mapped"), F.lit(False)))
         .drop("_is_mapped")
     )
@@ -514,10 +516,10 @@ def gold_storage_type_role_coverage_status():
         in_use_with_flag
         .groupBy("plant_code", "warehouse_number")
         .agg(
-            F.countDistinct("storage_type").alias("total_storage_types"),
+            F.count("storage_type").alias("total_storage_types"),
             F.sum(F.col("is_mapped").cast("int")).alias("mapped_storage_types"),
-            F.sum((~F.col("is_mapped")).cast("int")).alias("unmapped_storage_types"),
         )
+        .withColumn("unmapped_storage_types", F.col("total_storage_types") - F.col("mapped_storage_types"))
         .withColumn(
             "coverage_pct",
             F.when(
