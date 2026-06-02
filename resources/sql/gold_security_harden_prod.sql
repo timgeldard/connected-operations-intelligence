@@ -17,6 +17,7 @@ REVOKE SELECT ON TABLE connected_plant_prod.gold.gold_lineside_stock FROM `users
 REVOKE SELECT ON TABLE connected_plant_prod.gold.gold_delivery_pick_status FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold.gold_stock_reconciliation FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold.gold_process_order_staging FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_prod.gold.gold_process_order_staging_validation FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold.gold_inbound_po_backlog FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold.gold_handling_unit_summary FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold.gold_warehouse_exceptions FROM `users`;

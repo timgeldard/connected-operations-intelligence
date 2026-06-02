@@ -13,8 +13,12 @@ import dlt
 from pyspark.sql import Window
 from pyspark.sql import functions as F
 
-from gold._shared import get_silver_schema, get_spark_session, gold_table_args
-
+from gold._shared import (
+    STAGING_REFERENCE_TYPE,
+    get_silver_schema,
+    get_spark_session,
+    gold_table_args,
+)
 
 # ── 1. DISPENSARY BACKLOG ─────────────────────────────────────────────────────
 
@@ -286,14 +290,14 @@ def gold_process_order_staging():
     transfer_orders = spark.read.table(f"{silver_schema}.warehouse_transfer_order")
     orders = spark.read.table(f"{silver_schema}.process_order")
 
-    # Transfer orders that stage to a PRODUCTION ORDER are those with reference type LTAK-BETYP='F';
-    # only then does the source reference (BENUM) hold the process-order number. Verified live in
-    # connected_plant_uat: BETYP='F' is ~7% of TOs (the rest are blank/'X'/'P'/'L'/'D'), so without
-    # this filter non-production TOs whose BENUM collides with an order number would be miscounted.
-    # source_reference_type is LTAK-BETYP (see silver.warehouse_transfer_order).
+    # Transfer orders that stage to a PRODUCTION ORDER are those with reference type LTAK-BETYP='F'
+    # (STAGING_REFERENCE_TYPE).  Only then does BENUM hold the process-order AUFNR.  Verified live
+    # in connected_plant_uat (2026-06-02): BETYP='F' ranges from ~5-24% of TOs per warehouse; 100%
+    # BENUM-AUFNR match across 105 warehouse/plant combos.  See gold_process_order_staging_validation.
+    # source_reference_type = LTAK-BETYP (silver.warehouse_transfer_order).
     staging_tos = (
         transfer_orders
-        .filter(F.col("source_reference_type") == "F")
+        .filter(F.col("source_reference_type") == STAGING_REFERENCE_TYPE)
         .withColumn("order_number", F.col("source_reference_number"))
         .groupBy("order_number")
         .agg(
@@ -308,8 +312,25 @@ def gold_process_order_staging():
         F.coalesce(F.col("is_released"), F.lit(False)) & (~F.coalesce(F.col("is_closed"), F.lit(False)))
     )
 
+    # Plant-level trust from process_order_staging_reference_mapping_config.
+    # A plant is operationally trusted when every warehouse mapped for it carries is_validated=true.
+    # Plants absent from the config default to untrusted (conservative: new/unknown sites are not
+    # silently treated as validated). Seeds for all 105 UAT-profiled warehouses are in
+    # resources/sql/process_order_staging_reference_mapping_*.sql.
+    staging_config = spark.read.table(
+        f"{silver_schema}.process_order_staging_reference_mapping_config"
+    )
+    # F.min on booleans returns False if any row is False, True if all are True —
+    # so a plant is trusted only when every configured warehouse has is_validated=true.
+    plant_trust = (
+        staging_config
+        .groupBy("plant_code")
+        .agg(F.min("is_validated").alias("_plant_trusted"))
+    )
+
     staged = (
         active_orders.join(staging_tos, "order_number", "left")
+        .join(plant_trust, "plant_code", "left")
         .select(
             "order_number",
             "plant_code",
@@ -325,10 +346,106 @@ def gold_process_order_staging():
             )
             .otherwise(F.lit(None).cast("double"))
             .alias("staging_fraction"),
+            F.coalesce(F.col("_plant_trusted"), F.lit(False)).alias("is_operationally_trusted"),
         )
     )
 
     # Deterministic base only; `days_to_start` / `risk_band` are served live by the
     # gold_process_order_staging_live view (current_date() kept out of the MV). See hardening plan.
     return staged
+
+
+# ── 6. PROCESS ORDER STAGING VALIDATION ──────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Per-plant/warehouse validation of the LTAK BETYP='F' source-reference assumption used by "
+        "gold_process_order_staging. Classifies each plant/warehouse as VALIDATED (>=95% BENUM "
+        "matches a known process order), NOT_VALIDATED (F-type TOs present but low match rate), "
+        "or NOT_APPLICABLE (no F-type staging TOs for this plant/warehouse)."
+    ),
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_process_order_staging_validation():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+
+    transfer_orders = spark.read.table(f"{silver_schema}.warehouse_transfer_order")
+    order_keys = (
+        spark.read.table(f"{silver_schema}.process_order")
+        .select(F.col("order_number").alias("_po_number"))
+        .distinct()
+    )
+
+    # Header-level totals per plant/warehouse.  BENUM/BETYP are LTAK header fields; aggregate
+    # at the (plant, warehouse, TO-number) grain first so a multi-item TO counts once.
+    to_header_totals = (
+        transfer_orders
+        .groupBy("plant_code", "warehouse_number", "transfer_order_number")
+        .agg(
+            F.first("source_reference_type").alias("source_reference_type"),
+            F.min("created_datetime").alias("created_datetime"),
+        )
+        .groupBy("plant_code", "warehouse_number")
+        .agg(
+            F.count(F.lit(1)).alias("total_to_headers"),
+            F.sum(F.when(F.col("source_reference_type") == STAGING_REFERENCE_TYPE, F.lit(1)).otherwise(F.lit(0)))
+             .alias("f_type_to_headers"),
+            F.min("created_datetime").alias("sample_window_start"),
+            F.max("created_datetime").alias("sample_window_end"),
+        )
+    )
+
+    # One row per F-type TO header — deterministic by picking the max(benum) in case of
+    # data anomalies; in practice all items under a header carry the same BENUM.
+    f_to_headers = (
+        transfer_orders
+        .filter(F.col("source_reference_type") == STAGING_REFERENCE_TYPE)
+        .groupBy("plant_code", "warehouse_number", "transfer_order_number")
+        .agg(F.max("source_reference_number").alias("benum"))
+    )
+
+    # Match count: F-type TO headers whose BENUM resolves to a known process order.
+    f_matched = (
+        f_to_headers
+        .join(order_keys, F.col("benum") == F.col("_po_number"), "left")
+        .groupBy("plant_code", "warehouse_number")
+        .agg(F.count("_po_number").alias("f_type_benum_matched"))
+    )
+
+    return (
+        to_header_totals
+        .join(f_matched, ["plant_code", "warehouse_number"], "left")
+        .withColumn(
+            "benum_match_pct",
+            F.when(
+                F.coalesce(F.col("f_type_to_headers"), F.lit(0)) > 0,
+                F.round(
+                    100.0 * F.coalesce(F.col("f_type_benum_matched"), F.lit(0))
+                    / F.col("f_type_to_headers"),
+                    1,
+                ),
+            ).otherwise(F.lit(None).cast("double")),
+        )
+        .withColumn(
+            "validation_status",
+            F.when(
+                F.coalesce(F.col("f_type_to_headers"), F.lit(0)) == 0,
+                F.lit("NOT_APPLICABLE"),
+            )
+            .when(F.col("benum_match_pct") >= 95.0, F.lit("VALIDATED"))
+            .otherwise(F.lit("NOT_VALIDATED")),
+        )
+        .select(
+            "plant_code",
+            "warehouse_number",
+            "sample_window_start",
+            "sample_window_end",
+            F.coalesce(F.col("total_to_headers"),     F.lit(0)).alias("total_to_headers"),
+            F.coalesce(F.col("f_type_to_headers"),    F.lit(0)).alias("f_type_to_headers"),
+            F.coalesce(F.col("f_type_benum_matched"), F.lit(0)).alias("f_type_benum_matched"),
+            "benum_match_pct",
+            "validation_status",
+        )
+    )
 

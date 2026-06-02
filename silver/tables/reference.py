@@ -5,7 +5,7 @@ Reference/Master data domain tables.
 import dlt
 from pyspark.sql import Row
 from pyspark.sql import functions as F
-from pyspark.sql.types import StructType, StructField, StringType
+from pyspark.sql.types import StringType, StructField, StructType
 
 from silver.helpers import (
     BRONZE,

@@ -6,11 +6,11 @@ Pattern follows the other gold tests: build fake bronze/silver/gold tables in th
 local spark_catalog, call the pure functions directly, assert on the control output.
 """
 
-import pytest
 import os
 import shutil
 from datetime import datetime
 
+import pytest
 from pyspark.sql import Row, SparkSession
 
 from gold.recon.reconciliation_job import check_gold_grain, reconcile_entity
@@ -30,7 +30,7 @@ def setup_database(spark: SparkSession):
     ]
     for t in tables:
         spark.sql(f"DROP TABLE IF EXISTS {t}")
-    
+
     # Physically remove delta directories from spark-warehouse to prevent LOCATION_ALREADY_EXISTS conflicts
     warehouse_dir = os.path.abspath("spark-warehouse")
     if os.path.exists(warehouse_dir):
@@ -38,12 +38,12 @@ def setup_database(spark: SparkSession):
             path = os.path.join(warehouse_dir, t)
             if os.path.exists(path):
                 shutil.rmtree(path)
-                
+
     yield
-    
+
     for t in tables:
         spark.sql(f"DROP TABLE IF EXISTS {t}")
-        
+
     if os.path.exists(warehouse_dir):
         for t in tables:
             path = os.path.join(warehouse_dir, t)

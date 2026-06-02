@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- `gold_process_order_staging_validation` — Gold table (plant × warehouse grain) that classifies each plant/warehouse as `VALIDATED`, `NOT_VALIDATED`, or `NOT_APPLICABLE` based on whether LTAK BETYP='F' TOs have BENUM values that resolve to known process orders. Refreshed on every Gold pipeline run. Live UAT validation (2026-06-02): 100% BENUM↔AUFNR match across all warehouses with F-type staging TOs.
+- `is_operationally_trusted` column in `gold_process_order_staging` — `true` when the plant has a validated entry in `process_order_staging_reference_mapping_config`; `false` for absent/unvalidated plants. Plants absent from the config default to untrusted.
+- `process_order_staging_reference_mapping_config` seed SQL (`resources/sql/process_order_staging_reference_mapping_*.sql`) — all 105 UAT-validated warehouse/plant combos seeded as `BENUM_EQUALS_AUFNR` with `is_validated=true`.
+- `STAGING_REFERENCE_TYPE = "F"` constant in `gold/_shared.py` — single source of truth for the LTAK-BETYP process-order staging reference type.
+- `risk_band = 'unvalidated'` for operationally untrusted plants in `gold_process_order_staging_live` serving view.
+
+### Fixed
+- Corrected `docs/runbook.md` §7: process-order scope is AUFK `AUTYP = '40'` (not `'10'`). `AUTYP = '10'` returns zero rows in Kerry's SAP configuration; the implementation (`silver/helpers.PP_PI_ORDER_CATEGORY = "40"`) was already correct. Added test guard to prevent future doc/code drift.
+- Updated BR-WM-002 status from Unverified to UAT validated following live BETYP/BENUM profiling.
+- Updated A4 user-story fulfilment from ⚠️ Partial to ✅ Fully following staging assumption validation.
+
 ### Changed
 - Split `silver/tables/warehouse.py` into two tier-specific modules to eliminate overlapping table ownership between the Fast and Reference pipelines:
   - `warehouse_fast.py` — `goods_movement`, `batch_stock`, `warehouse_transfer_order`, `warehouse_transfer_requirement` (all streaming sources; owned by the continuous Fast pipeline)

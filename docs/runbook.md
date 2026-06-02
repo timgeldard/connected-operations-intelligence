@@ -122,7 +122,7 @@ No manual SQL script is required for the Gold tables. Gold row filters are disab
 
 ## 7. PP/PI Process Order Scope
 
-`process_order` is restricted to AUFK `AUTYP = '10'`, the PP/PI process-order category. `PP_PI_ORDER_TYPES = None` in `silver/helpers.py` means no additional AUART allowlist is applied. Once process order types are confirmed with plant operations teams, update this constant and redeploy. A selective full refresh of `process_order` and `process_order_operation` will be required.
+`process_order` is restricted to AUFK `AUTYP = '40'`, the PP/PI process-order category (verified against live `connected_plant_uat.sap`; `AUTYP = '10'` returns zero rows in Kerry's configuration). Controlled by `silver.helpers.PP_PI_ORDER_CATEGORY = "40"`. `PP_PI_ORDER_TYPES = None` means no additional AUART allowlist is applied — all type-40 orders are included. Once AUART values are confirmed with plant operations teams, update `PP_PI_ORDER_TYPES` and redeploy. A selective full refresh of `process_order` and `process_order_operation` will be required.
 
 ---
 

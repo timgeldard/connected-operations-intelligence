@@ -16,11 +16,19 @@ def get_silver_schema(spark: SparkSession) -> str:
         raise ValueError("silver_catalog configuration must be set in the Spark session.")
     if not schema:
         raise ValueError("silver_schema configuration must be set in the Spark session.")
-    
+
     # Local Spark (spark_catalog) requires single-part namespace (database.table)
     if catalog == "spark_catalog":
         return schema
     return f"{catalog}.{schema}"
+
+
+# LTAK reference type that identifies process-order staging TOs.  When BETYP='F',
+# BENUM holds the AUFNR (process-order number).  All other BETYP values (blank,
+# 'X', 'P', 'L', 'D', …) do not carry a process-order reference in BENUM.
+# Validated live (connected_plant_uat, 2026-06-02): 100% BENUM↔AUFNR match across
+# 105 warehouse/plant combos; see gold_process_order_staging_validation.
+STAGING_REFERENCE_TYPE = "F"
 
 
 def gold_table_args(comment: str, cluster_by: list) -> dict:

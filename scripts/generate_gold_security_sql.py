@@ -61,6 +61,7 @@ GOLD_TABLES = [
     "gold_delivery_pick_status",
     "gold_stock_reconciliation",
     "gold_process_order_staging",
+    "gold_process_order_staging_validation",
     # warehouse_inbound_gold.py
     "gold_inbound_po_backlog",
     "gold_handling_unit_summary",
@@ -176,8 +177,10 @@ CUSTOM_SELECTS = {
     to_items_total,
     to_items_done,
     staging_fraction,
+    is_operationally_trusted,
     datediff(scheduled_start_date, current_date()) AS days_to_start,
     CASE
+      WHEN NOT coalesce(is_operationally_trusted, false) THEN 'unvalidated'
       WHEN to_items_total = 0 THEN 'grey'
       WHEN scheduled_start_date IS NULL THEN 'grey'
       WHEN coalesce(staging_fraction, 0.0) < 0.3 AND datediff(scheduled_start_date, current_date()) <= 0 THEN 'red'

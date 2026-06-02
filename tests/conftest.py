@@ -76,21 +76,22 @@ def create_df(spark: SparkSession, rows: List[Any]) -> DataFrame:
     """Dynamically build a Spark DataFrame with schema inference that defaults
     entirely-NULL columns to StringType() to avoid PySparkValueError: [CANNOT_DETERMINE_TYPE].
     """
+    import datetime
+
     from pyspark.sql.types import (
-        StructType,
-        StructField,
-        StringType,
-        DoubleType,
-        IntegerType,
         BooleanType,
         DateType,
+        DoubleType,
+        IntegerType,
+        StringType,
+        StructField,
+        StructType,
         TimestampType,
     )
-    import datetime
 
     if not rows:
         return spark.createDataFrame([], StructType([]))
-    
+
     # Inspect all rows to construct complete field lists and gather non-None sample values
     fields = {}
     for r in rows:
@@ -98,7 +99,7 @@ def create_df(spark: SparkSession, rows: List[Any]) -> DataFrame:
         for k, v in d.items():
             if k not in fields or fields[k] is None:
                 fields[k] = v
-                
+
     struct_fields = []
     for k, sample_val in fields.items():
         if sample_val is None:
@@ -116,6 +117,6 @@ def create_df(spark: SparkSession, rows: List[Any]) -> DataFrame:
         else:
             dt = StringType()
         struct_fields.append(StructField(k, dt, True))
-        
+
     schema = StructType(struct_fields)
     return spark.createDataFrame(rows, schema)
