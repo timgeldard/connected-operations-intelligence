@@ -197,6 +197,29 @@ ORDER BY
   health_area;
 ```
 
+Use the second query as the source for a Databricks SQL alert or dashboard tile:
+
+* **Alert condition:** any row where `health_status = 'FAIL'`.
+* **Warning condition:** any row where `health_status = 'WARN'`.
+* **Escalation SLA:** investigate `FAIL` rows before publishing or acting on affected daily KPIs;
+  review `WARN` rows during the same operating shift.
+
+For reconciliation-specific failures:
+
+```sql
+SELECT
+  plant_code,
+  warehouse_number,
+  mismatch_reason,
+  mismatch_severity,
+  exception_count,
+  abs_delta_quantity_total,
+  abs_delta_value_total
+FROM gold_stock_reconciliation_summary
+WHERE reconciliation_status = 'ACTION_REQUIRED'
+ORDER BY abs_delta_value_total DESC;
+```
+
 ### Escalation
 
 1. If `gold_critical_freshness_gate` fails, identify the blocking table in
@@ -208,7 +231,12 @@ ORDER BY
 3. If the Silver pipeline is stopped or failing, restart or remediate it before rerunning Gold.
 4. If Silver is healthy but a dependency remains stale, verify upstream replication and the
    `_replicated_at` watermark on the source table.
-5. For `EVENT_LOG` expectation health, open the Gold pipeline event log and filter by expectation
+5. If `gold_data_health_summary.health_area = 'stock_reconciliation'`, open
+   `gold_stock_reconciliation_summary` for the plant/warehouse and then drill into
+   `gold_stock_reconciliation_exceptions_v2`.
+6. If `gold_data_health_summary.health_area = 'storage_type_role_coverage'`, review unmapped storage
+   types with the WM config owner before trusting line-side/reconciliation KPIs.
+7. For `EVENT_LOG` expectation health, open the Gold pipeline event log and filter by expectation
    name/flow. Expectation metrics are not materialized into a Gold table.
 
 Use the pipeline notification configured in `resources/gold_pipeline.pipeline.yml` for failure

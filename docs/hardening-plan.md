@@ -24,7 +24,7 @@ Gold tables, no pipeline-logic changes.
    live serving view vs daily snapshot for date-relative columns), schema-contract tests, warehouse
    Gold unit tests, `docs/business_rules.md` + validation views.
 3. **Sprint 3 — Freshness & operability**: multi-table `gold_data_freshness_status` + critical gate,
-   runbook, `gold_data_product_status`.
+   runbook, `gold_data_health_summary`.
 4. **Sprint 4 — Design next**: inbound receipt status, detailed reconciliation, shift calendar — design docs only.
 
 ## Known correctness item carried into Sprint 2 (do not silently "fix" in Sprint 1)

@@ -54,6 +54,43 @@ WHERE expired_qty > 0
 ORDER BY abs_delta_value_total DESC;
 ```
 
+## Enhanced inbound backlog drill-down
+
+```sql
+SELECT
+  plant_code,
+  vendor_code,
+  purchasing_org,
+  open_item_count,
+  total_ordered_qty,
+  total_gr_qty,
+  remaining_open_qty,
+  putaway_to_count,
+  confirmed_putaway_to_count,
+  oldest_po_age_days,
+  inbound_backlog_risk_band
+FROM gold_inbound_po_backlog_enhanced_live
+WHERE remaining_open_qty > 0
+ORDER BY oldest_po_age_days DESC, remaining_open_qty DESC;
+```
+
+## Stock reconciliation action list
+
+```sql
+SELECT
+  plant_code,
+  warehouse_number,
+  mismatch_reason,
+  mismatch_severity,
+  exception_count,
+  abs_delta_quantity_total,
+  abs_delta_value_total,
+  reconciliation_status
+FROM gold_stock_reconciliation_summary_secured
+WHERE reconciliation_status = 'ACTION_REQUIRED'
+ORDER BY abs_delta_value_total DESC;
+```
+
 ## Freshness and health triage
 
 ```sql

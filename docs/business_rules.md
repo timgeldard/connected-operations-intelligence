@@ -74,6 +74,7 @@ Conventions: `silver` / `gold` below are the env-qualified schemas
   -- any rows = output/throughput is silently understated; classify them
   ```
 - **Risk:** under-stated production output / throughput; silent data loss.
+- **Architecture:** see `docs/adr/014-movement-type-classification.md`.
 - **Status:** Unverified. **Owner:** PP/MM data owner.
 
 ## BR-WM-005 — Dispensary backlog = conformed production-consumption RESB, open, not deletion-flagged
@@ -112,6 +113,34 @@ Conventions: `silver` / `gold` below are the env-qualified schemas
 - **Validation:** **cannot be validated** until EKBE/MSEG GR history is ingested (source gap — see `docs/ingestion_requests.md`). Until then the rule stands by definition; a true GR model is Phase 9.
 - **Risk:** over-counts backlog (items received but not yet flagged complete appear open).
 - **Status:** Unverified (blocked on source). **Owner:** Procurement/inbound owner.
+
+## BR-INB-007a — Enhanced inbound backlog uses PO-linked GR and plant-scoped TO evidence
+- **Used by:** `gold_inbound_po_backlog_enhanced`
+- **Source fields:** `purchase_order`, `goods_movement.purchase_order_number`/`purchase_order_item`,
+  `movement_type_classification.is_po_receipt` / `is_po_receipt_reversal`,
+  `warehouse_transfer_order.source_reference_number`, and `plant_code`.
+- **Assumption:** PO-linked GR quantity is identified by the conformed movement-type overlay
+  (currently 103/104). If a plant confirms PO-linked 101 semantics, update the overlay flags rather
+  than hardcoding the Gold table. Putaway evidence is linked at plant × purchase-order number because
+  the current Silver TO model has no normalized PO item key.
+- **Validation:** compare enhanced backlog item counts and GR quantities against procurement owner
+  samples.
+  ```sql
+  SELECT
+    plant_code,
+    vendor_code,
+    open_item_count,
+    total_ordered_qty,
+    total_gr_qty,
+    remaining_open_qty,
+    putaway_to_count,
+    confirmed_putaway_to_count
+  FROM gold.gold_inbound_po_backlog_enhanced
+  ORDER BY remaining_open_qty DESC;
+  ```
+- **Risk:** item-level putaway completion can be approximate when multiple PO items share one TO
+  source reference.
+- **Status:** Production-candidate; putaway linkage requires business validation. **Owner:** Procurement/WM owner.
 
 ## BR-HU-008 — SSCC approximated from VEKP `EXIDV`
 - **Used by:** `gold_handling_unit_summary`

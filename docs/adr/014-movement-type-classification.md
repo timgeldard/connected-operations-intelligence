@@ -23,6 +23,8 @@ The `silver.movement_type_classification` table now persists:
 * `is_production_consumption` / `is_production_consumption_reversal` — 261/262 PP-PI component
   semantics.
 * `is_custom_bulk_drop` — confirmed Z01 bulk-drop semantics.
+* Z11 (`CUSTOM_QUALITY_RELEASE`) — classified as a quality transfer so it no longer falls through
+  to `OTHER`.
 
 Gold tables must consume these flags instead of hardcoding BWART where a conformed flag exists.
 `gold_dispensary_backlog` and `gold_process_order_component_status` now filter RESB rows using
@@ -41,6 +43,6 @@ Gold tables must consume these flags instead of hardcoding BWART where a conform
 
 ## Follow-ups
 * Functionally classify high-volume custom movement codes still listed as unconfirmed in
-  `silver/movement_types.py`.
+  `silver/movement_types.py` (for example Z12, X09, Y02, Z95, Z44, Z99, Z96, Z80, Y01).
 * Consider enriching `silver.reservation_requirement` with classification flags if more Gold
   RESB consumers emerge.
