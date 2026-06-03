@@ -328,6 +328,30 @@ dlt.apply_changes(
 )
 
 
+@dlt.table(
+    name="warehouse_transfer_order_header_delete",
+    comment="Transfer-order headers with an LTAK delete tombstone. Used by Gold to suppress stale item-grain rows when item keys cannot be reconstructed.",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_all_or_drop({
+    "warehouse_number present": "warehouse_number IS NOT NULL",
+    "transfer_order_number present": "transfer_order_number IS NOT NULL",
+})
+def warehouse_transfer_order_header_delete():
+    spark = get_spark()
+    return (
+        spark.readStream.table(f"{BRONZE}.transferorderobjects_ltak")
+        .filter(F.col("RecordActivity") == "D")
+        .select(
+            F.col("LGNUM").alias("warehouse_number"),
+            F.col("TANUM").alias("transfer_order_number"),
+            F.col("AEDATTM").alias("_replicated_at"),
+            F.col("AERUNID").alias("_run_id"),
+            F.col("AERECNO").alias("_record_seq"),
+        )
+    )
+
+
 # ── 4. WAREHOUSE TRANSFER REQUIREMENT ─────────────────────────────────────────
 # NOTE (delete semantics): this table intentionally uses LTBK's native OPFLAG as the
 # change/delete signal (mapped to `record_activity`), NOT the Aecorsoft `RecordActivity`

@@ -182,6 +182,11 @@ def gold_process_order_operations():
     downtimes = spark.read.table(f"{silver_schema}.downtime_event")
     orders = spark.read.table(f"{silver_schema}.process_order")
 
+    operation_number_counts = (
+        operations.groupBy("order_number", "operation_number")
+        .agg(F.count(F.lit(1)).alias("_operation_key_count"))
+    )
+
     active_orders = orders.filter("is_released = true and is_closed = false").select(
         F.col("order_number").alias("order_number_ref"),
         F.col("material_code").alias("order_material_code"),
@@ -199,9 +204,18 @@ def gold_process_order_operations():
         "order_number", "operation_number", "pi_sheet_status", "duration_hours"
     )
 
-    joined_ops = operations.join(
+    operations_with_confidence = operations.join(
+        operation_number_counts,
+        ["order_number", "operation_number"],
+        "left",
+    ).withColumn(
+        "has_duplicate_operation_number",
+        F.coalesce(F.col("_operation_key_count"), F.lit(0)) > 1,
+    )
+
+    joined_ops = operations_with_confidence.join(
         active_orders,
-        operations.order_number == active_orders.order_number_ref,
+        operations_with_confidence.order_number == active_orders.order_number_ref,
         "inner"
     )
 
@@ -219,6 +233,8 @@ def gold_process_order_operations():
         )
         .select(
             "order_number",
+            "routing_number",
+            "operation_counter",
             "operation_number",
             "plant_code",
             F.col("order_material_code").alias("material_code"),
@@ -238,6 +254,10 @@ def gold_process_order_operations():
             F.coalesce(F.col("pi_sheet_status"), F.lit("No PI Sheet")).alias("pi_sheet_status"),
             F.col("duration_hours").alias("pi_sheet_duration_hours"),
             F.coalesce(F.col("total_downtime_minutes"), F.lit(0.0)).alias("total_downtime_minutes"),
+            "has_duplicate_operation_number",
+            F.when(F.col("has_duplicate_operation_number"), F.lit("DISPLAY_OPERATION_AMBIGUOUS"))
+            .otherwise(F.lit("DISPLAY_OPERATION_UNIQUE"))
+            .alias("operation_join_confidence"),
             (F.col("is_released") & ~F.col("is_closed")).alias("is_operationally_active")
         )
     )

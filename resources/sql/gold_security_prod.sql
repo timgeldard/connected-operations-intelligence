@@ -199,6 +199,36 @@ CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_stock_reconciliation_v2_se
   WHERE connected_plant_prod.silver.plant_access_filter(plant_code);
 GRANT SELECT ON VIEW connected_plant_prod.gold.gold_stock_reconciliation_v2_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_stock_value_reconciliation_secured AS
+  SELECT * FROM connected_plant_prod.gold.gold_stock_value_reconciliation
+  WHERE connected_plant_prod.silver.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_prod.gold.gold_stock_value_reconciliation_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_reconciliation_audit_log_secured AS
+  SELECT * FROM connected_plant_prod.gold.gold_reconciliation_audit_log
+  WHERE connected_plant_prod.silver.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_prod.gold.gold_reconciliation_audit_log_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_movement_reconciliation_secured AS
+  SELECT * FROM connected_plant_prod.gold.gold_movement_reconciliation
+  WHERE connected_plant_prod.silver.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_prod.gold.gold_movement_reconciliation_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_hu_reconciliation_secured AS
+  SELECT * FROM connected_plant_prod.gold.gold_hu_reconciliation
+  WHERE connected_plant_prod.silver.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_prod.gold.gold_hu_reconciliation_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_physical_inventory_recon_secured AS
+  SELECT * FROM connected_plant_prod.gold.gold_physical_inventory_recon
+  WHERE connected_plant_prod.silver.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_prod.gold.gold_physical_inventory_recon_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_reconciliation_alerts_secured AS
+  SELECT * FROM connected_plant_prod.gold.gold_reconciliation_alerts
+  WHERE connected_plant_prod.silver.plant_access_filter(plant_code);
+GRANT SELECT ON VIEW connected_plant_prod.gold.gold_reconciliation_alerts_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_prod.gold.gold_stock_reconciliation_exceptions_v2_secured AS
   SELECT * FROM connected_plant_prod.gold.gold_stock_reconciliation_exceptions_v2
   WHERE connected_plant_prod.silver.plant_access_filter(plant_code);

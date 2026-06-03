@@ -33,18 +33,19 @@ from gold._shared import get_silver_schema, get_spark_session
 FRESHNESS_CONTRACTS = [
     {"table": "goods_movement", "domain": "production/warehouse", "criticality": "critical", "sla_minutes": 120, "has_watermark": True},
     {"table": "process_order", "domain": "production", "criticality": "critical", "sla_minutes": 120, "has_watermark": True},
-    {"table": "process_order_operation", "domain": "production", "criticality": "high", "sla_minutes": 120, "has_watermark": True},
-    {"table": "pi_sheet_execution", "domain": "production", "criticality": "high", "sla_minutes": 240, "has_watermark": True},
+    {"table": "process_order_operation", "domain": "production", "criticality": "high", "sla_minutes": 240, "has_watermark": True},
+    {"table": "pi_sheet_execution", "domain": "production", "criticality": "high", "sla_minutes": 480, "has_watermark": True},
     {"table": "downtime_event", "domain": "production/quality", "criticality": "high", "sla_minutes": 120, "has_watermark": True},
-    {"table": "warehouse_transfer_order", "domain": "warehouse", "criticality": "critical", "sla_minutes": 120, "has_watermark": True},
-    {"table": "warehouse_transfer_requirement", "domain": "warehouse", "criticality": "critical", "sla_minutes": 120, "has_watermark": True},
-    {"table": "storage_bin", "domain": "stock/warehouse", "criticality": "critical", "sla_minutes": 120, "has_watermark": True},
-    {"table": "batch_stock", "domain": "stock", "criticality": "critical", "sla_minutes": 240, "has_watermark": True},
-    {"table": "reservation_requirement", "domain": "warehouse", "criticality": "high", "sla_minutes": 120, "has_watermark": True},
-    {"table": "outbound_delivery", "domain": "outbound", "criticality": "high", "sla_minutes": 240, "has_watermark": True},
-    {"table": "stock_at_location", "domain": "stock", "criticality": "high", "sla_minutes": 240, "has_watermark": True},
+    {"table": "warehouse_transfer_order", "domain": "warehouse", "criticality": "critical", "sla_minutes": 240, "has_watermark": True},
+    {"table": "warehouse_transfer_requirement", "domain": "warehouse", "criticality": "critical", "sla_minutes": 240, "has_watermark": True},
+    {"table": "storage_bin", "domain": "stock/warehouse", "criticality": "critical", "sla_minutes": 480, "has_watermark": True},
+    {"table": "batch_stock", "domain": "stock", "criticality": "critical", "sla_minutes": 480, "has_watermark": True},
+    {"table": "reservation_requirement", "domain": "warehouse", "criticality": "high", "sla_minutes": 240, "has_watermark": True},
+    {"table": "outbound_delivery", "domain": "outbound", "criticality": "high", "sla_minutes": 480, "has_watermark": True},
+    {"table": "stock_at_location", "domain": "stock", "criticality": "high", "sla_minutes": 480, "has_watermark": True},
     {"table": "purchase_order", "domain": "inbound", "criticality": "medium", "sla_minutes": 1440, "has_watermark": True},
     {"table": "handling_unit", "domain": "inbound/HU", "criticality": "medium", "sla_minutes": 240, "has_watermark": True},
+    {"table": "physical_inventory_document", "domain": "stock/counting", "criticality": "medium", "sla_minutes": 1440, "has_watermark": True},
     {"table": "material", "domain": "reference", "criticality": "medium", "sla_minutes": 1440, "has_watermark": True},
     {"table": "movement_type_classification", "domain": "reference", "criticality": "high", "sla_minutes": 0, "has_watermark": False},
     {"table": "storage_type_role_mapping", "domain": "reference/config", "criticality": "high", "sla_minutes": 0, "has_watermark": False},
@@ -336,10 +337,41 @@ def gold_data_health_summary():
         F.lit("DLT expectation violations are available in the pipeline event log").alias("details"),
     )
 
+    reconciliation_alerts = dlt.read("gold_reconciliation_alerts")
+    reconciliation_alerts_summary = (
+        reconciliation_alerts
+        .agg(
+            F.count(F.lit(1)).alias("affected_row_count"),
+            F.coalesce(F.sum(F.when(F.col("alert_priority") == "P1", F.lit(1)).otherwise(F.lit(0))), F.lit(0)).alias(
+                "critical_issue_count"
+            ),
+            F.coalesce(F.sum(F.when(F.col("alert_priority").isin("P2", "P3"), F.lit(1)).otherwise(F.lit(0))), F.lit(0)).alias(
+                "warning_issue_count"
+            ),
+        )
+        .withColumn("latest_observed_at", F.current_timestamp())
+        .withColumn(
+            "health_status",
+            F.when(F.col("critical_issue_count") > 0, F.lit("FAIL"))
+            .when(F.col("warning_issue_count") > 0, F.lit("WARN"))
+            .otherwise(F.lit("OK")),
+        )
+        .select(
+            F.lit("reconciliation_alerts").alias("health_area"),
+            "health_status",
+            "affected_row_count",
+            "critical_issue_count",
+            "warning_issue_count",
+            "latest_observed_at",
+            F.lit("Alert-ready stock/HU/physical-inventory reconciliation exceptions").alias("details"),
+        )
+    )
+
     return (
         freshness_summary
         .unionByName(storage_summary)
         .unionByName(staging_summary)
         .unionByName(reconciliation_summary)
+        .unionByName(reconciliation_alerts_summary)
         .unionByName(expectation_summary)
     )

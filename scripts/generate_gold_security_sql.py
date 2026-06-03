@@ -67,6 +67,12 @@ GOLD_TABLES = [
     "gold_process_order_staging_validation",
     "gold_storage_type_role_coverage_status",
     "gold_stock_reconciliation_v2",
+    "gold_stock_value_reconciliation",
+    "gold_reconciliation_audit_log",
+    "gold_movement_reconciliation",
+    "gold_hu_reconciliation",
+    "gold_physical_inventory_recon",
+    "gold_reconciliation_alerts",
     "gold_stock_reconciliation_exceptions_v2",
     "gold_stock_reconciliation_summary_v2",
     "gold_stock_reconciliation_summary",
@@ -253,4 +259,3 @@ def generate_sql():
 
 if __name__ == "__main__":
     generate_sql()
-

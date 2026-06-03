@@ -8,6 +8,7 @@ Tables:
   purchase_order  — EKKO (header) + EKPO (item) purchase orders (streaming SCD1)
   handling_unit   — VEKP (header, EXIDV = SSCC) + VEPO (item) handling units (batch;
                     VEKP/VEPO carry only AEDATTM). Approximates WMA-E-50 SSCC.
+  physical_inventory_document — IKPF header + ISEG item physical inventory count documents.
 """
 
 import dlt
@@ -120,6 +121,28 @@ dlt.apply_changes(
 )
 
 
+@dlt.table(
+    name="purchase_order_header_delete",
+    comment="Purchase-order headers with an EKKO delete tombstone. Used by Gold to suppress stale item-grain rows when item keys cannot be reconstructed.",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_or_drop("purchase_order_number present", "purchase_order_number IS NOT NULL")
+def purchase_order_header_delete():
+    spark = get_spark()
+    published = bronze_published()
+    return (
+        spark.readStream.table(f"{published}.procurementorderobject_ekko")
+        .filter(F.col("RecordActivity") == "D")
+        .select(
+            strip_zeros("EBELN").alias("purchase_order_number"),
+            F.col("EBELN").alias("purchase_order_number_raw"),
+            F.col("AEDATTM").alias("_replicated_at"),
+            F.col("AERUNID").alias("_run_id"),
+            F.col("AERECNO").alias("_record_seq"),
+        )
+    )
+
+
 # ── 2. HANDLING UNIT (SSCC) ───────────────────────────────────────────────────
 # VEKP (header) + VEPO (item). Batch (VEKP/VEPO carry only AEDATTM). EXIDV is the
 # SSCC barcode; VBTYP = 'J' on the item links to an outbound delivery.
@@ -173,5 +196,82 @@ def handling_unit():
             sap_date("i.VFDAT").alias("expiry_date"),
 
             F.col("i.AEDATTM").alias("_replicated_at"),
+        )
+    )
+
+
+# ── 3. PHYSICAL INVENTORY DOCUMENT ────────────────────────────────────────────
+# IKPF (header) + ISEG (item). Published slow-tier source used for count-vs-book
+# reconciliation and cycle-count sign-off reporting.
+
+@dlt.table(
+    comment="Physical inventory documents (IKPF/ISEG) with book, counted and posted difference evidence",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+    cluster_by=["plant_code", "count_date"],
+)
+@dlt.expect_all_or_drop({
+    "physical inventory document present": "physical_inventory_document_number IS NOT NULL",
+    "item number present": "item_number IS NOT NULL",
+})
+def physical_inventory_document():
+    spark = get_spark()
+    published = bronze_published()
+    ikpf = spark.read.table(f"{published}.header_physical_inventory_doc_ikpf")
+    iseg = spark.read.table(f"{published}.physical_inventory_doc_items_iseg")
+
+    return (
+        iseg.alias("i")
+        .join(ikpf.alias("h"), ["MANDT", "IBLNR", "GJAHR"], "left")
+        .select(
+            F.col("i.IBLNR").alias("physical_inventory_document_number"),
+            F.col("i.GJAHR").alias("fiscal_year"),
+            F.col("i.ZEILI").alias("item_number"),
+            F.col("i.WERKS").alias("plant_code"),
+            F.col("i.LGORT").alias("storage_location_code"),
+            strip_zeros("i.MATNR").alias("material_code"),
+            F.col("i.MATNR").alias("material_code_raw"),
+            strip_zeros("i.CHARG").alias("batch_number"),
+            F.col("i.CHARG").alias("batch_number_raw"),
+            F.col("i.BSTAR").alias("stock_type_code"),
+            F.col("h.VGART").alias("transaction_event_type"),
+            F.col("h.INVART").alias("physical_inventory_type"),
+            sap_date("h.BLDAT").alias("document_date"),
+            sap_date("h.GIDAT").alias("planned_count_date"),
+            F.try_to_timestamp(
+                F.when(
+                    F.trim(F.coalesce(F.col("i.ZLDAT"), F.col("h.ZLDAT")).cast("string")).isin("", "00000000"),
+                    None,
+                ).otherwise(F.trim(F.coalesce(F.col("i.ZLDAT"), F.col("h.ZLDAT")).cast("string"))),
+                F.lit("yyyyMMdd"),
+            ).cast("date").alias("count_date"),
+            F.try_to_timestamp(
+                F.when(
+                    F.trim(F.coalesce(F.col("i.BUDAT"), F.col("h.BUDAT")).cast("string")).isin("", "00000000"),
+                    None,
+                ).otherwise(F.trim(F.coalesce(F.col("i.BUDAT"), F.col("h.BUDAT")).cast("string"))),
+                F.lit("yyyyMMdd"),
+            ).cast("date").alias("posting_date"),
+            F.col("h.USNAM").alias("created_by_user"),
+            F.col("i.USNAZ").alias("counted_by_user"),
+            F.col("i.USNAD").alias("posted_by_user"),
+            sap_flag("i.XZAEL").alias("is_counted"),
+            sap_flag("i.XDIFF").alias("is_difference_posted"),
+            sap_flag("i.XNZAE").alias("is_recount_required"),
+            sap_flag("i.XLOEK").alias("is_deleted"),
+            sap_flag("h.SPERR").alias("has_posting_block"),
+            sap_flag("h.XBUFI").alias("is_book_inventory_frozen"),
+            F.col("i.BUCHM").alias("book_quantity"),
+            F.col("i.MENGE").alias("counted_quantity"),
+            F.col("i.MEINS").alias("base_uom"),
+            F.col("i.ERFMG").alias("entry_quantity"),
+            F.col("i.ERFME").alias("entry_uom"),
+            strip_zeros("i.MBLNR").alias("material_document_number"),
+            F.col("i.MJAHR").alias("material_document_year"),
+            F.col("i.ZEILE").alias("material_document_item"),
+            F.col("i.DMBTR").alias("difference_amount_local_currency"),
+            F.col("i.WAERS").alias("currency"),
+            F.col("i.GRUND").alias("difference_reason_code"),
+            F.col("i.ABCIN").alias("cycle_counting_indicator"),
+            F.coalesce(F.col("i.AEDATTM"), F.col("h.AEDATTM")).alias("_replicated_at"),
         )
     )

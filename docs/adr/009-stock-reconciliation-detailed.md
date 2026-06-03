@@ -1,7 +1,8 @@
 # ADR 009 — Detailed IM↔WM stock reconciliation
 
 ## Status
-Accepted — implemented as `gold_stock_reconciliation_v2` (2026-06-02).
+Accepted — implemented as `gold_stock_reconciliation_v2` (2026-06-02), hardened with
+value/audit/tolerance outputs (2026-06-03).
 
 > **Note:** Implementation differs from the original proposal in two respects:
 > 1. The table is named `gold_stock_reconciliation_v2` (side-by-side with v1) rather than
@@ -10,7 +11,8 @@ Accepted — implemented as `gold_stock_reconciliation_v2` (2026-06-02).
 >    is 1:1 but warehouse → sloc is 1:many — so WM stock can only be attributed to a warehouse grain.
 >    The proposed `silver.wm_managed_sloc` config is replaced by `silver.warehouse_storage_location_mapping`
 >    (T320 as-is). Sloc-grain reconciliation remains a future follow-up.
-> 3. MARM is confirmed ingested (`materialconversion_marm`) — "not yet in silver" note below is stale.
+> 3. MARM is confirmed ingested (`materialconversion_marm`) and wired into Silver as
+>    `material_uom_conversion`.
 
 ## Context
 `gold_stock_reconciliation` compares IM (MARD) vs WM (bins) at **plant × material** only, with a
@@ -19,7 +21,22 @@ stock-category grain, no UoM normalisation, no explanation of deltas via pending
 
 **Data reality:** `MARD` (IM) is **non-batch** (material × plant × sloc). `MCHB` (already
 `silver.batch_stock`) is the **batch-level IM** (material × plant × sloc × batch). `storage_bin`
-(LQUA) is WM at quant/batch grain. UoM conversion factors (`MARM`) are **not yet in silver**.
+(LQUA) is WM at quant/batch grain. UoM conversion factors (`MARM`) are in Silver for detection
+and future alternative-UoM handling; standard MARD/LQUA comparison is base-UoM.
+
+## 2026-06-03 hardening
+The pasted reconciliation hardening plan is integrated as a production-candidate extension:
+
+1. `gold_stock_reconciliation_v2` exposes `delta_percent`, `tolerance_exceeded`,
+   `tolerance_rule_code`, `reconciliation_rule_version`, `last_reconciled_at`, and
+   deterministic `audit_trail_json`.
+2. `gold_stock_value_reconciliation` provides the value-control rollup by plant × warehouse ×
+   mismatch reason/severity.
+3. `gold_reconciliation_audit_log` provides a current-state exception register; append-only audit
+   history remains the responsibility of the snapshot/control job rather than non-deterministic DLT
+   expressions.
+4. Remaining roadmap items are explicit follow-ups: open movement explainers, physical inventory
+   tie-out, and governed WM bin/storage-type→sloc attribution where SAP configuration supports it.
 
 ## Decision
 1. **`gold_stock_reconciliation_detailed`** at **plant × sloc × warehouse × material × batch ×

@@ -241,6 +241,8 @@ def stg_process_order_operation():
             # ── Natural key
             strip_zeros("h.AUFNR").alias("order_number"),
             F.col("h.AUFNR").alias("order_number_raw"),
+            F.col("o.AUFPL").alias("routing_number"),
+            F.col("o.APLZL").alias("operation_counter"),
             F.col("o.VORNR").alias("operation_number"),
 
             # ── Organisation
@@ -304,7 +306,7 @@ dlt.create_streaming_table(
 dlt.apply_changes(
     target="process_order_operation",
     source="stg_process_order_operation",
-    keys=["order_number", "operation_number"],
+    keys=["routing_number", "operation_counter"],
     sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
     apply_as_deletes=F.expr("record_activity = 'D'"),
     stored_as_scd_type=1,
@@ -325,22 +327,27 @@ def stg_pi_sheet_execution():
     src = spark.readStream.table(
         f"{BRONZE}.actualpistartenddatetime_zmanpex_e04_002"
     )
-    return src.select(
+    src_with_datetimes = (
+        src
+        .withColumn("pi_sheet_start_datetime", sap_datetime("ZSDATS", "ZSTIMS"))
+        .withColumn("pi_sheet_end_datetime", sap_datetime("ZEDATS", "ZETIMS"))
+    )
+    return src_with_datetimes.select(
         F.col("ZWERKS").alias("plant_code"),
         strip_zeros("ZAUFNR").alias("order_number"),
         F.col("ZAUFNR").alias("order_number_raw"),
         F.col("ZVORNR").alias("operation_number"),
 
-        sap_datetime("ZSDATS", "ZSTIMS").alias("pi_sheet_start_datetime"),
-        sap_datetime("ZEDATS", "ZETIMS").alias("pi_sheet_end_datetime"),
+        F.col("pi_sheet_start_datetime"),
+        F.col("pi_sheet_end_datetime"),
         F.col("ZDUR").alias("duration_decimal_days"),
         F.round(F.col("ZDUR") * 24, 4).alias("duration_hours"),
 
         F.col("ZUSERSTART").alias("started_by_user"),
         F.col("ZUSEREND").alias("completed_by_user"),
 
-        F.when(F.col("ZEDATS").isNotNull(), "Completed")
-         .when(F.col("ZSDATS").isNotNull(), "In Progress")
+        F.when(F.col("pi_sheet_end_datetime").isNotNull(), "Completed")
+         .when(F.col("pi_sheet_start_datetime").isNotNull(), "In Progress")
          .otherwise("Not Started").alias("pi_sheet_status"),
 
         F.col("AEDATTM").alias("_replicated_at"),

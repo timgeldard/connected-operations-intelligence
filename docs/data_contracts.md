@@ -184,20 +184,58 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Grain**: 1 row per plant × warehouse × material × batch × stock_category × base_uom
 * **Source Silver Tables**: `silver.batch_stock` (MCHB), `silver.stock_at_location` (MARD), `silver.material`, `silver.storage_bin`, `silver.warehouse_storage_location_mapping`, `silver.material_uom_conversion`, `silver.material_valuation`, `silver.storage_type_role_mapping`
 * **Purpose**: Root-cause-capable IM↔WM reconciliation. MCHB for batch-managed materials; MARD for non-batch. T320 bridges IM sloc→warehouse. BESTQ (blank/Q/S) mapped to UNRESTRICTED/QUALITY/BLOCKED.
+* **Hardening fields**: includes `delta_percent`, `tolerance_exceeded`, `tolerance_rule_code`, `reconciliation_rule_version`, `last_reconciled_at`, and `audit_trail_json` to support tolerance review, audit drill-through, and snapshot-based trend history.
 * **Mismatch reasons**: `MATCHED`, `WM_MANAGED_SLOC_MAPPING_MISSING`, `UOM_CONVERSION_MISSING`, `BATCH_MISSING_IN_WM`, `BATCH_MISSING_IN_IM`, `TRUE_VARIANCE`
 * **Known Caveats**: WM (LQUA) has no LGORT — grain omits `storage_location_code` on WM side. IN_TRANSFER and RESTRICTED stock categories not compared. Tolerance 0.1% of IM, floor 0.001. See `docs/reconciliation/stock-reconciliation-v2-contract.md`. Note: storage locations without a T320 warehouse mapping receive `warehouse_number = '__NO_WM_MAPPING__'`. If a material exists in both a mapped and an unmapped storage location, it produces two separate rows in the output. Downstream BI consumers summing `abs_delta_quantity_total` must explicitly filter or group by `mismatch_reason` to avoid double-counting the unmapped locations alongside true variances.
 
-### 14c. `gold.gold_stock_reconciliation_exceptions_v2`
+### 14c. `gold.gold_stock_value_reconciliation`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × warehouse × mismatch_reason × mismatch_severity
+* **Source Gold Tables**: `gold_stock_reconciliation_v2`
+* **Purpose**: value-control rollup for IM↔WM reconciliation, exposing net and absolute delta value plus tolerance breach counts for finance/warehouse triage.
+
+### 14d. `gold.gold_reconciliation_audit_log`
+* **Status**: Production-candidate
+* **Grain**: 1 row per unreconciled `gold_stock_reconciliation_v2` natural key
+* **Source Gold Tables**: `gold_stock_reconciliation_v2`
+* **Purpose**: deterministic current-state audit register for reconciliation exceptions. Append-only history is captured by the warehouse snapshot job/control process rather than generated with non-deterministic timestamps inside the DLT MV.
+
+### 14e. `gold.gold_movement_reconciliation`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × warehouse × posting/confirmation date × movement type × material × batch × UOM
+* **Source Silver Tables**: `silver.goods_movement`, `silver.warehouse_transfer_order`, `silver.warehouse_storage_location_mapping`
+* **Purpose**: compares IM material-document activity (MSEG/MKPF) to WM confirmed transfer-order activity (LTAK/LTAP) to identify `IM_ONLY`, `WM_ONLY`, and matched-activity timing or quantity gaps.
+* **Known Caveats**: SAP WM transfer orders do not carry IM movement type; WM confirmed quantity is aligned at the date/material/batch grain and surfaced beside each IM movement type for investigation rather than statutory balance proof.
+
+### 14f. `gold.gold_hu_reconciliation`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × warehouse × material × batch × UOM
+* **Source Silver Tables**: `silver.handling_unit`, `silver.storage_bin`
+* **Purpose**: handling-unit/SSCC packed quantity versus WM quant evidence, supporting HU and batch traceability exceptions.
+
+### 14g. `gold.gold_physical_inventory_recon`
+* **Status**: Production-candidate
+* **Grain**: 1 row per physical inventory document × fiscal year × item
+* **Source Silver Tables**: `silver.physical_inventory_document` (IKPF/ISEG)
+* **Purpose**: physical inventory count-vs-book reconciliation with difference posting, recount, posting block, and material-document evidence.
+
+### 14h. `gold.gold_reconciliation_alerts`
+* **Status**: Production-candidate
+* **Grain**: 1 row per alert-ready reconciliation exception
+* **Source Gold Tables**: `gold_reconciliation_audit_log`, `gold_hu_reconciliation`, `gold_physical_inventory_recon`
+* **Purpose**: alert/incident-ready feed for severe stock, HU, and physical-inventory reconciliation issues. Also rolled into `gold_data_health_summary`.
+
+### 14i. `gold.gold_stock_reconciliation_exceptions_v2`
 * **Status**: Production-candidate
 * **Grain**: Same as v2, filtered to `is_reconciled = false`, enriched with material description
 * **Purpose**: Starting point for variance investigation.
 
-### 14d. `gold.gold_stock_reconciliation_summary_v2`
+### 14j. `gold.gold_stock_reconciliation_summary_v2`
 * **Status**: Production-candidate
 * **Grain**: 1 row per plant × warehouse × mismatch_reason × mismatch_severity
 * **Purpose**: Operational scorecard of unreconciled stock by reason and severity.
 
-### 14e. `gold.gold_stock_reconciliation_summary`
+### 14k. `gold.gold_stock_reconciliation_summary`
 * **Status**: Production-candidate
 * **Grain**: 1 row per plant × warehouse × mismatch_reason × mismatch_severity
 * **Source Gold Tables**: `gold_stock_reconciliation_summary_v2`
@@ -264,10 +302,10 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 
 ### 20. `gold.gold_process_order_operations`
 * **Status**: Production-candidate
-* **Grain**: 1 row per `order_number × operation_number`
+* **Grain**: 1 row per SAP technical operation (`routing_number`/`AUFPL` × `operation_counter`/`APLZL`), with `operation_number`/`VORNR` retained as the display operation number.
 * **Source Silver Tables**: `silver.process_order_operation`, `silver.pi_sheet_execution`, `silver.downtime_event`, `silver.process_order`
 * **Purpose**: Operations Overview of process orders, schedule compliance, actual start/finish dates, confirm status, PI sheet execution and downtime at the operation level.
-* **Known Caveats**: `is_confirmed` is based on confirmation number presence since execution quantities are order-scoped; scoped to active/released orders only.
+* **Known Caveats**: `is_confirmed` is based on confirmation number presence since execution quantities are order-scoped; scoped to active/released orders only. PI sheet and downtime sources are joined by display `operation_number`; rows expose `operation_join_confidence` to flag repeated display operation numbers.
 
 ### 21. `gold.gold_order_downtime_summary`
 * **Status**: Production-candidate

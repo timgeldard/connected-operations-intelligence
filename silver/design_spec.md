@@ -87,7 +87,7 @@ Current checks by table:
 | Table | Drop checks | Warn checks |
 |---|---|---|
 | `process_order` | order_number, plant_code | quantity ≥ 0, scheduled dates ordered, actual dates ordered |
-| `process_order_operation` | order_number, operation_number | plant_code present, scheduled dates ordered |
+| `process_order_operation` | routing_number, operation_counter | order_number, operation_number, plant_code present, scheduled dates ordered |
 | `pi_sheet_execution` | order_number, operation_number | start ≤ end |
 | `goods_movement` | document_number, plant_code | movement_type_code present |
 | `batch_stock` | material_code, plant_code | unrestricted_quantity ≥ 0 |
@@ -108,7 +108,7 @@ Current checks by table:
 | Silver Table | Granularity | Primary SAP Sources | Personas |
 |---|---|---|---|
 | `process_order` | 1 row / order | AUFK + AFKO (+ `recipe_process_line` → process line) | Plant Manager, Supervisor |
-| `process_order_operation` | 1 row / operation per order | AFVC + AFVV + AFKO | Supervisor, Operative |
+| `process_order_operation` | 1 row / technical operation (`AUFPL` × `APLZL`) per order | AFVC + AFVV + AFKO | Supervisor, Operative |
 | `recipe_process_line` | 1 row / recipe object key (OBJEK) | INOB + AUSP + CAWNT (central_services, class type 018) | (internal reference) |
 | `pi_sheet_execution` | 1 row / PI sheet execution per operation | ZMANPEX_E04_002 | Supervisor, Operative |
 | `goods_movement` | 1 row / material document line | MSEG + MKPF | Plant Manager, Supervisor |
