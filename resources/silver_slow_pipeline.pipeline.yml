@@ -25,6 +25,12 @@ resources:
         # resources/config/storage_type_role_mapping.csv). storage_type_role_mapping reads it when
         # present, else falls back to the embedded bootstrap seed.
         storage_role_config_table: ${var.catalog}.${var.schema}.storage_type_role_mapping_config
+        site_config_plant_table: ${var.catalog}.${var.schema}.site_config_plant
+        site_config_warehouse_table: ${var.catalog}.${var.schema}.site_config_warehouse
+        site_config_storage_type_role_table: ${var.catalog}.${var.schema}.site_config_storage_type_role
+        site_config_movement_type_classification_table: ${var.catalog}.${var.schema}.site_config_movement_type_classification
+        site_config_staging_method_table: ${var.catalog}.${var.schema}.site_config_staging_method
+        site_config_kpi_enablement_table: ${var.catalog}.${var.schema}.site_config_kpi_enablement
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting

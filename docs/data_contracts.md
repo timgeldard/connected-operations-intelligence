@@ -321,6 +321,32 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Purpose**: Per-component consumption reservation status for active orders with available unrestricted stock in the reservation storage location and a stock coverage check.
 * **Known Caveats**: Stock availability checks are storage-location aware but not batch-aware; reservation components are restricted by `movement_type_classification.is_production_consumption` (currently BWART `261`).
 
+### 23. `gold.gold_plant_readiness_status`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × domain × data_product_name
+* **Source Silver Tables**: `silver.site_config_kpi_enablement`
+* **Source Gold Tables**: `gold.gold_validation_failure_detail`
+* **Purpose**: Rollup readiness status and calculated score per plant, domain, and data product.
+* **Overrides**: Integrates manual KPI enablement overrides and blocks readiness on critical freshness or security issues.
+
+### 24. `gold.gold_data_product_safety_status`
+* **Status**: Production-candidate
+* **Grain**: 1 row per conformed Gold data product
+* **Purpose**: Explicitly maps and controls safety/allowed usage tiers for conformed Gold data products.
+
+### 25. `gold.gold_validation_failure_detail`
+* **Status**: Production-candidate
+* **Grain**: 1 row per validation failure instance
+* **Source Gold Tables**: `gold.gold_storage_type_role_coverage_status`, `gold.gold_movement_type_classification_coverage`, `gold.gold_process_order_staging_validation`, `gold.gold_recipe_line_enrichment_coverage`, `gold.gold_delivery_pick_status_validation`, `gold.gold_stock_reconciliation_readiness`, `gold.gold_plant_freshness_readiness`
+* **Purpose**: Actionable audit trail mapping failing configuration or data assumptions to evidence and remediation instructions.
+
+### 26. `gold.gold_readiness_dashboard_source`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × domain × data_product_name
+* **Source Silver Tables**: `silver.site_config_plant`
+* **Source Gold Tables**: `gold.gold_plant_readiness_status`
+* **Purpose**: Flattened, reporting-optimized view for Power BI and plant readiness dashboard consumption.
+
 ---
 
 ## Semantic / Consumption Layer

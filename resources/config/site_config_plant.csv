@@ -1,0 +1,2 @@
+plant_code,plant_name,country,region,business_unit,timezone,sap_system_id,go_live_status,wm_enabled_flag,hu_enabled_flag,qm_enabled_flag,batch_managed_flag,process_manufacturing_flag,default_language_code,valid_from,valid_to,is_active,config_owner,last_validated_at
+C061,Portbury [MFG],GB,Europe,Operations,Europe/London,ECC,PRODUCTION,true,true,true,true,true,EN,2026-01-01,9999-12-31,true,wm-config-owner,2026-06-03

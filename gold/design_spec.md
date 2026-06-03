@@ -129,6 +129,26 @@ Managed via Declarative Automation Bundle (DAB).
 - **Description:** Operations rollup for freshness, expectation/event-log ownership, storage role coverage, staging validation, and stock reconciliation health.
 - **Freshness:** Recomputed during each Gold run.
 
+### `gold_plant_readiness_status`
+- **Granularity:** 1 row per plant × domain × data_product_name.
+- **Description:** Rollup readiness status (READY, PILOT_ONLY, BLOCKED, etc.) and calculated score (0-100) per plant, domain, and product, applying validation deductions and override rules.
+- **Freshness:** Recomputed during each Gold run.
+
+### `gold_data_product_safety_status`
+- **Granularity:** 1 row per conformed Gold data product.
+- **Description:** Safety classification and allowed consumption tiers for conformed Gold data products.
+- **Freshness:** Recomputed during each Gold run.
+
+### `gold_validation_failure_detail`
+- **Granularity:** 1 row per validation check failure.
+- **Description:** Combined validation results and failure details (unmapped storage types, unclassified Z* movements, unmatched TO keys, etc.) with severity, evidence, and recommended action.
+- **Freshness:** Recomputed during each Gold run.
+
+### `gold_readiness_dashboard_source`
+- **Granularity:** 1 row per plant × domain × data_product_name.
+- **Description:** Flattened reporting source optimized for plant readiness dashboards, joining rollup status with conformed plant details.
+- **Freshness:** Recomputed during each Gold run.
+
 ### Access-tier foundation
 - **Current state:** Operative and supervisor access remains plant-scoped through Silver `plant_access_filter`.
 - **Cluster-lead tier:** Documented in ADR-005. Execution is blocked until a governed plant-to-cluster source is selected.
@@ -175,6 +195,10 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 | `gold_warehouse_kpi_snapshot` | plant | open orders/TRs/TOs/deliveries/inbound, bin counts, util % | per-plant scorecard (mixed-grain counts) |
 | `gold_order_downtime_summary` | order × operation × downtime_reason | event_count, total_downtime_minutes, start/end datetimes | downtime_event joined with process_order |
 | `gold_process_order_component_status` | order × reservation_item_number | required/open qty, storage-location stock, is_fully_covered | RESB `is_production_consumption` joined with process_order & batch_stock |
+| `gold_plant_readiness_status` | plant × domain × data_product_name | readiness_status, score, failures | rollup status and score |
+| `gold_data_product_safety_status` | conformed product | safety_label, contains_date_relative_logic, is_allowed_for_production | allowed consumption tiers |
+| `gold_validation_failure_detail` | failure instance | validation_name, severity, action | detailed check results |
+| `gold_readiness_dashboard_source` | plant × domain × data_product_name | plant_name, region, status, score | flattened dashboard source |
 
 ## Known limitations / follow-ups (warehouse product)
 
