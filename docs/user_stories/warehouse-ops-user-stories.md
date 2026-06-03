@@ -278,6 +278,72 @@ This epic governs the metadata, validation tests, site configuration layer, and 
 
 ---
 
+## Epic F — Material consumption variance & yield (PP-PI / MM)
+
+This epic covers variance and yield analysis of materials, comparing planning values (reservations) against actual process order material transactions.
+
+### F1. Planned vs actual component consumption (BOM variance)
+*As a* production analyst *I want* to compare planned reservation quantities against actual goods issue postings by process order and material *so that* I can identify material usage variance and refine BOM master data.
+**Acceptance:**
+* lists planned quantity (from RESB / `reservation_requirement`) vs actual quantity consumed (movement type 261 minus 262 from `goods_movement`).
+* computes quantity variance and absolute variance percentage.
+* groups by plant, process order, material, and material group.
+* plant-scoped.
+**Fulfilment: ⚠️ Partial / Pilot-only.** Data exists in conformed Silver tables (`reservation_requirement` and `goods_movement`), but there is no dedicated conformed Gold table or secured serving view for BOM variance reporting.
+
+### F2. Component scrap analysis by reason code
+*As a* quality controller *I want* component scrap postings aggregated by plant, material, and scrap reason *so that* I can analyze the root causes of material loss on the manufacturing floor.
+**Acceptance:**
+* isolates production scrapping movements (movement type 551/552).
+* lists scrapped quantity, value, and SAP reason code (GRUND).
+* filterable by plant, date range, and material group.
+**Fulfilment: ⚠️ Partial / Pilot-only.** Scrap movements are conformed via goods movement classifications but the reason codes are not yet exposed in a conformed Gold serving view.
+
+---
+
+## Epic G — Quality inspection & QM-WM integration (QM / MM)
+
+This epic governs reporting for inspection stock, quality blocks, and release queues to optimize production quality control.
+
+### G1. Quality inspection queue and aging
+*As a* quality supervisor *I want* to see batches currently held in inspection stock ('Q' stock) with their received dates and aging *so that* I can expedite release decisions for critical raw materials.
+**Acceptance:**
+* lists active batches with stock type 'Q' in `silver.batch_stock` or bin stock.
+* calculates days since posting date or receipt date.
+* highlights inspection stock value.
+**Fulfilment: ⚠️ Partial / Pilot-only.** Stock classification 'Q' is present in conformed Silver tables, but aging queue KPIs are not built.
+
+### G2. Quality lock staging safety check
+*As a* warehouse supervisor *I want* staging task requests for quality-locked or expired batches blocked *so that* we prevent unauthorized materials from being moved to production lines.
+**Acceptance:**
+* flags transfer requirements or open staging TOs where the source batch has a restricted/blocked status or is past its expiry date.
+* includes severity alert (e.g. `CRITICAL` safety alert).
+**Fulfilment: ❌ Not yet.** Batch status is available in Silver, but safety validation blocks for staging tasks are not implemented in the Gold layer.
+
+---
+
+## Epic H — Physical inventory & cycle counting (WM)
+
+This epic covers physical inventory tracking, counting compliance, and warehouse adjustment analysis.
+
+### H1. Cycle counting compliance and backlog
+*As a* warehouse manager *I want* to see bins scheduled for cycle counting that are overdue based on their inventory class *so that* we maintain inventory accuracy audits.
+**Acceptance:**
+* lists storage bins with cycle count indicators.
+* calculates count backlog (days since last inventory date in `LAGP-IDATU`).
+* filterable by warehouse, storage type, and class.
+**Fulfilment: ❌ Not yet.** Last count date is present in `silver.storage_bin` (`inventory_date`), but cycle counting scheduling parameters are not conformed.
+
+### H2. Inventory write-offs and adjustment value
+*As a* finance analyst *I want* to monitor the financial impact of inventory write-offs and gains posted during physical counts *so that* we track loss prevention.
+**Acceptance:**
+* lists physical inventory differences cleared to IM (movement types 711–718).
+* displays total adjustment quantity, value, and posting date.
+* groups by warehouse, storage type, and clearing account/reason.
+**Fulfilment: ⚠️ Partial / Pilot-only.** Raw movements are conformed in Silver goods movements but the LI21 difference clearing metrics are not built in Gold.
+
+---
+
 ## Coverage summary
 
 | Epic | Stories | ✅ Implemented | ⚠️ Readiness-controlled / Partial | ❌ / Blocked |
@@ -287,7 +353,10 @@ This epic governs the metadata, validation tests, site configuration layer, and 
 | C — Inbound | C1 | — | C1 | — |
 | D — Process-order info system | D1–D7 | D1, D5, D6 | D2, D3, D4 | D7 (spec blocked) |
 | E — Plant Readiness & Safety | E1–E11 | E1, E3, E4, E5, E6, E11 | E2, E7, E8, E9 | E10 |
+| F — Material variance & yield | F1–F2 | — | F1, F2 | — |
+| G — Quality & QM-WM integration | G1–G2 | — | G1 | G2 |
+| H — Physical inventory | H1–H2 | — | H2 | H1 |
 
-**Themes in the gaps:** (1) WMA-E-50 execution fidelity (SSCC/pallet/TR-split) is blocked on un-replicated Z-tables (A5); (2) shift- and period-grain reporting requires shift-calendar config (D4); (3) PEX-E-35 needs a readable spec to finalise (D7); (4) sample validation evidence JSON strings are not yet dynamically populated (E2, E8); (5) KPI enablement overrides bypass safety-block validation gates (E7, E9); and (6) automated alert notifications for freshness lag are not yet configured (E10).
+**Themes in the gaps:** (1) WMA-E-50 execution fidelity (SSCC/pallet/TR-split) is blocked on un-replicated Z-tables (A5); (2) shift- and period-grain reporting requires shift-calendar config (D4); (3) PEX-E-35 needs a readable spec to finalise (D7); (4) sample validation evidence JSON strings are not yet dynamically populated (E2, E8); (5) KPI enablement overrides bypass safety-block validation gates (E7, E9); (6) automated alert notifications for freshness lag are not yet configured (E10); (7) planned vs actual component consumption variance views are not yet conformed (F1, F2); (8) QA inspection queue tracking and staging quality blocks are missing (G1, G2); and (9) cycle counting schedules and adjustment clearance values are not conformed (H1, H2).
 
 None of the functional gaps prevent deployment of the implemented core reporting logic, as the conformed plant readiness safety matrix now governs production rollout plant-by-plant via secured and live serving views.
