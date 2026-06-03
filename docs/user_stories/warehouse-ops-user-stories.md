@@ -192,7 +192,7 @@ This epic governs the metadata, validation tests, site configuration layer, and 
 * plant/warehouse context
 * backed by `gold_validation_failure_detail`
 **Fulfilment: ⚠️ Partial / Pilot-only — `gold_validation_failure_detail`.** All automated test failure metrics, context, and actions are consolidated into this view.
-**Gap:** The current implementation leaves the `sample_evidence_json` field as `null` across all validation sources. Capturing specific mock/live failing keys in JSON format is a future enhancement.
+**Gap:** The current implementation leaves the `sample_evidence_json` field as `null` across all validation sources. Capturing specific mock/live failing keys in JSON format is a future enhancement (see `E8`).
 
 ### E3. Storage type role readiness
 *As a* warehouse functional owner *I want* storage types mapped to operational roles *so that* lineside, staging, bin, and reconciliation KPIs are safe.
@@ -242,7 +242,39 @@ This epic governs the metadata, validation tests, site configuration layer, and 
 * includes approval metadata and review date
 * if current implementation allows overly broad upgrades, mark this as partial and add a follow-up gap
 **Fulfilment: ⚠️ Partial / Pilot-only — `site_config_kpi_enablement`.** Manual overrides are loaded into the conformed config layer and take precedence over calculated status codes (e.g. promoting `PILOT_ONLY` to `READY`).
-**Gap:** The current DLT validation rollup logic does not programmatically block manual promotion of a KPI to `READY` if there is an active `CRITICAL` or `BLOCKED` validation failure. This must be handled via governance reviews until strict policy enforcement is coded in `gold_plant_readiness_status`.
+**Gap:** The current DLT validation rollup logic does not programmatically block manual promotion of a KPI to `READY` if there is an active `CRITICAL` or `BLOCKED` validation failure (see `E9`).
+
+### E8. Dynamic validation failure evidence extraction
+*As a* functional analyst *I want* to see sample failing record keys inside the failure details *so that* I can locate the exact rows in SAP or configuration tables without writing custom SQL.
+**Acceptance:**
+* `sample_evidence_json` is populated with a JSON array of up to 10 sample keys (e.g. storage types, movement types, or process order numbers).
+* includes relevant IDs (e.g. `[{"LGNUM": "208", "LGTYP": "902"}]`).
+* backed by `gold_validation_failure_detail`.
+**Fulfilment: ⚠️ Partial / Pilot-only.** Column exists in schema but currently returns `null`. Needs extraction logic added to the individual validation queries.
+
+### E9. Safety gate hard-block enforcement
+*As a* data owner *I want* computed readiness status to stay `BLOCKED` if there is a critical validation failure, even if a user attempts to manually enable the KPI *so that* unsafe data is never accidentally shown in production.
+**Acceptance:**
+* if `has_critical = 1` or `is_stale = 1` in validation checks, the final readiness status is forced to `BLOCKED`.
+* manual overrides in `site_config_kpi_enablement` cannot upgrade `BLOCKED` status to `READY` when safety gates are breached.
+* backed by `gold_plant_readiness_status` scoring logic.
+**Fulfilment: ⚠️ Partial / Pilot-only.** Enablement status override currently takes absolute precedence over computed status without validating safety gate status.
+
+### E10. Plant replication freshness alert triggers
+*As an* operations manager *I want* automated alerts when a plant's replication delay exceeds the SLA *so that* we can fix replication lag before users make decisions on stale data.
+**Acceptance:**
+* triggers alert when a plant's freshness status drops to `BLOCKED`.
+* evaluates lag vs SLA using `gold_plant_freshness_readiness`.
+* supports email/Teams notifications or integration with Databricks Alerts.
+**Fulfilment: ❌ Not yet.** Freshness status is computed in DLT, but alert rules and notification channels are not yet configured.
+
+### E11. Automated site-readiness sign-off and audit log
+*As a* compliance officer *I want* changes to KPI enablement status and manual overrides logged and validated *so that* we have a clear history of who authorized a plant's data promotion.
+**Acceptance:**
+* records changes to `site_config_kpi_enablement`.
+* captures approval metadata (`approved_by`, `approved_at`, `reason_code`, and `review_due_at`).
+* validates configuration modifications in git/PR history or via configuration table CDF (Change Data Feed).
+**Fulfilment: ✅ Implemented / readiness-controlled — `site_config_kpi_enablement`.** Table includes fields for `approved_by`, `approved_at`, `reason_code`, and `review_due_at` and is populated via governed configuration scripts.
 
 ---
 
@@ -254,8 +286,8 @@ This epic governs the metadata, validation tests, site configuration layer, and 
 | B — Stock & reconciliation | B1–B5 | B1, B2, B3, B4, B5 | — | — |
 | C — Inbound | C1 | — | C1 | — |
 | D — Process-order info system | D1–D7 | D1, D5, D6 | D2, D3, D4 | D7 (spec blocked) |
-| E — Plant Readiness & Safety | E1–E7 | E1, E3, E4, E5, E6 | E2, E7 | — |
+| E — Plant Readiness & Safety | E1–E11 | E1, E3, E4, E5, E6, E11 | E2, E7, E8, E9 | E10 |
 
-**Themes in the gaps:** (1) WMA-E-50 execution fidelity (SSCC/pallet/TR-split) is blocked on un-replicated Z-tables (A5); (2) shift- and period-grain reporting requires shift-calendar config (D4); (3) PEX-E-35 needs a readable spec to finalise (D7); (4) sample validation evidence JSON strings are not yet dynamically populated (E2); and (5) KPI enablement overrides bypass safety-block validation gates (E7). 
+**Themes in the gaps:** (1) WMA-E-50 execution fidelity (SSCC/pallet/TR-split) is blocked on un-replicated Z-tables (A5); (2) shift- and period-grain reporting requires shift-calendar config (D4); (3) PEX-E-35 needs a readable spec to finalise (D7); (4) sample validation evidence JSON strings are not yet dynamically populated (E2, E8); (5) KPI enablement overrides bypass safety-block validation gates (E7, E9); and (6) automated alert notifications for freshness lag are not yet configured (E10).
 
 None of the functional gaps prevent deployment of the implemented core reporting logic, as the conformed plant readiness safety matrix now governs production rollout plant-by-plant via secured and live serving views.
