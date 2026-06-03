@@ -220,7 +220,7 @@ def test_readiness_status_rollup_and_overrides(spark: SparkSession):
 
     # Seed the conformed KPI enablement overrides
     _save(spark, [
-        Row(plant_code="C061", data_product_name="gold_lineside_stock", kpi_name="Lineside Stock", enablement_status="PILOT_ONLY"),
+        Row(plant_code="C061", data_product_name="gold_lineside_stock", kpi_name="Lineside Stock", enablement_status="READY"),
     ], "site_config_kpi_enablement")
 
     # Seed mock validation failures in gold_validation_failure_detail
@@ -250,7 +250,7 @@ def test_readiness_status_rollup_and_overrides(spark: SparkSession):
 
     # Verify score logic and overrides
     assert c061_res["readiness_score"] == 70
-    assert c061_res["readiness_status"] == "PILOT_ONLY" # config override matches or status score falls here
+    assert c061_res["readiness_status"] == "READY" # enablement_status override takes precedence over computed status (PILOT_ONLY)
 
     assert c062_res["readiness_score"] == 60
     assert c062_res["readiness_status"] == "BLOCKED" # Overridden due to has_critical = 1

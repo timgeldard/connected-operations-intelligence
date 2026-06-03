@@ -30,7 +30,11 @@ def gold_storage_type_role_coverage_status():
         F.sum(F.when(F.col("storage_role").isNull() | (F.col("role_confidence") == "FALLBACK"), 1).otherwise(0)).alias("unmapped_types")
     )
     
-    res = grouped.withColumn("match_rate", (F.col("total_types") - F.col("unmapped_types")) / F.col("total_types"))
+    res = grouped.withColumn(
+        "match_rate",
+        F.when(F.col("total_types") > 0, (F.col("total_types") - F.col("unmapped_types")) / F.col("total_types"))
+        .otherwise(F.lit(None).cast("double"))
+    )
     
     return (
         res.select(
@@ -38,11 +42,13 @@ def gold_storage_type_role_coverage_status():
             F.col("warehouse_number"),
             F.lit("gold_lineside_stock").alias("data_product_name"),
             F.lit("Storage Type Role Coverage").alias("validation_name"),
-            F.when(F.col("match_rate") >= 1.0, "READY")
+            F.when(F.col("match_rate").isNull(), "NOT_APPLICABLE")
+            .when(F.col("match_rate") >= 1.0, "READY")
             .when(F.col("match_rate") >= 0.95, "READY_WITH_WARNINGS")
             .when(F.col("match_rate") >= 0.5, "PILOT_ONLY")
             .otherwise("BLOCKED").alias("validation_status"),
-            F.when(F.col("match_rate") < 0.5, "HIGH")
+            F.when(F.col("match_rate").isNull(), "INFO")
+            .when(F.col("match_rate") < 0.5, "HIGH")
             .when(F.col("match_rate") < 0.95, "MEDIUM")
             .when(F.col("match_rate") < 1.0, "LOW")
             .otherwise("INFO").alias("severity"),
@@ -93,7 +99,11 @@ def gold_movement_type_classification_coverage():
         F.sum(F.when(F.col("movement_type_code").like("Z%") & (F.col("event_category").isNull() | (F.col("event_category") == "OTHER")), F.col("record_count")).otherwise(0)).alias("unclassified_z_records")
     )
     
-    res = grouped.withColumn("match_rate", (F.col("total_records") - F.col("unclassified_records")) / F.col("total_records"))
+    res = grouped.withColumn(
+        "match_rate",
+        F.when(F.col("total_records") > 0, (F.col("total_records") - F.col("unclassified_records")) / F.col("total_records"))
+        .otherwise(F.lit(None).cast("double"))
+    )
     
     return (
         res.select(
@@ -101,12 +111,14 @@ def gold_movement_type_classification_coverage():
             F.lit(None).cast("string").alias("warehouse_number"),
             F.lit("gold_shift_output_summary").alias("data_product_name"),
             F.lit("Movement Type Classification").alias("validation_name"),
-            F.when(F.col("unclassified_z_records") > 0, "BLOCKED")
+            F.when(F.col("match_rate").isNull(), "NOT_APPLICABLE")
+            .when(F.col("unclassified_z_records") > 0, "BLOCKED")
             .when(F.col("match_rate") >= 0.995, "READY")
             .when(F.col("match_rate") >= 0.95, "READY_WITH_WARNINGS")
             .when(F.col("match_rate") >= 0.70, "PILOT_ONLY")
             .otherwise("BLOCKED").alias("validation_status"),
-            F.when((F.col("unclassified_z_records") > 0) | (F.col("match_rate") < 0.70), "CRITICAL")
+            F.when(F.col("match_rate").isNull(), "INFO")
+            .when((F.col("unclassified_z_records") > 0) | (F.col("match_rate") < 0.70), "CRITICAL")
             .when(F.col("match_rate") < 0.95, "HIGH")
             .when(F.col("match_rate") < 0.995, "MEDIUM")
             .otherwise("INFO").alias("severity"),
@@ -147,7 +159,11 @@ def gold_process_order_staging_validation():
         F.sum(F.when(F.col("order_number").isNull(), 1).otherwise(0)).alias("unmatched_to_items")
     )
     
-    res = grouped.withColumn("match_rate", (F.col("total_to_items") - F.col("unmatched_to_items")) / F.col("total_to_items"))
+    res = grouped.withColumn(
+        "match_rate",
+        F.when(F.col("total_to_items") > 0, (F.col("total_to_items") - F.col("unmatched_to_items")) / F.col("total_to_items"))
+        .otherwise(F.lit(None).cast("double"))
+    )
     
     return (
         res.select(
@@ -155,11 +171,13 @@ def gold_process_order_staging_validation():
             F.col("warehouse_number"),
             F.lit("gold_process_order_staging").alias("data_product_name"),
             F.lit("Process Order Staging Validation").alias("validation_name"),
-            F.when(F.col("match_rate") >= 0.98, "READY")
+            F.when(F.col("match_rate").isNull(), "NOT_APPLICABLE")
+            .when(F.col("match_rate") >= 0.98, "READY")
             .when(F.col("match_rate") >= 0.90, "READY_WITH_WARNINGS")
             .when(F.col("match_rate") >= 0.70, "PILOT_ONLY")
             .otherwise("BLOCKED").alias("validation_status"),
-            F.when(F.col("match_rate") < 0.70, "HIGH")
+            F.when(F.col("match_rate").isNull(), "INFO")
+            .when(F.col("match_rate") < 0.70, "HIGH")
             .when(F.col("match_rate") < 0.90, "MEDIUM")
             .when(F.col("match_rate") < 0.98, "LOW")
             .otherwise("INFO").alias("severity"),
@@ -189,7 +207,11 @@ def gold_recipe_line_enrichment_coverage():
         F.sum(F.when(F.col("production_line").isNull(), 1).otherwise(0)).alias("unenriched_orders")
     )
     
-    res = grouped.withColumn("match_rate", (F.col("total_orders") - F.col("unenriched_orders")) / F.col("total_orders"))
+    res = grouped.withColumn(
+        "match_rate",
+        F.when(F.col("total_orders") > 0, (F.col("total_orders") - F.col("unenriched_orders")) / F.col("total_orders"))
+        .otherwise(F.lit(None).cast("double"))
+    )
     
     return (
         res.select(
@@ -197,11 +219,13 @@ def gold_recipe_line_enrichment_coverage():
             F.lit(None).cast("string").alias("warehouse_number"),
             F.lit("gold_shift_output_summary").alias("data_product_name"),
             F.lit("Recipe Line Enrichment").alias("validation_name"),
-            F.when(F.col("match_rate") >= 0.98, "READY")
+            F.when(F.col("match_rate").isNull(), "NOT_APPLICABLE")
+            .when(F.col("match_rate") >= 0.98, "READY")
             .when(F.col("match_rate") >= 0.95, "READY_WITH_WARNINGS")
             .when(F.col("match_rate") >= 0.80, "PILOT_ONLY")
             .otherwise("BLOCKED").alias("validation_status"),
-            F.when(F.col("match_rate") < 0.80, "HIGH")
+            F.when(F.col("match_rate").isNull(), "INFO")
+            .when(F.col("match_rate") < 0.80, "HIGH")
             .when(F.col("match_rate") < 0.95, "MEDIUM")
             .when(F.col("match_rate") < 0.98, "LOW")
             .otherwise("INFO").alias("severity"),
@@ -235,7 +259,11 @@ def gold_delivery_pick_status_validation():
         F.sum(F.when(F.col("uom_count") > 1, 1).otherwise(0)).alias("mixed_uom_deliveries")
     )
     
-    res = grouped.withColumn("mixed_rate", F.col("mixed_uom_deliveries") / F.col("total_deliveries"))
+    res = grouped.withColumn(
+        "mixed_rate",
+        F.when(F.col("total_deliveries") > 0, F.col("mixed_uom_deliveries") / F.col("total_deliveries"))
+        .otherwise(F.lit(None).cast("double"))
+    )
     
     return (
         res.select(
@@ -243,8 +271,12 @@ def gold_delivery_pick_status_validation():
             F.lit(None).cast("string").alias("warehouse_number"),
             F.lit("gold_delivery_pick_status").alias("data_product_name"),
             F.lit("Delivery Pick Status Validation").alias("validation_name"),
-            F.when(F.col("mixed_rate") > 0.05, "PILOT_ONLY").otherwise("READY").alias("validation_status"),
-            F.when(F.col("mixed_rate") > 0.05, "MEDIUM").otherwise("INFO").alias("severity"),
+            F.when(F.col("mixed_rate").isNull(), "NOT_APPLICABLE")
+            .when(F.col("mixed_rate") > 0.05, "PILOT_ONLY")
+            .otherwise("READY").alias("validation_status"),
+            F.when(F.col("mixed_rate").isNull(), "INFO")
+            .when(F.col("mixed_rate") > 0.05, "MEDIUM")
+            .otherwise("INFO").alias("severity"),
             F.concat(F.round(F.col("mixed_rate") * 100, 1), F.lit("% mixed UoM")).alias("observed_value"),
             F.lit("<= 5% mixed UoM").alias("threshold_value"),
             F.col("mixed_uom_deliveries").cast("long").alias("failed_record_count"),

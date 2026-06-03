@@ -723,7 +723,7 @@ def site_config_plant():
         except Exception:
             table_exists = False
     if table_exists:
-        return spark.read.table(config_table).filter(F.col("is_active") == True)
+        return spark.read.table(config_table).filter(F.col("is_active"))
     
     data = [
         Row(plant_code="C061", plant_name="Portbury [MFG]", country="GB", region="Europe",
@@ -756,7 +756,7 @@ def site_config_warehouse():
         except Exception:
             table_exists = False
     if table_exists:
-        return spark.read.table(config_table).filter(F.col("is_active") == True)
+        return spark.read.table(config_table).filter(F.col("is_active"))
     
     data = [
         Row(plant_code="C061", warehouse_number="208", warehouse_description="Portbury Main WH",

@@ -45,4 +45,4 @@ This matrix maps each Gold data product to its domain, current repository status
 
 ### 7. Freshness Readiness
 * **Target Table:** All tables
-* **Checks:** Lag minutes vs SLA for LTAK, LTAP, LTBK, LTBP, LAGP, LQUA, MCHB, MARD, MBEW, AFKO, AUFK, RESB, MSEG, EKKO, EKPO, EKBE.
+* **Checks:** Lag minutes vs SLA validated against the Silver conformed tables' `_replicated_at` timestamps (representing the corresponding Bronze replicas: LTAK/LTAP -> `silver.warehouse_transfer_order`, LTBK/LTBP -> `silver.warehouse_transfer_requirement`, MCHB/MARD -> `silver.batch_stock` and `silver.stock_at_location`, AFKO/AUFK/RESB -> `silver.process_order` and `silver.reservation_requirement`, MSEG -> `silver.goods_movement`, EKKO/EKPO/EKBE -> `silver.purchase_order` and `silver.purchase_order_history`).

@@ -113,7 +113,13 @@ def generate_sql():
                 continue
 
             with open(csv_path, newline="", encoding="utf-8") as f:
-                rows = list(csv.DictReader(f))
+                reader = csv.DictReader(f)
+                fieldnames = reader.fieldnames or []
+                expected_cols = list(tbl_cfg["columns"].keys())
+                missing_cols = [col for col in expected_cols if col not in fieldnames]
+                if missing_cols:
+                    raise ValueError(f"CSV file {csv_path} is missing expected columns: {missing_cols}")
+                rows = list(reader)
 
             formatted_cols = cols_def.replace(', ', ',\n  ')
             sql += (
@@ -132,6 +138,7 @@ def generate_sql():
             elif "approved_by" in tbl_cfg["columns"]:
                 owner_col = "approved_by"
 
+            sql += "BEGIN;\n"
             if owner_col:
                 sql += f"DELETE FROM {table} WHERE {owner_col} = 'wm-config-owner';\n"
             else:
@@ -150,8 +157,9 @@ def generate_sql():
                 
                 sql += (
                     f"INSERT INTO {table} ({', '.join(col_names)}) VALUES\n  "
-                    + ",\n  ".join(value_tuples) + ";\n\n"
+                    + ",\n  ".join(value_tuples) + ";\n"
                 )
+            sql += "COMMIT;\n\n"
 
         out_path = repo_root / "resources" / "sql" / f"site_config_{env}.sql"
         with open(out_path, "w", encoding="utf-8", newline="\n") as fh:
