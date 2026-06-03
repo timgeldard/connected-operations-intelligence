@@ -264,10 +264,10 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 
 ### 20. `gold.gold_process_order_operations`
 * **Status**: Production-candidate
-* **Grain**: 1 row per `order_number × operation_number`
+* **Grain**: 1 row per SAP technical operation (`routing_number`/`AUFPL` × `operation_counter`/`APLZL`), with `operation_number`/`VORNR` retained as the display operation number.
 * **Source Silver Tables**: `silver.process_order_operation`, `silver.pi_sheet_execution`, `silver.downtime_event`, `silver.process_order`
 * **Purpose**: Operations Overview of process orders, schedule compliance, actual start/finish dates, confirm status, PI sheet execution and downtime at the operation level.
-* **Known Caveats**: `is_confirmed` is based on confirmation number presence since execution quantities are order-scoped; scoped to active/released orders only.
+* **Known Caveats**: `is_confirmed` is based on confirmation number presence since execution quantities are order-scoped; scoped to active/released orders only. PI sheet and downtime sources are joined by display `operation_number`; rows expose `operation_join_confidence` to flag repeated display operation numbers.
 
 ### 21. `gold.gold_order_downtime_summary`
 * **Status**: Production-candidate

@@ -36,7 +36,7 @@ def test_freshness_status_no_data_and_static(spark: SparkSession):
     assert rows["movement_type_classification"]["is_stale"] is False
 
     # SLA carried through for the contract.
-    assert rows["batch_stock"]["freshness_sla_minutes"] == 240
+    assert rows["batch_stock"]["freshness_sla_minutes"] == 480
     assert rows["batch_stock"]["is_stale"] is False
 
 

@@ -20,9 +20,11 @@ from pyspark.sql import functions as F
 from gold._shared import (
     STAGING_REFERENCE_TYPE,
     STAGING_VALIDATION_THRESHOLD_PCT,
+    anti_join_optional_deleted_headers,
     get_silver_schema,
     get_spark_session,
     gold_table_args,
+    table_exists,
 )
 
 # ── 1. DISPENSARY BACKLOG ─────────────────────────────────────────────────────
@@ -127,7 +129,12 @@ def gold_lineside_stock():
 def gold_delivery_pick_status():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    deliveries = spark.read.table(f"{silver_schema}.outbound_delivery")
+    deliveries = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.outbound_delivery"),
+        silver_schema,
+        "outbound_delivery_header_delete",
+        ["delivery_number"],
+    )
 
     picks = (
         deliveries.groupBy(
@@ -331,7 +338,12 @@ def gold_stock_reconciliation():
 def gold_process_order_staging():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    transfer_orders = spark.read.table(f"{silver_schema}.warehouse_transfer_order")
+    transfer_orders = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.warehouse_transfer_order"),
+        silver_schema,
+        "warehouse_transfer_order_header_delete",
+        ["warehouse_number", "transfer_order_number"],
+    )
     orders = spark.read.table(f"{silver_schema}.process_order")
 
     # Transfer orders that stage to a PRODUCTION ORDER are those with reference type LTAK-BETYP='F'
@@ -361,9 +373,13 @@ def gold_process_order_staging():
     # Plants absent from the config default to untrusted (conservative: new/unknown sites are not
     # silently treated as validated). Seeds for all 105 UAT-profiled warehouses are in
     # resources/sql/process_order_staging_reference_mapping_*.sql.
-    staging_config = spark.read.table(
-        f"{silver_schema}.process_order_staging_reference_mapping_config"
-    )
+    staging_config_table = f"{silver_schema}.process_order_staging_reference_mapping_config"
+    if table_exists(spark, staging_config_table):
+        staging_config = spark.read.table(staging_config_table)
+    else:
+        staging_config = active_orders.select("plant_code").distinct().withColumn(
+            "is_validated", F.lit(False)
+        )
     # F.min on booleans returns False if any row is False, True if all are True —
     # so a plant is trusted only when every configured warehouse has is_validated=true.
     plant_trust = (
@@ -414,7 +430,12 @@ def gold_process_order_staging_validation():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
 
-    transfer_orders = spark.read.table(f"{silver_schema}.warehouse_transfer_order")
+    transfer_orders = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.warehouse_transfer_order"),
+        silver_schema,
+        "warehouse_transfer_order_header_delete",
+        ["warehouse_number", "transfer_order_number"],
+    )
     order_keys = (
         spark.read.table(f"{silver_schema}.process_order")
         .select(F.col("order_number").alias("_po_number"))

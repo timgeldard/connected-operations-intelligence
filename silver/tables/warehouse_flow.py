@@ -221,3 +221,24 @@ dlt.apply_changes(
     apply_as_deletes=F.expr("record_activity = 'D'"),
     stored_as_scd_type=1,
 )
+
+
+@dlt.table(
+    name="outbound_delivery_header_delete",
+    comment="Outbound-delivery headers with a LIKP delete tombstone. Used by Gold to suppress stale item-grain rows when item keys cannot be reconstructed.",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_or_drop("delivery_number present", "delivery_number IS NOT NULL")
+def outbound_delivery_header_delete():
+    spark = get_spark()
+    return (
+        spark.readStream.table(f"{BRONZE}.deliveryobjects_likp")
+        .filter(F.col("RecordActivity") == "D")
+        .select(
+            strip_zeros("VBELN").alias("delivery_number"),
+            F.col("VBELN").alias("delivery_number_raw"),
+            F.col("AEDATTM").alias("_replicated_at"),
+            F.col("AERUNID").alias("_run_id"),
+            F.col("AERECNO").alias("_record_seq"),
+        )
+    )

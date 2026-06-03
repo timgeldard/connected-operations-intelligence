@@ -120,6 +120,28 @@ dlt.apply_changes(
 )
 
 
+@dlt.table(
+    name="purchase_order_header_delete",
+    comment="Purchase-order headers with an EKKO delete tombstone. Used by Gold to suppress stale item-grain rows when item keys cannot be reconstructed.",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_or_drop("purchase_order_number present", "purchase_order_number IS NOT NULL")
+def purchase_order_header_delete():
+    spark = get_spark()
+    published = bronze_published()
+    return (
+        spark.readStream.table(f"{published}.procurementorderobject_ekko")
+        .filter(F.col("RecordActivity") == "D")
+        .select(
+            strip_zeros("EBELN").alias("purchase_order_number"),
+            F.col("EBELN").alias("purchase_order_number_raw"),
+            F.col("AEDATTM").alias("_replicated_at"),
+            F.col("AERUNID").alias("_run_id"),
+            F.col("AERECNO").alias("_record_seq"),
+        )
+    )
+
+
 # ── 2. HANDLING UNIT (SSCC) ───────────────────────────────────────────────────
 # VEKP (header) + VEPO (item). Batch (VEKP/VEPO carry only AEDATTM). EXIDV is the
 # SSCC barcode; VBTYP = 'J' on the item links to an outbound delivery.

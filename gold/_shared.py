@@ -2,7 +2,7 @@
 Shared Gold pipeline helpers.
 """
 
-from pyspark.sql import SparkSession
+from pyspark.sql import DataFrame, SparkSession
 
 
 def get_spark_session() -> SparkSession:
@@ -21,6 +21,28 @@ def get_silver_schema(spark: SparkSession) -> str:
     if catalog == "spark_catalog":
         return schema
     return f"{catalog}.{schema}"
+
+
+def table_exists(spark: SparkSession, table_name: str) -> bool:
+    try:
+        return spark.catalog.tableExists(table_name)
+    except Exception:  # noqa: BLE001 - missing UC catalog/schema is a normal bootstrap condition
+        return False
+
+
+def anti_join_optional_deleted_headers(
+    df: DataFrame,
+    silver_schema: str,
+    delete_table: str,
+    keys: list[str],
+) -> DataFrame:
+    """Drop rows whose parent SAP header has an explicit delete tombstone, when available."""
+    spark = get_spark_session()
+    fq_table = f"{silver_schema}.{delete_table}"
+    if not table_exists(spark, fq_table):
+        return df
+    deleted = spark.read.table(fq_table).select(*keys).distinct()
+    return df.join(deleted, keys, "left_anti")
 
 
 # LTAK reference type that identifies process-order staging TOs.  When BETYP='F',

@@ -47,6 +47,7 @@ _dlt_mock.expect_all = lambda *a, **kw: (lambda f: f)
 _dlt_mock.expect_all_or_drop = lambda *a, **kw: (lambda f: f)
 _dlt_mock.create_streaming_table = MagicMock()
 _dlt_mock.apply_changes = MagicMock()
+_dlt_mock.apply_changes_from_snapshot = MagicMock()
 _dlt_mock.read = MagicMock()
 _dlt_mock.read_stream = MagicMock()
 sys.modules["dlt"] = _dlt_mock

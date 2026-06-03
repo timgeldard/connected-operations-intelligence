@@ -10,7 +10,12 @@ Tables:
 import dlt
 from pyspark.sql import functions as F
 
-from gold._shared import get_silver_schema, get_spark_session, gold_table_args
+from gold._shared import (
+    anti_join_optional_deleted_headers,
+    get_silver_schema,
+    get_spark_session,
+    gold_table_args,
+)
 
 # ── 1. INBOUND PO BACKLOG ─────────────────────────────────────────────────────
 # NOTE: this is open purchase-order *backlog* (PO items not yet flagged
@@ -28,7 +33,12 @@ from gold._shared import get_silver_schema, get_spark_session, gold_table_args
 def gold_inbound_po_backlog():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    purchase_orders = spark.read.table(f"{silver_schema}.purchase_order")
+    purchase_orders = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.purchase_order"),
+        silver_schema,
+        "purchase_order_header_delete",
+        ["purchase_order_number"],
+    )
 
     open_items = purchase_orders.filter(
         (~F.coalesce(F.col("is_delivery_complete"), F.lit(False)))
@@ -66,12 +76,22 @@ def gold_inbound_po_backlog_enhanced():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
 
-    purchase_orders = spark.read.table(f"{silver_schema}.purchase_order")
+    purchase_orders = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.purchase_order"),
+        silver_schema,
+        "purchase_order_header_delete",
+        ["purchase_order_number"],
+    )
     goods_movements = spark.read.table(f"{silver_schema}.goods_movement")
     classification = spark.read.table(f"{silver_schema}.movement_type_classification").select(
         "movement_type_code", "is_po_receipt", "is_po_receipt_reversal"
     )
-    transfer_orders = spark.read.table(f"{silver_schema}.warehouse_transfer_order")
+    transfer_orders = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.warehouse_transfer_order"),
+        silver_schema,
+        "warehouse_transfer_order_header_delete",
+        ["warehouse_number", "transfer_order_number"],
+    )
 
     group_cols = ["plant_code", "vendor_code", "purchasing_org"]
 

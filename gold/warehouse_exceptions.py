@@ -9,7 +9,12 @@ the prototype imwm_exceptions view, sourced from conformed silver tables.
 import dlt
 from pyspark.sql import functions as F
 
-from gold._shared import get_silver_schema, get_spark_session, gold_table_args
+from gold._shared import (
+    anti_join_optional_deleted_headers,
+    get_silver_schema,
+    get_spark_session,
+    gold_table_args,
+)
 
 # Uniform output columns shared by every exception branch (order matters for unionByName).
 # `detected_date` is appended once after the union (constant per run) and is intentionally
@@ -54,7 +59,12 @@ def gold_warehouse_exceptions():
     silver_schema = get_silver_schema(spark)
     mard = spark.read.table(f"{silver_schema}.stock_at_location")
     storage_bin = spark.read.table(f"{silver_schema}.storage_bin")
-    transfer_orders = spark.read.table(f"{silver_schema}.warehouse_transfer_order")
+    transfer_orders = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.warehouse_transfer_order"),
+        silver_schema,
+        "warehouse_transfer_order_header_delete",
+        ["warehouse_number", "transfer_order_number"],
+    )
 
     occupied = storage_bin.filter(F.col("quant_number").isNotNull())
     gr_age_days = F.datediff(F.current_date(), F.col("goods_receipt_date"))

@@ -15,12 +15,14 @@ def test_gold_process_order_operations_active_order_only(save_table):
     ], "process_order")
     save_table([
         Row(order_number="10", operation_number="0010", plant_code="1000",
+            routing_number="R10", operation_counter="0001",
             scheduled_start_datetime=date(2026, 6, 1), scheduled_finish_datetime=date(2026, 6, 2),
             actual_start_datetime=date(2026, 6, 1), actual_finish_date=date(2026, 6, 2),
             work_centre_internal_id="WC01", planned_work=10.0, actual_work=12.0,
             is_confirmed=True, confirmed_yield_quantity=100.0, confirmed_scrap_quantity=0.0,
             control_key="PP01", number_of_employees=2.0),
         Row(order_number="20", operation_number="0010", plant_code="1000",
+            routing_number="R20", operation_counter="0001",
             scheduled_start_datetime=date(2026, 6, 2), scheduled_finish_datetime=date(2026, 6, 3),
             actual_start_datetime=None, actual_finish_date=None,
             work_centre_internal_id="WC02", planned_work=1.0, actual_work=0.0,
@@ -41,4 +43,5 @@ def test_gold_process_order_operations_active_order_only(save_table):
     assert rows[0]["order_number"] == "10"
     assert rows[0]["pi_sheet_status"] == "Completed"
     assert rows[0]["total_downtime_minutes"] == 45.0
+    assert rows[0]["operation_join_confidence"] == "DISPLAY_OPERATION_UNIQUE"
     assert rows[0]["is_operationally_active"] is True

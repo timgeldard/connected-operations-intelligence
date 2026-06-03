@@ -11,7 +11,12 @@ from functools import reduce
 import dlt
 from pyspark.sql import functions as F
 
-from gold._shared import get_silver_schema, get_spark_session, gold_table_args
+from gold._shared import (
+    anti_join_optional_deleted_headers,
+    get_silver_schema,
+    get_spark_session,
+    gold_table_args,
+)
 
 
 @dlt.table(**gold_table_args(
@@ -24,9 +29,24 @@ def gold_warehouse_kpi_snapshot():
 
     process_order = spark.read.table(f"{silver_schema}.process_order")
     transfer_requirement = spark.read.table(f"{silver_schema}.warehouse_transfer_requirement")
-    transfer_order = spark.read.table(f"{silver_schema}.warehouse_transfer_order")
-    outbound_delivery = spark.read.table(f"{silver_schema}.outbound_delivery")
-    purchase_order = spark.read.table(f"{silver_schema}.purchase_order")
+    transfer_order = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.warehouse_transfer_order"),
+        silver_schema,
+        "warehouse_transfer_order_header_delete",
+        ["warehouse_number", "transfer_order_number"],
+    )
+    outbound_delivery = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.outbound_delivery"),
+        silver_schema,
+        "outbound_delivery_header_delete",
+        ["delivery_number"],
+    )
+    purchase_order = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.purchase_order"),
+        silver_schema,
+        "purchase_order_header_delete",
+        ["purchase_order_number"],
+    )
     storage_bin = spark.read.table(f"{silver_schema}.storage_bin")
 
     orders = (

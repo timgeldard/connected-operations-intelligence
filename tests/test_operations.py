@@ -67,6 +67,8 @@ def apply_operation_transform(
         .join(afko.alias("h"),  ["AUFPL",           "MANDT"], "left")
         .select(
             strip_zeros("h.AUFNR").alias("order_number"),
+            F.col("o.AUFPL").alias("routing_number"),
+            F.col("o.APLZL").alias("operation_counter"),
             F.col("o.VORNR").alias("operation_number"),
             F.col("o.WERKS").alias("plant_code"),
             F.col("o.LTXA1").alias("operation_description"),
@@ -127,16 +129,18 @@ def make_afko_for_op(
 
 def apply_pi_sheet_transform(spark: SparkSession, src_rows: List[Row]) -> DataFrame:
     src = spark.createDataFrame(src_rows, _PI_SCHEMA)
+    pi_sheet_start_datetime = sap_datetime("ZSDATS", "ZSTIMS")
+    pi_sheet_end_datetime = sap_datetime("ZEDATS", "ZETIMS")
     return src.select(
         F.col("ZWERKS").alias("plant_code"),
         strip_zeros("ZAUFNR").alias("order_number"),
         F.col("ZVORNR").alias("operation_number"),
-        sap_datetime("ZSDATS", "ZSTIMS").alias("pi_sheet_start_datetime"),
-        sap_datetime("ZEDATS", "ZETIMS").alias("pi_sheet_end_datetime"),
+        pi_sheet_start_datetime.alias("pi_sheet_start_datetime"),
+        pi_sheet_end_datetime.alias("pi_sheet_end_datetime"),
         F.col("ZDUR").alias("duration_decimal_days"),
         F.round(F.col("ZDUR") * 24, 4).alias("duration_hours"),
-        F.when(F.col("ZEDATS").isNotNull(), "Completed")
-         .when(F.col("ZSDATS").isNotNull(), "In Progress")
+        F.when(pi_sheet_end_datetime.isNotNull(), "Completed")
+         .when(pi_sheet_start_datetime.isNotNull(), "In Progress")
          .otherwise("Not Started").alias("pi_sheet_status"),
         F.col("ZUSERSTART").alias("started_by_user"),
         F.col("ZUSEREND").alias("completed_by_user"),
@@ -343,6 +347,24 @@ class TestProcessOrderOperation:
         )
         assert first_row(df)["scheduled_start_datetime"] == datetime(2024, 12, 5, 6, 0, 0)
 
+    def test_repeated_display_operation_numbers_keep_technical_grain(self, spark):
+        df = apply_operation_transform(
+            spark,
+            [
+                make_afvc(APLZL="0001", VORNR="0010", LTXA1="Main operation"),
+                make_afvc(APLZL="0002", VORNR="0010", LTXA1="Parallel operation"),
+            ],
+            [
+                make_afvv(APLZL="0001", LMNGA=10.0),
+                make_afvv(APLZL="0002", LMNGA=20.0),
+            ],
+            [make_afko_for_op()],
+        )
+        rows = all_rows(df)
+        assert len(rows) == 2
+        assert {r["operation_counter"] for r in rows} == {"0001", "0002"}
+        assert {r["operation_number"] for r in rows} == {"0010"}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PI Sheet Execution — status and duration
@@ -369,6 +391,15 @@ class TestPiSheetExecution:
             [make_pi_sheet(ZSDATS=None, ZSTIMS=None, ZEDATS=None, ZETIMS=None)],
         )
         assert first_row(df)["pi_sheet_status"] == "Not Started"
+
+    def test_status_in_progress_when_end_date_is_sap_zero_sentinel(self, spark):
+        df = apply_pi_sheet_transform(
+            spark,
+            [make_pi_sheet(ZSDATS="20241205", ZSTIMS="060000", ZEDATS="00000000", ZETIMS="000000")],
+        )
+        row = first_row(df)
+        assert row["pi_sheet_end_datetime"] is None
+        assert row["pi_sheet_status"] == "In Progress"
 
     def test_duration_hours_is_zdur_times_24(self, spark):
         df = apply_pi_sheet_transform(

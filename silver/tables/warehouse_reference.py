@@ -206,6 +206,7 @@ dlt.create_streaming_table(
 )
 
 # Enforce non-negative stock quantity to catch any replication or negative-stock anomalies early
+@dlt.view(name="storage_bin_gate")
 @dlt.expect("total_quantity non-negative", "total_quantity IS NULL OR total_quantity >= 0.0")
 def storage_bin_gate():
     # Pass-through view/wrapper to apply DLT expectations before snapshot CDC merges the changes

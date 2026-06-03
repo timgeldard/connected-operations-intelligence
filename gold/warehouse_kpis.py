@@ -6,7 +6,12 @@ import dlt
 from pyspark.sql import Column
 from pyspark.sql import functions as F
 
-from gold._shared import get_silver_schema, get_spark_session, gold_table_args
+from gold._shared import (
+    anti_join_optional_deleted_headers,
+    get_silver_schema,
+    get_spark_session,
+    gold_table_args,
+)
 
 
 def _reversal_net_quantity() -> Column:
@@ -32,7 +37,12 @@ def _processing_time_minutes() -> Column:
 def gold_transfer_order_performance():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    transfer_orders = spark.read.table(f"{silver_schema}.warehouse_transfer_order")
+    transfer_orders = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.warehouse_transfer_order"),
+        silver_schema,
+        "warehouse_transfer_order_header_delete",
+        ["warehouse_number", "transfer_order_number"],
+    )
 
     cycle_hours = F.when(
         F.col("start_datetime").isNotNull() & F.col("end_datetime").isNotNull(),
@@ -372,5 +382,4 @@ def gold_stock_expiry_risk():
     # minimum_shelf_life_breach_qty, highest_expiry_risk_bucket, has_minimum_shelf_life_breach)
     # are served live by the gold_stock_expiry_risk_live view. See docs/hardening-plan.md (Phase 2).
     return base_agg
-
 

@@ -354,6 +354,33 @@ def test_staging_untrusted_for_unconfigured_plant(spark):
     assert rows["2001"]["is_operationally_trusted"] is False
 
 
+def test_staging_untrusted_when_config_table_absent(spark):
+    """Missing bootstrap config must not fail Gold; all active plants are conservative/untrusted."""
+    from gold.warehouse_flow_gold import gold_process_order_staging
+
+    _save(spark, [
+        Row(order_number="3001", plant_code="C061", material_code="M1", order_quantity=50.0,
+            scheduled_start_date=None, scheduled_finish_date=None,
+            is_released=True, is_closed=False),
+    ], "process_order")
+    _save(spark, [
+        Row(warehouse_number="208", transfer_order_number="T1", item_number="1",
+            source_reference_type="F", source_reference_number="3001",
+            item_status="Open", created_datetime=None),
+    ], "warehouse_transfer_order")
+
+    spark.sql("DROP TABLE IF EXISTS silver.process_order_staging_reference_mapping_config")
+    try:
+        rows = {r["order_number"]: r for r in all_rows(gold_process_order_staging())}
+        assert rows["3001"]["is_operationally_trusted"] is False
+    finally:
+        _save(spark, [
+            Row(plant_code="C061", warehouse_number="208",
+                staging_reference_strategy="BENUM_EQUALS_AUFNR", is_validated=True,
+                validated_by="profiling-2026-06-02", validated_at=None, notes=None),
+        ], "process_order_staging_reference_mapping_config")
+
+
 # ── Process order staging validation ─────────────────────────────────────────
 
 def test_staging_validation_validated(spark):
