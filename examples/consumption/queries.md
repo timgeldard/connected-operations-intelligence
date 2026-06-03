@@ -71,6 +71,11 @@ SELECT
 FROM gold_inbound_po_backlog_enhanced_live
 WHERE remaining_open_qty > 0
 ORDER BY earliest_po_date ASC, remaining_open_qty DESC;
+  oldest_po_age_days,
+  inbound_backlog_risk_band
+FROM gold_inbound_po_backlog_enhanced_live
+WHERE remaining_open_qty > 0
+ORDER BY oldest_po_age_days DESC, remaining_open_qty DESC;
 ```
 
 ## Stock reconciliation action list
