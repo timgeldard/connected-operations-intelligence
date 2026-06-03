@@ -27,7 +27,7 @@ targets:
     default: true
     mode: development
     workspace:
-      profile: DEFAULT
+      profile: TG
     variables:
       catalog: connected_plant_dev
       schema: silver_dev
@@ -50,7 +50,7 @@ targets:
   dev_sample:
     mode: development
     workspace:
-      profile: DEFAULT
+      profile: TG
     variables:
       catalog: connected_plant_dev
       schema: silver_dev
@@ -76,12 +76,12 @@ targets:
   uat:
     mode: production
     workspace:
-      profile: DEFAULT
+      profile: uat
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: connected_plant_uat
-      schema: silver
-      gold_schema: gold
+      schema: silver_io_reporting
+      gold_schema: gold_io_reporting
       source_catalog: connected_plant_uat
       source_schema: sap
       published_catalog: published_uat
@@ -90,12 +90,12 @@ targets:
   prod:
     mode: production
     workspace:
-      profile: DEFAULT
+      profile: prod
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: connected_plant_prod
-      schema: silver
-      gold_schema: gold
+      schema: silver_io_reporting
+      gold_schema: gold_io_reporting
       source_catalog: connected_plant_prod
       source_schema: sap
       published_catalog: published_prod

@@ -49,8 +49,8 @@ Managed via Declarative Automation Bundle (DAB).
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **dev_uat_source** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_uat` (Compromise) | `sap` |
 | **dev_sample** | `connected_plant_dev` | `silver_dev` | `gold_dev` | `connected_plant_dev` | `sap_sample` |
-| **uat** | `connected_plant_uat` | `silver` | `gold` | `connected_plant_uat` | `sap` |
-| **prod** | `connected_plant_prod` | `silver` | `gold` | `connected_plant_prod` | `sap` |
+| **uat** | `connected_plant_uat` | `silver_io_reporting` | `gold_io_reporting` | `connected_plant_uat` | `sap` |
+| **prod** | `connected_plant_prod` | `silver_io_reporting` | `gold_io_reporting` | `connected_plant_prod` | `sap` |
 
 ---
 

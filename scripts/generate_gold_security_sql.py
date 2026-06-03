@@ -3,40 +3,44 @@
 Generate environment-specific Gold row-level-security SQL for Unity Catalog.
 
 The Gold materialized views are a "trusted" aggregate layer and are deliberately NOT
-row-filtered directly, because applying a UC row filter to a materialized view forces
-full refreshes (see ADR 005 / ADR 012). Instead we expose a **secured serving view**
-per plant-scoped Gold table that applies the same `plant_access_filter` function used on
-Silver. Consumers (the `users` group) are granted SELECT on the `*_secured` views; direct
-SELECT on the base Gold tables is reserved for the data-product owner / admins.
+row-filtered directly (doing so forces full MV refreshes — see ADR 005 / ADR 012). Instead
+we expose a **secured serving view** per plant-scoped Gold table that enforces plant access
+via the central published_<env>.security.model CSM pattern. Consumers (the `users` group)
+are granted SELECT on the `*_secured` views only; direct SELECT on the base Gold tables is
+reserved for the data-product owner / admins.
 
-(Snapshot companion tables are physical Delta tables, so they get a real row filter applied
-in-job by gold/snapshots/warehouse_snapshot.py — they are not covered here.)
+Security model: each user has a row in published_<env>.security.model keyed by email +
+application_key ('io_reporting'). access_type = 'full view' grants all plants; access_type =
+'filter' restricts to the plant codes in the filter_plant array. Dev secured views are
+pass-through (no filter) — silver_io_reporting is inaccessible to civilians in all envs.
 
 Outputs SQL scripts to resources/sql/ for dev, uat and prod. Run once per env as a UC
 admin after the first deploy (re-runnable; views are CREATE OR REPLACE).
 """
 import os
 
+APPLICATION_KEY = "io_reporting"
+
 ENVIRONMENTS = {
     "dev": {
         "catalog": "connected_plant_dev",
         "gold_schema": "gold_dev",
-        "silver_schema": "silver_dev",
         "consumer_group": "users",
+        "security_model": None,  # dev: no filter — return all rows (no published_<env>.security available)
         "filename": "resources/sql/gold_security_dev.sql",
     },
     "uat": {
         "catalog": "connected_plant_uat",
-        "gold_schema": "gold",
-        "silver_schema": "silver",
+        "gold_schema": "gold_io_reporting",
         "consumer_group": "users",
+        "security_model": "published_uat.security.model",
         "filename": "resources/sql/gold_security_uat.sql",
     },
     "prod": {
         "catalog": "connected_plant_prod",
-        "gold_schema": "gold",
-        "silver_schema": "silver",
+        "gold_schema": "gold_io_reporting",
         "consumer_group": "users",
+        "security_model": "published_prod.security.model",
         "filename": "resources/sql/gold_security_prod.sql",
     },
 }
@@ -88,22 +92,21 @@ GOLD_TABLES = [
 
 TEMPLATE = """-- Unity Catalog Gold row-level security — secured serving views ({env_upper}).
 -- Run once as a Unity Catalog admin after the first {env_lower} deploy. Re-runnable.
--- Requires: the plant_access_filter function (created by resources/sql/row_filter_{env_lower}.sql)
---           and CREATE VIEW on {catalog}.{gold_schema}.
+-- Requires: CREATE VIEW on {catalog}.{gold_schema}.
 -- WARNING: Generated automatically by scripts/generate_gold_security_sql.py. Do not edit manually.
 --
 -- Model: Gold MVs stay trusted (not row-filtered, to avoid full MV refreshes). Each plant-scoped
--- Gold table gets a <table>_secured view applying plant_access_filter(plant_code); the consumer
--- group is granted SELECT on the views only. plant_access_filter reads the *invoking* user's
--- 'allowed_plants' attribute (definer-rights view, session-scoped function), so per-plant
--- trimming is enforced at query time, and silver_admin members see all rows.
+-- Gold table gets a <table>_secured view that enforces plant access via published_<env>.security.model
+-- (application_key = 'io_reporting'). access_type 'full view' = all plants; 'filter' = filter_plant
+-- array. Dev secured views are pass-through (no security model available in dev).
+-- Consumers ('users' group) are granted SELECT on the *_secured views only.
 """
 
 REVOKE_NOTE = """
 -- ── Base-table access hardening ──
 -- The actual REVOKE statements are generated as a SEPARATE admin script
 -- (resources/sql/gold_security_harden_{env_lower}.sql). Apply it AFTER this script so plant-scoped users
--- can only read the row-filtered *_secured views, not the un-trimmed base Gold tables (ADR 012).
+-- can only read the *_secured views, not the un-trimmed base Gold tables (ADR 012).
 -- It is kept separate because revoking broad access is operationally sensitive and irreversible-ish.
 """
 
@@ -206,14 +209,34 @@ CUSTOM_SELECTS = {
 }
 
 
+def _security_filter(security_model: str) -> str:
+    """Return the WHERE clause for the CSM security model EXISTS check, or empty string for dev."""
+    if not security_model:
+        return ""
+    return (
+        f"\n  WHERE EXISTS (\n"
+        f"    SELECT 1 FROM {security_model}\n"
+        f"    WHERE current_user() = email\n"
+        f"      AND application_key = '{APPLICATION_KEY}'\n"
+        f"      AND LOWER(access_type) = 'full view'\n"
+        f"    UNION ALL\n"
+        f"    SELECT 1 FROM {security_model}\n"
+        f"    WHERE current_user() = email\n"
+        f"      AND application_key = '{APPLICATION_KEY}'\n"
+        f"      AND LOWER(access_type) = 'filter'\n"
+        f"      AND array_contains(filter_plant, plant_code)\n"
+        f"  )"
+    )
+
+
 def generate_sql():
     os.makedirs("resources/sql", exist_ok=True)
 
     for env, cfg in ENVIRONMENTS.items():
         catalog = cfg["catalog"]
         gold = f"{catalog}.{cfg['gold_schema']}"
-        fn = f"{catalog}.{cfg['silver_schema']}.plant_access_filter"
         group = cfg["consumer_group"]
+        where = _security_filter(cfg["security_model"])
 
         sql = TEMPLATE.format(
             env_upper=env.upper(), env_lower=env,
@@ -230,8 +253,8 @@ def generate_sql():
                 select_clause = f"  SELECT * FROM {base}"
             sql += (
                 f"\nCREATE OR REPLACE VIEW {view} AS\n"
-                f"{select_clause}\n"
-                f"  WHERE {fn}(plant_code);\n"
+                f"{select_clause}"
+                f"{where};\n"
                 f"GRANT SELECT ON VIEW {view} TO `{group}`;\n"
             )
 

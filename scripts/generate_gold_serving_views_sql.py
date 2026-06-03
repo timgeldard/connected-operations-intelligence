@@ -23,9 +23,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENVIRONMENTS = {
     "dev": {"catalog": "connected_plant_dev", "gold_schema": "gold_dev", "consumer_group": "users",
             "filename": os.path.join(REPO_ROOT, "resources/sql/gold_serving_views_dev.sql")},
-    "uat": {"catalog": "connected_plant_uat", "gold_schema": "gold", "consumer_group": "users",
+    "uat": {"catalog": "connected_plant_uat", "gold_schema": "gold_io_reporting", "consumer_group": "users",
             "filename": os.path.join(REPO_ROOT, "resources/sql/gold_serving_views_uat.sql")},
-    "prod": {"catalog": "connected_plant_prod", "gold_schema": "gold", "consumer_group": "users",
+    "prod": {"catalog": "connected_plant_prod", "gold_schema": "gold_io_reporting", "consumer_group": "users",
              "filename": os.path.join(REPO_ROOT, "resources/sql/gold_serving_views_prod.sql")},
 }
 
