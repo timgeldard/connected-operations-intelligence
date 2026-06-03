@@ -25,6 +25,10 @@ REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_storage_type_role_cover
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_reconciliation_v2 FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_value_reconciliation FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_reconciliation_audit_log FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_movement_reconciliation FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_hu_reconciliation FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_physical_inventory_recon FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_reconciliation_alerts FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_reconciliation_exceptions_v2 FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_reconciliation_summary_v2 FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_reconciliation_summary FROM `users`;

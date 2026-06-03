@@ -10,6 +10,10 @@ Tables:
   gold_stock_reconciliation_v2              — detailed IM↔WM reconciliation at plant×warehouse×material×batch×stock_category grain
   gold_stock_value_reconciliation           — value-control rollup of reconciliation v2 by plant / warehouse / severity
   gold_reconciliation_audit_log             — deterministic audit register for current reconciliation exceptions
+  gold_movement_reconciliation              — IM posting movement vs WM confirmed-TO movement control
+  gold_hu_reconciliation                    — handling-unit packed quantity vs WM quant evidence
+  gold_physical_inventory_recon             — physical inventory count vs book/posting evidence
+  gold_reconciliation_alerts                — alert-ready severe reconciliation exceptions
   gold_stock_reconciliation_exceptions_v2  — filter of v2 where is_reconciled=false, with material description
   gold_stock_reconciliation_summary_v2     — v2 rolled up by plant×warehouse×mismatch_reason×severity
   gold_stock_reconciliation_summary        — canonical v2 summary alias for consumption
@@ -809,9 +813,11 @@ def gold_stock_reconciliation_v2():
                 F.lit("IM_WM_STOCK_RECON_V2").alias("control_id"),
                 F.lit("2.1").alias("rule_version"),
                 F.col("tolerance_rule_code"),
-                F.col("mismatch_reason"),
-                F.col("mismatch_severity"),
-                F.col("is_operationally_trusted"),
+            F.col("mismatch_reason"),
+            F.col("mismatch_severity"),
+            F.col("is_operationally_trusted"),
+            F.col("delta_percent"),
+            F.col("delta_value"),
             )),
         )
         .select(
@@ -886,7 +892,7 @@ def gold_reconciliation_audit_log():
             F.lit("gold_stock_reconciliation_v2").alias("source_table"),
             "plant_code", "warehouse_number", "material_code", "batch_number",
             "stock_category", "base_uom",
-            "im_quantity", "wm_quantity", "delta_quantity", "delta_percent",
+            "im_quantity", "wm_quantity", "delta_quantity", "abs_delta_quantity", "delta_percent",
             "tolerance_quantity", "delta_value",
             "mismatch_reason", "mismatch_severity",
             "tolerance_rule_code", "reconciliation_rule_version",
@@ -896,7 +902,249 @@ def gold_reconciliation_audit_log():
     )
 
 
-# ── 11. STOCK RECONCILIATION EXCEPTIONS V2 ────────────────────────────────────
+# ── 11. MOVEMENT RECONCILIATION ───────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "IM goods movement postings reconciled to WM confirmed transfer-order activity "
+        "by plant × warehouse × posting/confirmation date × material × batch."
+    ),
+    cluster_by=["plant_code", "posting_date"],
+))
+def gold_movement_reconciliation():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    goods = spark.read.table(f"{ss}.goods_movement")
+    wh_sloc_map = spark.read.table(f"{ss}.warehouse_storage_location_mapping")
+    transfer_orders = spark.read.table(f"{ss}.warehouse_transfer_order")
+
+    im_movements = (
+        goods
+        .join(F.broadcast(wh_sloc_map), ["plant_code", "storage_location_code"], "left")
+        .withColumn("warehouse_number", F.coalesce(F.col("warehouse_number"), F.lit("__NO_WM_MAPPING__")))
+        .groupBy(
+            "plant_code", "warehouse_number", "posting_date", "movement_type_code",
+            "material_code", "batch_number", "base_uom",
+        )
+        .agg(
+            F.count(F.lit(1)).alias("im_document_line_count"),
+            F.coalesce(F.sum("quantity"), F.lit(0.0)).alias("im_movement_quantity"),
+            F.coalesce(F.sum("amount_local_currency"), F.lit(0.0)).alias("im_movement_value"),
+        )
+    )
+
+    wm_movements = (
+        transfer_orders
+        .filter(F.col("confirmed_date").isNotNull())
+        .groupBy(
+            "plant_code", "warehouse_number",
+            F.col("confirmed_date").alias("posting_date"),
+            "material_code", "batch_number", "base_uom",
+        )
+        .agg(
+            F.count(F.lit(1)).alias("wm_to_line_count"),
+            F.coalesce(F.sum("confirmed_quantity"), F.lit(0.0)).alias("wm_confirmed_quantity"),
+        )
+    )
+
+    keys = ["plant_code", "warehouse_number", "posting_date", "material_code", "batch_number", "base_uom"]
+    return (
+        im_movements.join(wm_movements, keys, "full")
+        .withColumn("movement_type_code", F.coalesce(F.col("movement_type_code"), F.lit("__NO_IM_POSTING__")))
+        .withColumn("im_document_line_count", F.coalesce(F.col("im_document_line_count"), F.lit(0)))
+        .withColumn("wm_to_line_count", F.coalesce(F.col("wm_to_line_count"), F.lit(0)))
+        .withColumn("im_movement_quantity", F.coalesce(F.col("im_movement_quantity"), F.lit(0.0)))
+        .withColumn("wm_confirmed_quantity", F.coalesce(F.col("wm_confirmed_quantity"), F.lit(0.0)))
+        .withColumn("im_movement_value", F.coalesce(F.col("im_movement_value"), F.lit(0.0)))
+        .withColumn("delta_quantity", F.col("wm_confirmed_quantity") - F.col("im_movement_quantity"))
+        .withColumn("abs_delta_quantity", F.abs(F.col("delta_quantity")))
+        .withColumn(
+            "movement_reconciliation_status",
+            F.when((F.col("im_document_line_count") > 0) & (F.col("wm_to_line_count") > 0), F.lit("MATCHED_ACTIVITY"))
+            .when(F.col("im_document_line_count") > 0, F.lit("IM_ONLY"))
+            .when(F.col("wm_to_line_count") > 0, F.lit("WM_ONLY"))
+            .otherwise(F.lit("NO_ACTIVITY")),
+        )
+    )
+
+
+# ── 12. HU RECONCILIATION ─────────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Handling-unit packed quantity reconciled to WM quant stock by plant × warehouse × "
+        "material × batch. Supports HU/batch traceability checks."
+    ),
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_hu_reconciliation():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    hu = spark.read.table(f"{ss}.handling_unit")
+    storage_bin = spark.read.table(f"{ss}.storage_bin")
+
+    hu_stock = (
+        hu
+        .withColumn("base_uom", F.col("packed_uom"))
+        .groupBy("plant_code", "warehouse_number", "material_code", "batch_number", "base_uom")
+        .agg(
+            F.count_distinct("handling_unit_number").alias("handling_unit_count"),
+            F.count(F.lit(1)).alias("handling_unit_item_count"),
+            F.coalesce(F.sum("packed_quantity"), F.lit(0.0)).alias("hu_packed_quantity"),
+            F.count_distinct("sscc").alias("sscc_count"),
+        )
+    )
+
+    wm_stock = (
+        storage_bin
+        .filter(F.col("quant_number").isNotNull())
+        .groupBy("plant_code", "warehouse_number", "material_code", "batch_number", "base_uom")
+        .agg(
+            F.count_distinct("quant_number").alias("wm_quant_count"),
+            F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("wm_quantity"),
+        )
+    )
+
+    keys = ["plant_code", "warehouse_number", "material_code", "batch_number", "base_uom"]
+    return (
+        hu_stock.join(wm_stock, keys, "full")
+        .withColumn("handling_unit_count", F.coalesce(F.col("handling_unit_count"), F.lit(0)))
+        .withColumn("handling_unit_item_count", F.coalesce(F.col("handling_unit_item_count"), F.lit(0)))
+        .withColumn("sscc_count", F.coalesce(F.col("sscc_count"), F.lit(0)))
+        .withColumn("wm_quant_count", F.coalesce(F.col("wm_quant_count"), F.lit(0)))
+        .withColumn("hu_packed_quantity", F.coalesce(F.col("hu_packed_quantity"), F.lit(0.0)))
+        .withColumn("wm_quantity", F.coalesce(F.col("wm_quantity"), F.lit(0.0)))
+        .withColumn("delta_quantity", F.col("wm_quantity") - F.col("hu_packed_quantity"))
+        .withColumn("abs_delta_quantity", F.abs(F.col("delta_quantity")))
+        .withColumn(
+            "hu_reconciliation_status",
+            F.when(F.col("abs_delta_quantity") <= F.lit(0.001), F.lit("MATCHED"))
+            .when(F.col("handling_unit_count") == 0, F.lit("WM_WITHOUT_HU"))
+            .when(F.col("wm_quant_count") == 0, F.lit("HU_WITHOUT_WM_QUANT"))
+            .otherwise(F.lit("QUANTITY_VARIANCE")),
+        )
+    )
+
+
+# ── 13. PHYSICAL INVENTORY RECONCILIATION ─────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Physical inventory count-vs-book reconciliation from IKPF/ISEG, including "
+        "difference posting and material-document evidence."
+    ),
+    cluster_by=["plant_code", "count_date"],
+))
+def gold_physical_inventory_recon():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+    pi = spark.read.table(f"{ss}.physical_inventory_document")
+
+    return (
+        pi
+        .filter(~F.coalesce(F.col("is_deleted"), F.lit(False)))
+        .withColumn("book_quantity", F.coalesce(F.col("book_quantity"), F.lit(0.0)))
+        .withColumn("counted_quantity", F.coalesce(F.col("counted_quantity"), F.lit(0.0)))
+        .withColumn("delta_quantity", F.col("counted_quantity") - F.col("book_quantity"))
+        .withColumn("abs_delta_quantity", F.abs(F.col("delta_quantity")))
+        .withColumn("delta_value", F.coalesce(F.col("difference_amount_local_currency"), F.lit(0.0)))
+        .withColumn(
+            "physical_inventory_status",
+            F.when(~F.col("is_counted"), F.lit("NOT_COUNTED"))
+            .when(F.col("is_recount_required"), F.lit("RECOUNT_REQUIRED"))
+            .when(F.col("is_difference_posted"), F.lit("DIFFERENCE_POSTED"))
+            .when(F.col("abs_delta_quantity") <= F.lit(0.001), F.lit("MATCHED"))
+            .otherwise(F.lit("DIFFERENCE_NOT_POSTED")),
+        )
+        .select(
+            "physical_inventory_document_number", "fiscal_year", "item_number",
+            "plant_code", "storage_location_code", "material_code", "batch_number",
+            "stock_type_code", "base_uom", "document_date", "planned_count_date",
+            "count_date", "posting_date", "book_quantity", "counted_quantity",
+            "delta_quantity", "abs_delta_quantity", "delta_value", "currency",
+            "is_counted", "is_difference_posted", "is_recount_required",
+            "has_posting_block", "is_book_inventory_frozen",
+            "material_document_number", "material_document_year", "material_document_item",
+            "difference_reason_code", "cycle_counting_indicator", "physical_inventory_status",
+            "_replicated_at",
+        )
+    )
+
+
+# ── 14. RECONCILIATION ALERTS ─────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Alert-ready reconciliation exceptions for severe IM↔WM, HU, movement, and "
+        "physical inventory variances."
+    ),
+    cluster_by=["plant_code", "alert_type"],
+))
+def gold_reconciliation_alerts():
+    stock = (
+        dlt.read("gold_reconciliation_audit_log")
+        .filter(F.col("mismatch_severity").isin("HIGH", "CRITICAL") | (F.abs(F.col("delta_value")) >= F.lit(10000.0)))
+        .select(
+            F.concat(F.lit("STOCK|"), F.col("audit_event_key")).alias("alert_key"),
+            F.lit("STOCK_RECONCILIATION").alias("alert_type"),
+            F.when(F.col("mismatch_severity").isin("HIGH", "CRITICAL"), F.lit("P1")).otherwise(F.lit("P2")).alias(
+                "alert_priority"
+            ),
+            "plant_code", "warehouse_number", "material_code", "batch_number",
+            F.col("mismatch_reason").alias("reason_code"),
+            F.col("delta_quantity"),
+            F.col("delta_value"),
+            F.col("audit_trail_json").alias("alert_context_json"),
+        )
+    )
+
+    hu = (
+        dlt.read("gold_hu_reconciliation")
+        .filter(F.col("hu_reconciliation_status") != "MATCHED")
+        .select(
+            F.concat_ws(
+                "|",
+                F.lit("HU"), "plant_code", "warehouse_number", "material_code",
+                "batch_number", "base_uom", "hu_reconciliation_status",
+            ).alias("alert_key"),
+            F.lit("HU_RECONCILIATION").alias("alert_type"),
+            F.lit("P3").alias("alert_priority"),
+            "plant_code", "warehouse_number", "material_code", "batch_number",
+            F.col("hu_reconciliation_status").alias("reason_code"),
+            F.col("delta_quantity"),
+            F.lit(None).cast("double").alias("delta_value"),
+            F.to_json(F.struct("handling_unit_count", "wm_quant_count", "sscc_count")).alias("alert_context_json"),
+        )
+    )
+
+    physical_inventory = (
+        dlt.read("gold_physical_inventory_recon")
+        .filter(F.col("physical_inventory_status").isin("RECOUNT_REQUIRED", "DIFFERENCE_NOT_POSTED"))
+        .select(
+            F.concat_ws(
+                "|",
+                F.lit("PI"), "physical_inventory_document_number", "fiscal_year", "item_number",
+            ).alias("alert_key"),
+            F.lit("PHYSICAL_INVENTORY").alias("alert_type"),
+            F.when(F.col("physical_inventory_status") == "RECOUNT_REQUIRED", F.lit("P2")).otherwise(F.lit("P3")).alias(
+                "alert_priority"
+            ),
+            "plant_code",
+            F.lit(None).cast("string").alias("warehouse_number"),
+            "material_code", "batch_number",
+            F.col("physical_inventory_status").alias("reason_code"),
+            F.col("delta_quantity"),
+            F.col("delta_value"),
+            F.to_json(F.struct("count_date", "posting_date", "difference_reason_code")).alias("alert_context_json"),
+        )
+    )
+
+    return stock.unionByName(hu).unionByName(physical_inventory)
+
+
+# ── 15. STOCK RECONCILIATION EXCEPTIONS V2 ────────────────────────────────────
 
 @dlt.table(**gold_table_args(
     comment=(
@@ -932,7 +1180,7 @@ def gold_stock_reconciliation_exceptions_v2():
     )
 
 
-# ── 12. STOCK RECONCILIATION SUMMARY V2 ──────────────────────────────────────
+# ── 16. STOCK RECONCILIATION SUMMARY V2 ──────────────────────────────────────
 
 @dlt.table(**gold_table_args(
     comment=(
@@ -958,7 +1206,7 @@ def gold_stock_reconciliation_summary_v2():
     )
 
 
-# ── 13. STOCK RECONCILIATION SUMMARY ─────────────────────────────────────────
+# ── 17. STOCK RECONCILIATION SUMMARY ─────────────────────────────────────────
 
 @dlt.table(**gold_table_args(
     comment=(

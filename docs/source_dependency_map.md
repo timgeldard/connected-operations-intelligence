@@ -26,6 +26,10 @@ second bronze source `published_<env>.central_services` · `seed` = config/seed 
 | `gold_stock_reconciliation_v2` | `batch_stock`, `stock_at_location`, `material`, `storage_bin`, `warehouse_storage_location_mapping`, `material_uom_conversion`, `material_valuation`, `storage_type_role_mapping` | MCHB, MARD, LQUA/LAGP, T320 (published), MARM, MBEW | fast + slow + seed + published | yes |
 | `gold_stock_value_reconciliation` | reads from `gold_stock_reconciliation_v2` | — | — | yes |
 | `gold_reconciliation_audit_log` | reads from `gold_stock_reconciliation_v2` | — | — | yes |
+| `gold_movement_reconciliation` | `goods_movement`, `warehouse_transfer_order`, `warehouse_storage_location_mapping` | MSEG/MKPF, LTAK/LTAP, T320 | fast + published | yes |
+| `gold_hu_reconciliation` | `handling_unit`, `storage_bin` | VEKP/VEPO, LQUA/LAGP | slow/published | yes |
+| `gold_physical_inventory_recon` | `physical_inventory_document` | IKPF/ISEG | slow/published | yes |
+| `gold_reconciliation_alerts` | `gold_reconciliation_audit_log`, `gold_hu_reconciliation`, `gold_physical_inventory_recon` | — | — | yes |
 | `gold_stock_reconciliation_exceptions_v2` | reads from `gold_stock_reconciliation_v2` + `material` | — | — | yes |
 | `gold_stock_reconciliation_summary_v2` | reads from `gold_stock_reconciliation_v2` | — | — | yes |
 | `gold_stock_reconciliation_summary` | reads from `gold_stock_reconciliation_summary_v2` | — | — | yes |
@@ -41,7 +45,7 @@ second bronze source `published_<env>.central_services` · `seed` = config/seed 
 | `gold_warehouse_exceptions` | multi: `storage_bin`, `batch_stock`, `warehouse_transfer_order`, `warehouse_transfer_requirement`, reconciliation inputs | LAGP/LQUA, MCHB, LTAK/LTAP, LTBK/LTBP, MARD/MBEW | fast + slow + seed | yes |
 | `gold_warehouse_kpi_snapshot` | rollup of the above (orders/TRs/TOs/deliveries/inbound/bins) | as above | mixed | medium |
 | `gold_data_freshness_status` | monitored Silver tables in `FRESHNESS_CONTRACTS` | mixed | mixed | yes |
-| `gold_data_health_summary` | `gold_data_freshness_status`, coverage/validation/reconciliation Gold status tables | mixed | mixed | yes |
+| `gold_data_health_summary` | `gold_data_freshness_status`, coverage/validation/reconciliation/alert Gold status tables | mixed | mixed | yes |
 
 ## Notes
 - **Published-source dependency:** `gold_inbound_po_backlog` and `gold_handling_unit_summary` require

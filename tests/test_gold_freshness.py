@@ -82,6 +82,10 @@ def test_data_health_summary_rolls_up_operational_signals(spark: SparkSession, m
             Row(mismatch_severity="HIGH", exception_count=2, abs_delta_quantity_total=5.0),
             Row(mismatch_severity="INFO", exception_count=0, abs_delta_quantity_total=0.0),
         ]),
+        "gold_reconciliation_alerts": create_df(spark, [
+            Row(alert_priority="P1"),
+            Row(alert_priority="P3"),
+        ]),
     }
 
     monkeypatch.setattr(freshness.dlt, "read", lambda name: tables[name])
@@ -95,4 +99,6 @@ def test_data_health_summary_rolls_up_operational_signals(spark: SparkSession, m
     assert rows["process_order_staging_validation"]["health_status"] == "FAIL"
     assert rows["stock_reconciliation"]["health_status"] == "FAIL"
     assert rows["stock_reconciliation"]["critical_issue_count"] == 2
+    assert rows["reconciliation_alerts"]["health_status"] == "FAIL"
+    assert rows["reconciliation_alerts"]["critical_issue_count"] == 1
     assert rows["expectations"]["health_status"] == "EVENT_LOG"

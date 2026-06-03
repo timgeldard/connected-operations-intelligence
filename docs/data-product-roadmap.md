@@ -35,7 +35,8 @@ configuration layer if the business requires true LGORT attribution for WM quant
 | 1 — foundation | `silver.material_uom_conversion` (MARM) and `silver.warehouse_storage_location_mapping` (T320) wired into slow pipeline | `silver/tables/warehouse_reference.py`, `silver/tables/reference.py`, `silver/dlt_silver_slow.py` |
 | 2 — core | `gold_stock_reconciliation_v2` (plant×wh×material×batch×stock_category×UOM; IM=MCHB/MARD, WM=storage_bin; mismatch_reason enum; default dynamic tolerance metadata) | `gold/warehouse_flow_gold.py` |
 | 3 — analytics | `gold_stock_reconciliation_summary`, `gold_stock_value_reconciliation`, `gold_reconciliation_audit_log`; security views and contracts updated | `gold/warehouse_flow_gold.py`, `scripts/generate_gold_security_sql.py`, `gold/design_spec.md` |
-| 4 — remaining SAP parity | open movement/pending-TO explainers, physical-inventory document tie-out, and bin/storage-type→sloc attribution where business-owned WM config is available | future `gold/warehouse_flow_gold.py` + governed config |
+| 4 — SAP parity extensions | `gold_movement_reconciliation`, `gold_hu_reconciliation`, `gold_physical_inventory_recon`, and `gold_reconciliation_alerts` for movement, HU/batch, PI count and alert consumption | `silver/tables/inbound.py`, `gold/warehouse_flow_gold.py`, `gold/freshness.py` |
+| 5 — remaining SAP parity | open movement/pending-TO reason refinement and bin/storage-type→sloc attribution where business-owned WM config is available | future `gold/warehouse_flow_gold.py` + governed config |
 
 ## Initiative 3 — Living data dictionary & UC lineage  (ADR 010)  ← recommended first
 Most self-contained; no business config. Lineage/tags populate post-deploy (degrades gracefully).

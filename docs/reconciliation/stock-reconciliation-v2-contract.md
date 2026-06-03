@@ -156,6 +156,16 @@ Grain: unreconciled `gold_stock_reconciliation_v2` natural key.
 Purpose: current-state audit register for exception triage. Append-only history is captured by
 snapshot/control jobs to avoid non-deterministic timestamps inside the materialized view.
 
+### Adjacent hardening outputs
+The production-candidate reconciliation layer also includes:
+
+- `gold_movement_reconciliation`: MSEG/MKPF goods movement activity compared with confirmed WM
+  transfer-order activity at plant/warehouse/date/material/batch grain.
+- `gold_hu_reconciliation`: VEKP/VEPO handling-unit packed quantity compared with WM quant stock.
+- `gold_physical_inventory_recon`: IKPF/ISEG physical inventory count-vs-book and adjustment
+  posting evidence.
+- `gold_reconciliation_alerts`: alert-ready severe stock, HU, and physical-inventory exceptions.
+
 ### `gold_stock_reconciliation_exceptions_v2` (DLT view)
 Filters `is_reconciled = false`. Adds `material_description` from `silver.material`.
 

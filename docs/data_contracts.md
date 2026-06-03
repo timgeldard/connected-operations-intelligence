@@ -200,17 +200,42 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Source Gold Tables**: `gold_stock_reconciliation_v2`
 * **Purpose**: deterministic current-state audit register for reconciliation exceptions. Append-only history is captured by the warehouse snapshot job/control process rather than generated with non-deterministic timestamps inside the DLT MV.
 
-### 14e. `gold.gold_stock_reconciliation_exceptions_v2`
+### 14e. `gold.gold_movement_reconciliation`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × warehouse × posting/confirmation date × movement type × material × batch × UOM
+* **Source Silver Tables**: `silver.goods_movement`, `silver.warehouse_transfer_order`, `silver.warehouse_storage_location_mapping`
+* **Purpose**: compares IM material-document activity (MSEG/MKPF) to WM confirmed transfer-order activity (LTAK/LTAP) to identify `IM_ONLY`, `WM_ONLY`, and matched-activity timing or quantity gaps.
+* **Known Caveats**: SAP WM transfer orders do not carry IM movement type; WM confirmed quantity is aligned at the date/material/batch grain and surfaced beside each IM movement type for investigation rather than statutory balance proof.
+
+### 14f. `gold.gold_hu_reconciliation`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × warehouse × material × batch × UOM
+* **Source Silver Tables**: `silver.handling_unit`, `silver.storage_bin`
+* **Purpose**: handling-unit/SSCC packed quantity versus WM quant evidence, supporting HU and batch traceability exceptions.
+
+### 14g. `gold.gold_physical_inventory_recon`
+* **Status**: Production-candidate
+* **Grain**: 1 row per physical inventory document × fiscal year × item
+* **Source Silver Tables**: `silver.physical_inventory_document` (IKPF/ISEG)
+* **Purpose**: physical inventory count-vs-book reconciliation with difference posting, recount, posting block, and material-document evidence.
+
+### 14h. `gold.gold_reconciliation_alerts`
+* **Status**: Production-candidate
+* **Grain**: 1 row per alert-ready reconciliation exception
+* **Source Gold Tables**: `gold_reconciliation_audit_log`, `gold_hu_reconciliation`, `gold_physical_inventory_recon`
+* **Purpose**: alert/incident-ready feed for severe stock, HU, and physical-inventory reconciliation issues. Also rolled into `gold_data_health_summary`.
+
+### 14i. `gold.gold_stock_reconciliation_exceptions_v2`
 * **Status**: Production-candidate
 * **Grain**: Same as v2, filtered to `is_reconciled = false`, enriched with material description
 * **Purpose**: Starting point for variance investigation.
 
-### 14f. `gold.gold_stock_reconciliation_summary_v2`
+### 14j. `gold.gold_stock_reconciliation_summary_v2`
 * **Status**: Production-candidate
 * **Grain**: 1 row per plant × warehouse × mismatch_reason × mismatch_severity
 * **Purpose**: Operational scorecard of unreconciled stock by reason and severity.
 
-### 14g. `gold.gold_stock_reconciliation_summary`
+### 14k. `gold.gold_stock_reconciliation_summary`
 * **Status**: Production-candidate
 * **Grain**: 1 row per plant × warehouse × mismatch_reason × mismatch_severity
 * **Source Gold Tables**: `gold_stock_reconciliation_summary_v2`

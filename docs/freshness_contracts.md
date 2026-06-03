@@ -24,6 +24,7 @@ sync with `FRESHNESS_CONTRACTS` in `gold/freshness.py`.
 | `stock_at_location` | stock | high | 480 | yes |
 | `purchase_order` | inbound | medium | 1440 | yes (central_services) |
 | `handling_unit` | inbound/HU | medium | 240 | yes (central_services) |
+| `physical_inventory_document` | stock/counting | medium | 1440 | yes (central_services) |
 | `material` | reference | medium | 1440 | yes |
 | `movement_type_classification` | reference | high | — | no (T156-backed overlay; no `_replicated_at` watermark) |
 | `storage_type_role_mapping` | reference/config | high | — | no (seed/config table) |
@@ -38,8 +39,8 @@ sync with `FRESHNESS_CONTRACTS` in `gold/freshness.py`.
   is reported but does not block, avoiding false pipeline failures while still catching silent
   critical-data outages and empty critical inputs.
 - **`gold_data_health_summary`** — one row per health area, rolling freshness up with config
-  coverage, process-order staging validation, stock reconciliation severity, and a pointer to the
-  DLT event log for expectation violations.
+  coverage, process-order staging validation, stock reconciliation severity, reconciliation alerts,
+  and a pointer to the DLT event log for expectation violations.
 
 ## Notes / follow-ups
 - SLAs distinguish continuous operational streams from triggered/current-state refreshes. Tune per
