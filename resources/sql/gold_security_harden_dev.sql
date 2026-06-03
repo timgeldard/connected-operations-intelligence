@@ -23,6 +23,8 @@ REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_process_order_staging F
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_process_order_staging_validation FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_storage_type_role_coverage_status FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_reconciliation_v2 FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_value_reconciliation FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_reconciliation_audit_log FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_reconciliation_exceptions_v2 FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_reconciliation_summary_v2 FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_dev.gold_stock_reconciliation_summary FROM `users`;

@@ -1,7 +1,7 @@
 # Stock Reconciliation v2 — Data Contract
 
 **Version:** 2.0  
-**Status:** Implemented (2026-06-02)  
+**Status:** Production-candidate (hardened 2026-06-03)  
 **Supersedes:** v1 in `gold_stock_reconciliation` (kept as directional summary)  
 **ADR reference:** `docs/adr/009-stock-reconciliation-detailed.md`
 
@@ -100,6 +100,10 @@ Tolerance is 0.1% of IM quantity with a 0.001 floor (tighter than v1's 1% floor 
 A configurable `stock_reconciliation_tolerance_config` table is reserved for future
 plant/material-type-specific overrides.
 
+The current production-candidate table also exposes `delta_percent`,
+`tolerance_exceeded`, and `tolerance_rule_code = DEFAULT_0_1_PCT_FLOOR_0_001`
+so tolerance decisions are visible to BI, alerting, and audit consumers.
+
 ---
 
 ## Mismatch reasons (implemented in v2)
@@ -108,7 +112,6 @@ plant/material-type-specific overrides.
 |---|---|
 | `MATCHED` | `abs(delta) <= tolerance` |
 | `WM_MANAGED_SLOC_MAPPING_MISSING` | IM sloc has no T320 entry |
-| `UOM_CONVERSION_MISSING` | `silver.material_uom_conversion` has no row for this material (detection only; quantities are both in base UoM so impact is typically zero) |
 | `BATCH_MISSING_IN_WM` | IM qty > 0, WM qty is NULL/0 |
 | `BATCH_MISSING_IN_IM` | WM qty > 0, IM qty is NULL/0 |
 | `TRUE_VARIANCE` | Both sides have qty, delta exceeds tolerance |
@@ -136,18 +139,30 @@ plant/material-type-specific overrides.
 ```
 plant_code, warehouse_number, material_code, batch_number,
 stock_category, base_uom,
-im_quantity, wm_quantity, delta_quantity,
-abs_delta_quantity, tolerance_quantity, is_reconciled,
+im_quantity, wm_quantity, delta_quantity, abs_delta_quantity, delta_percent,
+tolerance_quantity, tolerance_exceeded, tolerance_rule_code, is_reconciled,
 unit_price, price_unit, delta_value,
-mismatch_reason, mismatch_severity, is_operationally_trusted
+mismatch_reason, mismatch_severity, is_operationally_trusted,
+reconciliation_rule_version, last_reconciled_at, audit_trail_json
 ```
+
+### `gold_stock_value_reconciliation`
+Grain: plant × warehouse × mismatch_reason × mismatch_severity.
+Measures: row count, breached-tolerance count, net/absolute delta value, absolute delta quantity,
+and `value_reconciliation_status`.
+
+### `gold_reconciliation_audit_log`
+Grain: unreconciled `gold_stock_reconciliation_v2` natural key.
+Purpose: current-state audit register for exception triage. Append-only history is captured by
+snapshot/control jobs to avoid non-deterministic timestamps inside the materialized view.
 
 ### `gold_stock_reconciliation_exceptions_v2` (DLT view)
 Filters `is_reconciled = false`. Adds `material_description` from `silver.material`.
 
 ### `gold_stock_reconciliation_summary_v2` (DLT view)
 Grain: plant × warehouse × mismatch_reason × mismatch_severity.
-Measures: `exception_count`, `abs_delta_quantity_total`, `abs_delta_value_total`.
+Measures: `exception_count`, `tolerance_exceeded_count`, `abs_delta_quantity_total`,
+`abs_delta_value_total`.
 
 ---
 

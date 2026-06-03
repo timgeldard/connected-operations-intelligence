@@ -158,6 +158,9 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 | `gold_lineside_stock` | plant × wh × storage_type × material × batch × UOM | total/available qty, min days-to-expiry | occupied bins in line-side STs (`_LINESIDE_PREDICATE`) |
 | `gold_delivery_pick_status` | delivery | pick_fraction, line_count, is_shipped, `risk_band` | LIPS base-UoM pick % (not TO-level; null for mixed-base-UoM deliveries); RAG: shipped→green, null GI→grey |
 | `gold_stock_reconciliation` **[PILOT]** | plant × material | im/wm totals, delta, inventory_value, mismatch_class, abc_class | IM(MARD) vs WM(bins); coarse grain — directional only; tolerance = max(0.1, 1% IM); abc 'U' = unpriced |
+| `gold_stock_reconciliation_v2` | plant × wh × material × batch × stock category × UOM | im/wm qty, delta %, tolerance rule, delta value, reason, audit JSON | production-candidate IM↔WM control; WM sloc remains unresolved because LQUA lacks LGORT |
+| `gold_stock_value_reconciliation` | plant × wh × reason × severity | net/abs delta value, breached tolerance count, status | finance-facing value rollup backed by reconciliation v2 |
+| `gold_reconciliation_audit_log` | unreconciled v2 key | audit_event_key, delta evidence, rule version, audit JSON | current-state audit register; append-only history handled by snapshot/control jobs |
 | `gold_stock_reconciliation_summary` | plant × wh × reason × severity | row/exception counts, abs delta qty/value, reconciliation_status | canonical summary backed by reconciliation v2 |
 | `gold_process_order_staging` **[PILOT]** | process order | staging_fraction, to_items done/total, `risk_band` | BETYP='F' TOs; BENUM↔AUFNR validated 100% across UAT warehouses (2026-06-02) |
 | `gold_process_order_staging_validation` | plant × warehouse | total_to_headers, f_type_to_headers, benum_match_pct, validation_status | persistent VALIDATED/NOT_VALIDATED/NOT_APPLICABLE per plant/warehouse |

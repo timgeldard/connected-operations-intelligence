@@ -94,11 +94,11 @@ can act on at-risk batches. **Acceptance:** qty per expiry bucket by plant/mater
 ABC class *so that* I can find and root-cause discrepancies.
 **Acceptance:** delta qty, inventory value, mismatch reason (rounding/uom/pending-TO/blocked/true
 variance), at a grain that supports root-cause (sloc/warehouse/batch/stock-category).
-**Fulfilment: ⚠️ Partial — `gold_stock_reconciliation` [PILOT].** Provides delta, value, ABC and a
-match/variance flag, **but only at plant × material grain** with no sloc/warehouse/batch/UoM/
-WM-managed-sloc resolution and no mismatch-reason taxonomy. **Gap:** the root-cause AC is **not met**
-until the ADR 009 detailed rebuild (batch grain, MARM UoM, `wm_managed_sloc`, mismatch_reason enum).
-Use as a *directional indicator* only.
+**Fulfilment: ✅ Mostly — `gold_stock_reconciliation_v2`, `gold_stock_value_reconciliation`,
+`gold_reconciliation_audit_log`.** v2 provides warehouse/material/batch/stock-category grain,
+quantity/value deltas, tolerance breach flags, mismatch reasons, and an audit register.
+**Residual gap:** true SAP sloc attribution for WM quants still needs a future bin/storage-type→sloc
+configuration layer because LQUA does not carry LGORT.
 
 ### B5. Warehouse exception monitor
 *As a* supervisor *I want* a single exception list (negative stock, expired-with-stock, aged QI,

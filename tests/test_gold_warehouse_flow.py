@@ -528,6 +528,9 @@ def test_recon_v2_matched(spark):
     assert r["is_reconciled"] is True
     assert r["mismatch_reason"] == "MATCHED"
     assert r["mismatch_severity"] == "INFO"
+    assert r["tolerance_exceeded"] is False
+    assert r["tolerance_rule_code"] == "DEFAULT_0_1_PCT_FLOOR_0_001"
+    assert r["reconciliation_rule_version"] == "2.1"
 
 
 def test_recon_v2_batch_missing_in_wm(spark):
@@ -557,6 +560,59 @@ def test_recon_v2_batch_missing_in_wm(spark):
     assert r["is_reconciled"] is False
     assert r["mismatch_reason"] == "BATCH_MISSING_IN_WM"
     assert r["mismatch_severity"] == "MEDIUM"
+    assert r["tolerance_exceeded"] is True
+    assert r["delta_percent"] == -1.0
+
+
+def test_stock_value_reconciliation_rollup(spark, monkeypatch):
+    import gold.warehouse_flow_gold as flow
+    from gold.warehouse_flow_gold import gold_stock_value_reconciliation
+
+    recon_df = create_df(spark, [
+        Row(plant_code="C061", warehouse_number="208", mismatch_reason="MATCHED",
+            mismatch_severity="INFO", tolerance_exceeded=False, delta_value=0.0,
+            abs_delta_quantity=0.0),
+        Row(plant_code="C061", warehouse_number="208", mismatch_reason="TRUE_VARIANCE",
+            mismatch_severity="HIGH", tolerance_exceeded=True, delta_value=-25.0,
+            abs_delta_quantity=5.0),
+    ])
+    monkeypatch.setattr(flow.dlt, "read", lambda _: recon_df)
+
+    rows = {r["mismatch_reason"]: r for r in all_rows(gold_stock_value_reconciliation())}
+
+    assert rows["MATCHED"]["value_reconciliation_status"] == "RECONCILED"
+    assert rows["TRUE_VARIANCE"]["tolerance_exceeded_count"] == 1
+    assert rows["TRUE_VARIANCE"]["abs_delta_value"] == 25.0
+    assert rows["TRUE_VARIANCE"]["value_reconciliation_status"] == "ACTION_REQUIRED"
+
+
+def test_reconciliation_audit_log_filters_exceptions(spark, monkeypatch):
+    import gold.warehouse_flow_gold as flow
+    from gold.warehouse_flow_gold import gold_reconciliation_audit_log
+
+    recon_df = create_df(spark, [
+        Row(plant_code="C061", warehouse_number="208", material_code="M1", batch_number="B1",
+            stock_category="UNRESTRICTED", base_uom="KG", im_quantity=100.0, wm_quantity=100.0,
+            delta_quantity=0.0, delta_percent=0.0, tolerance_quantity=0.1, delta_value=0.0,
+            tolerance_exceeded=False, mismatch_reason="MATCHED", mismatch_severity="INFO",
+            tolerance_rule_code="DEFAULT_0_1_PCT_FLOOR_0_001",
+            reconciliation_rule_version="2.1", is_operationally_trusted=True,
+            audit_trail_json="{}", last_reconciled_at=None),
+        Row(plant_code="C061", warehouse_number="208", material_code="M2", batch_number="B2",
+            stock_category="UNRESTRICTED", base_uom="KG", im_quantity=50.0, wm_quantity=0.0,
+            delta_quantity=-50.0, delta_percent=-1.0, tolerance_quantity=0.05, delta_value=-100.0,
+            tolerance_exceeded=True, mismatch_reason="BATCH_MISSING_IN_WM", mismatch_severity="MEDIUM",
+            tolerance_rule_code="DEFAULT_0_1_PCT_FLOOR_0_001",
+            reconciliation_rule_version="2.1", is_operationally_trusted=True,
+            audit_trail_json="{}", last_reconciled_at=None),
+    ])
+    monkeypatch.setattr(flow.dlt, "read", lambda _: recon_df)
+
+    rows = all_rows(gold_reconciliation_audit_log())
+
+    assert len(rows) == 1
+    assert rows[0]["audit_event_key"] == "C061|208|M2|B2|UNRESTRICTED|KG|BATCH_MISSING_IN_WM"
+    assert rows[0]["source_table"] == "gold_stock_reconciliation_v2"
 
 
 def test_recon_v2_no_wm_mapping(spark):
@@ -759,10 +815,10 @@ def test_stock_reconciliation_summary_alias_adds_status(spark, monkeypatch):
     summary_df = create_df(spark, [
         Row(plant_code="C061", warehouse_number="208", mismatch_reason="MATCHED",
             mismatch_severity="INFO", row_count=10, exception_count=0,
-            abs_delta_quantity_total=0.0, abs_delta_value_total=0.0),
+            tolerance_exceeded_count=0, abs_delta_quantity_total=0.0, abs_delta_value_total=0.0),
         Row(plant_code="C061", warehouse_number="208", mismatch_reason="TRUE_VARIANCE",
             mismatch_severity="HIGH", row_count=2, exception_count=2,
-            abs_delta_quantity_total=5.0, abs_delta_value_total=50.0),
+            tolerance_exceeded_count=2, abs_delta_quantity_total=5.0, abs_delta_value_total=50.0),
     ])
     monkeypatch.setattr(flow.dlt, "read", lambda _: summary_df)
 

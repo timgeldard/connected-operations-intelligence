@@ -24,14 +24,18 @@ empty/sample; bucket unmatched to `UNASSIGNED`.
 | 3 — test/rollout | synthetic multi-shift tests incl. cross-midnight; >95% coverage expectation; docs | `tests/`, `gold/design_spec.md`, `docs/ingestion_requests.md` (TC37A request) |
 
 ## Initiative 2 — Detailed IM↔WM reconciliation  (ADR 009)
-Dependencies: `MARM` (UoM) → silver; `wm_managed_sloc` config. **Stub:** seed config empty;
-default tolerance rules; skip UoM-normalise until MARM lands (flag rows `uom_unconverted`).
+Status: production-candidate v2 now implemented at plant × warehouse × material × batch ×
+stock-category × UOM, with value rollup and current-state audit register. Dependencies resolved:
+`MARM` is in Silver as `material_uom_conversion`, and T320 is in Silver as
+`warehouse_storage_location_mapping`. Residual dependency: a governed bin/storage-type→sloc
+configuration layer if the business requires true LGORT attribution for WM quants.
 
 | Phase | Build | Key files |
 |---|---|---|
-| 1 — foundation | `silver.wm_managed_sloc` (seed); `silver.material_uom_conversion` (MARM); warehouse↔sloc bridge | `silver/tables/warehouse_reference.py`, `silver/tables/reference.py`, `silver/dlt_silver_slow.py` |
-| 2 — core | `gold_stock_reconciliation_detailed` (plant×sloc×wh×material×batch×stock_category; IM=MCHB/MARD, WM=storage_bin; mismatch_reason enum; pending-TO explain; tolerance per material_type) | `gold/warehouse_flow_gold.py` (or new `gold/reconciliation.py`) |
-| 3 — analytics | `gold_stock_reconciliation_summary` rollup; extend `gold_warehouse_exceptions` with recon rules; clustering/Z-order | `gold/warehouse_exceptions.py`, `gold/design_spec.md` |
+| 1 — foundation | `silver.material_uom_conversion` (MARM) and `silver.warehouse_storage_location_mapping` (T320) wired into slow pipeline | `silver/tables/warehouse_reference.py`, `silver/tables/reference.py`, `silver/dlt_silver_slow.py` |
+| 2 — core | `gold_stock_reconciliation_v2` (plant×wh×material×batch×stock_category×UOM; IM=MCHB/MARD, WM=storage_bin; mismatch_reason enum; default dynamic tolerance metadata) | `gold/warehouse_flow_gold.py` |
+| 3 — analytics | `gold_stock_reconciliation_summary`, `gold_stock_value_reconciliation`, `gold_reconciliation_audit_log`; security views and contracts updated | `gold/warehouse_flow_gold.py`, `scripts/generate_gold_security_sql.py`, `gold/design_spec.md` |
+| 4 — remaining SAP parity | open movement/pending-TO explainers, physical-inventory document tie-out, and bin/storage-type→sloc attribution where business-owned WM config is available | future `gold/warehouse_flow_gold.py` + governed config |
 
 ## Initiative 3 — Living data dictionary & UC lineage  (ADR 010)  ← recommended first
 Most self-contained; no business config. Lineage/tags populate post-deploy (degrades gracefully).

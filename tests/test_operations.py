@@ -129,18 +129,21 @@ def make_afko_for_op(
 
 def apply_pi_sheet_transform(spark: SparkSession, src_rows: List[Row]) -> DataFrame:
     src = spark.createDataFrame(src_rows, _PI_SCHEMA)
-    pi_sheet_start_datetime = sap_datetime("ZSDATS", "ZSTIMS")
-    pi_sheet_end_datetime = sap_datetime("ZEDATS", "ZETIMS")
-    return src.select(
+    src_with_datetimes = (
+        src
+        .withColumn("pi_sheet_start_datetime", sap_datetime("ZSDATS", "ZSTIMS"))
+        .withColumn("pi_sheet_end_datetime", sap_datetime("ZEDATS", "ZETIMS"))
+    )
+    return src_with_datetimes.select(
         F.col("ZWERKS").alias("plant_code"),
         strip_zeros("ZAUFNR").alias("order_number"),
         F.col("ZVORNR").alias("operation_number"),
-        pi_sheet_start_datetime.alias("pi_sheet_start_datetime"),
-        pi_sheet_end_datetime.alias("pi_sheet_end_datetime"),
+        F.col("pi_sheet_start_datetime"),
+        F.col("pi_sheet_end_datetime"),
         F.col("ZDUR").alias("duration_decimal_days"),
         F.round(F.col("ZDUR") * 24, 4).alias("duration_hours"),
-        F.when(pi_sheet_end_datetime.isNotNull(), "Completed")
-         .when(pi_sheet_start_datetime.isNotNull(), "In Progress")
+        F.when(F.col("pi_sheet_end_datetime").isNotNull(), "Completed")
+         .when(F.col("pi_sheet_start_datetime").isNotNull(), "In Progress")
          .otherwise("Not Started").alias("pi_sheet_status"),
         F.col("ZUSERSTART").alias("started_by_user"),
         F.col("ZUSEREND").alias("completed_by_user"),

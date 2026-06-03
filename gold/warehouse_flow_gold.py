@@ -8,6 +8,8 @@ Tables:
   gold_stock_reconciliation                 — IM (MARD) vs WM (bins) variance, valuation and ABC class (v1, plant×material, kept for compatibility)
   gold_process_order_staging                — process-order component staging completion
   gold_stock_reconciliation_v2              — detailed IM↔WM reconciliation at plant×warehouse×material×batch×stock_category grain
+  gold_stock_value_reconciliation           — value-control rollup of reconciliation v2 by plant / warehouse / severity
+  gold_reconciliation_audit_log             — deterministic audit register for current reconciliation exceptions
   gold_stock_reconciliation_exceptions_v2  — filter of v2 where is_reconciled=false, with material description
   gold_stock_reconciliation_summary_v2     — v2 rolled up by plant×warehouse×mismatch_reason×severity
   gold_stock_reconciliation_summary        — canonical v2 summary alias for consumption
@@ -733,6 +735,15 @@ def gold_stock_reconciliation_v2():
                     ))
         .withColumn("is_reconciled",
                     F.col("abs_delta_quantity") <= F.col("tolerance_quantity"))
+        .withColumn("tolerance_exceeded", ~F.col("is_reconciled"))
+        .withColumn(
+            "delta_percent",
+            F.when(
+                F.abs(F.col("im_quantity")) > 0,
+                F.col("delta_quantity") / F.abs(F.col("im_quantity")),
+            ).otherwise(F.lit(None).cast("double")),
+        )
+        .withColumn("tolerance_rule_code", F.lit("DEFAULT_0_1_PCT_FLOOR_0_001"))
     )
 
     # ── Mismatch reason ───────────────────────────────────────────────────────
@@ -791,19 +802,101 @@ def gold_stock_reconciliation_v2():
                 F.coalesce(F.col("price_unit"), F.lit(0)).cast("double") == 0, F.lit(1.0)
             ).otherwise(F.col("price_unit").cast("double")),
         )
+        .withColumn("is_operationally_trusted", F.coalesce(F.col("_wh_trusted"), F.lit(False)))
+        .withColumn(
+            "audit_trail_json",
+            F.to_json(F.struct(
+                F.lit("IM_WM_STOCK_RECON_V2").alias("control_id"),
+                F.lit("2.1").alias("rule_version"),
+                F.col("tolerance_rule_code"),
+                F.col("mismatch_reason"),
+                F.col("mismatch_severity"),
+                F.col("is_operationally_trusted"),
+            )),
+        )
         .select(
             "plant_code", "warehouse_number", "material_code", "batch_number",
             "stock_category", "base_uom",
             "im_quantity", "wm_quantity", "delta_quantity",
-            "abs_delta_quantity", "tolerance_quantity", "is_reconciled",
+            "abs_delta_quantity", "delta_percent",
+            "tolerance_quantity", "tolerance_exceeded", "tolerance_rule_code",
+            "is_reconciled",
             "unit_price", "price_unit", "delta_value",
             "mismatch_reason", "mismatch_severity",
-            F.coalesce(F.col("_wh_trusted"), F.lit(False)).alias("is_operationally_trusted"),
+            "is_operationally_trusted",
+            F.lit("2.1").alias("reconciliation_rule_version"),
+            F.lit(None).cast("timestamp").alias("last_reconciled_at"),
+            "audit_trail_json",
         )
     )
 
 
-# ── 9. STOCK RECONCILIATION EXCEPTIONS V2 ─────────────────────────────────────
+# ── 9. STOCK VALUE RECONCILIATION ─────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Value-control rollup of IM↔WM reconciliation v2 by plant × warehouse × "
+        "mismatch reason. Uses material valuation where available."
+    ),
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_stock_value_reconciliation():
+    recon = dlt.read("gold_stock_reconciliation_v2")
+    return (
+        recon
+        .groupBy("plant_code", "warehouse_number", "mismatch_reason", "mismatch_severity")
+        .agg(
+            F.count(F.lit(1)).alias("row_count"),
+            F.sum(F.when(F.col("tolerance_exceeded"), F.lit(1)).otherwise(F.lit(0))).alias(
+                "tolerance_exceeded_count"
+            ),
+            F.coalesce(F.sum("delta_value"), F.lit(0.0)).alias("net_delta_value"),
+            F.coalesce(F.sum(F.abs(F.col("delta_value"))), F.lit(0.0)).alias("abs_delta_value"),
+            F.coalesce(F.sum("abs_delta_quantity"), F.lit(0.0)).alias("abs_delta_quantity"),
+        )
+        .withColumn(
+            "value_reconciliation_status",
+            F.when(F.col("tolerance_exceeded_count") == 0, F.lit("RECONCILED"))
+            .when(F.col("mismatch_severity").isin("HIGH", "CRITICAL"), F.lit("ACTION_REQUIRED"))
+            .otherwise(F.lit("REVIEW")),
+        )
+    )
+
+
+# ── 10. RECONCILIATION AUDIT LOG ──────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Current-state audit register for reconciliation exceptions. Append-only trend "
+        "history is captured by the warehouse snapshot job."
+    ),
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_reconciliation_audit_log():
+    recon = dlt.read("gold_stock_reconciliation_v2")
+    return (
+        recon
+        .filter(F.col("tolerance_exceeded"))
+        .select(
+            F.concat_ws(
+                "|",
+                "plant_code", "warehouse_number", "material_code", "batch_number",
+                "stock_category", "base_uom", "mismatch_reason",
+            ).alias("audit_event_key"),
+            F.lit("gold_stock_reconciliation_v2").alias("source_table"),
+            "plant_code", "warehouse_number", "material_code", "batch_number",
+            "stock_category", "base_uom",
+            "im_quantity", "wm_quantity", "delta_quantity", "delta_percent",
+            "tolerance_quantity", "delta_value",
+            "mismatch_reason", "mismatch_severity",
+            "tolerance_rule_code", "reconciliation_rule_version",
+            "is_operationally_trusted", "audit_trail_json",
+            "last_reconciled_at",
+        )
+    )
+
+
+# ── 11. STOCK RECONCILIATION EXCEPTIONS V2 ────────────────────────────────────
 
 @dlt.table(**gold_table_args(
     comment=(
@@ -832,14 +925,14 @@ def gold_stock_reconciliation_exceptions_v2():
             "material_code", "material_description",
             "batch_number", "stock_category", "base_uom",
             "im_quantity", "wm_quantity", "delta_quantity",
-            "abs_delta_quantity", "delta_value",
-            "mismatch_reason", "mismatch_severity",
+            "abs_delta_quantity", "delta_percent", "delta_value",
+            "mismatch_reason", "mismatch_severity", "tolerance_rule_code",
             "is_operationally_trusted",
         )
     )
 
 
-# ── 10. STOCK RECONCILIATION SUMMARY V2 ──────────────────────────────────────
+# ── 12. STOCK RECONCILIATION SUMMARY V2 ──────────────────────────────────────
 
 @dlt.table(**gold_table_args(
     comment=(
@@ -857,13 +950,15 @@ def gold_stock_reconciliation_summary_v2():
             F.count(F.lit(1)).alias("row_count"),
             F.sum(F.when(~F.col("is_reconciled"), F.lit(1)).otherwise(F.lit(0)))
              .alias("exception_count"),
+            F.sum(F.when(F.col("tolerance_exceeded"), F.lit(1)).otherwise(F.lit(0)))
+             .alias("tolerance_exceeded_count"),
             F.coalesce(F.sum("abs_delta_quantity"), F.lit(0.0)).alias("abs_delta_quantity_total"),
             F.coalesce(F.sum(F.abs(F.col("delta_value"))), F.lit(0.0)).alias("abs_delta_value_total"),
         )
     )
 
 
-# ── 11. STOCK RECONCILIATION SUMMARY ─────────────────────────────────────────
+# ── 13. STOCK RECONCILIATION SUMMARY ─────────────────────────────────────────
 
 @dlt.table(**gold_table_args(
     comment=(
@@ -883,6 +978,7 @@ def gold_stock_reconciliation_summary():
             "mismatch_severity",
             "row_count",
             "exception_count",
+            "tolerance_exceeded_count",
             "abs_delta_quantity_total",
             "abs_delta_value_total",
             F.when(F.col("exception_count") == 0, F.lit("RECONCILED"))

@@ -184,7 +184,7 @@ def gold_process_order_operations():
 
     operation_number_counts = (
         operations.groupBy("order_number", "operation_number")
-        .agg(F.count_distinct(F.struct("routing_number", "operation_counter")).alias("_operation_key_count"))
+        .agg(F.count(F.lit(1)).alias("_operation_key_count"))
     )
 
     active_orders = orders.filter("is_released = true and is_closed = false").select(

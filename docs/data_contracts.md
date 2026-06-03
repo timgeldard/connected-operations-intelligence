@@ -184,20 +184,33 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Grain**: 1 row per plant × warehouse × material × batch × stock_category × base_uom
 * **Source Silver Tables**: `silver.batch_stock` (MCHB), `silver.stock_at_location` (MARD), `silver.material`, `silver.storage_bin`, `silver.warehouse_storage_location_mapping`, `silver.material_uom_conversion`, `silver.material_valuation`, `silver.storage_type_role_mapping`
 * **Purpose**: Root-cause-capable IM↔WM reconciliation. MCHB for batch-managed materials; MARD for non-batch. T320 bridges IM sloc→warehouse. BESTQ (blank/Q/S) mapped to UNRESTRICTED/QUALITY/BLOCKED.
+* **Hardening fields**: includes `delta_percent`, `tolerance_exceeded`, `tolerance_rule_code`, `reconciliation_rule_version`, `last_reconciled_at`, and `audit_trail_json` to support tolerance review, audit drill-through, and snapshot-based trend history.
 * **Mismatch reasons**: `MATCHED`, `WM_MANAGED_SLOC_MAPPING_MISSING`, `UOM_CONVERSION_MISSING`, `BATCH_MISSING_IN_WM`, `BATCH_MISSING_IN_IM`, `TRUE_VARIANCE`
 * **Known Caveats**: WM (LQUA) has no LGORT — grain omits `storage_location_code` on WM side. IN_TRANSFER and RESTRICTED stock categories not compared. Tolerance 0.1% of IM, floor 0.001. See `docs/reconciliation/stock-reconciliation-v2-contract.md`. Note: storage locations without a T320 warehouse mapping receive `warehouse_number = '__NO_WM_MAPPING__'`. If a material exists in both a mapped and an unmapped storage location, it produces two separate rows in the output. Downstream BI consumers summing `abs_delta_quantity_total` must explicitly filter or group by `mismatch_reason` to avoid double-counting the unmapped locations alongside true variances.
 
-### 14c. `gold.gold_stock_reconciliation_exceptions_v2`
+### 14c. `gold.gold_stock_value_reconciliation`
+* **Status**: Production-candidate
+* **Grain**: 1 row per plant × warehouse × mismatch_reason × mismatch_severity
+* **Source Gold Tables**: `gold_stock_reconciliation_v2`
+* **Purpose**: value-control rollup for IM↔WM reconciliation, exposing net and absolute delta value plus tolerance breach counts for finance/warehouse triage.
+
+### 14d. `gold.gold_reconciliation_audit_log`
+* **Status**: Production-candidate
+* **Grain**: 1 row per unreconciled `gold_stock_reconciliation_v2` natural key
+* **Source Gold Tables**: `gold_stock_reconciliation_v2`
+* **Purpose**: deterministic current-state audit register for reconciliation exceptions. Append-only history is captured by the warehouse snapshot job/control process rather than generated with non-deterministic timestamps inside the DLT MV.
+
+### 14e. `gold.gold_stock_reconciliation_exceptions_v2`
 * **Status**: Production-candidate
 * **Grain**: Same as v2, filtered to `is_reconciled = false`, enriched with material description
 * **Purpose**: Starting point for variance investigation.
 
-### 14d. `gold.gold_stock_reconciliation_summary_v2`
+### 14f. `gold.gold_stock_reconciliation_summary_v2`
 * **Status**: Production-candidate
 * **Grain**: 1 row per plant × warehouse × mismatch_reason × mismatch_severity
 * **Purpose**: Operational scorecard of unreconciled stock by reason and severity.
 
-### 14e. `gold.gold_stock_reconciliation_summary`
+### 14g. `gold.gold_stock_reconciliation_summary`
 * **Status**: Production-candidate
 * **Grain**: 1 row per plant × warehouse × mismatch_reason × mismatch_severity
 * **Source Gold Tables**: `gold_stock_reconciliation_summary_v2`
