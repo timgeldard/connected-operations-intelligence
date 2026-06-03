@@ -164,6 +164,7 @@ MOVEMENT_CATEGORIES = {
         "326",
         "343",
         "344",
+        "Z11",
     ],
     "INVENTORY_ADJUSTMENT": [
         "701",
@@ -255,6 +256,7 @@ TRANSFER_MOVEMENT_TYPES: Set[str] = {
     "641",
     "642",
     "Z09",
+    "Z11",
 }
 
 STOCK_WRITE_ON_MOVEMENT_TYPES: Set[str] = {"701", "703", "711", "Z62"}

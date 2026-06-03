@@ -38,6 +38,7 @@ def test_event_categories_cover_warehouse_kpi_families():
     assert get_movement_event_category("701") == "STOCK_WRITE_ON"
     assert get_movement_event_category("702") == "STOCK_WRITE_OFF"
     assert get_movement_event_category("Z01") == "GOODS_ISSUE"
+    assert get_movement_event_category("Z11") == "TRANSFER"
     assert get_movement_event_category("561") == "INITIAL_ENTRY"
     assert get_movement_event_category("999") == "OTHER"
 
@@ -47,6 +48,7 @@ def test_movement_categories_cover_pp_pi_and_wm_splits():
     assert get_movement_category("103") == "PROCUREMENT"
     assert get_movement_category("261") == "PRODUCTION"
     assert get_movement_category("Z01") == "CONSUMPTION"
+    assert get_movement_category("Z11") == "QUALITY"
     assert get_movement_category("999") == "OTHER"
 
 
@@ -83,6 +85,8 @@ def test_movement_type_classification_schema_and_backcompat_columns():
     assert rows["262"]["is_production_consumption_reversal"] is True
     assert rows["Z01"]["is_custom_bulk_drop"] is True
     assert rows["Z01"]["is_goods_issue"] is True
+    assert rows["Z11"]["movement_category"] == "QUALITY"
+    assert rows["Z11"]["is_transfer"] is True
     assert rows["551"]["is_goods_issue"] is True
     assert rows["551"]["is_scrap"] is True
     assert rows["552"]["is_scrap_reversal"] is True
