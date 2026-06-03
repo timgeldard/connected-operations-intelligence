@@ -58,7 +58,7 @@ Managed via Declarative Automation Bundle (DAB).
 
 ### `gold_shift_output_summary`
 - **Granularity:** 1 row per plant × posting date × material × UOM.
-- **Description:** Aggregated daily produced quantity (receipt type 101 minus reversals 102) and scrap quantity (movements 551/552). The historical table name is retained for compatibility; no shift dimension is present until a shift calendar is introduced.
+- **Description:** Aggregated daily produced quantity using `movement_type_classification.is_production_receipt` minus receipt reversals, plus scrap quantity using the conformed scrap flags. The historical table name is retained for compatibility; no shift dimension is present until a shift calendar is introduced.
 - **Freshness:** Depends on `silver_fast_pipeline` being healthy; the Gold refresh job does not trigger the continuous fast pipeline.
 
 ### `gold_process_order_schedule_adherence`
@@ -74,7 +74,7 @@ Managed via Declarative Automation Bundle (DAB).
 
 ### `gold_process_order_component_status`
 - **Granularity:** 1 row per `order_number × reservation_item_number`.
-- **Description:** Component consumption reservation status (BWART 261) for active orders, enriched with available unrestricted stock in the reservation storage location and a stock coverage check.
+- **Description:** Component consumption reservation status for active orders, filtered by `movement_type_classification.is_production_consumption` (currently BWART 261), enriched with available unrestricted stock in the reservation storage location and a stock coverage check.
 - **Freshness:** Depends on `silver_fast_pipeline` reservation requirements and batch stock availability.
 
 ### `gold_process_order_operations`
@@ -119,6 +119,16 @@ Managed via Declarative Automation Bundle (DAB).
 - **Description:** Current batch expiry exposure from storage-bin quants joined to material shelf-life policy, with expired, <7 day, 7-30 day, 30-90 day, and OK quantity buckets.
 - **Freshness:** Depends on `silver_fast_pipeline` storage-bin refresh, `silver_slow_pipeline` material refresh, and the triggered Gold refresh job.
 
+### `gold_data_freshness_status`
+- **Granularity:** 1 row per monitored Silver dependency.
+- **Description:** Freshness SLA monitor with latest `_replicated_at`, lag minutes, criticality, and `FRESH`/`STALE`/`NO_DATA`/`STATIC` status. `gold_critical_freshness_gate` fails the run for stale/no-data critical dependencies.
+- **Freshness:** Recomputed during each Gold run.
+
+### `gold_data_health_summary`
+- **Granularity:** 1 row per health area.
+- **Description:** Operations rollup for freshness, expectation/event-log ownership, storage role coverage, staging validation, and stock reconciliation health.
+- **Freshness:** Recomputed during each Gold run.
+
 ### Access-tier foundation
 - **Current state:** Operative and supervisor access remains plant-scoped through Silver `plant_access_filter`.
 - **Cluster-lead tier:** Documented in ADR-005. Execution is blocked until a governed plant-to-cluster source is selected.
@@ -144,18 +154,20 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 | `gold_bin_occupancy` | wh × plant × storage_type × bin_type | occupancy_rate, occupied/empty/blocked counts | current bin state |
 | `gold_stock_availability` | plant × sloc × material × batch × UOM | unrestricted/QI/blocked/restricted/in-transfer | batch stock (MCHB) |
 | `gold_stock_expiry_risk` | plant × material × batch × UOM | expiry buckets (expired/<7/7-30/30-90/OK) | bin stock joined to shelf-life |
-| `gold_dispensary_backlog` | plant × supply area × wh | open task/order count, open/required qty, urgency dates | RESB BWART 261, not deleted, open_qty>0 |
+| `gold_dispensary_backlog` | plant × supply area × wh | open task/order count, open/required qty, urgency dates | RESB rows where `is_production_consumption`, not deleted, open_qty>0 |
 | `gold_lineside_stock` | plant × wh × storage_type × material × batch × UOM | total/available qty, min days-to-expiry | occupied bins in line-side STs (`_LINESIDE_PREDICATE`) |
 | `gold_delivery_pick_status` | delivery | pick_fraction, line_count, is_shipped, `risk_band` | LIPS base-UoM pick % (not TO-level; null for mixed-base-UoM deliveries); RAG: shipped→green, null GI→grey |
 | `gold_stock_reconciliation` **[PILOT]** | plant × material | im/wm totals, delta, inventory_value, mismatch_class, abc_class | IM(MARD) vs WM(bins); coarse grain — directional only; tolerance = max(0.1, 1% IM); abc 'U' = unpriced |
+| `gold_stock_reconciliation_summary` | plant × wh × reason × severity | row/exception counts, abs delta qty/value, reconciliation_status | canonical summary backed by reconciliation v2 |
 | `gold_process_order_staging` **[PILOT]** | process order | staging_fraction, to_items done/total, `risk_band` | BETYP='F' TOs; BENUM↔AUFNR validated 100% across UAT warehouses (2026-06-02) |
 | `gold_process_order_staging_validation` | plant × warehouse | total_to_headers, f_type_to_headers, benum_match_pct, validation_status | persistent VALIDATED/NOT_VALIDATED/NOT_APPLICABLE per plant/warehouse |
 | `gold_inbound_po_backlog` **[PILOT]** | plant × vendor × purchasing org | open item/PO count, ordered qty, open value | open PO items (PO backlog, **not** GR history) |
+| `gold_inbound_po_backlog_enhanced` | plant × vendor × purchasing org | open/GR/remaining qty, putaway TO counts, age anchors | PO-linked 103/104 GR and best-effort TO linkage |
 | `gold_handling_unit_summary` | plant × wh × HU status × ref-doc category | HU/SSCC/delivery/material counts, gross weight (per-HU) | EXIDV = SSCC |
 | `gold_warehouse_exceptions` | exception instance | severity (1-4), sla_hours, quantity, age | UNION of 7 integrity/aging checks |
 | `gold_warehouse_kpi_snapshot` | plant | open orders/TRs/TOs/deliveries/inbound, bin counts, util % | per-plant scorecard (mixed-grain counts) |
 | `gold_order_downtime_summary` | order × operation × downtime_reason | event_count, total_downtime_minutes, start/end datetimes | downtime_event joined with process_order |
-| `gold_process_order_component_status` | order × reservation_item_number | required/open qty, storage-location stock, is_fully_covered | RESB BWART 261 joined with process_order & batch_stock |
+| `gold_process_order_component_status` | order × reservation_item_number | required/open qty, storage-location stock, is_fully_covered | RESB `is_production_consumption` joined with process_order & batch_stock |
 
 ## Known limitations / follow-ups (warehouse product)
 

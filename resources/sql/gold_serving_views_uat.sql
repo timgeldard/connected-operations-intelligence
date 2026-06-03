@@ -43,3 +43,11 @@ SELECT
   coalesce(CASE WHEN datediff(b.minimum_expiry_date, current_date()) < coalesce(b.minimum_remaining_shelf_life_days, 0) THEN b.total_stock_qty END, 0.0) > 0 AS has_minimum_shelf_life_breach
 FROM connected_plant_uat.gold.gold_stock_expiry_risk_secured AS b;
 GRANT SELECT ON VIEW connected_plant_uat.gold.gold_stock_expiry_risk_live TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold.gold_inbound_po_backlog_enhanced_live AS
+SELECT
+  b.*,
+  CASE WHEN b.earliest_po_date IS NOT NULL THEN datediff(current_date(), b.earliest_po_date) END AS oldest_po_age_days,
+  CASE WHEN b.remaining_open_qty <= 0 THEN 'green' WHEN datediff(current_date(), b.earliest_po_date) IS NULL THEN 'grey' WHEN datediff(current_date(), b.earliest_po_date) >= 30 THEN 'red' WHEN datediff(current_date(), b.earliest_po_date) >= 14 THEN 'amber' ELSE 'green' END AS inbound_backlog_risk_band
+FROM connected_plant_uat.gold.gold_inbound_po_backlog_enhanced_secured AS b;
+GRANT SELECT ON VIEW connected_plant_uat.gold.gold_inbound_po_backlog_enhanced_live TO `users`;

@@ -294,6 +294,7 @@ def movement_type_classification():
             F.coalesce(F.col("overlay.movement_label"), F.lit("UNCLASSIFIED_MOVEMENT_TYPE")).alias(
                 "movement_label"
             ),
+            F.coalesce(F.col("overlay.movement_category"), F.lit("OTHER")).alias("movement_category"),
             F.coalesce(F.col("overlay.event_category"), F.lit("OTHER")).alias("event_category"),
             F.coalesce(F.col("overlay.is_reversal"), F.lit(False)).alias("is_reversal"),
             F.coalesce(F.col("overlay.is_goods_receipt"), F.lit(False)).alias("is_goods_receipt"),
@@ -303,6 +304,17 @@ def movement_type_classification():
             F.coalesce(F.col("overlay.is_stock_write_off"), F.lit(False)).alias("is_stock_write_off"),
             F.coalesce(F.col("overlay.is_production_receipt"), F.lit(False)).alias("is_production_receipt"),
             F.coalesce(F.col("overlay.is_receipt_reversal"), F.lit(False)).alias("is_receipt_reversal"),
+            F.coalesce(F.col("overlay.is_po_receipt"), F.lit(False)).alias("is_po_receipt"),
+            F.coalesce(F.col("overlay.is_po_receipt_reversal"), F.lit(False)).alias(
+                "is_po_receipt_reversal"
+            ),
+            F.coalesce(F.col("overlay.is_production_consumption"), F.lit(False)).alias(
+                "is_production_consumption"
+            ),
+            F.coalesce(F.col("overlay.is_production_consumption_reversal"), F.lit(False)).alias(
+                "is_production_consumption_reversal"
+            ),
+            F.coalesce(F.col("overlay.is_custom_bulk_drop"), F.lit(False)).alias("is_custom_bulk_drop"),
             F.coalesce(F.col("overlay.is_scrap"), F.lit(False)).alias("is_scrap"),
             F.coalesce(F.col("overlay.is_scrap_reversal"), F.lit(False)).alias("is_scrap_reversal"),
             "sap_movement_description",

@@ -9,6 +9,7 @@ on the aggregation results.
 import pytest
 from pyspark.sql import Row, SparkSession
 
+from silver.movement_types import build_movement_type_classification_records
 from tests.conftest import all_rows, create_df
 
 
@@ -17,6 +18,12 @@ def setup_silver(spark: SparkSession):
     spark.conf.set("silver_catalog", "spark_catalog")
     spark.conf.set("silver_schema", "silver")
     spark.sql("CREATE DATABASE IF NOT EXISTS silver")
+
+    _save(
+        spark,
+        build_movement_type_classification_records(["101", "261"]),
+        "movement_type_classification",
+    )
 
     # Seed default storage type role mapping configuration table
     _save(spark, [
@@ -716,3 +723,23 @@ def test_recon_v2_unmapped_sloc_double_row(spark):
     assert r_wm["im_quantity"] == 0.0
     assert r_wm["wm_quantity"] == 100.0
     assert r_wm["mismatch_reason"] == "BATCH_MISSING_IN_IM"
+
+
+def test_stock_reconciliation_summary_alias_adds_status(spark, monkeypatch):
+    import gold.warehouse_flow_gold as flow
+    from gold.warehouse_flow_gold import gold_stock_reconciliation_summary
+
+    summary_df = create_df(spark, [
+        Row(plant_code="C061", warehouse_number="208", mismatch_reason="MATCHED",
+            mismatch_severity="INFO", row_count=10, exception_count=0,
+            abs_delta_quantity_total=0.0, abs_delta_value_total=0.0),
+        Row(plant_code="C061", warehouse_number="208", mismatch_reason="TRUE_VARIANCE",
+            mismatch_severity="HIGH", row_count=2, exception_count=2,
+            abs_delta_quantity_total=5.0, abs_delta_value_total=50.0),
+    ])
+    monkeypatch.setattr(flow.dlt, "read", lambda _: summary_df)
+
+    rows = {r["mismatch_reason"]: r for r in all_rows(gold_stock_reconciliation_summary())}
+
+    assert rows["MATCHED"]["reconciliation_status"] == "RECONCILED"
+    assert rows["TRUE_VARIANCE"]["reconciliation_status"] == "ACTION_REQUIRED"

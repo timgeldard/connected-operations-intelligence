@@ -60,9 +60,9 @@ Conventions: `silver` / `gold` below are the env-qualified schemas
 - **Status:** Coverage infrastructure in place; per-warehouse role correctness unverified (requires WM config owner sign-off per warehouse). **Owner:** WM config owner.
 
 ## BR-MM-004 — Movement-type classification is complete
-- **Used by:** `gold_shift_output_summary`, `gold_inbound_outbound_throughput` (inner join to `movement_type_classification`)
+- **Used by:** `gold_shift_output_summary`, `gold_inbound_outbound_throughput`, `gold_dispensary_backlog`, `gold_process_order_component_status`, `gold_inbound_po_backlog_enhanced`
 - **Source fields:** `goods_movement.movement_type_code` ↔ `silver.movement_type_classification.movement_type_code`
-- **Assumption:** every BWART present in goods movements is classified. Unclassified codes are **dropped by the inner join** → silently excluded from output/throughput.
+- **Assumption:** every BWART present in goods movements or component reservations has a conformed classification flag when used by Gold. Unclassified codes are **dropped by the inner join** or carry false KPI flags → silently excluded from output/throughput/component measures.
 - **Plant applicability:** all plants.
 - **Validation:** movement codes with volume that are unclassified.
   ```sql
@@ -76,10 +76,10 @@ Conventions: `silver` / `gold` below are the env-qualified schemas
 - **Risk:** under-stated production output / throughput; silent data loss.
 - **Status:** Unverified. **Owner:** PP/MM data owner.
 
-## BR-WM-005 — Dispensary backlog = RESB movement `261`, open, not deletion-flagged
+## BR-WM-005 — Dispensary backlog = conformed production-consumption RESB, open, not deletion-flagged
 - **Used by:** `gold_dispensary_backlog`
-- **Source fields:** `reservation_requirement.movement_type_code = '261'`, `is_deletion_flagged`, `open_quantity > 0`
-- **Assumption:** line-pick (dispensary) demand is exactly BWART 261 component reservations.
+- **Source fields:** `reservation_requirement.movement_type_code` joined to `movement_type_classification.is_production_consumption`, plus `is_deletion_flagged`, `open_quantity > 0`
+- **Assumption:** line-pick (dispensary) demand is represented by conformed production-consumption movement types (currently BWART 261).
 - **Validation:** BWART distribution to confirm 261 is the dispensary pick family.
   ```sql
   SELECT movement_type_code, COUNT(*) AS lines, SUM(open_quantity) AS open_qty

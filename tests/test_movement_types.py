@@ -8,6 +8,7 @@ from silver.movement_types import (
     MOVEMENT_TYPE_MAPPING,
     T156_REVERSAL_MAPPING,
     build_movement_type_classification_records,
+    get_movement_category,
     get_movement_direction,
     get_movement_event_category,
     is_reversal,
@@ -30,12 +31,23 @@ def test_reversal_mapping_is_derived_from_labels():
 
 def test_event_categories_cover_warehouse_kpi_families():
     assert get_movement_event_category("101") == "GOODS_RECEIPT"
+    assert get_movement_event_category("103") == "GOODS_RECEIPT"
     assert get_movement_event_category("201") == "GOODS_ISSUE"
+    assert get_movement_event_category("261") == "GOODS_ISSUE"
     assert get_movement_event_category("311") == "TRANSFER"
     assert get_movement_event_category("701") == "STOCK_WRITE_ON"
     assert get_movement_event_category("702") == "STOCK_WRITE_OFF"
+    assert get_movement_event_category("Z01") == "GOODS_ISSUE"
     assert get_movement_event_category("561") == "INITIAL_ENTRY"
     assert get_movement_event_category("999") == "OTHER"
+
+
+def test_movement_categories_cover_pp_pi_and_wm_splits():
+    assert get_movement_category("101") == "PRODUCTION"
+    assert get_movement_category("103") == "PROCUREMENT"
+    assert get_movement_category("261") == "PRODUCTION"
+    assert get_movement_category("Z01") == "CONSUMPTION"
+    assert get_movement_category("999") == "OTHER"
 
 
 def test_movement_direction_uses_transfer_and_signed_quantity_rules():
@@ -58,11 +70,19 @@ def test_movement_type_classification_schema_and_backcompat_columns():
     }
 
     assert rows["101"]["movement_label"] == "GOODS_RECEIPT_PRODUCTION"
+    assert rows["101"]["movement_category"] == "PRODUCTION"
     assert rows["101"]["event_category"] == "GOODS_RECEIPT"
     assert rows["101"]["is_goods_receipt"] is True
     assert rows["101"]["is_production_receipt"] is True
+    assert rows["103"]["movement_category"] == "PROCUREMENT"
+    assert rows["103"]["is_po_receipt"] is True
+    assert rows["103"]["is_production_receipt"] is False
     assert rows["102"]["is_reversal"] is True
     assert rows["102"]["is_receipt_reversal"] is True
+    assert rows["261"]["is_production_consumption"] is True
+    assert rows["262"]["is_production_consumption_reversal"] is True
+    assert rows["Z01"]["is_custom_bulk_drop"] is True
+    assert rows["Z01"]["is_goods_issue"] is True
     assert rows["551"]["is_goods_issue"] is True
     assert rows["551"]["is_scrap"] is True
     assert rows["552"]["is_scrap_reversal"] is True

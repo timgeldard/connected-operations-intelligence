@@ -139,3 +139,78 @@ To run the Gold pipeline manually:
 databricks pipelines start-update <gold-pipeline-id> --profile DEFAULT
 ```
 The bundled job is paused by default. Enable it after validating target-specific cadence and notification settings.
+
+---
+
+## 9. Data Freshness & Alerting
+
+The Gold pipeline publishes two observability tables on every run:
+
+* `gold_data_freshness_status` — one row per monitored Silver dependency, with
+  `latest_replicated_at`, `max_lag_minutes`, SLA, criticality, and status
+  (`FRESH`, `STALE`, `NO_DATA`, or `STATIC`).
+* `gold_data_health_summary` — rollup of freshness, expectation/event-log ownership,
+  storage-type role coverage, process-order staging validation, and stock reconciliation
+  exception severity.
+
+### Freshness SLAs
+
+| Dependency group | Examples | SLA |
+|---|---|---:|
+| Critical operational facts | `goods_movement`, `process_order`, WM transfer orders/requirements, `storage_bin` | 120 minutes |
+| Stock facts | `batch_stock`, `stock_at_location`, handling units | 240 minutes |
+| Reference/master data | `material`, purchase orders | 1440 minutes |
+| Seed/config tables | `movement_type_classification`, role/staging mappings | `STATIC` |
+
+`gold_critical_freshness_gate` fails the Gold update when any **critical** dependency is
+`STALE` or `NO_DATA`. This is intentional: critical empty/stale inputs should not produce a
+green Gold refresh.
+
+### Triage queries
+
+```sql
+SELECT
+  table_name,
+  domain,
+  criticality,
+  freshness_status,
+  latest_replicated_at,
+  round(max_lag_minutes, 1) AS max_lag_minutes,
+  freshness_sla_minutes
+FROM gold_data_freshness_status
+WHERE freshness_status IN ('STALE', 'NO_DATA')
+ORDER BY
+  CASE criticality WHEN 'critical' THEN 1 WHEN 'high' THEN 2 ELSE 3 END,
+  max_lag_minutes DESC;
+```
+
+```sql
+SELECT *
+FROM gold_data_health_summary
+ORDER BY
+  CASE health_status
+    WHEN 'FAIL' THEN 1
+    WHEN 'WARN' THEN 2
+    WHEN 'EVENT_LOG' THEN 3
+    ELSE 4
+  END,
+  health_area;
+```
+
+### Escalation
+
+1. If `gold_critical_freshness_gate` fails, identify the blocking table in
+   `gold_data_freshness_status`.
+2. Check the owning Silver pipeline:
+   * fast operational tables → `silver_fast_pipeline`
+   * reference/published tables → `silver_slow_pipeline`
+   * quality tables → `silver_quality_pipeline`
+3. If the Silver pipeline is stopped or failing, restart or remediate it before rerunning Gold.
+4. If Silver is healthy but a dependency remains stale, verify upstream replication and the
+   `_replicated_at` watermark on the source table.
+5. For `EVENT_LOG` expectation health, open the Gold pipeline event log and filter by expectation
+   name/flow. Expectation metrics are not materialized into a Gold table.
+
+Use the pipeline notification configured in `resources/gold_pipeline.pipeline.yml` for failure
+alerts. Treat `FAIL` health rows as immediate triage; `WARN` rows require operational review
+before consumers use the affected KPI for plant action.

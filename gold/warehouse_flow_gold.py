@@ -10,6 +10,7 @@ Tables:
   gold_stock_reconciliation_v2              — detailed IM↔WM reconciliation at plant×warehouse×material×batch×stock_category grain
   gold_stock_reconciliation_exceptions_v2  — filter of v2 where is_reconciled=false, with material description
   gold_stock_reconciliation_summary_v2     — v2 rolled up by plant×warehouse×mismatch_reason×severity
+  gold_stock_reconciliation_summary        — canonical v2 summary alias for consumption
 """
 
 import dlt
@@ -27,7 +28,10 @@ from gold._shared import (
 # ── 1. DISPENSARY BACKLOG ─────────────────────────────────────────────────────
 
 @dlt.table(**gold_table_args(
-    comment="Open dispensary / line-pick backlog (RESB BWART 261) by plant and supply area.",
+    comment=(
+        "Open dispensary / line-pick backlog by plant and supply area, using "
+        "movement_type_classification.is_production_consumption."
+    ),
     cluster_by=["plant_code", "production_supply_area"],
 ))
 @dlt.expect("open quantity non-negative", "total_open_qty >= 0.0")
@@ -35,14 +39,21 @@ def gold_dispensary_backlog():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
     reservations = spark.read.table(f"{silver_schema}.reservation_requirement")
+    classification = spark.read.table(f"{silver_schema}.movement_type_classification").select(
+        "movement_type_code", "is_production_consumption"
+    )
     orders = spark.read.table(f"{silver_schema}.process_order").select(
         "order_number", "scheduled_start_date"
     )
 
-    open_picks = reservations.filter(
-        (F.col("movement_type_code") == "261")
-        & (~F.coalesce(F.col("is_deletion_flagged"), F.lit(False)))
-        & (F.coalesce(F.col("open_quantity"), F.lit(0.0)) > 0)
+    open_picks = (
+        reservations
+        .join(F.broadcast(classification), "movement_type_code", "inner")
+        .filter(
+            F.coalesce(F.col("is_production_consumption"), F.lit(False))
+            & (~F.coalesce(F.col("is_deletion_flagged"), F.lit(False)))
+            & (F.coalesce(F.col("open_quantity"), F.lit(0.0)) > 0)
+        )
     )
 
     return (
@@ -827,5 +838,35 @@ def gold_stock_reconciliation_summary_v2():
              .alias("exception_count"),
             F.coalesce(F.sum("abs_delta_quantity"), F.lit(0.0)).alias("abs_delta_quantity_total"),
             F.coalesce(F.sum(F.abs(F.col("delta_value"))), F.lit(0.0)).alias("abs_delta_value_total"),
+        )
+    )
+
+
+# ── 11. STOCK RECONCILIATION SUMMARY ─────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Canonical summary of IM↔WM stock reconciliation by plant × warehouse × mismatch reason. "
+        "Backed by gold_stock_reconciliation_v2."
+    ),
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_stock_reconciliation_summary():
+    summary = dlt.read("gold_stock_reconciliation_summary_v2")
+    return (
+        summary
+        .select(
+            "plant_code",
+            "warehouse_number",
+            "mismatch_reason",
+            "mismatch_severity",
+            "row_count",
+            "exception_count",
+            "abs_delta_quantity_total",
+            "abs_delta_value_total",
+            F.when(F.col("exception_count") == 0, F.lit("RECONCILED"))
+            .when(F.col("mismatch_severity").isin("HIGH", "CRITICAL"), F.lit("ACTION_REQUIRED"))
+            .otherwise(F.lit("REVIEW"))
+            .alias("reconciliation_status"),
         )
     )

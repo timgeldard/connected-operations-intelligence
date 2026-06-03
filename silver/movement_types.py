@@ -305,6 +305,7 @@ def build_movement_type_classification_records(
         {
             "movement_type_code": code,
             "movement_label": MOVEMENT_TYPE_MAPPING.get(code, "UNCLASSIFIED_MOVEMENT_TYPE"),
+            "movement_category": get_movement_category(code),
             "event_category": get_movement_event_category(code),
             "is_reversal": code in T156_REVERSAL_MAPPING,
             "is_goods_receipt": code in RECEIPT_MOVEMENT_TYPES,
@@ -314,6 +315,11 @@ def build_movement_type_classification_records(
             "is_stock_write_off": code in STOCK_WRITE_OFF_MOVEMENT_TYPES,
             "is_production_receipt": code in {"101", "131"},
             "is_receipt_reversal": code in {"102", "132"},
+            "is_po_receipt": code in {"103"},
+            "is_po_receipt_reversal": code in {"104"},
+            "is_production_consumption": code in {"261"},
+            "is_production_consumption_reversal": code in {"262"},
+            "is_custom_bulk_drop": code == "Z01",
             "is_scrap": code == "551",
             "is_scrap_reversal": code == "552",
         }

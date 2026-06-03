@@ -23,6 +23,7 @@ Single entry point to the design records, specs and position papers for this dat
 | 010 | Living data dictionary & UC lineage | **PR #19** (planning) |
 | 011 | SAP→Silver→Gold reconciliation control | **PR #20** |
 | 012 | Gold & snapshot row-level security | **PR #22** |
+| 014 | Movement type classification consolidation | accepted |
 
 ## Hardening & roadmap
 - [`hardening-plan.md`](hardening-plan.md) — active hardening-sprint scope guard (current objective +
@@ -33,6 +34,10 @@ Single entry point to the design records, specs and position papers for this dat
   (shift calendar, reconciliation depth, data dictionary/lineage), file map, sequencing, effort.
 - [`ingestion_requests.md`](ingestion_requests.md) — source dependencies to hand off to the
   replication/platform teams (WMA-E-50 Z-tables, MARM, second bronze source, CI secrets, etc.).
+- [`freshness_contracts.md`](freshness_contracts.md) — Silver dependency freshness SLAs surfaced by
+  `gold_data_freshness_status` and `gold_data_health_summary`.
+- [`../examples/consumption/queries.md`](../examples/consumption/queries.md) — example SQL queries
+  over the semantic and observability views.
 
 ## Position papers & analysis
 - [`position/unity-catalog-security.md`](position/unity-catalog-security.md) — should this repo adopt
