@@ -67,11 +67,10 @@ SELECT
   remaining_open_qty,
   putaway_to_count,
   confirmed_putaway_to_count,
-  oldest_po_age_days,
-  inbound_backlog_risk_band
+  earliest_po_date
 FROM gold_inbound_po_backlog_enhanced_live
 WHERE remaining_open_qty > 0
-ORDER BY oldest_po_age_days DESC, remaining_open_qty DESC;
+ORDER BY earliest_po_date ASC, remaining_open_qty DESC;
 ```
 
 ## Stock reconciliation action list
