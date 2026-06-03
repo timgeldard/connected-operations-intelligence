@@ -1,0 +1,6 @@
+plant_code,data_product_name,kpi_name,enablement_status,reason_code,approved_by,approved_at,review_due_at
+C061,gold_transfer_requirement_backlog,TR Backlog,ENABLED,GO_LIVE,wm-config-owner,2026-06-03,2027-06-03
+C061,gold_lineside_stock,Lineside Stock,ENABLED,GO_LIVE,wm-config-owner,2026-06-03,2027-06-03
+C061,gold_process_order_staging,PO Staging,ENABLED,GO_LIVE,wm-config-owner,2026-06-03,2027-06-03
+C061,gold_stock_reconciliation,Stock Reconciliation,PILOT_ONLY,PILOT,wm-config-owner,2026-06-03,2027-06-03
+C061,gold_shift_output_summary,Shift Output,BLOCKED,NO_SHIFT_CALENDAR,wm-config-owner,2026-06-03,2027-06-03

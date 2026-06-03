@@ -5,7 +5,7 @@ Reference/Master data domain tables.
 import dlt
 from pyspark.sql import Row, Window
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType, StructField, StructType
+from pyspark.sql.types import BooleanType, DateType, StringType, StructField, StructType
 
 from silver.helpers import (
     BRONZE,
@@ -704,3 +704,198 @@ def warehouse_storage_location_mapping():
         )
         .distinct()
     )
+
+
+# ── 16. GOVERNED READINESS CONFIGURATION TABLES ────────────────────────────────
+
+@dlt.table(
+    name="site_config_plant",
+    comment="Conformed plant configuration inputs for readiness validation",
+    table_properties={"delta.enableChangeDataFeed": "true"}
+)
+def site_config_plant():
+    spark = get_spark()
+    config_table = spark.conf.get("site_config_plant_table", None)
+    table_exists = False
+    if config_table:
+        try:
+            table_exists = spark.catalog.tableExists(config_table)
+        except Exception:
+            table_exists = False
+    if table_exists:
+        return spark.read.table(config_table).filter(F.col("is_active") == True)
+    
+    data = [
+        Row(plant_code="C061", plant_name="Portbury [MFG]", country="GB", region="Europe",
+            business_unit="Operations", timezone="Europe/London", sap_system_id="ECC",
+            go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
+            qm_enabled_flag=True, batch_managed_flag=True, process_manufacturing_flag=True,
+            default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
+            is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-03")
+    ]
+    df = spark.createDataFrame(data)
+    return (
+        df.withColumn("valid_from", F.to_date("valid_from"))
+        .withColumn("valid_to", F.to_date("valid_to"))
+        .withColumn("last_validated_at", F.to_date("last_validated_at"))
+    )
+
+
+@dlt.table(
+    name="site_config_warehouse",
+    comment="Conformed warehouse configuration inputs for readiness validation",
+    table_properties={"delta.enableChangeDataFeed": "true"}
+)
+def site_config_warehouse():
+    spark = get_spark()
+    config_table = spark.conf.get("site_config_warehouse_table", None)
+    table_exists = False
+    if config_table:
+        try:
+            table_exists = spark.catalog.tableExists(config_table)
+        except Exception:
+            table_exists = False
+    if table_exists:
+        return spark.read.table(config_table).filter(F.col("is_active") == True)
+    
+    data = [
+        Row(plant_code="C061", warehouse_number="208", warehouse_description="Portbury Main WH",
+            relationship_type="PRIMARY", wm_usage_type="FULL_WM", is_shared_warehouse=False,
+            valid_from="2026-01-01", valid_to="9999-12-31", is_active=True, config_owner="wm-config-owner")
+    ]
+    df = spark.createDataFrame(data)
+    return (
+        df.withColumn("valid_from", F.to_date("valid_from"))
+        .withColumn("valid_to", F.to_date("valid_to"))
+    )
+
+
+@dlt.table(
+    name="site_config_storage_type_role",
+    comment="Conformed storage type role configuration inputs for readiness validation",
+    table_properties={"delta.enableChangeDataFeed": "true"}
+)
+def site_config_storage_type_role():
+    spark = get_spark()
+    config_table = spark.conf.get("site_config_storage_type_role_table", None)
+    table_exists = False
+    if config_table:
+        try:
+            table_exists = spark.catalog.tableExists(config_table)
+        except Exception:
+            table_exists = False
+    if table_exists:
+        return spark.read.table(config_table)
+    
+    data = [
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", storage_type_description="Production Supply", storage_role="LINESIDE", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=True, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="801", storage_type_description="Palletising (for Prodc.)", storage_role="LINESIDE", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=True, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="802", storage_type_description="Palletising (for Dispn.)", storage_role="LINESIDE", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=True, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="803", storage_type_description=None, storage_role="LINESIDE", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=True, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="804", storage_type_description=None, storage_role="LINESIDE", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=True, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="805", storage_type_description=None, storage_role="LINESIDE", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=True, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="901", storage_type_description="GR Area for Production", storage_role="INTERIM", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=False, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="902", storage_type_description="GR Area External Rcpts", storage_role="INTERIM", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=False, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="911", storage_type_description=None, storage_role="INTERIM", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=False, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="922", storage_type_description="Posting Change Area", storage_role="INTERIM", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=False, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="999", storage_type_description="Differences", storage_role="INTERIM", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=False, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
+    ]
+    df = spark.createDataFrame(data)
+    return (
+        df.withColumn("valid_from", F.to_date("valid_from"))
+        .withColumn("valid_to", F.to_date("valid_to"))
+        .withColumn("validated_at", F.to_date("validated_at"))
+    )
+
+
+@dlt.table(
+    name="site_config_movement_type_classification",
+    comment="Conformed movement type classification configuration inputs for readiness validation",
+    table_properties={"delta.enableChangeDataFeed": "true"}
+)
+def site_config_movement_type_classification():
+    spark = get_spark()
+    config_table = spark.conf.get("site_config_movement_type_classification_table", None)
+    table_exists = False
+    if config_table:
+        try:
+            table_exists = spark.catalog.tableExists(config_table)
+        except Exception:
+            table_exists = False
+    if table_exists:
+        return spark.read.table(config_table)
+    
+    data = [
+        Row(plant_code=None, movement_type_code="101", movement_text="Goods Receipt Production", event_category="GOODS_RECEIPT", is_production_receipt=True, is_production_consumption=False, is_scrap=False, is_reversal=False, reversal_of_movement_type=None, is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
+        Row(plant_code=None, movement_type_code="102", movement_text="Reversal GR Production", event_category="GOODS_RECEIPT", is_production_receipt=False, is_production_consumption=False, is_scrap=False, is_reversal=True, reversal_of_movement_type="101", is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
+        Row(plant_code=None, movement_type_code="261", movement_text="Goods Issue Production", event_category="GOODS_ISSUE", is_production_receipt=False, is_production_consumption=True, is_scrap=False, is_reversal=False, reversal_of_movement_type=None, is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
+        Row(plant_code=None, movement_type_code="262", movement_text="Reversal GI Production", event_category="GOODS_ISSUE", is_production_receipt=False, is_production_consumption=False, is_scrap=False, is_reversal=True, reversal_of_movement_type="261", is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
+        Row(plant_code=None, movement_type_code="551", movement_text="Goods Issue Scrapping", event_category="GOODS_ISSUE", is_production_receipt=False, is_production_consumption=False, is_scrap=True, is_reversal=False, reversal_of_movement_type=None, is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
+        Row(plant_code=None, movement_type_code="552", movement_text="Reversal GI Scrapping", event_category="GOODS_ISSUE", is_production_receipt=False, is_production_consumption=False, is_scrap=False, is_reversal=True, reversal_of_movement_type="551", is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
+        Row(plant_code=None, movement_type_code="601", movement_text="Goods Issue Delivery", event_category="GOODS_ISSUE", is_production_receipt=False, is_production_consumption=False, is_scrap=False, is_reversal=False, reversal_of_movement_type=None, is_inbound_receipt=False, is_outbound_issue=True, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
+        Row(plant_code=None, movement_type_code="602", movement_text="Reversal GI Delivery", event_category="GOODS_ISSUE", is_production_receipt=False, is_production_consumption=False, is_scrap=False, is_reversal=True, reversal_of_movement_type="601", is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
+    ]
+    df = spark.createDataFrame(data)
+    return (
+        df.withColumn("valid_from", F.to_date("valid_from"))
+        .withColumn("valid_to", F.to_date("valid_to"))
+    )
+
+
+@dlt.table(
+    name="site_config_staging_method",
+    comment="Conformed staging method configuration inputs for readiness validation",
+    table_properties={"delta.enableChangeDataFeed": "true"}
+)
+def site_config_staging_method():
+    spark = get_spark()
+    config_table = spark.conf.get("site_config_staging_method_table", None)
+    table_exists = False
+    if config_table:
+        try:
+            table_exists = spark.catalog.tableExists(config_table)
+        except Exception:
+            table_exists = False
+    if table_exists:
+        return spark.read.table(config_table)
+    
+    data = [
+        Row(plant_code="C061", warehouse_number="208", production_supply_area="Supply Area 1", storage_type="100", staging_method="ORDER_SPECIFIC", sap_reference_pattern="TO_BENUM_EQUALS_AUFNR", requires_batch_scan=False, requires_sscc=False, validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31")
+    ]
+    df = spark.createDataFrame(data)
+    return (
+        df.withColumn("valid_from", F.to_date("valid_from"))
+        .withColumn("valid_to", F.to_date("valid_to"))
+    )
+
+
+@dlt.table(
+    name="site_config_kpi_enablement",
+    comment="Conformed KPI enablement configuration inputs for readiness overrides",
+    table_properties={"delta.enableChangeDataFeed": "true"}
+)
+def site_config_kpi_enablement():
+    spark = get_spark()
+    config_table = spark.conf.get("site_config_kpi_enablement_table", None)
+    table_exists = False
+    if config_table:
+        try:
+            table_exists = spark.catalog.tableExists(config_table)
+        except Exception:
+            table_exists = False
+    if table_exists:
+        return spark.read.table(config_table)
+    
+    data = [
+        Row(plant_code="C061", data_product_name="gold_transfer_requirement_backlog", kpi_name="TR Backlog", enablement_status="ENABLED", reason_code="GO_LIVE", approved_by="wm-config-owner", approved_at="2026-06-03", review_due_at="2027-06-03"),
+        Row(plant_code="C061", data_product_name="gold_lineside_stock", kpi_name="Lineside Stock", enablement_status="ENABLED", reason_code="GO_LIVE", approved_by="wm-config-owner", approved_at="2026-06-03", review_due_at="2027-06-03"),
+        Row(plant_code="C061", data_product_name="gold_process_order_staging", kpi_name="PO Staging", enablement_status="ENABLED", reason_code="GO_LIVE", approved_by="wm-config-owner", approved_at="2026-06-03", review_due_at="2027-06-03"),
+        Row(plant_code="C061", data_product_name="gold_stock_reconciliation", kpi_name="Stock Reconciliation", enablement_status="PILOT_ONLY", reason_code="PILOT", approved_by="wm-config-owner", approved_at="2026-06-03", review_due_at="2027-06-03"),
+        Row(plant_code="C061", data_product_name="gold_shift_output_summary", kpi_name="Shift Output", enablement_status="BLOCKED", reason_code="NO_SHIFT_CALENDAR", approved_by="wm-config-owner", approved_at="2026-06-03", review_due_at="2027-06-03"),
+    ]
+    df = spark.createDataFrame(data)
+    return (
+        df.withColumn("approved_at", F.to_date("approved_at"))
+        .withColumn("review_due_at", F.to_date("review_due_at"))
+    )
+

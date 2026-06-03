@@ -1,0 +1,2 @@
+plant_code,warehouse_number,production_supply_area,storage_type,staging_method,sap_reference_pattern,requires_batch_scan,requires_sscc,validation_status,valid_from,valid_to
+C061,208,Supply Area 1,100,ORDER_SPECIFIC,TO_BENUM_EQUALS_AUFNR,false,false,CONFIRMED,2026-01-01,9999-12-31

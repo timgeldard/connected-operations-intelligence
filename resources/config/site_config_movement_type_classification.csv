@@ -1,0 +1,11 @@
+plant_code,movement_type_code,movement_text,event_category,is_production_receipt,is_production_consumption,is_scrap,is_reversal,reversal_of_movement_type,is_inbound_receipt,is_outbound_issue,is_stock_adjustment,classification_source,validation_status,valid_from,valid_to
+,101,Goods Receipt Production,GOODS_RECEIPT,true,false,false,false,,false,false,false,GLOBAL_OVERLAY,CONFIRMED,2026-01-01,9999-12-31
+,102,Reversal GR Production,GOODS_RECEIPT,false,false,false,true,101,false,false,false,GLOBAL_OVERLAY,CONFIRMED,2026-01-01,9999-12-31
+,261,Goods Issue Production,GOODS_ISSUE,false,true,false,false,,false,false,false,GLOBAL_OVERLAY,CONFIRMED,2026-01-01,9999-12-31
+,262,Reversal GI Production,GOODS_ISSUE,false,false,false,true,261,false,false,false,GLOBAL_OVERLAY,CONFIRMED,2026-01-01,9999-12-31
+,551,Goods Issue Scrapping,GOODS_ISSUE,false,false,true,false,,false,false,false,GLOBAL_OVERLAY,CONFIRMED,2026-01-01,9999-12-31
+,552,Reversal GI Scrapping,GOODS_ISSUE,false,false,false,true,551,false,false,false,GLOBAL_OVERLAY,CONFIRMED,2026-01-01,9999-12-31
+,601,Goods Issue Delivery,GOODS_ISSUE,false,false,false,false,,false,true,false,GLOBAL_OVERLAY,CONFIRMED,2026-01-01,9999-12-31
+,602,Reversal GI Delivery,GOODS_ISSUE,false,false,false,true,601,false,false,false,GLOBAL_OVERLAY,CONFIRMED,2026-01-01,9999-12-31
+,103,Goods Receipt PO,GOODS_RECEIPT,false,false,false,false,,true,false,false,GLOBAL_OVERLAY,CONFIRMED,2026-01-01,9999-12-31
+,104,Reversal GR PO,GOODS_RECEIPT,false,false,false,true,103,false,false,false,GLOBAL_OVERLAY,CONFIRMED,2026-01-01,9999-12-31
