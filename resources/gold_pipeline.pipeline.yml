@@ -19,7 +19,6 @@ resources:
       configuration:
         silver_catalog: ${var.catalog}
         silver_schema: ${var.schema}
-        gold_apply_row_filter: "false"
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting

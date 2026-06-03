@@ -71,24 +71,15 @@ STAGING_VALIDATION_THRESHOLD_PCT: float = float(
 
 
 def gold_table_args(comment: str, cluster_by: list) -> dict:
-    """Return common decorator arguments, applying the plant row filter if configured.
+    """Return common decorator arguments for Gold DLT tables.
 
-    Spark conf is read lazily HERE rather than at module import: the DLT load phase does not
-    guarantee the session conf is populated when the module is imported, so reading it at
-    import time (and raising) could fail the whole pipeline at load with an opaque error.
-    Gold runs as a trusted aggregate layer; the row filter is OFF by default (it would force
-    full MV refreshes — see ADR 005 / ADR 012). When gold_apply_row_filter is enabled,
-    plant_access_filter must already exist in the configured Silver schema.
+    Gold runs as a trusted aggregate layer — no UC row filters are applied directly to the MVs
+    (doing so forces full MV refreshes, see ADR 005 / ADR 012). Plant-level access control is
+    enforced at query time via the *_secured serving views, which use the central
+    published_<env>.security.model CSM pattern (see scripts/generate_gold_security_sql.py).
     """
-    spark = get_spark_session()
-    args = {
+    return {
         "comment": comment,
         "table_properties": {"delta.enableChangeDataFeed": "false"},
         "cluster_by": cluster_by,
     }
-    if spark.conf.get("gold_apply_row_filter", "false").lower() == "true":
-        # Reuse get_silver_schema for consistent catalog/schema resolution (incl. the spark_catalog
-        # single-part namespace) and its conf validation, rather than duplicating it here.
-        silver_schema = get_silver_schema(spark)
-        args["row_filter"] = f"ROW FILTER {silver_schema}.plant_access_filter ON (plant_code)"
-    return args

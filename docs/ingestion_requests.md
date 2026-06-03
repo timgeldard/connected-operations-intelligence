@@ -29,15 +29,17 @@ The product reads plant/customer/vendor/PO/HU masters from a published catalog v
 | `dev_sample` | `published_uat.central_services` | sample catalog has none — intentional (reads live UAT) |
 | `uat` | `published_uat.central_services` | ✅ verified present |
 | `prod` | `published_prod.central_services` | ⛔ **confirm catalog name exists / is accessible** |
+| `prod` (security) | `published_prod.security.model` | ⛔ **confirm exists with `io_reporting` rows before prod consumer access** |
 
 Tables consumed there (already verified in UAT): `plantcode_t001w`, `customermaster_kna1`,
 `vendormaster_lfa1`, `procurementorderobject_ekko/_ekpo`, `handlingunit_vekp/_vepo`.
 
-## 3. Decision — Gold schema for uat/prod
-`uat`/`prod` write `gold` into the **shared, multi-owner** `connected_plant_<env>.gold`
-(already holds platform `gold_process_order`, `gold_plant`, etc.). Decide before the first
-uat deploy: a **dedicated schema** for this product vs. coexist (name-collision / ownership
-risk). `dev_*` targets write to the clean `connected_plant_dev`.
+## 3. ~~Decision~~ Silver / Gold schema for uat/prod — ✅ resolved 2026-06-03
+UAT and prod use **dedicated product schemas** `silver_io_reporting` / `gold_io_reporting`
+in their respective catalogs (`connected_plant_uat`, `connected_plant_prod`). This avoids
+name-collision with the shared platform `silver` / `gold` schemas (which already hold
+`gold_process_order`, `gold_plant`, etc.). Dev targets continue to use `silver_dev` /
+`gold_dev` in the clean `connected_plant_dev` catalog.
 
 ## 4. Next-phase dependencies (roadmap — see docs/data-product-roadmap.md, ADRs 008–010)
 - **Shift calendar (ADR 008):** no SAP shift master in bronze (no `TC37A`/`TC37`). Need per-plant

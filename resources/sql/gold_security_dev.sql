@@ -1,40 +1,34 @@
 -- Unity Catalog Gold row-level security — secured serving views (DEV).
 -- Run once as a Unity Catalog admin after the first dev deploy. Re-runnable.
--- Requires: the plant_access_filter function (created by resources/sql/row_filter_dev.sql)
---           and CREATE VIEW on connected_plant_dev.gold_dev.
+-- Requires: CREATE VIEW on connected_plant_dev.gold_dev.
 -- WARNING: Generated automatically by scripts/generate_gold_security_sql.py. Do not edit manually.
 --
 -- Model: Gold MVs stay trusted (not row-filtered, to avoid full MV refreshes). Each plant-scoped
--- Gold table gets a <table>_secured view applying plant_access_filter(plant_code); the consumer
--- group is granted SELECT on the views only. plant_access_filter reads the *invoking* user's
--- 'allowed_plants' attribute (definer-rights view, session-scoped function), so per-plant
--- trimming is enforced at query time, and silver_admin members see all rows.
+-- Gold table gets a <table>_secured view that enforces plant access via published_<env>.security.model
+-- (application_key = 'io_reporting'). access_type 'full view' = all plants; 'filter' = filter_plant
+-- array. Dev secured views are pass-through (no security model available in dev).
+-- Consumers ('users' group) are granted SELECT on the *_secured views only.
 
 -- ── Secured views + consumer grants ──
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_transfer_order_performance_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_transfer_order_performance
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_transfer_order_performance;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_transfer_order_performance_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_inbound_outbound_throughput_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_inbound_outbound_throughput
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_inbound_outbound_throughput;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_inbound_outbound_throughput_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_bin_occupancy_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_bin_occupancy
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_bin_occupancy;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_bin_occupancy_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_stock_availability_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_availability
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_availability;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_stock_availability_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_transfer_requirement_backlog_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_transfer_requirement_backlog
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_transfer_requirement_backlog;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_transfer_requirement_backlog_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_stock_expiry_risk_secured AS
@@ -82,51 +76,42 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_stock_expiry_risk_secur
       ELSE 'OK'
     END AS highest_expiry_risk_bucket,
     coalesce(datediff(minimum_expiry_date, current_date()) < coalesce(minimum_remaining_shelf_life_days, 0), false) AS has_minimum_shelf_life_breach
-  FROM connected_plant_dev.gold_dev.gold_stock_expiry_risk
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  FROM connected_plant_dev.gold_dev.gold_stock_expiry_risk;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_stock_expiry_risk_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_shift_output_summary_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_shift_output_summary
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_shift_output_summary;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_shift_output_summary_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_process_order_schedule_adherence_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_process_order_schedule_adherence
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_process_order_schedule_adherence;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_process_order_schedule_adherence_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_plant_production_quality_summary_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_plant_production_quality_summary
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_plant_production_quality_summary;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_plant_production_quality_summary_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_process_order_operations_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_process_order_operations
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_process_order_operations;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_process_order_operations_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_order_downtime_summary_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_order_downtime_summary
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_order_downtime_summary;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_order_downtime_summary_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_process_order_component_status_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_process_order_component_status
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_process_order_component_status;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_process_order_component_status_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_dispensary_backlog_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_dispensary_backlog
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_dispensary_backlog;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_dispensary_backlog_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_lineside_stock_secured AS
   SELECT
     *,
     CASE WHEN earliest_expiry_date IS NOT NULL THEN datediff(earliest_expiry_date, current_date()) END AS min_days_to_expiry
-  FROM connected_plant_dev.gold_dev.gold_lineside_stock
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  FROM connected_plant_dev.gold_dev.gold_lineside_stock;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_lineside_stock_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_delivery_pick_status_secured AS
@@ -150,13 +135,11 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_delivery_pick_status_se
       WHEN coalesce(pick_fraction, 0.0) < 0.8 AND datediff(planned_goods_issue_date, current_date()) <= 1 THEN 'amber'
       ELSE 'green'
     END AS risk_band
-  FROM connected_plant_dev.gold_dev.gold_delivery_pick_status
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  FROM connected_plant_dev.gold_dev.gold_delivery_pick_status;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_delivery_pick_status_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_reconciliation
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_reconciliation;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_process_order_staging_secured AS
@@ -180,97 +163,79 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_process_order_staging_s
       WHEN coalesce(staging_fraction, 0.0) < 0.7 AND datediff(scheduled_start_date, current_date()) <= 1 THEN 'amber'
       ELSE 'green'
     END AS risk_band
-  FROM connected_plant_dev.gold_dev.gold_process_order_staging
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  FROM connected_plant_dev.gold_dev.gold_process_order_staging;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_process_order_staging_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_process_order_staging_validation_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_process_order_staging_validation
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_process_order_staging_validation;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_process_order_staging_validation_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_storage_type_role_coverage_status_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_storage_type_role_coverage_status
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_storage_type_role_coverage_status;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_storage_type_role_coverage_status_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_v2_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_reconciliation_v2
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_reconciliation_v2;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_v2_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_stock_value_reconciliation_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_value_reconciliation
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_value_reconciliation;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_stock_value_reconciliation_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_reconciliation_audit_log_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_reconciliation_audit_log
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_reconciliation_audit_log;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_reconciliation_audit_log_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_movement_reconciliation_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_movement_reconciliation
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_movement_reconciliation;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_movement_reconciliation_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_hu_reconciliation_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_hu_reconciliation
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_hu_reconciliation;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_hu_reconciliation_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_physical_inventory_recon_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_physical_inventory_recon
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_physical_inventory_recon;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_physical_inventory_recon_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_reconciliation_alerts_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_reconciliation_alerts
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_reconciliation_alerts;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_reconciliation_alerts_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_exceptions_v2_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_reconciliation_exceptions_v2
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_reconciliation_exceptions_v2;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_exceptions_v2_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_summary_v2_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_reconciliation_summary_v2
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_reconciliation_summary_v2;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_summary_v2_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_summary_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_reconciliation_summary
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_stock_reconciliation_summary;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_stock_reconciliation_summary_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_inbound_po_backlog_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_inbound_po_backlog
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_inbound_po_backlog;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_inbound_po_backlog_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_inbound_po_backlog_enhanced_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_inbound_po_backlog_enhanced
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_inbound_po_backlog_enhanced;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_inbound_po_backlog_enhanced_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_handling_unit_summary_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_handling_unit_summary
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_handling_unit_summary;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_handling_unit_summary_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_warehouse_exceptions_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_warehouse_exceptions
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_warehouse_exceptions;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_warehouse_exceptions_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_dev.gold_warehouse_kpi_snapshot_secured AS
-  SELECT * FROM connected_plant_dev.gold_dev.gold_warehouse_kpi_snapshot
-  WHERE connected_plant_dev.silver_dev.plant_access_filter(plant_code);
+  SELECT * FROM connected_plant_dev.gold_dev.gold_warehouse_kpi_snapshot;
 GRANT SELECT ON VIEW connected_plant_dev.gold_dev.gold_warehouse_kpi_snapshot_secured TO `users`;
 
 -- ── Base-table access hardening ──
 -- The actual REVOKE statements are generated as a SEPARATE admin script
 -- (resources/sql/gold_security_harden_dev.sql). Apply it AFTER this script so plant-scoped users
--- can only read the row-filtered *_secured views, not the un-trimmed base Gold tables (ADR 012).
+-- can only read the *_secured views, not the un-trimmed base Gold tables (ADR 012).
 -- It is kept separate because revoking broad access is operationally sensitive and irreversible-ish.

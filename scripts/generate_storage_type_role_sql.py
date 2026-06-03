@@ -18,8 +18,8 @@ import os
 
 ENVIRONMENTS = {
     "dev": {"catalog": "connected_plant_dev", "schema": "silver_dev"},
-    "uat": {"catalog": "connected_plant_uat", "schema": "silver"},
-    "prod": {"catalog": "connected_plant_prod", "schema": "silver"},
+    "uat": {"catalog": "connected_plant_uat", "schema": "silver_io_reporting"},
+    "prod": {"catalog": "connected_plant_prod", "schema": "silver_io_reporting"},
 }
 
 CSV_PATH = "resources/config/storage_type_role_mapping.csv"
