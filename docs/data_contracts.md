@@ -239,7 +239,7 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Source Silver Tables**: `silver.purchase_order`, `silver.goods_movement`, `silver.movement_type_classification`, `silver.warehouse_transfer_order`
 * **Purpose**: open inbound PO backlog enriched with PO-linked 103/104 goods-receipt quantity, remaining open quantity, QA item count, and putaway TO evidence.
 * **Aging**: base MV carries deterministic age anchors (`earliest_po_date`, `latest_gr_posting_date`, `oldest_putaway_to_created_datetime`); date-relative `oldest_po_age_days` and `inbound_backlog_risk_band` are served by `gold_inbound_po_backlog_enhanced_live`.
-* **Known Caveats**: GR linkage requires `silver.goods_movement.purchase_order_number` and `purchase_order_item`. Putaway TO linkage is best-effort via `warehouse_transfer_order.source_reference_number = purchase_order_number` because LTAP/LTAK do not provide a normalized PO item key in the current Silver model.
+* **Known Caveats**: GR linkage requires `silver.goods_movement.purchase_order_number` and `purchase_order_item`. Putaway TO linkage is best-effort via `plant_code` plus `warehouse_transfer_order.source_reference_number = purchase_order_number` because LTAP/LTAK do not provide a normalized PO item key in the current Silver model.
 
 ### 17. `gold.gold_handling_unit_summary`
 * **Status**: Pilot-grade

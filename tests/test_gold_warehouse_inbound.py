@@ -91,10 +91,16 @@ def test_inbound_po_backlog_enhanced_gr_putaway_and_aging_anchors(spark):
             quantity=40.0, posting_date=date(2026, 5, 8)),
     ], "goods_movement")
     _save(spark, [
-        Row(transfer_order_number="TO1", item_status="Fully Confirmed", source_reference_number="450001",
+        Row(plant_code="C061", transfer_order_number="TO1", item_status="Fully Confirmed",
+            source_reference_number="450001",
             created_datetime=datetime(2026, 5, 6, 8, 0), confirmed_date=date(2026, 5, 6)),
-        Row(transfer_order_number="TO2", item_status="Open", source_reference_number="450002",
+        Row(plant_code="C061", transfer_order_number="TO2", item_status="Open",
+            source_reference_number="450002",
             created_datetime=datetime(2026, 5, 8, 8, 0), confirmed_date=None),
+        # Same PO number in another plant must not link to the C061 backlog.
+        Row(plant_code="C099", transfer_order_number="TOX", item_status="Fully Confirmed",
+            source_reference_number="450001",
+            created_datetime=datetime(2026, 5, 9, 8, 0), confirmed_date=date(2026, 5, 9)),
     ], "warehouse_transfer_order")
 
     rows = all_rows(gold_inbound_po_backlog_enhanced())

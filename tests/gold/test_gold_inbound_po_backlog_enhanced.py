@@ -31,8 +31,12 @@ def test_gold_inbound_po_backlog_enhanced_receipts_and_putaway(save_table):
             quantity=40.0, posting_date=date(2026, 5, 7)),
     ], "goods_movement")
     save_table([
-        Row(transfer_order_number="TO1", item_status="Fully Confirmed", source_reference_number="450001",
+        Row(plant_code="C061", transfer_order_number="TO1", item_status="Fully Confirmed",
+            source_reference_number="450001",
             created_datetime=datetime(2026, 5, 6, 8, 0), confirmed_date=date(2026, 5, 6)),
+        Row(plant_code="C099", transfer_order_number="TOX", item_status="Fully Confirmed",
+            source_reference_number="450001",
+            created_datetime=datetime(2026, 5, 7, 8, 0), confirmed_date=date(2026, 5, 7)),
     ], "warehouse_transfer_order")
 
     rows = all_rows(gold_inbound_po_backlog_enhanced())

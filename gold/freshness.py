@@ -172,19 +172,25 @@ def gold_data_health_summary():
         freshness
         .agg(
             F.count(F.lit(1)).alias("monitored_table_count"),
-            F.sum(
-                F.when(
-                    (F.col("criticality") == "critical")
-                    & (F.col("freshness_status").isin("STALE", "NO_DATA")),
-                    F.lit(1),
-                ).otherwise(F.lit(0))
+            F.coalesce(
+                F.sum(
+                    F.when(
+                        (F.col("criticality") == "critical")
+                        & (F.col("freshness_status").isin("STALE", "NO_DATA")),
+                        F.lit(1),
+                    ).otherwise(F.lit(0))
+                ),
+                F.lit(0),
             ).alias("critical_issue_count"),
-            F.sum(
-                F.when(
-                    (F.col("criticality") != "critical")
-                    & (F.col("freshness_status").isin("STALE", "NO_DATA")),
-                    F.lit(1),
-                ).otherwise(F.lit(0))
+            F.coalesce(
+                F.sum(
+                    F.when(
+                        (F.col("criticality") != "critical")
+                        & (F.col("freshness_status").isin("STALE", "NO_DATA")),
+                        F.lit(1),
+                    ).otherwise(F.lit(0))
+                ),
+                F.lit(0),
             ).alias("warning_issue_count"),
             F.max("checked_at").alias("latest_observed_at"),
         )
@@ -213,12 +219,14 @@ def gold_data_health_summary():
         storage_coverage
         .agg(
             F.count(F.lit(1)).alias("warehouse_count"),
-            F.sum(F.when(F.col("coverage_status") == "MISSING", F.lit(1)).otherwise(F.lit(0))).alias(
-                "critical_issue_count"
-            ),
-            F.sum(F.when(F.col("coverage_status") == "PARTIAL", F.lit(1)).otherwise(F.lit(0))).alias(
-                "warning_issue_count"
-            ),
+            F.coalesce(
+                F.sum(F.when(F.col("coverage_status") == "MISSING", F.lit(1)).otherwise(F.lit(0))),
+                F.lit(0),
+            ).alias("critical_issue_count"),
+            F.coalesce(
+                F.sum(F.when(F.col("coverage_status") == "PARTIAL", F.lit(1)).otherwise(F.lit(0))),
+                F.lit(0),
+            ).alias("warning_issue_count"),
         )
         .withColumn("latest_observed_at", F.current_timestamp())
         .withColumn(
@@ -245,12 +253,14 @@ def gold_data_health_summary():
         staging_validation
         .agg(
             F.count(F.lit(1)).alias("warehouse_count"),
-            F.sum(F.when(F.col("validation_status") == "NOT_VALIDATED", F.lit(1)).otherwise(F.lit(0))).alias(
-                "critical_issue_count"
-            ),
-            F.sum(F.when(F.col("validation_status") == "NOT_APPLICABLE", F.lit(1)).otherwise(F.lit(0))).alias(
-                "warning_issue_count"
-            ),
+            F.coalesce(
+                F.sum(F.when(F.col("validation_status") == "NOT_VALIDATED", F.lit(1)).otherwise(F.lit(0))),
+                F.lit(0),
+            ).alias("critical_issue_count"),
+            F.coalesce(
+                F.sum(F.when(F.col("validation_status") == "NOT_APPLICABLE", F.lit(1)).otherwise(F.lit(0))),
+                F.lit(0),
+            ).alias("warning_issue_count"),
             F.max("sample_window_end").alias("latest_observed_at"),
         )
         .withColumn(

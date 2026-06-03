@@ -156,7 +156,8 @@ def gold_inbound_po_backlog_enhanced():
         po_group_keys
         .join(
             transfer_orders,
-            po_group_keys.purchase_order_number == transfer_orders.source_reference_number,
+            (po_group_keys.purchase_order_number == transfer_orders.source_reference_number)
+            & (po_group_keys.plant_code == transfer_orders.plant_code),
             "left",
         )
         .groupBy(*[po_group_keys[c] for c in group_cols])

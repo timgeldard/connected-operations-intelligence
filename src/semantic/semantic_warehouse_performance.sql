@@ -8,8 +8,10 @@ WITH to_perf AS (
     warehouse_number,
     sum(to_item_count) AS confirmed_to_item_count,
     sum(confirmed_qty) AS confirmed_qty,
-    avg(pick_accuracy) AS avg_pick_accuracy,
-    avg(fully_confirmed_rate) AS avg_fully_confirmed_rate
+    CASE WHEN sum(confirmed_qty) > 0 THEN sum(picked_qty) / sum(confirmed_qty) END AS avg_pick_accuracy,
+    CASE
+      WHEN sum(to_item_count) > 0 THEN sum(fully_confirmed_rate * to_item_count) / sum(to_item_count)
+    END AS avg_fully_confirmed_rate
   FROM gold_transfer_order_performance_secured
   GROUP BY plant_code, warehouse_number
 ),
