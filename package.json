@@ -7,8 +7,8 @@
     "lint": "pnpm -r --parallel lint",
     "test": "pnpm -r --parallel test",
     "typecheck": "pnpm -r --parallel typecheck",
-    "contracts:validate": "python3 scripts/contracts/validate_contracts.py",
-    "contracts:generate": "python3 scripts/contracts/generate_contracts.py"
+    "contracts:validate": ".venv/bin/python scripts/contracts/validate_contracts.py",
+    "contracts:generate": ".venv/bin/python scripts/contracts/generate_contracts.py"
   },
   "engines": {
     "node": ">=18.0.0",

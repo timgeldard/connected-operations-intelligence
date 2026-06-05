@@ -26,72 +26,108 @@ importers:
       '@types/node':
         specifier: ^18.19.0
         version: 18.19.130
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
 
   apps/web:
     devDependencies:
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
 
   domain-integrations/operations:
     devDependencies:
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
 
   domain-integrations/quality:
     devDependencies:
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
 
   domain-integrations/spc:
     devDependencies:
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
 
   domain-integrations/traceability:
     devDependencies:
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
 
   domain-integrations/warehouse:
     devDependencies:
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
 
   packages/config:
     devDependencies:
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
 
   packages/data-contracts:
     devDependencies:
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
 
   packages/domain-models:
     devDependencies:
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
 
   packages/queryspecs:
     devDependencies:
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
 
   packages/ui:
     devDependencies:
+      eslint:
+        specifier: ^8.56.0
+        version: 8.57.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3

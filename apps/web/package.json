@@ -10,6 +10,7 @@
     "test": "echo 'No tests yet'"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "eslint": "^8.56.0"
   }
 }
