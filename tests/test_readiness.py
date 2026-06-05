@@ -3,12 +3,15 @@ Unit tests for the Plant Readiness & Data Product Safety model.
 Tests all validation check logic, thresholds, scoring rollup deductions, and override rules.
 """
 
-import datetime
-from datetime import date, datetime as dt, timedelta
+from datetime import date, timedelta
+from datetime import datetime as dt
+
+import dlt
 import pytest
 from pyspark.sql import Row, SparkSession
-import dlt
-from tests.conftest import create_df, all_rows, first_row
+
+from tests.conftest import all_rows, create_df
+
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_readiness(spark: SparkSession):
@@ -17,16 +20,16 @@ def setup_readiness(spark: SparkSession):
     spark.conf.set("silver_schema", "silver")
     spark.sql("CREATE DATABASE IF NOT EXISTS silver")
     spark.sql("CREATE DATABASE IF NOT EXISTS gold")
-    
-    # Redirect dlt.read to query tables from gold schema
+
     import gold.readiness_validation
     old_read = dlt.read
-    read_fn = lambda name: spark.read.table(f"gold.{name}")
+    def read_fn(name):
+        return spark.read.table(f"gold.{name}")
     dlt.read = read_fn
     gold.readiness_validation.dlt.read = read_fn
-    
+
     yield
-    
+
     # Restore dlt.read and drop DBs
     dlt.read = old_read
     gold.readiness_validation.dlt.read = old_read
@@ -231,10 +234,10 @@ def test_readiness_status_rollup_and_overrides(spark: SparkSession):
         # Plant C061 (Score: 70 -> PILOT_ONLY)
         Row(plant_code="C061", data_product_name="gold_lineside_stock", validation_name="Check A", validation_status="WARNING", severity="HIGH", last_checked_at=dt.now()),
         Row(plant_code="C061", data_product_name="gold_lineside_stock", validation_name="Check B", validation_status="WARNING", severity="MEDIUM", last_checked_at=dt.now()),
-        
+
         # Plant C062 (Critical failure override -> BLOCKED)
         Row(plant_code="C062", data_product_name="gold_lineside_stock", validation_name="Check A", validation_status="FAILED", severity="CRITICAL", last_checked_at=dt.now()),
-        
+
         # Plant C063 (Freshness SLA failure -> BLOCKED)
         Row(plant_code="C063", data_product_name="all_products", validation_name="Plant Freshness SLA", validation_status="BLOCKED", severity="CRITICAL", last_checked_at=dt.now()),
     ], "gold_validation_failure_detail")

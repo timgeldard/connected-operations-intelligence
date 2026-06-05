@@ -1,7 +1,7 @@
 import dlt
+from pyspark.sql import Row, Window
 from pyspark.sql import functions as F
-from pyspark.sql import Window
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType, TimestampType, DateType
+
 from gold._shared import get_silver_schema, get_spark_session, gold_table_args
 
 # ── 1. STORAGE TYPE ROLE COVERAGE ─────────────────────────────────────────────
@@ -13,29 +13,29 @@ from gold._shared import get_silver_schema, get_spark_session, gold_table_args
 def gold_storage_type_role_coverage_status():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    
+
     bins = spark.read.table(f"{silver_schema}.storage_bin")
     roles = spark.read.table(f"{silver_schema}.site_config_storage_type_role")
-    
+
     active_types = bins.filter(F.col("plant_code") != "SHARED").select("plant_code", "warehouse_number", "storage_type").distinct()
-    
+
     joined = active_types.join(
         roles,
         ["plant_code", "warehouse_number", "storage_type"],
         "left"
     )
-    
+
     grouped = joined.groupBy("plant_code", "warehouse_number").agg(
         F.count("*").alias("total_types"),
         F.sum(F.when(F.col("storage_role").isNull() | (F.col("role_confidence") == "FALLBACK"), 1).otherwise(0)).alias("unmapped_types")
     )
-    
+
     res = grouped.withColumn(
         "match_rate",
         F.when(F.col("total_types") > 0, (F.col("total_types") - F.col("unmapped_types")) / F.col("total_types"))
         .otherwise(F.lit(None).cast("double"))
     )
-    
+
     return (
         res.select(
             F.col("plant_code"),
@@ -70,12 +70,12 @@ def gold_storage_type_role_coverage_status():
 def gold_movement_type_classification_coverage():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    
+
     movs = spark.read.table(f"{silver_schema}.goods_movement").filter(F.col("posting_date") >= F.date_sub(F.current_date(), 90))
     cfg = spark.read.table(f"{silver_schema}.site_config_movement_type_classification").alias("cfg")
-    
+
     active_movs = movs.groupBy("plant_code", "movement_type_code").agg(F.count("*").alias("record_count"))
-    
+
     joined = active_movs.alias("m").join(
         cfg.alias("cfg"),
         "movement_type_code",
@@ -89,22 +89,22 @@ def gold_movement_type_classification_coverage():
         "event_category",
         F.col("cfg.plant_code").alias("cfg_plant_code")
     )
-    
+
     win = Window.partitionBy("plant_code", "movement_type_code").orderBy(F.col("cfg_plant_code").desc_nulls_last())
     deduped = joined.withColumn("_rn", F.row_number().over(win)).filter(F.col("_rn") == 1).drop("_rn")
-    
+
     grouped = deduped.groupBy("plant_code").agg(
         F.sum("record_count").alias("total_records"),
         F.sum(F.when(F.col("event_category").isNull() | (F.col("event_category") == "OTHER"), F.col("record_count")).otherwise(0)).alias("unclassified_records"),
         F.sum(F.when(F.col("movement_type_code").like("Z%") & (F.col("event_category").isNull() | (F.col("event_category") == "OTHER")), F.col("record_count")).otherwise(0)).alias("unclassified_z_records")
     )
-    
+
     res = grouped.withColumn(
         "match_rate",
         F.when(F.col("total_records") > 0, (F.col("total_records") - F.col("unclassified_records")) / F.col("total_records"))
         .otherwise(F.lit(None).cast("double"))
     )
-    
+
     return (
         res.select(
             F.col("plant_code"),
@@ -140,10 +140,10 @@ def gold_movement_type_classification_coverage():
 def gold_process_order_staging_validation():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    
+
     tos = spark.read.table(f"{silver_schema}.warehouse_transfer_order").filter(F.col("source_reference_type") == "F")
     orders = spark.read.table(f"{silver_schema}.process_order").select("order_number", "plant_code").distinct()
-    
+
     joined = tos.alias("tos").join(
         orders.alias("orders"),
         (F.col("tos.source_reference_number") == F.col("orders.order_number")) & (F.col("tos.plant_code") == F.col("orders.plant_code")),
@@ -153,18 +153,18 @@ def gold_process_order_staging_validation():
         "warehouse_number",
         F.col("orders.order_number").alias("order_number")
     )
-    
+
     grouped = joined.groupBy("plant_code", "warehouse_number").agg(
         F.count("*").alias("total_to_items"),
         F.sum(F.when(F.col("order_number").isNull(), 1).otherwise(0)).alias("unmatched_to_items")
     )
-    
+
     res = grouped.withColumn(
         "match_rate",
         F.when(F.col("total_to_items") > 0, (F.col("total_to_items") - F.col("unmatched_to_items")) / F.col("total_to_items"))
         .otherwise(F.lit(None).cast("double"))
     )
-    
+
     return (
         res.select(
             F.col("plant_code"),
@@ -199,20 +199,20 @@ def gold_process_order_staging_validation():
 def gold_recipe_line_enrichment_coverage():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    
+
     orders = spark.read.table(f"{silver_schema}.process_order").filter(F.col("scheduled_start_date") >= F.date_sub(F.current_date(), 90))
-    
+
     grouped = orders.groupBy("plant_code").agg(
         F.count("*").alias("total_orders"),
         F.sum(F.when(F.col("production_line").isNull(), 1).otherwise(0)).alias("unenriched_orders")
     )
-    
+
     res = grouped.withColumn(
         "match_rate",
         F.when(F.col("total_orders") > 0, (F.col("total_orders") - F.col("unenriched_orders")) / F.col("total_orders"))
         .otherwise(F.lit(None).cast("double"))
     )
-    
+
     return (
         res.select(
             F.col("plant_code"),
@@ -247,24 +247,24 @@ def gold_recipe_line_enrichment_coverage():
 def gold_delivery_pick_status_validation():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    
+
     deliveries = spark.read.table(f"{silver_schema}.outbound_delivery").filter(F.col("planned_goods_issue_date") >= F.date_sub(F.current_date(), 90))
-    
+
     deliv_uom = deliveries.groupBy("plant_code", "delivery_number").agg(
         F.count_distinct("base_uom").alias("uom_count")
     )
-    
+
     grouped = deliv_uom.groupBy("plant_code").agg(
         F.count("*").alias("total_deliveries"),
         F.sum(F.when(F.col("uom_count") > 1, 1).otherwise(0)).alias("mixed_uom_deliveries")
     )
-    
+
     res = grouped.withColumn(
         "mixed_rate",
         F.when(F.col("total_deliveries") > 0, F.col("mixed_uom_deliveries") / F.col("total_deliveries"))
         .otherwise(F.lit(None).cast("double"))
     )
-    
+
     return (
         res.select(
             F.col("plant_code"),
@@ -295,18 +295,18 @@ def gold_delivery_pick_status_validation():
 def gold_stock_reconciliation_readiness():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    
+
     slocs = spark.read.table(f"{silver_schema}.warehouse_storage_location_mapping")
     slocs_agg = slocs.groupBy("plant_code").agg(F.count("*").alias("mapped_slocs"))
-    
+
     roles_cov = dlt.read("gold_storage_type_role_coverage_status")
-    
+
     joined = slocs_agg.join(
         roles_cov,
         "plant_code",
         "left"
     )
-    
+
     return (
         joined.select(
             F.col("plant_code"),
@@ -335,12 +335,12 @@ def gold_stock_reconciliation_readiness():
 def gold_plant_freshness_readiness():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    
+
     po = spark.read.table(f"{silver_schema}.process_order").groupBy("plant_code").agg(F.max("_replicated_at").alias("po_max"))
     to = spark.read.table(f"{silver_schema}.warehouse_transfer_order").groupBy("plant_code").agg(F.max("_replicated_at").alias("to_max"))
-    
+
     joined = po.join(to, "plant_code", "outer")
-    
+
     res = joined.withColumn(
         "max_rep",
         F.coalesce(
@@ -349,12 +349,12 @@ def gold_plant_freshness_readiness():
             F.col("to_max")
         )
     )
-    
+
     res_lag = res.withColumn(
         "lag_minutes",
         (F.unix_timestamp(F.current_timestamp()) - F.unix_timestamp(F.col("max_rep"))) / 60
     )
-    
+
     return (
         res_lag.select(
             F.col("plant_code"),
@@ -388,7 +388,7 @@ def gold_validation_failure_detail():
     s5 = dlt.read("gold_delivery_pick_status_validation")
     s6 = dlt.read("gold_stock_reconciliation_readiness")
     s7 = dlt.read("gold_plant_freshness_readiness")
-    
+
     return s1.unionByName(s2).unionByName(s3).unionByName(s4).unionByName(s5).unionByName(s6).unionByName(s7)
 
 # ── 9. PLANT READINESS STATUS (ROLLUP SCORING) ───────────────────────────────
@@ -400,11 +400,11 @@ def gold_validation_failure_detail():
 def gold_plant_readiness_status():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    
+
     # Read the details and conformed enablement configs
     detail = dlt.read("gold_validation_failure_detail")
     enablement = spark.read.table(f"{silver_schema}.site_config_kpi_enablement")
-    
+
     # Calculate score deduction per plant / data product
     # Deductions: CRITICAL: -40, HIGH: -20, MEDIUM: -10, LOW: -3, INFO: 0
     deduct_df = detail.withColumn(
@@ -415,7 +415,7 @@ def gold_plant_readiness_status():
         .when(F.col("severity") == "LOW", 3)
         .otherwise(0)
     )
-    
+
     # Calculate total deduction per plant/data_product
     # Note: plant lag is in data_product_name = 'all_products', we should account for it.
     # Group and rollup
@@ -424,13 +424,13 @@ def gold_plant_readiness_status():
         F.max(F.when(F.col("severity") == "CRITICAL", 1).otherwise(0)).alias("has_critical"),
         F.max(F.when((F.col("validation_name") == "Plant Freshness SLA") & (F.col("validation_status") == "BLOCKED"), 1).otherwise(0)).alias("is_stale")
     )
-    
+
     # Freshness lag rollup: join rolled with plant-level lag status
     stale_plants = rolled.filter((F.col("data_product_name") == "all_products") & (F.col("is_stale") == 1)).select("plant_code").distinct()
-    
+
     score_df = rolled.withColumn("raw_score", 100 - F.col("total_deduction")) \
                      .withColumn("readiness_score", F.when(F.col("raw_score") < 0, 0).otherwise(F.col("raw_score")))
-    
+
     # Apply override status logic
     status_df = score_df.withColumn(
         "computed_status",
@@ -439,7 +439,7 @@ def gold_plant_readiness_status():
         .when(F.col("readiness_score") >= 50, "PILOT_ONLY")
         .otherwise("BLOCKED")
     )
-    
+
     # Join with conformed KPI enablement overrides
     joined_override = status_df.alias("s").join(
         enablement.alias("e"),
@@ -454,7 +454,7 @@ def gold_plant_readiness_status():
         F.col("s.computed_status").alias("computed_status"),
         F.col("e.enablement_status").alias("enablement_status")
     )
-    
+
     # Apply final overrides
     res = joined_override.join(stale_plants.alias("stale"), "plant_code", "left") \
         .withColumn(
@@ -464,7 +464,7 @@ def gold_plant_readiness_status():
             .when(F.col("enablement_status").isNotNull(), F.col("enablement_status"))
             .otherwise(F.col("computed_status"))
         )
-    
+
     # Map domain names
     res_domain = res.withColumn(
         "domain",
@@ -474,7 +474,7 @@ def gold_plant_readiness_status():
         .when(F.col("data_product_name").like("%output%"), "PRODUCTION")
         .otherwise("GENERAL")
     )
-    
+
     return (
         res_domain.select(
             F.col("plant_code"),
@@ -495,7 +495,7 @@ def gold_plant_readiness_status():
 ))
 def gold_data_product_safety_status():
     spark = get_spark_session()
-    
+
     data = [
         Row(data_product_name="gold_transfer_order_performance", current_status_label="READY", contains_date_relative_logic=False, is_allowed_for_production=True),
         Row(data_product_name="gold_transfer_requirement_backlog", current_status_label="READY", contains_date_relative_logic=False, is_allowed_for_production=True),
@@ -519,11 +519,11 @@ def gold_data_product_safety_status():
 def gold_readiness_dashboard_source():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    
+
     # Read the status rollup and conformed plant catalog
     status = dlt.read("gold_plant_readiness_status")
     plants = spark.read.table(f"{silver_schema}.site_config_plant")
-    
+
     # Left join to enrich dashboard rows
     return (
         status.join(

@@ -1,0 +1,1 @@
+export const DOMAIN_MODELS_VERSION = '1.0.0';

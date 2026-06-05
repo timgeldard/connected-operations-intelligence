@@ -1,0 +1,23 @@
+{
+  "name": "connected-operations-intelligence",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Connected Operations Intelligence monorepo scaffold",
+  "scripts": {
+    "lint": "pnpm -r --parallel lint",
+    "test": "pnpm -r --parallel test",
+    "typecheck": "pnpm -r --parallel typecheck",
+    "contracts:validate": ".venv/bin/python scripts/contracts/validate_contracts.py",
+    "contracts:generate": ".venv/bin/python scripts/contracts/generate_contracts.py"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0"
+  }
+}
