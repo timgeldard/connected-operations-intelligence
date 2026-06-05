@@ -7,7 +7,7 @@ install:
 
 test:
 	pnpm test
-	.venv/bin/pytest
+	cd data-products/io-reporting && ../../.venv/bin/pytest
 
 lint:
 	pnpm lint
