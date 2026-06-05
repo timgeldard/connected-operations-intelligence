@@ -84,6 +84,8 @@ def validate_manifest():
     if not isinstance(contracts, list):
         errors.append("Top-level 'contracts' must be a list.")
         contracts = []
+    elif len(contracts) == 0:
+        errors.append("Top-level 'contracts' must be a non-empty list.")
 
     contract_ids = set()
 
@@ -113,11 +115,27 @@ def validate_manifest():
         if lifecycle and lifecycle not in VALID_LIFECYCLES:
             errors.append(f"Contract '{c_id}' has invalid lifecycle '{lifecycle}'. Valid lifecycles: {sorted(list(VALID_LIFECYCLES))}")
 
-        # Validate primary key is a non-empty list
+        # Validate primary key is a non-empty list of strings
         pk = contract.get("primary_key")
         if pk is not None:
             if not isinstance(pk, list) or len(pk) == 0:
                 errors.append(f"Contract '{c_id}' primary_key must be a non-empty list.")
+            else:
+                for item in pk:
+                    if not isinstance(item, str):
+                        errors.append(f"Contract '{c_id}' primary_key element '{item}' must be a string.")
+
+        # Validate access policy
+        access_policy = contract.get("access_policy")
+        if access_policy is not None:
+            if not isinstance(access_policy, dict):
+                errors.append(f"Contract '{c_id}' access_policy must be an object.")
+            else:
+                for a_req in ["row_level_key", "entitlement_source"]:
+                    if a_req not in access_policy:
+                        errors.append(f"Contract '{c_id}' access_policy is missing required field: '{a_req}'")
+                    elif not isinstance(access_policy[a_req], str):
+                        errors.append(f"Contract '{c_id}' access_policy '{a_req}' must be a string.")
 
         # Validate freshness policy
         freshness = contract.get("freshness")
