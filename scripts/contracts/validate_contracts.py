@@ -35,6 +35,7 @@ REQUIRED_MANIFEST_FIELDS = [
     "product",
     "owner",
     "consumer",
+    "rules",
     "contracts",
 ]
 
@@ -73,12 +74,30 @@ def validate_manifest():
         print("Error: Manifest is empty.")
         sys.exit(1)
 
+    if not isinstance(data, dict):
+        print("Error: Manifest root must be a YAML object.")
+        sys.exit(1)
+
     errors = []
 
     # 1. Validate top-level manifest fields
     for req_field in REQUIRED_MANIFEST_FIELDS:
         if req_field not in data:
             errors.append(f"Manifest is missing required top-level field: '{req_field}'")
+
+    # Validate rules block structure
+    rules = data.get("rules")
+    if rules is not None:
+        if not isinstance(rules, dict):
+            errors.append("Top-level 'rules' must be an object/dict.")
+        else:
+            for rule_key in ["application_must_use_approved_consumption_views", "raw_silver_gold_access_from_app_forbidden"]:
+                if rule_key not in rules:
+                    errors.append(f"Rules block is missing required key: '{rule_key}'")
+                else:
+                    val = rules[rule_key]
+                    if type(val) is not bool:
+                        errors.append(f"Rule '{rule_key}' must be a boolean value (not string or other types).")
 
     contracts = data.get("contracts", [])
     if not isinstance(contracts, list):
@@ -90,6 +109,9 @@ def validate_manifest():
     contract_ids = set()
 
     for idx, contract in enumerate(contracts):
+        if not isinstance(contract, dict):
+            errors.append(f"Contract at index {idx} must be a dictionary/object.")
+            continue
         c_id = contract.get("id", f"<index {idx}>")
         print(f"Checking contract: {c_id}")
 
@@ -148,17 +170,17 @@ def validate_manifest():
                         errors.append(f"Contract '{c_id}' freshness is missing required field: '{f_req}'")
                     else:
                         val = freshness[f_req]
-                        if not isinstance(val, int) or val <= 0:
+                        if type(val) is not int or val <= 0:
                             errors.append(f"Contract '{c_id}' freshness '{f_req}' must be a positive integer.")
 
                 expected = freshness.get("expected_minutes")
                 warning = freshness.get("warning_minutes")
                 critical = freshness.get("critical_minutes")
 
-                if isinstance(expected, int) and isinstance(warning, int):
+                if type(expected) is int and type(warning) is int:
                     if warning < expected:
                         errors.append(f"Contract '{c_id}' freshness 'warning_minutes' ({warning}) must be >= 'expected_minutes' ({expected}).")
-                if isinstance(warning, int) and isinstance(critical, int):
+                if type(warning) is int and type(critical) is int:
                     if critical < warning:
                         errors.append(f"Contract '{c_id}' freshness 'critical_minutes' ({critical}) must be >= 'warning_minutes' ({warning}).")
 
@@ -170,6 +192,9 @@ def validate_manifest():
             else:
                 field_names = set()
                 for f_idx, field in enumerate(fields):
+                    if not isinstance(field, dict):
+                        errors.append(f"Contract '{c_id}', field at index {f_idx} must be a dictionary/object.")
+                        continue
                     f_name = field.get("name")
                     if not f_name or not isinstance(f_name, str):
                         errors.append(f"Contract '{c_id}', field at index {f_idx} is missing or has an invalid 'name'")
