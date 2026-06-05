@@ -10,7 +10,6 @@ Creates/reseeds:
 - site_config_kpi_enablement
 """
 import csv
-import os
 from pathlib import Path
 
 ENVIRONMENTS = {
@@ -154,7 +153,7 @@ def generate_sql():
                         col_type = tbl_cfg["columns"][c]
                         tuple_vals.append(_sql_literal(c, r.get(c), col_type))
                     value_tuples.append("(" + ", ".join(tuple_vals) + ")")
-                
+
                 sql += (
                     f"INSERT INTO {table} ({', '.join(col_names)}) VALUES\n  "
                     + ",\n  ".join(value_tuples) + ";\n"

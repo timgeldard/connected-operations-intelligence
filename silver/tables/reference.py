@@ -5,7 +5,7 @@ Reference/Master data domain tables.
 import dlt
 from pyspark.sql import Row, Window
 from pyspark.sql import functions as F
-from pyspark.sql.types import BooleanType, DateType, StringType, StructField, StructType
+from pyspark.sql.types import StringType, StructField, StructType
 
 from silver.helpers import (
     BRONZE,
@@ -724,7 +724,7 @@ def site_config_plant():
             table_exists = False
     if table_exists:
         return spark.read.table(config_table).filter(F.col("is_active"))
-    
+
     data = [
         Row(plant_code="C061", plant_name="Portbury [MFG]", country="GB", region="Europe",
             business_unit="Operations", timezone="Europe/London", sap_system_id="ECC",
@@ -757,7 +757,7 @@ def site_config_warehouse():
             table_exists = False
     if table_exists:
         return spark.read.table(config_table).filter(F.col("is_active"))
-    
+
     data = [
         Row(plant_code="C061", warehouse_number="208", warehouse_description="Portbury Main WH",
             relationship_type="PRIMARY", wm_usage_type="FULL_WM", is_shared_warehouse=False,
@@ -786,7 +786,7 @@ def site_config_storage_type_role():
             table_exists = False
     if table_exists:
         return spark.read.table(config_table)
-    
+
     data = [
         Row(plant_code="C061", warehouse_number="208", storage_type="100", storage_type_description="Production Supply", storage_role="LINESIDE", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=True, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
         Row(plant_code="C061", warehouse_number="208", storage_type="801", storage_type_description="Palletising (for Prodc.)", storage_role="LINESIDE", role_confidence="CONFIRMED", is_wm_managed=True, include_in_lineside_stock=True, include_in_staging=False, include_in_reconciliation=True, valid_from="2026-01-01", valid_to="9999-12-31", validated_by="wm-config-owner", validated_at="2026-06-03"),
@@ -824,7 +824,7 @@ def site_config_movement_type_classification():
             table_exists = False
     if table_exists:
         return spark.read.table(config_table)
-    
+
     data = [
         Row(plant_code=None, movement_type_code="101", movement_text="Goods Receipt Production", event_category="GOODS_RECEIPT", is_production_receipt=True, is_production_consumption=False, is_scrap=False, is_reversal=False, reversal_of_movement_type=None, is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
         Row(plant_code=None, movement_type_code="102", movement_text="Reversal GR Production", event_category="GOODS_RECEIPT", is_production_receipt=False, is_production_consumption=False, is_scrap=False, is_reversal=True, reversal_of_movement_type="101", is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
@@ -858,7 +858,7 @@ def site_config_staging_method():
             table_exists = False
     if table_exists:
         return spark.read.table(config_table)
-    
+
     data = [
         Row(plant_code="C061", warehouse_number="208", production_supply_area="Supply Area 1", storage_type="100", staging_method="ORDER_SPECIFIC", sap_reference_pattern="TO_BENUM_EQUALS_AUFNR", requires_batch_scan=False, requires_sscc=False, validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31")
     ]
@@ -885,7 +885,7 @@ def site_config_kpi_enablement():
             table_exists = False
     if table_exists:
         return spark.read.table(config_table)
-    
+
     data = [
         Row(plant_code="C061", data_product_name="gold_transfer_requirement_backlog", kpi_name="TR Backlog", enablement_status="ENABLED", reason_code="GO_LIVE", approved_by="wm-config-owner", approved_at="2026-06-03", review_due_at="2027-06-03"),
         Row(plant_code="C061", data_product_name="gold_lineside_stock", kpi_name="Lineside Stock", enablement_status="ENABLED", reason_code="GO_LIVE", approved_by="wm-config-owner", approved_at="2026-06-03", review_due_at="2027-06-03"),

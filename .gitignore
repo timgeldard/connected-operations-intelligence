@@ -40,4 +40,7 @@ Thumbs.db
 docs/reference/
 spark-warehouse/
 
-
+# Node
+node_modules/
+.npm
+.pnpm-debug.log

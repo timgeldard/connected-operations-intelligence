@@ -1,0 +1,17 @@
+# Data product layer
+/data-products/io-reporting/        @timgeldard
+
+# Application layer
+/apps/web/                          @timgeldard
+/apps/api/                          @timgeldard
+
+# Shared packages
+/packages/data-contracts/           @timgeldard
+/packages/domain-models/            @timgeldard
+/packages/queryspecs/               @timgeldard
+/packages/ui/                       @timgeldard
+
+# CI/CD and repo governance
+/.github/                           @timgeldard
+/databricks.yml                     @timgeldard
+/Makefile                           @timgeldard
