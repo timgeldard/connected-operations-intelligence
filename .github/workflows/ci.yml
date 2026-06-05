@@ -95,6 +95,23 @@ jobs:
       - name: Run Tests
         run: pnpm test
 
+  boundary-check:
+    name: Boundary Check (Non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Run Boundary Check
+        run: python3 scripts/ci/check_forbidden_data_access.py
+
   validate-bundle:
     name: Validate Databricks Bundle
     runs-on: ubuntu-latest
