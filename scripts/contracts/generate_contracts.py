@@ -41,12 +41,6 @@ def to_pascal_case(s):
     clean = s.replace(".", " ").replace("-", " ").replace("_", " ")
     return "".join(word.capitalize() for word in clean.split())
 
-def to_camel_case(s):
-    pascal = to_pascal_case(s)
-    if not pascal:
-        return ""
-    return pascal[0].lower() + pascal[1:]
-
 def generate_contracts():
     print(f"Generating contracts from manifest: {MANIFEST_PATH}")
     if not os.path.exists(MANIFEST_PATH):
@@ -54,7 +48,7 @@ def generate_contracts():
         sys.exit(1)
 
     try:
-        with open(MANIFEST_PATH, "r") as f:
+        with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
             manifest = yaml.safe_load(f)
     except Exception as exc:
         print(f"Error reading manifest: {exc}")
@@ -62,7 +56,7 @@ def generate_contracts():
 
     # 1. Write JSON representation
     os.makedirs(os.path.dirname(JSON_OUT_PATH), exist_ok=True)
-    with open(JSON_OUT_PATH, "w") as f:
+    with open(JSON_OUT_PATH, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
     print(f"Generated JSON contract at: {JSON_OUT_PATH}")
 
@@ -75,21 +69,21 @@ def generate_contracts():
         ""
     ]
 
-    contracts = manifest.get("contracts", [])
+    contracts = manifest.get("contracts", []) or []
     registry_entries = []
 
     for contract in contracts:
         c_id = contract["id"]
-        c_desc = contract.get("description", "")
-        c_version = contract.get("version", "0.1.0")
-        c_domain = contract.get("domain", "")
-        c_owner = contract.get("owner", "")
-        c_lifecycle = contract.get("lifecycle", "")
-        c_source_view = contract.get("source_view", "")
-        c_grain = contract.get("grain", "")
-        c_pk = contract.get("primary_key", [])
-        c_freshness = contract.get("freshness", {})
-        c_access = contract.get("access_policy", {})
+        c_desc = contract.get("description") or ""
+        c_version = contract.get("version") or "0.1.0"
+        c_domain = contract.get("domain") or ""
+        c_owner = contract.get("owner") or ""
+        c_lifecycle = contract.get("lifecycle") or ""
+        c_source_view = contract.get("source_view") or ""
+        c_grain = contract.get("grain") or ""
+        c_pk = contract.get("primary_key") or []
+        c_freshness = contract.get("freshness") or {}
+        c_access = contract.get("access_policy") or {}
 
         interface_name = to_pascal_case(c_id)
         const_name = f"{interface_name}Contract"
@@ -161,7 +155,7 @@ def generate_contracts():
     ts_lines.append("")
 
     os.makedirs(os.path.dirname(TS_OUT_PATH), exist_ok=True)
-    with open(TS_OUT_PATH, "w") as f:
+    with open(TS_OUT_PATH, "w", encoding="utf-8") as f:
         f.write("\n".join(ts_lines))
     print(f"Generated TS contracts at: {TS_OUT_PATH}")
 

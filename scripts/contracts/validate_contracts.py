@@ -60,7 +60,7 @@ def validate_manifest():
         sys.exit(1)
 
     try:
-        with open(MANIFEST_PATH, "r") as f:
+        with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
     except yaml.YAMLError as exc:
         print(f"Error: Manifest is not a valid YAML file: {exc}")
@@ -101,8 +101,8 @@ def validate_manifest():
 
         # Validate required contract fields
         for req_field in REQUIRED_CONTRACT_FIELDS:
-            if req_field not in contract:
-                errors.append(f"Contract '{c_id}' is missing required field: '{req_field}'")
+            if req_field not in contract or contract.get(req_field) is None:
+                errors.append(f"Contract '{c_id}' is missing or has null required field: '{req_field}'")
 
         # Validate source_view prefix
         source_view = contract.get("source_view")
@@ -170,9 +170,10 @@ def validate_manifest():
             else:
                 field_names = set()
                 for f_idx, field in enumerate(fields):
-                    f_name = field.get("name", f"<field index {f_idx}>")
-                    if "name" not in field:
-                        errors.append(f"Contract '{c_id}', field at index {f_idx} is missing 'name'")
+                    f_name = field.get("name")
+                    if not f_name or not isinstance(f_name, str):
+                        errors.append(f"Contract '{c_id}', field at index {f_idx} is missing or has an invalid 'name'")
+                        f_name = f"<field index {f_idx}>"
                     else:
                         if f_name in field_names:
                             errors.append(f"Contract '{c_id}' has duplicate field name: '{f_name}'")

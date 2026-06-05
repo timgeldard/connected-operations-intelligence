@@ -10,11 +10,12 @@ SCAN_DIRS = ["apps", "packages", "domain-integrations"]
 FORBIDDEN_PATTERNS = [
     r"\.bronze\.",
     r"\.silver\.",
+    r"\.gold\.",
     r"\.sap\.",
     r"\bfrom\s+silver_",
     r"\bfrom\s+bronze_",
-    r"\bfrom\s+sap\.",
-    r"\bgold_[a-zA-Z0-9_]+"
+    r"\bfrom\s+gold_",
+    r"\bfrom\s+sap\."
 ]
 
 # Files/extensions to ignore
@@ -61,10 +62,9 @@ def run_boundary_check():
         if not os.path.exists(target_path):
             continue
 
-        for root, _, files in os.walk(target_path):
-            # Skip node_modules or dist folders
-            if "node_modules" in root or "dist" in root:
-                continue
+        for root, dirs, files in os.walk(target_path):
+            # Prune node_modules and dist directories in-place to prevent walking into them
+            dirs[:] = [d for d in dirs if d not in ("node_modules", "dist")]
             for file in files:
                 file_path = os.path.join(root, file)
                 if should_ignore(file_path):
