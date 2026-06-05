@@ -3,8 +3,8 @@
 Welcome to the internal monorepo for **Connected Operations Intelligence**, bringing together pre-production code for data engineering pipelines and the application runtime layer.
 
 This monorepo merges:
-- **IOReporting** (repositioned to [data-products/io-reporting](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting)) — the Databricks Delta Live Tables (DLT) data pipeline layer.
-- **connectio-rad-v2** (repositioned to [apps/web](file:///home/timgeldard/github/connected-operations-intelligence/apps/web) and [apps/api](file:///home/timgeldard/github/connected-operations-intelligence/apps/api)) — the frontend web interface and backend API layer.
+- **IOReporting** ([data-products/io-reporting](data-products/io-reporting)) — the governed SAP/Databricks data product layer.
+- **connectio-rad-v2** — to be imported into `apps/web`, `apps/api`, `packages/*`, and `domain-integrations/*`.
 
 ---
 
@@ -15,7 +15,7 @@ The repository is organized as a monorepo using `pnpm` workspaces for frontend/N
 ```
 ├── .github/workflows/              # CI/CD Workflows
 ├── apps/
-│   ├── api/                        # Backend Node/TypeScript API layer (connectio-rad-v2 runtime)
+│   ├── api/                        # FastAPI backend/runtime layer
 │   └── web/                        # Frontend React/Vite/Next.js web layer (connectio-rad-v2 frontend)
 ├── data-products/
 │   └── io-reporting/               # Databricks DLT Data Pipelines (SAP -> Silver -> Gold)

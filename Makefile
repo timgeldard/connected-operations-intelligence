@@ -7,7 +7,7 @@ install:
 
 test:
 	pnpm test
-	cd data-products/io-reporting && ../../.venv/bin/pytest
+	PYTHONPATH=data-products/io-reporting .venv/bin/pytest data-products/io-reporting/tests
 
 lint:
 	pnpm lint
@@ -17,5 +17,5 @@ typecheck:
 	pnpm typecheck
 
 contracts:
-	@if [ -f scripts/contracts/validate_contracts.py ]; then .venv/bin/python scripts/contracts/validate_contracts.py; fi
-	@if [ -f scripts/contracts/generate_contracts.py ]; then .venv/bin/python scripts/contracts/generate_contracts.py; fi
+	.venv/bin/python scripts/contracts/validate_contracts.py
+	.venv/bin/python scripts/contracts/generate_contracts.py

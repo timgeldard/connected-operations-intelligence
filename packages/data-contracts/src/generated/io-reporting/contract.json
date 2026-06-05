@@ -1,13 +1,21 @@
 {
+  "contract_version": "0.1.0",
+  "product": "connected-operations-intelligence",
+  "owner": "data-products/io-reporting",
+  "consumer": "apps/api",
+  "rules": {
+    "application_must_use_approved_consumption_views": true,
+    "raw_silver_gold_access_from_app_forbidden": true
+  },
   "contracts": [
     {
       "id": "warehouse360.overview",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "domain": "warehouse",
       "owner": "warehouse-operations",
       "lifecycle": "draft",
       "description": "Overview metrics for the Warehouse 360 dashboard.",
-      "source_view": "vw_consumption_warehouse_overview",
+      "source_view": "vw_consumption_warehouse360_overview",
       "grain": "one row per plant per refresh",
       "primary_key": [
         "plant_code"
