@@ -7,46 +7,109 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  validate-contracts:
+    name: Validate Contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r tests/requirements-test.txt
+        run: pip install pyyaml
 
-      - name: Lint
-        run: ruff check silver/ gold/ tests/
+      - name: Validate Contract Manifest
+        run: python3 scripts/contracts/validate_contracts.py
 
-      - name: Data dictionary up to date
+      - name: Generate Contract Files
+        run: python3 scripts/contracts/generate_contracts.py
+
+      - name: Check for Uncommitted Contract Changes
+        run: |
+          if ! git diff --exit-code packages/data-contracts; then
+            echo "::error::Generated contracts are out of sync with the manifest. Please run 'make contracts' locally and commit the changes."
+            exit 1
+          fi
+
+  python-checks:
+    name: Python Checks (Non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r data-products/io-reporting/tests/requirements-test.txt pyyaml
+
+      - name: Lint with Ruff
+        run: ruff check .
+
+      - name: Check Data Dictionary
+        working-directory: data-products/io-reporting
         run: python generate_data_dictionary.py --check
 
-      - name: Test
+      - name: Run Pytest
+        working-directory: data-products/io-reporting
         run: pytest
 
+  frontend-checks:
+    name: Frontend Checks (Non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install PNPM
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Install Dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run Lint
+        run: pnpm lint
+
+      - name: Run Typecheck
+        run: pnpm typecheck
+
+      - name: Run Tests
+        run: pnpm test
+
   validate-bundle:
+    name: Validate Databricks Bundle
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     env:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-      # notification_email has no default (a real list must be set at deploy); supply a
-      # placeholder so `bundle validate` does not fail on the missing required variable.
       BUNDLE_VAR_notification_email: ci-validation@kerry.com
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - uses: databricks/setup-cli@main
+      - name: Set up Databricks CLI
+        uses: databricks/setup-cli@main
 
-      # Bundle validation needs a workspace to authenticate against. When the
-      # DATABRICKS_HOST / DATABRICKS_TOKEN repository secrets are not configured
-      # (Settings → Secrets → Actions), skip validation with a warning instead of
-      # failing the whole job. Set both secrets to enable real validation.
       - name: Check Databricks credentials
         id: creds
         run: |
@@ -59,16 +122,20 @@ jobs:
 
       - name: Validate dev_uat_source bundle
         if: steps.creds.outputs.configured == 'true'
+        working-directory: data-products/io-reporting
         run: databricks bundle validate -t dev_uat_source
 
       - name: Validate dev_sample bundle
         if: steps.creds.outputs.configured == 'true'
+        working-directory: data-products/io-reporting
         run: databricks bundle validate -t dev_sample
 
       - name: Validate uat bundle
         if: steps.creds.outputs.configured == 'true'
+        working-directory: data-products/io-reporting
         run: databricks bundle validate -t uat
 
       - name: Validate prod bundle
         if: steps.creds.outputs.configured == 'true'
+        working-directory: data-products/io-reporting
         run: databricks bundle validate -t prod
