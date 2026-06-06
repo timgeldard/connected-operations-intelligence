@@ -307,7 +307,11 @@ def _date_to_utc(v: object) -> str:
     if isinstance(v, datetime.date):
         return f"{v.isoformat()}T00:00:00Z"
     s = str(v)
-    return s if len(s) > 10 else f"{s}T00:00:00Z"
+    if len(s) <= 10:
+        return f"{s}T00:00:00Z"
+    # Normalise space-separated Databricks datetime strings to ISO-8601 (T separator, Z suffix).
+    s = s.replace(" ", "T")
+    return s if ("Z" in s or "+" in s) else f"{s}Z"
 
 
 def _bucket_movement_type(mvt: Optional[str]) -> str:

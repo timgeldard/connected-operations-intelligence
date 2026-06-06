@@ -176,9 +176,9 @@ def map_spc_chart_response(
 
         std_dev = None
         if batch_n >= 2:
-            variance = (sum_squares - (sum_value ** 2) / batch_n) / (batch_n - 1)
-            if variance >= 0:
-                std_dev = math.sqrt(variance)
+            # Clamp tiny negative variances from float rounding (identical values) to 0.
+            variance = max(0.0, (sum_squares - (sum_value ** 2) / batch_n) / (batch_n - 1))
+            std_dev = math.sqrt(variance)
 
         points.append({
             "pointId": f"{r.get('batch_id')}_{r.get('batch_date')}",
