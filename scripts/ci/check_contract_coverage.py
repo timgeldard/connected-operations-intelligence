@@ -126,6 +126,20 @@ def run_contract_coverage() -> None:
             print(f" - {err}")
         sys.exit(1)
 
+    print("\n=== Contract Coverage Classification ===")
+    coverage_map = {
+        "warehouse360.overview": "route-covered",
+        "warehouse360.inbound_backlog": "route-covered",
+        "warehouse360.outbound_backlog": "route-covered",
+        "warehouse360.staging_workload": "route-covered",
+        "warehouse360.im_wm_reconciliation": "route-covered",
+        "warehouse360.stock_exceptions": "contract-only",
+        "warehouse360.shortfalls": "contract-only",
+        "warehouse360.dispensary_queue": "placeholder / not runtime-ready",
+    }
+    for c_id, status in coverage_map.items():
+        print(f" - {c_id}: {status}")
+
     print("\nContract Coverage Check PASSED successfully!")
     sys.exit(0)
 

@@ -34,6 +34,7 @@ def wh360_databricks_env(monkeypatch) -> None:
     monkeypatch.setenv("SQL_WAREHOUSE_ID", "wh-test")
     monkeypatch.setenv("WH360_CATALOG", "wh360_uat_catalog")
     monkeypatch.setenv("WH360_SCHEMA", "wh360_uat_schema")
+    monkeypatch.setenv("WAREHOUSE360_SOURCE_MODE", "governed_contracts")
 
 
 # ---------------------------------------------------------------------------

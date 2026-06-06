@@ -4,7 +4,8 @@
  */
 
 /**
- * Overview metrics for the Warehouse 360 dashboard.
+ * Overview metrics for the Warehouse 360 dashboard. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
+
  * Source View: vw_consumption_warehouse360_overview
  * Version: 0.1.0
  */
@@ -58,7 +59,8 @@ export const Warehouse360OverviewContract = {
 } as const;
 
 /**
- * Inbound purchase orders backlog workload and risk profile.
+ * Inbound purchase orders backlog workload and risk profile. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
+
  * Source View: vw_consumption_warehouse360_inbound_backlog
  * Version: 0.1.0
  */
@@ -122,7 +124,8 @@ export const Warehouse360InboundBacklogContract = {
 } as const;
 
 /**
- * Outbound deliveries picking backlog and cutoff risk.
+ * Outbound deliveries picking backlog and cutoff risk. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
+
  * Source View: vw_consumption_warehouse360_outbound_backlog
  * Version: 0.1.0
  */
@@ -178,7 +181,8 @@ export const Warehouse360OutboundBacklogContract = {
 } as const;
 
 /**
- * Production order component staging workload and readiness.
+ * Production order component staging workload and readiness. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
+
  * Source View: vw_consumption_warehouse360_staging_workload
  * Version: 0.1.0
  */
@@ -238,7 +242,8 @@ export const Warehouse360StagingWorkloadContract = {
 } as const;
 
 /**
- * Warehouse stock exceptions including expiry, shelf life breach, and status blocks.
+ * Warehouse stock exceptions including expiry, shelf life breach, and status blocks. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
+
  * Source View: vw_consumption_warehouse360_stock_exceptions
  * Version: 0.1.0
  */
@@ -282,7 +287,8 @@ export const Warehouse360StockExceptionsContract = {
 } as const;
 
 /**
- * Material shortfalls and staging transfer requirement backlogs.
+ * Material shortfalls and staging transfer requirement backlogs. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
+
  * Source View: vw_consumption_warehouse360_shortfalls
  * Version: 0.1.0
  */
@@ -320,7 +326,8 @@ export const Warehouse360ShortfallsContract = {
 } as const;
 
 /**
- * Discrepancies between Inventory Management (IM) and Warehouse Management (WM) stock.
+ * Discrepancies between Inventory Management (IM) and Warehouse Management (WM) stock. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
+
  * Source View: vw_consumption_warehouse360_im_wm_reconciliation
  * Version: 0.1.0
  */
@@ -370,7 +377,8 @@ export const Warehouse360ImWmReconciliationContract = {
 } as const;
 
 /**
- * Dispensary staging component weighing and preparation queue.
+ * Dispensary staging component weighing and preparation queue. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
+
  * Source View: vw_consumption_warehouse360_dispensary_queue
  * Version: 0.1.0
  */
