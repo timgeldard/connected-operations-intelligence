@@ -40,6 +40,25 @@ def bronze_published() -> str:
     return f"{catalog}.{schema}"
 
 
+def hu_reconciliation_enabled() -> bool:
+    """Whether handling-unit (HU) models should be materialised.
+
+    Gated by the `enable_hu_reconciliation` Spark conf (set from the bundle variable;
+    see databricks.yml). In `dev_shakedown` mode this is false because the externally
+    owned `published_dev.central_services` is missing handlingunit_vekp/vepo — so the
+    HU silver/gold models are not defined rather than failing the run. UAT/PROD
+    (`full_validation`) set it true. Defaults to true so a missing conf never silently
+    drops HU in a real environment.
+    """
+    spark = get_spark()
+    return str(spark.conf.get("enable_hu_reconciliation", "true")).strip().lower() == "true"
+
+
+def deployment_mode() -> str:
+    """`dev_shakedown` or `full_validation` (Spark conf, from the bundle variable)."""
+    return str(get_spark().conf.get("deployment_mode", "full_validation")).strip().lower()
+
+
 # AUFK.AUTYP order category for PP-PI process orders. Verified against live
 # connected_plant_uat.sap: process orders are AUTYP='40' (AUART ZI01/ZI02/ZI05/...);
 # AUTYP='10' returns zero rows in Kerry's config.

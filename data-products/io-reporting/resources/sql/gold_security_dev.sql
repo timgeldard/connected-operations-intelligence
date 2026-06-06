@@ -9,6 +9,8 @@
 -- array. Dev secured views are pass-through (no security model available in dev).
 -- Consumers ('users' group) are granted SELECT on the *_secured views only.
 
+-- NOTE: enable_hu_reconciliation=false — HU-dependent secured views (gold_handling_unit_summary, gold_hu_reconciliation) are intentionally omitted.
+
 -- ── Secured views + consumer grants ──
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_transfer_order_performance_secured AS
@@ -190,10 +192,6 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_movement_recon
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_movement_reconciliation;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_movement_reconciliation_secured TO `users`;
 
-CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_hu_reconciliation_secured AS
-  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_hu_reconciliation;
-GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_hu_reconciliation_secured TO `users`;
-
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_physical_inventory_recon_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_physical_inventory_recon;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_physical_inventory_recon_secured TO `users`;
@@ -221,10 +219,6 @@ GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_inbound_po_backl
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_inbound_po_backlog_enhanced_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_inbound_po_backlog_enhanced;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_inbound_po_backlog_enhanced_secured TO `users`;
-
-CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_handling_unit_summary_secured AS
-  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_handling_unit_summary;
-GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_handling_unit_summary_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_warehouse_exceptions_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_warehouse_exceptions;

@@ -21,6 +21,11 @@ resources:
         source_schema: ${var.source_schema}
         published_catalog: ${var.published_catalog}
         published_schema: ${var.published_schema}
+        # Shakedown vs full-validation. When enable_hu_reconciliation=false the HU silver
+        # table (handling_unit, reads published.handlingunit_vekp/vepo) is NOT defined, so a
+        # central_services missing the HU tables does not block the non-HU shakedown.
+        deployment_mode: ${var.deployment_mode}
+        enable_hu_reconciliation: ${var.enable_hu_reconciliation}
         # Governed storage-type→role config table (admin-maintained; seeded from
         # resources/config/storage_type_role_mapping.csv). storage_type_role_mapping reads it when
         # present, else falls back to the embedded bootstrap seed.

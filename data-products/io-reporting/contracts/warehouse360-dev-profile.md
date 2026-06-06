@@ -17,6 +17,17 @@ contract advances beyond candidate/pending. See §2 and §12–13 for detail.
 > sourcing. Until those pipelines run and the 7 source objects materialise (verify
 > with `validation/warehouse360_dev_source_layer_preflight.sql` → 7/7 FOUND), all
 > contracts stay candidate/blocked.
+>
+> **DEV is a technical shakedown only (added 2026-06-06).** `central_services` is
+> externally owned and `published_dev` lacks the HU tables, so DEV now runs in
+> `dev_shakedown` mode (`enable_hu_reconciliation=false`) — see ADR
+> `docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`. A DEV
+> shakedown can validate **deployment mechanics and non-HU contract structure**
+> only (none of the 7 governed source objects depend on HU). It is **not**
+> business validation — DEV data is old/limited. HU-dependent outputs are not
+> materialised in DEV and remain **not business-validated until UAT**; **UAT is
+> the first environment for full validation**. A green DEV shakedown does not
+> imply UAT readiness or app cutover, and no contract is promoted.
 
 Target environment:
 

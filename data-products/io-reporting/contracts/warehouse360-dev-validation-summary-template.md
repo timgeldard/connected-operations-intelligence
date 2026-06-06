@@ -4,6 +4,19 @@ Evidence returned by a Databricks-connected execution of the Warehouse360 DEV
 validation pack. Full detail and pasted query output: see
 [`warehouse360-dev-profile.md`](./warehouse360-dev-profile.md).
 
+## DEV shakedown vs UAT full validation (added 2026-06-06)
+
+`central_services` is externally owned; `published_dev` lacks the HU tables
+(`handlingunit_vekp`/`vepo`). DEV therefore runs in **`dev_shakedown`** mode
+(`enable_hu_reconciliation=false`): it can validate **deployment mechanics and
+non-HU contract structure** only — **not** business validation (DEV data is
+old/limited). HU-dependent outputs are not materialised in DEV and remain **not
+business-validated until UAT**. **UAT (`full_validation`, HU required) is the
+first environment for full validation.** None of the 7 Warehouse360 governed
+source objects depend on HU. No contract is promoted; a green DEV shakedown does
+not imply UAT readiness. See ADR
+`docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`.
+
 ## Next validation attempt prerequisites (added 2026-06-06)
 
 This pack has **not** been rerun since the original BLOCKED result below. Before

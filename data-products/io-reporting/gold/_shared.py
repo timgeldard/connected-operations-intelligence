@@ -23,6 +23,19 @@ def get_silver_schema(spark: SparkSession) -> str:
     return f"{catalog}.{schema}"
 
 
+def hu_reconciliation_enabled(spark: SparkSession) -> bool:
+    """Whether handling-unit (HU) Gold models should be materialised.
+
+    Gated by the `enable_hu_reconciliation` Spark conf (from the bundle variable). In
+    `dev_shakedown` mode it is false: the upstream silver `handling_unit` table is not
+    built because the externally-owned `published_dev.central_services` lacks
+    handlingunit_vekp/vepo. So gold_hu_reconciliation / gold_handling_unit_summary and
+    the HU branch of gold_reconciliation_alerts are not defined. UAT/PROD set it true.
+    Defaults to true so a missing conf never silently drops HU in a real environment.
+    """
+    return str(spark.conf.get("enable_hu_reconciliation", "true")).strip().lower() == "true"
+
+
 def table_exists(spark: SparkSession, table_name: str) -> bool:
     try:
         return spark.catalog.tableExists(table_name)
