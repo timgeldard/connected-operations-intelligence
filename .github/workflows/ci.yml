@@ -96,9 +96,8 @@ jobs:
         run: pnpm test
 
   boundary-check:
-    name: Boundary Check (Non-blocking)
+    name: Boundary Check
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -108,6 +107,12 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Test Boundary Scanner
+        run: python -m pytest scripts/ci/test_check_forbidden_data_access.py -q
 
       - name: Run Boundary Check
         run: python3 scripts/ci/check_forbidden_data_access.py
