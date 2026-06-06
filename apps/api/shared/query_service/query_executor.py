@@ -11,10 +11,16 @@ principal fallback, no mock fallback.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
+import os
+import time
 from collections.abc import Callable
 from typing import Any, TypeVar
 
+from . import cache
+from .cache_policy import CacheTier
 from .catalog_policy import assert_allowed_catalog_target
 from .databricks_client import DatabricksQueryClient, NotImplementedDatabricksClient
 from .errors import (
@@ -122,11 +128,6 @@ class DatabricksRepository:
         self.base_backoff = base_backoff
 
     def _build_cache_key(self, spec: QuerySpec) -> str:
-        import hashlib
-        import json
-
-        from .cache_policy import CacheTier
-
         # Normalize params
         normalized_params = sorted(spec.params.items())
         params_str = json.dumps(normalized_params, default=str)
@@ -160,7 +161,6 @@ class DatabricksRepository:
         return hashlib.sha256(key_material.encode("utf-8")).hexdigest()
 
     def _get_ttl_for_policy(self, policy: Any) -> int:
-        from .cache_policy import CacheTier
         if policy == CacheTier.GLOBAL_300S:
             return 300
         if policy == CacheTier.PER_USER_60S:
@@ -184,12 +184,6 @@ class DatabricksRepository:
         Returns:
             A tuple of (mapped_result, query_spec) so callers can set HTTP headers.
         """
-        import os
-        import time
-
-        from .cache import get_cache_store
-        from .cache_policy import CacheTier
-
         spec = spec_factory()
         # Catalog override allow-list is enforced BEFORE any cache lookup
         # so a previously-cached entry cannot satisfy a request that the
@@ -199,7 +193,7 @@ class DatabricksRepository:
         # answered from cache.
         assert_allowed_catalog_target(self.identity.catalog_target)
 
-        cache_store = get_cache_store()
+        cache_store = cache.get_cache_store()
         ttl = self._get_ttl_for_policy(spec.cache_policy)
         cache_enabled = os.getenv("ENABLE_QUERY_CACHE", "false").lower() == "true"
 
