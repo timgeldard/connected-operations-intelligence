@@ -27,6 +27,7 @@ from pyspark.sql import functions as F
 from silver.helpers import (
     BRONZE,
     bronze_published,
+    col_or_null,
     get_spark,
     sap_date,
     sap_datetime,
@@ -145,15 +146,24 @@ def stg_storage_bin():
             ).alias("plant_code"),
 
             # ── Bin attributes
+            # LGBKT, LGPBE, MAXGW, MAXEI, ANZRE are NOT present in the replicated storagebin_lagp
+            # in either connected_plant_dev.sap OR connected_plant_uat.sap (confirmed 2026-06-07,
+            # 51 cols each). They are OPTIONAL descriptive bin attributes (not keys), so they degrade
+            # to typed NULL via col_or_null rather than failing the run with UNRESOLVED_COLUMN; the
+            # real field is used automatically if a future replication adds it. NOT remapped to a
+            # different field (e.g. LGBKT→LPTYP) — that mapping is a data-team decision, not assumed.
+            # Impact: gold_bin_occupancy loses bin_type as a grouping dimension (collapses to a single
+            # NULL group) — bin COUNTS, and therefore the Warehouse360 overview KPIs, are unaffected.
+            # These gaps also apply to UAT full_validation. See ioreporting_dev_source_schema_preflight.sql.
             F.col("b.LGBER").alias("storage_section"),
-            F.col("b.LGBKT").alias("bin_type"),
+            col_or_null(lagp, "LGBKT", "string", "b").alias("bin_type"),
             F.col("b.KOBER").alias("picking_area"),
-            F.col("b.LGPBE").alias("storage_bin_structure"),
-            F.col("b.MAXGW").alias("maximum_weight"),
+            col_or_null(lagp, "LGPBE", "string", "b").alias("storage_bin_structure"),
+            col_or_null(lagp, "MAXGW", "double", "b").alias("maximum_weight"),
             F.col("b.BRGEW").alias("current_weight"),
             F.col("b.GEWEI").alias("weight_unit"),
-            F.col("b.MAXEI").alias("maximum_capacity_units"),
-            F.col("b.ANZRE").alias("current_capacity_units_used"),
+            col_or_null(lagp, "MAXEI", "double", "b").alias("maximum_capacity_units"),
+            col_or_null(lagp, "ANZRE", "double", "b").alias("current_capacity_units_used"),
             sap_flag("b.SPGRU").alias("is_blocked"),
             F.col("b.SPGRU").alias("blocking_reason_code"),
 

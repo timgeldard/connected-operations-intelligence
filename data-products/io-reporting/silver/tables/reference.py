@@ -5,12 +5,13 @@ Reference/Master data domain tables.
 import dlt
 from pyspark.sql import Row, Window
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType, StructField, StructType
+from pyspark.sql.types import BooleanType, StringType, StructField, StructType
 
 from silver.helpers import (
     BRONZE,
     PROCESS_LINE_ATINN,
     bronze_published,
+    bronze_table_exists,
     get_spark,
     sap_date,
     sap_flag,
@@ -109,34 +110,43 @@ def storage_location():
 
 
 # ── 3. WORK CENTRE ────────────────────────────────────────────────────────────
+# work_centre's source tables (CRHD header + CRTX text) are NOT present in the replicated SAP in
+# EITHER connected_plant_dev.sap OR connected_plant_uat.sap (confirmed 2026-06-07 — zero crhd/crtx
+# tables in both). work_centre has NO downstream pipeline consumers (referenced only in
+# silver/design_spec.md), so it is defined only when its source exists — otherwise it would fail the
+# whole Silver run on an unreplicated source. This is a real source-replication gap that ALSO blocks
+# UAT full_validation; it is flagged by ioreporting_dev_source_schema_preflight.sql. Do NOT fabricate
+# CRHD/CRTX data. The table self-heals (is defined) once the source is replicated.
 
-@dlt.table(
-    comment="Work centres — one row per work centre per plant, with descriptions",
-    table_properties={"delta.enableChangeDataFeed": "true"},
-)
-@dlt.expect_all_or_drop({
-    "work_centre_code present": "work_centre_code IS NOT NULL",
-    "plant_code present": "plant_code IS NOT NULL"
-})
-def work_centre():
-    spark = get_spark()
-    crhd = spark.read.table(f"{BRONZE}.workcenterheader_crhd")
-    crtx = spark.read.table(f"{BRONZE}.workcentertext_crtx").filter(
-        F.col("SPRAS") == "E"
+if bronze_table_exists("workcenterheader_crhd"):
+
+    @dlt.table(
+        comment="Work centres — one row per work centre per plant, with descriptions",
+        table_properties={"delta.enableChangeDataFeed": "true"},
     )
-    return (
-        crhd.alias("w")
-        .join(crtx.alias("t"), ["OBJID", "MANDT"], "left")
-        .select(
-            F.col("w.ARBPL").alias("work_centre_code"),
-            F.col("w.WERKS").alias("plant_code"),
-            F.col("t.KTEXT").alias("work_centre_description"),
-            F.col("w.VERWE").alias("work_centre_category"),
-            F.col("w.KOSTL").alias("cost_centre"),
-            F.col("w.OBJID").alias("work_centre_internal_id"),
-            F.col("w.AEDATTM").alias("_replicated_at"),
+    @dlt.expect_all_or_drop({
+        "work_centre_code present": "work_centre_code IS NOT NULL",
+        "plant_code present": "plant_code IS NOT NULL"
+    })
+    def work_centre():
+        spark = get_spark()
+        crhd = spark.read.table(f"{BRONZE}.workcenterheader_crhd")
+        crtx = spark.read.table(f"{BRONZE}.workcentertext_crtx").filter(
+            F.col("SPRAS") == "E"
         )
-    )
+        return (
+            crhd.alias("w")
+            .join(crtx.alias("t"), ["OBJID", "MANDT"], "left")
+            .select(
+                F.col("w.ARBPL").alias("work_centre_code"),
+                F.col("w.WERKS").alias("plant_code"),
+                F.col("t.KTEXT").alias("work_centre_description"),
+                F.col("w.VERWE").alias("work_centre_category"),
+                F.col("w.KOSTL").alias("cost_centre"),
+                F.col("w.OBJID").alias("work_centre_internal_id"),
+                F.col("w.AEDATTM").alias("_replicated_at"),
+            )
+        )
 
 
 # ── 4. CAPACITY UTILISATION ───────────────────────────────────────────────────
@@ -825,17 +835,39 @@ def site_config_movement_type_classification():
     if table_exists:
         return spark.read.table(config_table)
 
+    # Explicit schema + positional tuples. `plant_code` is None in every seed row, so letting
+    # Spark infer the schema fails with CANNOT_DETERMINE_TYPE. Tuples (not Row) also avoid any
+    # Row keyword-ordering ambiguity. valid_from/valid_to stay strings here and are cast to_date below.
+    schema = StructType([
+        StructField("plant_code", StringType(), True),
+        StructField("movement_type_code", StringType(), False),
+        StructField("movement_text", StringType(), True),
+        StructField("event_category", StringType(), True),
+        StructField("is_production_receipt", BooleanType(), True),
+        StructField("is_production_consumption", BooleanType(), True),
+        StructField("is_scrap", BooleanType(), True),
+        StructField("is_reversal", BooleanType(), True),
+        StructField("reversal_of_movement_type", StringType(), True),
+        StructField("is_inbound_receipt", BooleanType(), True),
+        StructField("is_outbound_issue", BooleanType(), True),
+        StructField("is_stock_adjustment", BooleanType(), True),
+        StructField("classification_source", StringType(), True),
+        StructField("validation_status", StringType(), True),
+        StructField("valid_from", StringType(), True),
+        StructField("valid_to", StringType(), True),
+    ])
     data = [
-        Row(plant_code=None, movement_type_code="101", movement_text="Goods Receipt Production", event_category="GOODS_RECEIPT", is_production_receipt=True, is_production_consumption=False, is_scrap=False, is_reversal=False, reversal_of_movement_type=None, is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
-        Row(plant_code=None, movement_type_code="102", movement_text="Reversal GR Production", event_category="GOODS_RECEIPT", is_production_receipt=False, is_production_consumption=False, is_scrap=False, is_reversal=True, reversal_of_movement_type="101", is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
-        Row(plant_code=None, movement_type_code="261", movement_text="Goods Issue Production", event_category="GOODS_ISSUE", is_production_receipt=False, is_production_consumption=True, is_scrap=False, is_reversal=False, reversal_of_movement_type=None, is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
-        Row(plant_code=None, movement_type_code="262", movement_text="Reversal GI Production", event_category="GOODS_ISSUE", is_production_receipt=False, is_production_consumption=False, is_scrap=False, is_reversal=True, reversal_of_movement_type="261", is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
-        Row(plant_code=None, movement_type_code="551", movement_text="Goods Issue Scrapping", event_category="GOODS_ISSUE", is_production_receipt=False, is_production_consumption=False, is_scrap=True, is_reversal=False, reversal_of_movement_type=None, is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
-        Row(plant_code=None, movement_type_code="552", movement_text="Reversal GI Scrapping", event_category="GOODS_ISSUE", is_production_receipt=False, is_production_consumption=False, is_scrap=False, is_reversal=True, reversal_of_movement_type="551", is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
-        Row(plant_code=None, movement_type_code="601", movement_text="Goods Issue Delivery", event_category="GOODS_ISSUE", is_production_receipt=False, is_production_consumption=False, is_scrap=False, is_reversal=False, reversal_of_movement_type=None, is_inbound_receipt=False, is_outbound_issue=True, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
-        Row(plant_code=None, movement_type_code="602", movement_text="Reversal GI Delivery", event_category="GOODS_ISSUE", is_production_receipt=False, is_production_consumption=False, is_scrap=False, is_reversal=True, reversal_of_movement_type="601", is_inbound_receipt=False, is_outbound_issue=False, is_stock_adjustment=False, classification_source="GLOBAL_OVERLAY", validation_status="CONFIRMED", valid_from="2026-01-01", valid_to="9999-12-31"),
+        # plant, mvt,  text,                       event,           prod_rcpt, prod_cons, scrap, reversal, reversal_of, inb_rcpt, outb_iss, stk_adj, source,           status,      from,         to
+        (None, "101", "Goods Receipt Production",  "GOODS_RECEIPT", True,  False, False, False, None,  False, False, False, "GLOBAL_OVERLAY", "CONFIRMED", "2026-01-01", "9999-12-31"),
+        (None, "102", "Reversal GR Production",    "GOODS_RECEIPT", False, False, False, True,  "101", False, False, False, "GLOBAL_OVERLAY", "CONFIRMED", "2026-01-01", "9999-12-31"),
+        (None, "261", "Goods Issue Production",    "GOODS_ISSUE",   False, True,  False, False, None,  False, False, False, "GLOBAL_OVERLAY", "CONFIRMED", "2026-01-01", "9999-12-31"),
+        (None, "262", "Reversal GI Production",    "GOODS_ISSUE",   False, False, False, True,  "261", False, False, False, "GLOBAL_OVERLAY", "CONFIRMED", "2026-01-01", "9999-12-31"),
+        (None, "551", "Goods Issue Scrapping",     "GOODS_ISSUE",   False, False, True,  False, None,  False, False, False, "GLOBAL_OVERLAY", "CONFIRMED", "2026-01-01", "9999-12-31"),
+        (None, "552", "Reversal GI Scrapping",     "GOODS_ISSUE",   False, False, False, True,  "551", False, False, False, "GLOBAL_OVERLAY", "CONFIRMED", "2026-01-01", "9999-12-31"),
+        (None, "601", "Goods Issue Delivery",      "GOODS_ISSUE",   False, False, False, False, None,  False, True,  False, "GLOBAL_OVERLAY", "CONFIRMED", "2026-01-01", "9999-12-31"),
+        (None, "602", "Reversal GI Delivery",      "GOODS_ISSUE",   False, False, False, True,  "601", False, False, False, "GLOBAL_OVERLAY", "CONFIRMED", "2026-01-01", "9999-12-31"),
     ]
-    df = spark.createDataFrame(data)
+    df = spark.createDataFrame(data, schema)
     return (
         df.withColumn("valid_from", F.to_date("valid_from"))
         .withColumn("valid_to", F.to_date("valid_to"))

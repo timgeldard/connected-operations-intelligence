@@ -40,6 +40,36 @@ def bronze_published() -> str:
     return f"{catalog}.{schema}"
 
 
+def bronze_table_exists(name: str) -> bool:
+    """True if a bronze SAP source table exists, safe to call at module-eval to conditionally
+    define a DLT table.
+
+    Uses a lazy `spark.read.table` analysis probe rather than `spark.catalog.tableExists`, which is
+    a BLOCKED Py4J API in the DLT serverless graph-construction environment (PY4J_BLOCKED_API).
+    `read.table` resolves the relation (metadata only, no Spark job) and raises if it is absent.
+    Self-healing: returns True automatically once the source table is replicated.
+    """
+    try:
+        get_spark().read.table(f"{BRONZE}.{name}")
+        return True
+    except Exception:  # noqa: BLE001 - missing source is a normal bootstrap condition
+        return False
+
+
+def col_or_null(df, name: str, dtype: str, alias_prefix: str | None = None) -> Column:
+    """Reference a source column when it is present, else a typed NULL.
+
+    Use for OPTIONAL source columns that are not guaranteed to be replicated in every
+    environment, so a missing column degrades to a typed NULL instead of failing the run with
+    UNRESOLVED_COLUMN. Self-healing: when the column is later replicated it is used automatically.
+    Does NOT change business meaning — never substitute a different field. `dtype` is a Spark DDL
+    type string (e.g. "string", "double") used only for the NULL branch.
+    """
+    if name in df.columns:
+        return F.col(f"{alias_prefix}.{name}" if alias_prefix else name)
+    return F.lit(None).cast(dtype)
+
+
 def hu_reconciliation_enabled() -> bool:
     """Whether handling-unit (HU) models should be materialised.
 

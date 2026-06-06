@@ -146,15 +146,62 @@ equivalent task-environment editable install. This matters: `warehouse_snapshot`
 WH360 source objects). **Imports are fixed for pipelines and runtime-verified for silver_slow;
 jobs remain to be addressed in a separate task.**
 
+## Update 2026-06-07 (b) — DEV source/schema blockers resolved + jobs import extended
+
+Addressed the three DEV-data flow failures from the prior run, plus the jobs import gap.
+**Key finding: the CRHD tables and the missing LAGP columns are absent in BOTH
+`connected_plant_dev.sap` AND `connected_plant_uat.sap` (confirmed live) — they are
+source-replication gaps, NOT DEV-only, so they also gate UAT full_validation.**
+
+Fixes:
+- **CRHD / `work_centre`** — `workcenterheader_crhd`/`crtx` are absent in both envs and `work_centre`
+  has **no downstream pipeline consumers**. It is now source-guarded via `bronze_table_exists(...)`
+  (a lazy `spark.read.table` probe — `spark.catalog.tableExists` is a **blocked Py4J API** at DLT
+  graph-construction, `PY4J_BLOCKED_API`), so it is simply not defined when CRHD is absent, and
+  self-heals when replicated. No fabricated data.
+- **`storagebin_lagp` columns** — `LGBKT, LGPBE, MAXGW, MAXEI, ANZRE` are absent in both envs.
+  They are optional descriptive bin attributes → emitted as typed NULL via `col_or_null(...)`.
+  **Not** remapped (e.g. `LGBKT`→`LPTYP`) — a data-team mapping decision. Impact: `gold_bin_occupancy`
+  loses `bin_type` as a grouping dimension; bin COUNTS and the WH360 overview KPIs are unaffected.
+- **movement-type seed** — `site_config_movement_type_classification` now passes an explicit
+  StructType (positional tuples) to `createDataFrame`, fixing `CANNOT_DETERMINE_TYPE` from the
+  all-NULL `plant_code`. Guarded by `scripts/ci/check_seed_explicit_schemas.py`.
+- **jobs import** — `reconciliation_control` (runs `reconciliation_job.py` →
+  `from gold.servicenow import ...`) now editable-installs the bundle root in its task environment.
+  `warehouse_snapshot.py` is self-contained (no package import) and `gold_refresh_job` runs
+  pipeline tasks only, so neither needs it (verified). The package-import check now covers jobs.
+- New `validation/ioreporting_dev_source_schema_preflight.sql` classifies required vs tolerated-gap
+  vs degraded-column source schema.
+
+**Runtime-verified (silver_slow, update `e5818d...`).**
+- ✅ The 3 fixed blockers are **past**: analysis now resolves `work_centre` (gated out),
+  `stg_storage_bin` (`storagebin_lagp` resolves via `LPTYP`, no `LGBKT`), and the movement-type seed.
+- ✅ `ioreporting_dev_source_schema_preflight.sql` run live: all 33 required SAP tables present;
+  CRHD/CRTX reported as tolerated gaps; LAGP columns reported as degraded (typed NULL); verdict
+  **SOURCE-SCHEMA READY**.
+- ⛔ **Next distinct blocker (silver_slow still does NOT complete) — a separate code-bug class, not
+  schema/source:** `strip_zeros(F.coalesce(...))` raises `[NOT_ITERABLE] Column is not iterable`
+  in `silver/tables/inbound.py:67` (`stg_purchase_order`) and 2 other flows. `strip_zeros(col_name: str)`
+  does `F.col(col_name)` but four callers pass a `Column` (`F.coalesce(...)`): `inbound.py`,
+  `process_order.py`, `warehouse_fast.py`, `warehouse_flow.py` — so it also affects silver_fast.
+  Recommended follow-up: make `strip_zeros` accept a `Column` or column name. Per task scope
+  (named schema/source blockers + jobs; stop at next distinct blocker), NOT fixed in this PR.
+
+**Latent gold-stage concern (documented, not fixed):** `gold/freshness.py` calls
+`spark.catalog.tableExists(...)` directly at execution time — the same blocked Py4J API — which will
+surface when the gold pipeline runs.
+
+No pipeline completed; **Warehouse360 validation was NOT rerun**; no contract promoted; DEV remains a
+technical shakedown only.
+
 ## Next required Databricks execution (in order)
 
-1. ✅ DONE — pipeline package-import root fixed and silver_slow import/graph load runtime-verified.
-2. Address the **DEV-data flow failures** above (missing `workcenterheader_crhd`, `LGBKT` column,
-   movement-type seed typing) so `silver_slow` completes — these are shakedown data findings.
-3. Apply the same editable-install mechanism to the **jobs** (separate task) before any chain
-   that runs `warehouse_snapshot` / `reconciliation`.
-4. Run `silver_fast` → `silver_quality` → `gold_pipeline` (+ `warehouse_snapshot`).
-5. Apply `gold_security_dev.sql` then `gold_serving_views_dev.sql`.
-6. Re-run `warehouse360_dev_source_layer_preflight.sql` — expect 7/7 FOUND.
-7. Only then rerun the Warehouse360 validation pack (technical shakedown classification) and
+1. ✅ DONE — pipeline imports fixed; the 3 DEV source/schema blockers fixed and runtime-verified.
+2. Fix the `strip_zeros(Column)` `NOT_ITERABLE` bug (4 callers) so `stg_purchase_order` and the
+   other affected silver flows analyse — then re-run `silver_slow` to completion.
+3. Run `silver_fast` → `silver_quality` → `gold_pipeline` (+ `warehouse_snapshot`); expect the
+   `gold/freshness.py` `catalog.tableExists` Py4J block as the next gold-stage blocker.
+4. Apply `gold_security_dev.sql` then `gold_serving_views_dev.sql`.
+5. Re-run `warehouse360_dev_source_layer_preflight.sql` — expect 7/7 FOUND.
+6. Only then rerun the Warehouse360 validation pack (technical shakedown classification) and
    update its evidence.

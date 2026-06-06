@@ -85,8 +85,17 @@ databricks schemas  list connected_plant_dev -p TG   # confirm 'sap' exists
 Run `validation/ioreporting_dev_shakedown_preflight.sql` on warehouse
 `8fae28f1808dbf75` — expect SAP + `published_dev.central_services` + all 9 non-HU
 reference tables present (HU tables ABSENT is OK in shakedown). Then
-`validation/warehouse360_dev_source_layer_preflight.sql` — expect `gold_io_reporting`
-MISSING and 0/7 objects on first pass (they materialise after the runs below).
+`validation/ioreporting_dev_source_schema_preflight.sql` — confirms required SAP
+source tables/columns exist and flags the tolerated gaps (CRHD tables → `work_centre`
+not built; `storagebin_lagp` LGBKT/LGPBE/MAXGW/MAXEI/ANZRE → typed-NULL bin attributes;
+these gaps also affect UAT). Then `validation/warehouse360_dev_source_layer_preflight.sql`
+— expect `gold_io_reporting` MISSING and 0/7 objects on first pass (they materialise
+after the runs below).
+
+> **Known DEV-data blocker (as of 2026-06-07):** `silver_slow` does not yet complete —
+> after the source/schema fixes it stops on a separate code bug: `strip_zeros(F.coalesce(...))`
+> raises `NOT_ITERABLE` (the helper takes a column name, four callers pass a `Column`).
+> See `contracts/ioreporting-dev-deployment-profile.md`.
 
 ### 1. Validate the bundle
 ```bash

@@ -35,6 +35,13 @@ resources:
         - environment_key: default
           spec:
             client: "2"
+            # reconciliation_job.py does `from gold.servicenow import ...`, so the gold package must
+            # be importable in the job's serverless environment — same editable-install of the synced
+            # bundle root used by the pipelines. Without this the task fails with
+            # ModuleNotFoundError: No module named 'gold'. (warehouse_snapshot.py is self-contained —
+            # no package import — and gold_refresh_job runs pipeline tasks only, so neither needs this.)
+            dependencies:
+              - --editable ${workspace.file_path}
 
       email_notifications:
         on_failure:

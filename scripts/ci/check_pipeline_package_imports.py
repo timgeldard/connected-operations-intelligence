@@ -56,6 +56,40 @@ def _pipeline_deps(doc: dict) -> list:
     return deps
 
 
+# A python_file job task whose script imports the silver/gold package must editable-install the
+# bundle root in its task environment, or it fails at runtime with ModuleNotFoundError.
+_PKG_IMPORT_RE = re.compile(r"(?m)^\s*(?:from|import)\s+(?:gold|silver)[\s.]")
+
+
+def _check_jobs(errors: list) -> None:
+    import glob
+    for path in sorted(glob.glob(os.path.join(RESOURCES, "*.job.yml"))):
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f)
+        for job in (doc or {}).get("resources", {}).get("jobs", {}).values():
+            env_deps = {
+                e.get("environment_key"): (e.get("spec", {}) or {}).get("dependencies", []) or []
+                for e in (job.get("environments") or [])
+            }
+            for task in (job.get("tasks") or []):
+                spt = task.get("spark_python_task")
+                if not spt:
+                    continue  # pipeline_task etc. — no package import
+                pyfile = spt.get("python_file", "")
+                script = os.path.normpath(os.path.join(RESOURCES, pyfile))
+                if not os.path.isfile(script):
+                    continue
+                if not _PKG_IMPORT_RE.search(open(script, encoding="utf-8").read()):
+                    continue  # self-contained script — no editable install needed
+                deps = env_deps.get(task.get("environment_key"), [])
+                if not any(EDITABLE_DEP in str(d) for d in deps):
+                    errors.append(
+                        f"[jobs] {os.path.basename(path)} task '{task.get('task_key')}' runs "
+                        f"{pyfile} which imports the silver/gold package but its environment does "
+                        f"not declare '{EDITABLE_DEP}' — will fail with ModuleNotFoundError at runtime"
+                    )
+
+
 def run_checks() -> int:
     print("Running IOReporting pipeline package-import check...")
     errors = []
@@ -104,6 +138,9 @@ def run_checks() -> int:
             mod_path = os.path.join(PRODUCT, mod.replace(".", "/") + ".py")
             if not os.path.isfile(mod_path):
                 errors.append(f"[imports] {rel} imports '{mod}' but {mod}.py is not present")
+
+    # 5. python_file jobs that import the package must editable-install the bundle root
+    _check_jobs(errors)
 
     if errors:
         print("\nPipeline package-import check FAILED:")
