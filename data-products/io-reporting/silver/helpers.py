@@ -107,9 +107,17 @@ PROCESS_LINE_ATINN = None
 # time (e.g. zero-stripping, date-casting). Shifting these transformations to the
 # replication layer can avoid post-ingestion Spark processing overhead and reduce
 # hidden compute/storage costs.
-def strip_zeros(col_name: str) -> Column:
-    """Apply SAP ALPHA-style leading-zero removal for numeric identifiers."""
-    value = F.trim(F.col(col_name).cast("string"))
+def strip_zeros(col: "str | Column") -> Column:
+    """Apply SAP ALPHA-style leading-zero removal for numeric identifiers.
+
+    Accepts either a column name (str, wrapped with F.col) or a pyspark Column used directly,
+    so callers can pass an expression such as strip_zeros(F.coalesce(F.col("i.EBELN"), ...)).
+    Passing a Column to F.col previously raised NOT_ITERABLE. Semantics are unchanged for the
+    str case: NULL/blank -> NULL; all-zero -> NULL; numeric strings have leading zeros stripped;
+    non-numeric values pass through unchanged.
+    """
+    column = F.col(col) if isinstance(col, str) else col
+    value = F.trim(column.cast("string"))
     stripped = F.regexp_replace(value, r"^0+", "")
     return (
         F.when(value.isNull() | (value == ""), None)

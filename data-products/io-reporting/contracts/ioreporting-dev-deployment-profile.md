@@ -194,11 +194,37 @@ surface when the gold pipeline runs.
 No pipeline completed; **Warehouse360 validation was NOT rerun**; no contract promoted; DEV remains a
 technical shakedown only.
 
+## Update 2026-06-07 (c) — strip_zeros NOT_ITERABLE fixed + runtime-verified
+
+- **Root cause:** `strip_zeros(col_name)` did `F.col(col_name)`, but four callers passed a Spark
+  `Column` (`F.coalesce(...)`): `inbound.py:67`, `process_order.py:100`, `warehouse_fast.py:71`,
+  `warehouse_flow.py:132`. `F.col(<Column>)` raises `[NOT_ITERABLE] Column is not iterable` (also
+  affected silver_fast).
+- **Fix:** `strip_zeros` now accepts `str | Column` — wraps a `str` with `F.col`, uses a `Column`
+  directly. String-case semantics unchanged (NULL/blank → NULL, all-zero → NULL, numeric leading
+  zeros stripped, non-numeric pass-through). The four call sites are unchanged (no business-logic
+  rewrite — the helper fix is sufficient). Tests added in `tests/test_helpers.py` for `F.col`,
+  `F.coalesce` (incl. fallback) and null Column input.
+- **Runtime-verified (silver_slow, update `48e129`):** `stg_purchase_order` now resolves — the
+  `NOT_ITERABLE` blocker is **past**.
+- ⛔ **Next distinct blocker (silver_slow still does NOT complete) — code↔replicated-schema mismatch
+  (same class as storagebin_lagp, out of this task's scope):** `stg_capacity_utilisation`
+  (`reference.py`) references KAPA columns absent from the replicated
+  `connected_plant_dev.sap.shiftparametersavailablecapacity_kapa`. Confirmed live: of the 10
+  referenced KAPA columns only `KAPAZ` is present; **missing: `DAFBI, DAFEI, PAUSA, BEGDA, ENDDA,
+  MEINH, OEFFZ, NORMA, RUEZT`**. The replicated KAPA instead has shift-parameter columns
+  (`DATUB, TAGNR, SCHNR, BEGZT, EINZT, ENDZT, ANG_MIN, ANG_MAX, …`). Needs a source-mapping decision
+  (like `storagebin_lagp`) — not fixed here.
+- **No Silver objects materialised** — the failure is at flow analysis (graph construction), before
+  any table is written. **Warehouse360 validation NOT rerun; no contract promoted; DEV shakedown only.**
+- Still latent: `gold/freshness.py` uses the blocked `spark.catalog.tableExists` (gold-stage blocker).
+
 ## Next required Databricks execution (in order)
 
-1. ✅ DONE — pipeline imports fixed; the 3 DEV source/schema blockers fixed and runtime-verified.
-2. Fix the `strip_zeros(Column)` `NOT_ITERABLE` bug (4 callers) so `stg_purchase_order` and the
-   other affected silver flows analyse — then re-run `silver_slow` to completion.
+1. ✅ DONE — pipeline imports; 3 DEV source/schema blockers; `strip_zeros` NOT_ITERABLE — all fixed
+   and runtime-verified.
+2. Resolve `stg_capacity_utilisation` KAPA column mismatch (9 columns absent — `col_or_null`/source
+   mapping decision), then re-run `silver_slow` to completion.
 3. Run `silver_fast` → `silver_quality` → `gold_pipeline` (+ `warehouse_snapshot`); expect the
    `gold/freshness.py` `catalog.tableExists` Py4J block as the next gold-stage blocker.
 4. Apply `gold_security_dev.sql` then `gold_serving_views_dev.sql`.
