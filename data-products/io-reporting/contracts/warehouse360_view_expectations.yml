@@ -16,6 +16,15 @@ source_schema_assumption:
   uat_sap_catalog: connected_plant_uat
   uat_sap_schema: sap
 
+unresolved_assumptions:
+  - DEV validation has not yet confirmed that all governed source objects exist in connected_plant_dev.gold_io_reporting.
+  - DEV validation has not yet confirmed that source columns used by warehouse360_consumption_views_dev.sql are present and type-compatible.
+  - Candidate primary keys remain pending live duplicate checks before contract promotion.
+  - Required plant_id and candidate key nullability remain pending live checks before app test sign-off.
+  - Date and timestamp field typing remains pending live information_schema review before UAT planning.
+  - Freshness evidence is only expected for views with an explicit freshness column unless a source-specific exception is documented.
+  - Runtime route coverage is expected for active Wave 1 views only; dashboard-only candidate views still require route decisions.
+
 views:
   - name: vw_consumption_warehouse360_overview
     contract_id: warehouse360.overview
@@ -352,6 +361,10 @@ views:
     contract_id: warehouse360.dispensary_queue
     status: not_runtime_ready
     source_status: not_confirmed
+    unresolved_assumptions:
+      - Source object, source columns, and business grain are not confirmed.
+      - Runtime route coverage is intentionally out of Wave 1.
+      - This view must not be deployed until source ownership and validation evidence exist.
     expected_grain: one row per plant_id, process order, component, and weighing task
     primary_key:
       - plant_id
