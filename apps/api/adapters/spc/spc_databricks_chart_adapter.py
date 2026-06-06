@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from contracts.spc import SpcChartDataRequest
@@ -175,7 +176,6 @@ def map_spc_chart_response(
 
         std_dev = None
         if batch_n >= 2:
-            import math
             variance = (sum_squares - (sum_value ** 2) / batch_n) / (batch_n - 1)
             if variance >= 0:
                 std_dev = math.sqrt(variance)

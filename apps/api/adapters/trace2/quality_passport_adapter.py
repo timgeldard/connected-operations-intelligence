@@ -10,6 +10,7 @@ Covers all quality passport specs and the assembler:
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from shared.query_service.cache_policy import CacheTier
@@ -505,7 +506,6 @@ def build_batch_quality_passport(
         })
 
     # daysToExpiry: compute from identity.expiryDate vs today
-    from datetime import datetime, timezone
     days_to_expiry = 0
     expiry = partial["identity"].get("expiryDate") or ""
     if expiry:

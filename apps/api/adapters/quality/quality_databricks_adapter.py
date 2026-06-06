@@ -5,6 +5,7 @@ from contracts.generated import (
     QualityEvidenceSummary,
     QualityInspectionLotEvidence,
 )
+from shared.query_service.object_resolver import resolve_domain_object
 from shared.query_service.query_executor import DatabricksRepository
 from shared.query_service.query_spec import QuerySpec
 
@@ -77,7 +78,6 @@ class QualityUsageDecisionRepository:
 
 
 def get_quality_usage_decision_spec(material_id: str, batch_id: str, plant_id: Optional[str] = None) -> QuerySpec:
-    from shared.query_service.object_resolver import resolve_domain_object
     usage_decision_mv = resolve_domain_object("cq", "gold_inspection_usage_decision")
     inspection_lot_mv = resolve_domain_object("cq", "gold_inspection_lot")
 
