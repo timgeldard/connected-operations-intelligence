@@ -117,6 +117,25 @@ jobs:
       - name: Run Boundary Check
         run: python3 scripts/ci/check_forbidden_data_access.py
 
+  contract-coverage:
+    name: Contract Coverage Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run Contract Coverage Check
+        run: python3 scripts/ci/check_contract_coverage.py
+
   validate-bundle:
     name: Validate Databricks Bundle
     runs-on: ubuntu-latest
