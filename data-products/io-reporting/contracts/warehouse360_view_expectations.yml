@@ -1,0 +1,394 @@
+environment_targets:
+  dev:
+    catalog: connected_plant_dev
+    schema: gold_io_reporting
+  uat:
+    catalog: connected_plant_uat
+    schema: gold_io_reporting
+  prod:
+    catalog: connected_plant_prod
+    schema: gold_io_reporting
+
+source_schema_assumption:
+  dev_sap_matches_uat_sap: true
+  dev_sap_catalog: connected_plant_dev
+  dev_sap_schema: sap
+  uat_sap_catalog: connected_plant_uat
+  uat_sap_schema: sap
+
+unresolved_assumptions:
+  - DEV validation has not yet confirmed that all governed source objects exist in connected_plant_dev.gold_io_reporting.
+  - DEV validation has not yet confirmed that source columns used by warehouse360_consumption_views_dev.sql are present and type-compatible.
+  - Candidate primary keys remain pending live duplicate checks before contract promotion.
+  - Required plant_id and candidate key nullability remain pending live checks before app test sign-off.
+  - Date and timestamp field typing remains pending live information_schema review before UAT planning.
+  - Freshness evidence is only expected for views with an explicit freshness column unless a source-specific exception is documented.
+  - Runtime route coverage is expected for active Wave 1 views only; dashboard-only candidate views still require route decisions.
+
+views:
+  - name: vw_consumption_warehouse360_overview
+    contract_id: warehouse360.overview
+    expected_grain: one row per plant_id + snapshot timestamp
+    primary_key:
+      - plant_id
+      - snapshot_ts
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - snapshot_ts
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: snapshot_ts
+        type: timestamp
+      - name: orders_total
+        type: long
+      - name: orders_red
+        type: long
+      - name: orders_amber
+        type: long
+      - name: trs_open
+        type: long
+      - name: tos_open
+        type: long
+      - name: deliveries_today
+        type: long
+      - name: deliveries_at_risk
+        type: long
+      - name: inbound_open
+        type: long
+      - name: bins_blocked
+        type: long
+      - name: bins_total
+        type: long
+      - name: bin_util_pct
+        type: decimal
+    freshness_column: snapshot_ts
+    runtime_route_exists: true
+    dashboard_consumption_expected: true
+    live_validation_required:
+      - primary_key_uniqueness
+      - plant_id_nullability
+      - type_compatibility
+      - row_count
+      - freshness
+
+  - name: vw_consumption_warehouse360_inbound_backlog
+    contract_id: warehouse360.inbound_backlog
+    expected_grain: one row per plant_id + po_id + po_item
+    primary_key:
+      - plant_id
+      - po_id
+      - po_item
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - po_id
+      - po_item
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: po_id
+        type: string
+      - name: po_item
+        type: string
+      - name: doc_type
+        type: string
+      - name: vendor_id
+        type: string
+      - name: vendor_name
+        type: string
+      - name: storage_loc
+        type: string
+      - name: material_id
+        type: string
+      - name: material_name
+        type: string
+      - name: ordered_qty
+        type: decimal
+      - name: gr_qty
+        type: decimal
+      - name: uom
+        type: string
+      - name: delivery_date
+        type: string
+      - name: po_date
+        type: string
+      - name: open_qty
+        type: decimal
+      - name: qa_status
+        type: string
+      - name: oldest_po_age_days
+        type: integer
+      - name: inbound_backlog_risk_band
+        type: string
+    freshness_column: null
+    runtime_route_exists: true
+    dashboard_consumption_expected: true
+    live_validation_required:
+      - primary_key_uniqueness
+      - plant_id_nullability
+      - type_compatibility
+      - row_count
+
+  - name: vw_consumption_warehouse360_outbound_backlog
+    contract_id: warehouse360.outbound_backlog
+    expected_grain: one row per plant_id and delivery ID
+    primary_key:
+      - plant_id
+      - delivery_id
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - delivery_id
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: delivery_id
+        type: string
+      - name: delivery_type
+        type: string
+      - name: customer_id
+        type: string
+      - name: customer_name
+        type: string
+      - name: carrier
+        type: string
+      - name: planned_gi_date
+        type: date
+      - name: actual_gi_date
+        type: date
+      - name: delivery_date
+        type: string
+      - name: gross_weight
+        type: decimal
+      - name: pick_pct
+        type: decimal
+      - name: line_count
+        type: integer
+      - name: risk
+        type: string
+      - name: shipped
+        type: boolean
+    freshness_column: null
+    runtime_route_exists: true
+    dashboard_consumption_expected: true
+    live_validation_required:
+      - primary_key_uniqueness
+      - plant_id_nullability
+      - type_compatibility
+      - row_count
+
+  - name: vw_consumption_warehouse360_staging_workload
+    contract_id: warehouse360.staging_workload
+    expected_grain: one row per plant_id, process order, reservation number, and batch ID
+    primary_key:
+      - plant_id
+      - order_id
+      - reservation_no
+      - batch_id
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - order_id
+      - reservation_no
+      - batch_id
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: order_id
+        type: string
+      - name: material_id
+        type: string
+      - name: order_qty
+        type: decimal
+      - name: uom
+        type: string
+      - name: material_name
+        type: string
+      - name: sched_start
+        type: date
+      - name: sched_finish
+        type: date
+      - name: staging_pct
+        type: decimal
+      - name: to_items_total
+        type: integer
+      - name: to_items_done
+        type: integer
+      - name: mins_to_start
+        type: double
+      - name: risk
+        type: string
+      - name: reservation_no
+        type: string
+      - name: batch_id
+        type: string
+      - name: sap_order
+        type: string
+    freshness_column: null
+    runtime_route_exists: true
+    dashboard_consumption_expected: true
+    live_validation_required:
+      - primary_key_uniqueness
+      - plant_id_nullability
+      - type_compatibility
+      - row_count
+
+  - name: vw_consumption_warehouse360_stock_exceptions
+    contract_id: warehouse360.stock_exceptions
+    expected_grain: one row per plant_id, material_id, batch_id, storage location, and exception type
+    primary_key:
+      - plant_id
+      - material_id
+      - batch_id
+      - storage_loc
+      - exception_type
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - material_id
+      - batch_id
+      - storage_loc
+      - exception_type
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: material_id
+        type: string
+      - name: batch_id
+        type: string
+      - name: storage_loc
+        type: string
+      - name: exception_type
+        type: string
+      - name: qty
+        type: decimal
+      - name: minimum_days_to_expiry
+        type: long
+      - name: has_minimum_shelf_life_breach
+        type: boolean
+    freshness_column: null
+    runtime_route_exists: false
+    dashboard_consumption_expected: true
+    live_validation_required:
+      - primary_key_uniqueness
+      - plant_id_nullability
+      - type_compatibility
+      - row_count
+
+  - name: vw_consumption_warehouse360_shortfalls
+    contract_id: warehouse360.shortfalls
+    expected_grain: one row per plant_id and material_id
+    primary_key:
+      - plant_id
+      - material_id
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - material_id
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: material_id
+        type: string
+      - name: shortfall_qty
+        type: decimal
+      - name: open_items_count
+        type: long
+      - name: oldest_tr_date
+        type: date
+    freshness_column: null
+    runtime_route_exists: false
+    dashboard_consumption_expected: true
+    live_validation_required:
+      - primary_key_uniqueness
+      - plant_id_nullability
+      - type_compatibility
+      - row_count
+
+  - name: vw_consumption_warehouse360_im_wm_reconciliation
+    contract_id: warehouse360.im_wm_reconciliation
+    expected_grain: one row per plant_id, material_id, batch_id, storage location, bin, and exception type
+    primary_key:
+      - plant_id
+      - material_id
+      - batch_id
+      - storage_loc
+      - bin_id
+      - exception_type
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - material_id
+      - batch_id
+      - storage_loc
+      - bin_id
+      - exception_type
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: material_id
+        type: string
+      - name: batch_id
+        type: string
+      - name: storage_loc
+        type: string
+      - name: exception_type
+        type: string
+      - name: severity
+        type: string
+      - name: sla_hours
+        type: integer
+      - name: qty
+        type: decimal
+      - name: bin_id
+        type: string
+      - name: detail_text
+        type: string
+      - name: detected_date
+        type: date
+    freshness_column: null
+    runtime_route_exists: true
+    dashboard_consumption_expected: true
+    live_validation_required:
+      - primary_key_uniqueness
+      - plant_id_nullability
+      - type_compatibility
+      - row_count
+
+  - name: vw_consumption_warehouse360_dispensary_queue
+    contract_id: warehouse360.dispensary_queue
+    status: not_runtime_ready
+    source_status: not_confirmed
+    unresolved_assumptions:
+      - Source object, source columns, and business grain are not confirmed.
+      - Runtime route coverage is intentionally out of Wave 1.
+      - This view must not be deployed until source ownership and validation evidence exist.
+    expected_grain: one row per plant_id, process order, component, and weighing task
+    primary_key:
+      - plant_id
+      - order_id
+      - component_id
+      - task_id
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - order_id
+      - component_id
+      - task_id
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: order_id
+        type: string
+      - name: component_id
+        type: string
+      - name: task_id
+        type: string
+      - name: status
+        type: string
+    freshness_column: null
+    runtime_route_exists: false
+    dashboard_consumption_expected: false
+    live_validation_required: []

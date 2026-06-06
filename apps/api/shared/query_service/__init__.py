@@ -17,6 +17,7 @@ from .errors import (
 )
 from .identity import UserIdentity, extract_user_identity
 from .object_resolver import qualify_object, quote_identifier, resolve_domain_object
+from .contract_resolver import resolve_contract_object, resolve_contract_view
 from .query_executor import QueryExecutor
 from .query_spec import QuerySpec
 
@@ -40,4 +41,6 @@ __all__ = [
     "qualify_object",
     "quote_identifier",
     "resolve_domain_object",
+    "resolve_contract_object",
+    "resolve_contract_view",
 ]

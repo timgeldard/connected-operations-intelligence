@@ -1,0 +1,135 @@
+version: 1
+owner: data-products/io-reporting
+purpose: >
+  Registry of app-level governed-contract migration readiness. This registry is
+  an offline control plane only; it is not live Databricks validation evidence.
+
+status_order:
+  - not_started
+  - inventory_only
+  - candidate_scaffold
+  - dev_validation_pack_ready
+  - dev_validated
+  - uat_ready
+
+runtime_guardrails:
+  default_runtime_governed_contracts_allowed: false
+  allowed_runtime_statuses:
+    - candidate_scaffold
+    - dev_validation_pack_ready
+    - dev_validated
+    - uat_ready
+  active_pilot: warehouse360
+  notes:
+    - Warehouse360 is the only active governed-contract migration pilot.
+    - Non-Warehouse360 apps remain planning-only until explicitly approved in this registry.
+    - A registry status alone does not prove DEV, UAT, or production validation.
+
+apps:
+  warehouse360:
+    display_name: Warehouse360
+    status: dev_validation_pack_ready
+    runtime_migration_status: active_pilot_candidate
+    runtime_governed_contracts_allowed: true
+    contract_namespace: warehouse360
+    view_prefix: vw_consumption_warehouse360_
+    source_mode_env: WAREHOUSE360_SOURCE_MODE
+    validation_status: dev_validation_pending
+    validation_pack_status: ready_for_dev_execution
+    live_dev_validation: pending
+    inventory_status: active_wave_1_routes_inventoried
+    adapters:
+      - apps/api/adapters/warehouse360
+    notes:
+      - Mock fixtures and offline checks are present.
+      - No live Databricks validation is claimed by this registry.
+
+  processorderhistory:
+    display_name: Process Order History
+    status: inventory_only
+    runtime_migration_status: not_started
+    runtime_governed_contracts_allowed: false
+    contract_namespace: process_order_history
+    view_prefix: vw_consumption_process_order_history_
+    source_mode_env: null
+    validation_status: not_started
+    validation_pack_status: not_started
+    live_dev_validation: not_started
+    inventory_status: template_created
+    adapters:
+      - apps/api/adapters/poh
+    notes:
+      - Do not migrate until Warehouse360 DEV validation evidence is accepted.
+
+  trace2:
+    display_name: Trace2
+    status: inventory_only
+    runtime_migration_status: not_started
+    runtime_governed_contracts_allowed: false
+    contract_namespace: trace2
+    view_prefix: vw_consumption_trace2_
+    source_mode_env: null
+    validation_status: not_started
+    validation_pack_status: not_started
+    live_dev_validation: not_started
+    inventory_status: template_created
+    adapters:
+      - apps/api/adapters/trace2
+    notes:
+      - Candidate route inventory is planning-only.
+
+  quality:
+    display_name: Quality / Connected Quality
+    status: inventory_only
+    runtime_migration_status: not_started
+    runtime_governed_contracts_allowed: false
+    contract_namespace: quality
+    alternate_contract_namespaces:
+      - connected_quality
+    view_prefix: vw_consumption_quality_
+    alternate_view_prefixes:
+      - vw_consumption_connected_quality_
+    source_mode_env: null
+    validation_status: not_started
+    validation_pack_status: not_started
+    live_dev_validation: not_started
+    inventory_status: template_created
+    adapters:
+      - apps/api/adapters/quality
+      - apps/api/adapters/cq
+    notes:
+      - Namespace split must be decided before candidate scaffolding.
+
+  spc:
+    display_name: SPC
+    status: inventory_only
+    runtime_migration_status: not_started
+    runtime_governed_contracts_allowed: false
+    contract_namespace: spc
+    view_prefix: vw_consumption_spc_
+    source_mode_env: null
+    validation_status: not_started
+    validation_pack_status: not_started
+    live_dev_validation: not_started
+    inventory_status: template_created
+    adapters:
+      - apps/api/adapters/spc
+    notes:
+      - Separate source-field contracts from app-derived statistical outputs before scaffolding.
+
+  envmon:
+    display_name: EnvMon
+    status: inventory_only
+    runtime_migration_status: not_started
+    runtime_governed_contracts_allowed: false
+    contract_namespace: envmon
+    view_prefix: vw_consumption_envmon_
+    source_mode_env: null
+    validation_status: not_started
+    validation_pack_status: not_started
+    live_dev_validation: not_started
+    inventory_status: template_created
+    adapters:
+      - apps/api/adapters/envmon
+    notes:
+      - Partial coverage and placeholder handling must be resolved before scaffolding.

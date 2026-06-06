@@ -117,6 +117,50 @@ jobs:
       - name: Run Boundary Check
         run: python3 scripts/ci/check_forbidden_data_access.py
 
+  contract-coverage:
+    name: Contract Coverage Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pyyaml fastapi httpx
+
+      - name: Run Contract Coverage Check
+        run: python3 scripts/ci/check_contract_coverage.py
+
+  warehouse360-static-migration-check:
+    name: Warehouse360 Static Migration Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run Warehouse360 static migration check
+        run: python3 scripts/ci/check_warehouse360_migration_static.py
+
+      - name: Run Warehouse360 adapter contract-column check
+        run: python3 scripts/ci/check_warehouse360_adapter_contract_columns.py
+
+      - name: Run app migration registry guard
+        run: python3 scripts/ci/check_app_migration_registry_guard.py
+
   validate-bundle:
     name: Validate Databricks Bundle
     runs-on: ubuntu-latest

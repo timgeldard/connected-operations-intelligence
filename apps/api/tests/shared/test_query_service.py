@@ -207,6 +207,38 @@ class TestQueryExecutor:
         assert received == ["bearer-xyz"]
         assert result == [{"col": "val"}]
 
+    async def test_passes_contract_id_to_query_tags(self) -> None:
+        received_tags: list[dict] = []
+
+        class CapturingClient(DatabricksQueryClient):
+            async def execute(self, *, sql, params, oauth_token, warehouse_id, timeout_seconds, tags):
+                received_tags.append(tags)
+                return [{"col": "val"}]
+
+        executor = QueryExecutor(client=CapturingClient())
+        identity = UserIdentity(user_id="u001", raw_oauth_token="bearer-xyz")
+        spec = QuerySpec(
+            name="x",
+            module="x",
+            endpoint="/x",
+            sql="SELECT 1",
+            contract_id="warehouse360.overview",
+        )
+
+        await executor.execute(spec, identity)
+
+        assert received_tags == [
+            {
+                "query_name": "x",
+                "module": "x",
+                "endpoint": "/x",
+                "user_id": "u001",
+                "cache_policy": "none",
+                "source_badge": "databricks-api",
+                "contract_id": "warehouse360.overview",
+            }
+        ]
+
     async def test_default_client_is_not_implemented(self) -> None:
         executor = QueryExecutor()
         identity = UserIdentity(user_id="u001", raw_oauth_token="tok")
@@ -317,3 +349,55 @@ class TestQueryExecutor:
         await executor.execute(spec, identity)
 
         assert spec.params == original_params
+
+
+# ---------------------------------------------------------------------------
+# Contract Resolver & Contract Validation
+# ---------------------------------------------------------------------------
+
+class TestContractResolver:
+    def test_load_manifest_succeeds(self) -> None:
+        from shared.query_service.contract_resolver import load_manifest
+        manifest = load_manifest()
+        assert manifest is not None
+        assert "contracts" in manifest
+
+    def test_resolve_contract_view_succeeds(self) -> None:
+        from shared.query_service.contract_resolver import resolve_contract_view
+        view = resolve_contract_view("warehouse360.inbound_backlog")
+        assert view == "vw_consumption_warehouse360_inbound_backlog"
+
+    def test_resolve_contract_view_raises_for_missing(self) -> None:
+        from shared.query_service.contract_resolver import resolve_contract_view
+        with pytest.raises(ValueError, match="not found in manifest"):
+            resolve_contract_view("warehouse360.non_existent_contract")
+
+    def test_resolve_contract_object_resolves_correctly(self, monkeypatch) -> None:
+        from shared.query_service.contract_resolver import resolve_contract_object
+        monkeypatch.setenv("WH360_CATALOG", "my_catalog")
+        monkeypatch.setenv("WH360_SCHEMA", "my_schema")
+
+        obj = resolve_contract_object("warehouse360.inbound_backlog", "wh360")
+        assert obj == "`my_catalog`.`my_schema`.`vw_consumption_warehouse360_inbound_backlog`"
+
+
+class TestQuerySpecContractId:
+    def test_init_with_valid_contract_id(self) -> None:
+        spec = QuerySpec(
+            name="test.query",
+            module="wh360",
+            endpoint="/api/test",
+            sql="SELECT 1",
+            contract_id="warehouse360.inbound_backlog",
+        )
+        assert spec.contract_id == "warehouse360.inbound_backlog"
+
+    def test_init_raises_for_invalid_contract_id(self) -> None:
+        with pytest.raises(ValueError, match="not found in manifest"):
+            QuerySpec(
+                name="test.query",
+                module="wh360",
+                endpoint="/api/test",
+                sql="SELECT 1",
+                contract_id="warehouse360.non_existent_contract",
+            )

@@ -1,0 +1,31 @@
+version: 1
+app: replace_with_app_key
+status: template_only
+notes:
+  - This template is planning scaffolding only.
+  - Do not treat this file as Databricks validation evidence.
+  - Do not mark runtime coverage active until the app migration registry permits it.
+
+expected_views:
+  - name: vw_consumption_replace_with_app_capability
+    contract_id: replace_with_app.capability
+    status: candidate_only
+    route_coverage: not_started
+    expected_grain: replace_with_grain
+    source_objects:
+      - replace_with_source_object
+    required_columns:
+      - replace_with_required_column
+    key_columns:
+      - replace_with_key_column
+    row_level_key: replace_with_row_level_key
+    freshness_column: replace_with_freshness_column
+    validation:
+      source_object_check: not_run
+      source_column_check: not_run
+      view_compile_check: not_run
+      key_uniqueness_check: not_run
+      row_level_key_check: not_run
+      app_smoke_test: not_run
+    unresolved_assumptions:
+      - replace_with_assumption
