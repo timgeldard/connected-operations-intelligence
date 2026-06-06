@@ -130,6 +130,15 @@ def _map_exception_severity(severity_raw: object, days_to_expiry_raw: object) ->
     return "low"
 
 
+def _get_source_mode() -> str:
+    source_mode = os.getenv("WAREHOUSE360_SOURCE_MODE")
+    if source_mode not in {"legacy_wh360", "governed_contracts"}:
+        raise RuntimeError(
+            "WAREHOUSE360_SOURCE_MODE must be set to 'legacy_wh360' or 'governed_contracts'"
+        )
+    return source_mode
+
+
 # ---------------------------------------------------------------------------
 # QuerySpec Factories & Row Mappers
 # ---------------------------------------------------------------------------
@@ -140,7 +149,7 @@ def get_warehouse_overview_spec(request: WarehouseOverviewRequest) -> QuerySpec:
     Source view: wh360_kpi_snapshot_v — global single-row KPI summary.
     No warehouse_id filter: the view pre-aggregates across all warehouses.
     """
-    source_mode = os.getenv("WAREHOUSE360_SOURCE_MODE", "governed_contracts")
+    source_mode = _get_source_mode()
     if source_mode == "governed_contracts":
         view = resolve_contract_object("warehouse360.overview", "wh360")
         contract_id = "warehouse360.overview"
@@ -233,7 +242,7 @@ def get_warehouse_inbound_spec(request: WarehouseInboundRequest) -> QuerySpec:
     follow-up will reintroduce the filter once a LGNUM-bearing source is
     confirmed.
     """
-    source_mode = os.getenv("WAREHOUSE360_SOURCE_MODE", "governed_contracts")
+    source_mode = _get_source_mode()
     if source_mode == "governed_contracts":
         view = resolve_contract_object("warehouse360.inbound_backlog", "wh360")
         contract_id = "warehouse360.inbound_backlog"
@@ -447,7 +456,7 @@ def get_warehouse_outbound_spec(request: WarehouseOutboundRequest) -> QuerySpec:
     fields (``materialId`` stays as empty string to satisfy the
     generated-contract requirement — see source-verification doc §5).
     """
-    source_mode = os.getenv("WAREHOUSE360_SOURCE_MODE", "governed_contracts")
+    source_mode = _get_source_mode()
     if source_mode == "governed_contracts":
         view = resolve_contract_object("warehouse360.outbound_backlog", "wh360")
         contract_id = "warehouse360.outbound_backlog"
@@ -611,7 +620,7 @@ def get_warehouse_staging_spec(request: WarehouseStagingRequest) -> QuerySpec:
     source-verification doc §3.1, the date filter is ``sched_start`` —
     the documented "staging-by" anchor — not the missing REQUIREMENT_DATE.
     """
-    source_mode = os.getenv("WAREHOUSE360_SOURCE_MODE", "governed_contracts")
+    source_mode = _get_source_mode()
     if source_mode == "governed_contracts":
         view = resolve_contract_object("warehouse360.staging_workload", "wh360")
         contract_id = "warehouse360.staging_workload"
@@ -818,7 +827,7 @@ def get_warehouse_exceptions_spec(request: WarehouseExceptionRequest) -> QuerySp
     the previous adapter (which filtered on a non-existent ``EXPIRY_DATE``
     column). See source-verification doc §3.1.
     """
-    source_mode = os.getenv("WAREHOUSE360_SOURCE_MODE", "governed_contracts")
+    source_mode = _get_source_mode()
     if source_mode == "governed_contracts":
         view = resolve_contract_object("warehouse360.im_wm_reconciliation", "wh360")
         contract_id = "warehouse360.im_wm_reconciliation"

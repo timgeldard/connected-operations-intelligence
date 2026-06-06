@@ -136,6 +136,25 @@ jobs:
       - name: Run Contract Coverage Check
         run: python3 scripts/ci/check_contract_coverage.py
 
+  warehouse360-static-migration-check:
+    name: Warehouse360 Static Migration Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run Warehouse360 static migration check
+        run: python3 scripts/ci/check_warehouse360_migration_static.py
+
   validate-bundle:
     name: Validate Databricks Bundle
     runs-on: ubuntu-latest

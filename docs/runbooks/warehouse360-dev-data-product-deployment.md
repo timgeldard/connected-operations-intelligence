@@ -88,13 +88,14 @@ databricks labs sandbox run-sql --file resources/sql/gold_serving_views_dev.sql 
 
 ## 5. Create Warehouse360 Consumption Views (`vw_consumption_*`)
 
-The Warehouse360 app and dashboards consume stable `vw_consumption_warehouse360_*` views. In DEV, create these views in `connected_plant_dev.gold_dev` wrapping the `*_live` or `*_secured` serving views.
+The Warehouse360 app and dashboards consume stable `vw_consumption_warehouse360_*` views. In DEV, create these views in `connected_plant_dev.gold_io_reporting` wrapping the `*_live` or `*_secured` serving views.
 
 Execute the following DDL in your workspace:
 
 ```sql
 USE CATALOG connected_plant_dev;
-USE SCHEMA gold_dev;
+CREATE SCHEMA IF NOT EXISTS gold_io_reporting;
+USE SCHEMA gold_io_reporting;
 
 -- 1. Overview
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_overview AS
@@ -112,7 +113,7 @@ SELECT
   blocked_bin_count AS bins_blocked,
   total_bin_count AS bins_total,
   CAST(bin_utilisation_pct AS DECIMAL(5,2)) AS bin_util_pct
-FROM connected_plant_dev.gold_dev.gold_warehouse_kpi_snapshot_secured;
+FROM connected_plant_dev.gold_io_reporting.gold_warehouse_kpi_snapshot_secured;
 
 -- 2. Inbound Backlog
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_inbound_backlog AS
@@ -135,7 +136,7 @@ SELECT
   qa_status,
   oldest_po_age_days,
   inbound_backlog_risk_band
-FROM connected_plant_dev.gold_dev.gold_inbound_po_backlog_enhanced_live;
+FROM connected_plant_dev.gold_io_reporting.gold_inbound_po_backlog_enhanced_live;
 
 -- 3. Outbound Backlog
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_outbound_backlog AS
@@ -154,7 +155,7 @@ SELECT
   line_count,
   risk_band AS risk,
   is_shipped AS shipped
-FROM connected_plant_dev.gold_dev.gold_delivery_pick_status_live;
+FROM connected_plant_dev.gold_io_reporting.gold_delivery_pick_status_live;
 
 -- 4. Staging Workload
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_staging_workload AS
@@ -175,7 +176,7 @@ SELECT
   reservation_no,
   batch_id,
   sap_order
-FROM connected_plant_dev.gold_dev.gold_process_order_staging_live;
+FROM connected_plant_dev.gold_io_reporting.gold_process_order_staging_live;
 
 -- 5. Stock Exceptions
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_stock_exceptions AS
@@ -188,7 +189,7 @@ SELECT
   total_stock_qty AS qty,
   minimum_days_to_expiry,
   has_minimum_shelf_life_breach
-FROM connected_plant_dev.gold_dev.gold_stock_expiry_risk_live;
+FROM connected_plant_dev.gold_io_reporting.gold_stock_expiry_risk_live;
 
 -- 6. Shortfalls
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_shortfalls AS
@@ -198,11 +199,10 @@ SELECT
   open_tr_qty AS shortfall_qty,
   open_tr_items AS open_items_count,
   oldest_tr_creation_date AS oldest_tr_date
-FROM connected_plant_dev.gold_dev.gold_transfer_requirement_backlog;
+FROM connected_plant_dev.gold_io_reporting.gold_transfer_requirement_backlog;
 
 -- 7. IM/WM Reconciliation
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_im_wm_reconciliation AS
--- Placeholder select until reconciliation exception source view is confirmed in DEV
 SELECT
   plant_id,
   material_id,
@@ -215,19 +215,19 @@ SELECT
   bin_id,
   detail_text,
   detected_date
-FROM connected_plant_dev.gold_dev.gold_warehouse_exceptions; -- (Verify actual name)
+FROM connected_plant_dev.gold_io_reporting.gold_warehouse_exceptions;
 ```
 
 ### 5.2 Grant Select Privileges
 Grant SELECT privileges to the consumer group:
 ```sql
-GRANT SELECT ON VIEW connected_plant_dev.gold_dev.vw_consumption_warehouse360_overview TO `users`;
-GRANT SELECT ON VIEW connected_plant_dev.gold_dev.vw_consumption_warehouse360_inbound_backlog TO `users`;
-GRANT SELECT ON VIEW connected_plant_dev.gold_dev.vw_consumption_warehouse360_outbound_backlog TO `users`;
-GRANT SELECT ON VIEW connected_plant_dev.gold_dev.vw_consumption_warehouse360_staging_workload TO `users`;
-GRANT SELECT ON VIEW connected_plant_dev.gold_dev.vw_consumption_warehouse360_stock_exceptions TO `users`;
-GRANT SELECT ON VIEW connected_plant_dev.gold_dev.vw_consumption_warehouse360_shortfalls TO `users`;
-GRANT SELECT ON VIEW connected_plant_dev.gold_dev.vw_consumption_warehouse360_im_wm_reconciliation TO `users`;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_warehouse360_overview TO `users`;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_warehouse360_inbound_backlog TO `users`;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_warehouse360_outbound_backlog TO `users`;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_warehouse360_staging_workload TO `users`;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_warehouse360_stock_exceptions TO `users`;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_warehouse360_shortfalls TO `users`;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_warehouse360_im_wm_reconciliation TO `users`;
 ```
 
 ---
