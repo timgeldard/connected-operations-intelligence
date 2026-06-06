@@ -45,8 +45,9 @@ class InMemoryCacheStore(CacheStore):
             if not entry:
                 return None
 
-            # Check expiration
-            if time.time() - entry.cached_at > entry.ttl:
+            # Check expiration. Use a monotonic clock so TTL is unaffected by
+            # system wall-clock adjustments (NTP steps, DST, manual changes).
+            if time.monotonic() - entry.cached_at > entry.ttl:
                 del self._store[key]
                 return None
 
@@ -54,7 +55,9 @@ class InMemoryCacheStore(CacheStore):
 
     async def set(self, key: str, data: Any, ttl: int) -> None:
         async with self._lock:
-            self._store[key] = CacheEntry(data=data, cached_at=time.time(), ttl=ttl)
+            # cached_at is a monotonic timestamp — only ever used to measure
+            # elapsed time (expiry + cache age), never serialized as wall-clock.
+            self._store[key] = CacheEntry(data=data, cached_at=time.monotonic(), ttl=ttl)
 
     async def clear(self) -> None:
         async with self._lock:

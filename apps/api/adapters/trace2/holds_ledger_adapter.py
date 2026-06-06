@@ -131,14 +131,14 @@ def map_holds_ledger_rows(rows: list[dict]) -> Optional[dict]:
             "reasonCode": "QC",
             "qty": qi if qi > 0 else 0.0,
             "uom": uom,
-            "opened": str(created_date or "").split("T")[0] if created_date else "",
+            "opened": str(created_date or "").replace(" ", "T").split("T")[0] if created_date else "",
             "owner": inspector,
             "detail": short_text,
         }
 
         if usage_decision:
             entry["status"] = "released" if "accept" in str(usage_decision).lower() else "rejected"
-            entry["resolved"] = str(end_date or "").split("T")[0] if end_date else ""
+            entry["resolved"] = str(end_date or "").replace(" ", "T").split("T")[0] if end_date else ""
             entry["resolution"] = str(usage_decision)
             resolved.append(entry)
         else:

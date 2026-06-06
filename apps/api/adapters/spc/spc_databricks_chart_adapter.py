@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from contracts.spc import SpcChartDataRequest
@@ -167,16 +168,17 @@ def map_spc_chart_response(
 
     for r in subgroup_rows:
         batch_n = r.get("batch_n") or 0
-        sum_value = r.get("sum_value") or 0.0
-        sum_squares = r.get("sum_squares") or 0.0
-        mean = float(sum_value) / batch_n if batch_n > 0 else None
+        # Coerce to float up front: Databricks DECIMAL columns return Decimal,
+        # and mixing Decimal with float/int below (e.g. sum_value ** 2) raises TypeError.
+        sum_value = float(r.get("sum_value") or 0.0)
+        sum_squares = float(r.get("sum_squares") or 0.0)
+        mean = sum_value / batch_n if batch_n > 0 else None
 
         std_dev = None
         if batch_n >= 2:
-            import math
-            variance = (sum_squares - (sum_value ** 2) / batch_n) / (batch_n - 1)
-            if variance >= 0:
-                std_dev = math.sqrt(variance)
+            # Clamp tiny negative variances from float rounding (identical values) to 0.
+            variance = max(0.0, (sum_squares - (sum_value ** 2) / batch_n) / (batch_n - 1))
+            std_dev = math.sqrt(variance)
 
         points.append({
             "pointId": f"{r.get('batch_id')}_{r.get('batch_date')}",
