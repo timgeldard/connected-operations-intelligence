@@ -24,8 +24,13 @@ resources:
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting
 
       libraries:
+        # Double-asterisk glob: Databricks pipeline settings reject a single '*' glob.
+        # '../gold/**' matches the top-level Gold DLT modules; the two subdir scripts
+        # (gold/recon/reconciliation_job.py, gold/snapshots/warehouse_snapshot.py) are
+        # standalone JOB entrypoints — they define no module-level @dlt tables and guard
+        # all logic under __main__, so they are inert when loaded as pipeline libraries.
         - glob:
-            include: ../gold/*.py
+            include: ../gold/**
 
       # Triggered pipeline, no restart_window needed as it runs to completion
 

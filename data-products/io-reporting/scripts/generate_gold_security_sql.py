@@ -24,7 +24,7 @@ APPLICATION_KEY = "io_reporting"
 ENVIRONMENTS = {
     "dev": {
         "catalog": "connected_plant_dev",
-        "gold_schema": "gold_dev",
+        "gold_schema": "gold_io_reporting",
         "consumer_group": "users",
         "security_model": None,  # dev: no filter — return all rows (no published_<env>.security available)
         "filename": "resources/sql/gold_security_dev.sql",

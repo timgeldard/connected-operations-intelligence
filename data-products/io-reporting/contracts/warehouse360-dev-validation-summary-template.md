@@ -4,6 +4,19 @@ Evidence returned by a Databricks-connected execution of the Warehouse360 DEV
 validation pack. Full detail and pasted query output: see
 [`warehouse360-dev-profile.md`](./warehouse360-dev-profile.md).
 
+## Next validation attempt prerequisites (added 2026-06-06)
+
+This pack has **not** been rerun since the original BLOCKED result below. Before
+it can be, the IOReporting governed source layer must exist in
+`connected_plant_dev.gold_io_reporting`. Status: a first DEV deployment baseline
+is in place (bundle validated + deployed — see
+[`ioreporting-dev-deployment-profile.md`](./ioreporting-dev-deployment-profile.md)
+and ADR `docs/architecture/adr-ioreporting-dev-deployment-baseline.md`), but the
+Silver → Gold pipeline **runs** remain blocked on DEV `central_services`
+reference-data sourcing. Sequence to unblock: resolve central_services → run
+Silver/Gold per the runbook → confirm 7/7 via
+`validation/warehouse360_dev_source_layer_preflight.sql` → then rerun this pack.
+
 ## Execution Details
 
 | Field | Value |

@@ -7,6 +7,17 @@ gold source layer is not deployed in the DEV workspace, so the consumption views
 cannot be built and the schema/key/data-quality/contract checks cannot run. No
 contract advances beyond candidate/pending. See §2 and §12–13 for detail.
 
+> **Next validation attempt prerequisites (added 2026-06-06).** This validation
+> has **not** been rerun — the result below still stands. Rerunning requires the
+> IOReporting governed source layer to exist in `connected_plant_dev.gold_io_reporting`.
+> A first DEV deployment baseline is now in place (bundle validated + deployed;
+> see `ioreporting-dev-deployment-profile.md` and ADR
+> `docs/architecture/adr-ioreporting-dev-deployment-baseline.md`), but the Silver
+> → Gold pipeline runs remain blocked on DEV `central_services` reference-data
+> sourcing. Until those pipelines run and the 7 source objects materialise (verify
+> with `validation/warehouse360_dev_source_layer_preflight.sql` → 7/7 FOUND), all
+> contracts stay candidate/blocked.
+
 Target environment:
 
 | Field | Value |
