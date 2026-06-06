@@ -155,6 +155,9 @@ jobs:
       - name: Run Warehouse360 static migration check
         run: python3 scripts/ci/check_warehouse360_migration_static.py
 
+      - name: Run Warehouse360 adapter contract-column check
+        run: python3 scripts/ci/check_warehouse360_adapter_contract_columns.py
+
   validate-bundle:
     name: Validate Databricks Bundle
     runs-on: ubuntu-latest

@@ -7,6 +7,7 @@ from adapters.warehouse360.warehouse360_databricks_adapter import (
     WarehouseOverviewRequest,
     WarehouseStagingRequest,
     _format_datetime,
+    _get_source_mode,
     _map_exception_severity,
     _safe_float,
     _safe_int,
@@ -24,6 +25,47 @@ from adapters.warehouse360.warehouse360_databricks_adapter import (
 from shared.query_service.cache_policy import CacheTier
 from shared.query_service.errors import DatabricksConfigError
 
+ACTIVE_GOVERNED_SPECS = [
+    (
+        "warehouse360.overview",
+        get_warehouse_overview_spec,
+        WarehouseOverviewRequest("WH01"),
+        "vw_consumption_warehouse360_overview",
+    ),
+    (
+        "warehouse360.inbound_backlog",
+        get_warehouse_inbound_spec,
+        WarehouseInboundRequest("WH01"),
+        "vw_consumption_warehouse360_inbound_backlog",
+    ),
+    (
+        "warehouse360.outbound_backlog",
+        get_warehouse_outbound_spec,
+        WarehouseOutboundRequest("WH01"),
+        "vw_consumption_warehouse360_outbound_backlog",
+    ),
+    (
+        "warehouse360.staging_workload",
+        get_warehouse_staging_spec,
+        WarehouseStagingRequest("WH01"),
+        "vw_consumption_warehouse360_staging_workload",
+    ),
+    (
+        "warehouse360.im_wm_reconciliation",
+        get_warehouse_exceptions_spec,
+        WarehouseExceptionRequest("WH01"),
+        "vw_consumption_warehouse360_im_wm_reconciliation",
+    ),
+]
+
+ACTIVE_LEGACY_SPECS = [
+    (get_warehouse_overview_spec, WarehouseOverviewRequest("WH01"), "wh360_kpi_snapshot_v"),
+    (get_warehouse_inbound_spec, WarehouseInboundRequest("WH01"), "wh360_inbound_v"),
+    (get_warehouse_outbound_spec, WarehouseOutboundRequest("WH01"), "wh360_deliveries_v"),
+    (get_warehouse_staging_spec, WarehouseStagingRequest("WH01"), "wh360_process_orders_v"),
+    (get_warehouse_exceptions_spec, WarehouseExceptionRequest("WH01"), "imwm_exceptions_v"),
+]
+
 # ---------------------------------------------------------------------------
 # Fixtures & Shared Context
 # ---------------------------------------------------------------------------
@@ -33,6 +75,52 @@ def _set_wh360_catalog(monkeypatch):
     monkeypatch.setenv("WH360_CATALOG", "wh360_uat_catalog")
     monkeypatch.setenv("WH360_SCHEMA", "wh360_uat_schema")
     monkeypatch.setenv("WAREHOUSE360_SOURCE_MODE", "legacy_wh360")
+
+
+class TestWarehouse360SourceMode:
+    @pytest.mark.parametrize(
+        "contract_id,spec_factory,warehouse_request,source_view",
+        ACTIVE_GOVERNED_SPECS,
+    )
+    def test_governed_contract_mode_sets_contract_id(
+        self,
+        monkeypatch,
+        contract_id,
+        spec_factory,
+        warehouse_request,
+        source_view,
+    ) -> None:
+        monkeypatch.setenv("WAREHOUSE360_SOURCE_MODE", "governed_contracts")
+
+        spec = spec_factory(warehouse_request)
+
+        assert spec.contract_id == contract_id
+        assert source_view in spec.sql
+        for _, _, legacy_view in ACTIVE_LEGACY_SPECS:
+            assert legacy_view not in spec.sql
+
+    @pytest.mark.parametrize(
+        "spec_factory,warehouse_request,legacy_view",
+        ACTIVE_LEGACY_SPECS,
+    )
+    def test_legacy_mode_resolves_legacy_views(self, spec_factory, warehouse_request, legacy_view) -> None:
+        spec = spec_factory(warehouse_request)
+
+        assert spec.contract_id is None
+        assert legacy_view in spec.sql
+        assert "`wh360_uat_catalog`.`wh360_uat_schema`" in spec.sql
+
+    def test_missing_source_mode_fails_clearly(self, monkeypatch) -> None:
+        monkeypatch.delenv("WAREHOUSE360_SOURCE_MODE", raising=False)
+
+        with pytest.raises(DatabricksConfigError, match="WAREHOUSE360_SOURCE_MODE"):
+            _get_source_mode()
+
+    def test_invalid_source_mode_fails_clearly(self, monkeypatch) -> None:
+        monkeypatch.setenv("WAREHOUSE360_SOURCE_MODE", "mock")
+
+        with pytest.raises(DatabricksConfigError, match="legacy_wh360.*governed_contracts"):
+            _get_source_mode()
 
 
 # ---------------------------------------------------------------------------
@@ -931,4 +1019,3 @@ class TestWarehouseGovernedSpecs:
         assert "vw_consumption_warehouse360_im_wm_reconciliation" in spec.sql
         assert "material_name" not in spec.sql
         assert "storage_loc_name" not in spec.sql
-

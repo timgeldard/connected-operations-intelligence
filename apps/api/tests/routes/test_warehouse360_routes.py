@@ -8,6 +8,8 @@ import pytest
 from httpx import ASGITransport
 from main import app
 
+from tests.fixtures.warehouse360_contract_fixtures import warehouse360_fixture_rows
+
 # ---------------------------------------------------------------------------
 # Helpers & Headers
 # ---------------------------------------------------------------------------
@@ -21,6 +23,34 @@ _HEADERS_WITH_TOKEN = {
     "x-forwarded-user": "user123",
     "x-forwarded-email": "user@example.com",
 }
+
+ACTIVE_GOVERNED_ROUTE_CASES = [
+    (
+        "/api/warehouse360/overview",
+        "warehouse360.overview",
+        "warehouse360.get_overview",
+    ),
+    (
+        "/api/warehouse360/inbound",
+        "warehouse360.inbound_backlog",
+        "warehouse360.get_inbound",
+    ),
+    (
+        "/api/warehouse360/outbound",
+        "warehouse360.outbound_backlog",
+        "warehouse360.get_outbound",
+    ),
+    (
+        "/api/warehouse360/staging",
+        "warehouse360.staging_workload",
+        "warehouse360.get_staging",
+    ),
+    (
+        "/api/warehouse360/exceptions",
+        "warehouse360.im_wm_reconciliation",
+        "warehouse360.get_exceptions",
+    ),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +183,64 @@ class TestWarehouseOverviewRoute:
                 )
         assert response.status_code == 200
         assert "reconciliationExceptionCount" not in response.json()
+
+
+class TestWarehouse360GovernedContractRoutes:
+    @pytest.mark.parametrize(
+        "path,contract_id,query_name",
+        ACTIVE_GOVERNED_ROUTE_CASES,
+    )
+    async def test_governed_contract_mode_sets_contract_id_header(
+        self,
+        wh360_databricks_env,
+        path,
+        contract_id,
+        query_name,
+    ) -> None:
+        with patch(
+            "shared.query_service.databricks_client.StatementApiDatabricksClient.execute",
+            new_callable=AsyncMock,
+            return_value=warehouse360_fixture_rows(contract_id),
+        ) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    path,
+                    params={"warehouse_id": "WH01"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 200
+        assert response.headers.get("x-contract-id") == contract_id
+        assert response.headers.get("x-query-name") == query_name
+        _, kwargs = mock_exec.call_args
+        assert kwargs["tags"]["contract_id"] == contract_id
+
+    @pytest.mark.parametrize(
+        "source_mode",
+        [None, "mock"],
+    )
+    async def test_source_mode_misconfiguration_fails_clearly(
+        self,
+        monkeypatch,
+        wh360_databricks_env,
+        source_mode,
+    ) -> None:
+        if source_mode is None:
+            monkeypatch.delenv("WAREHOUSE360_SOURCE_MODE", raising=False)
+        else:
+            monkeypatch.setenv("WAREHOUSE360_SOURCE_MODE", source_mode)
+
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/warehouse360/inbound",
+                params={"warehouse_id": "WH01"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+
+        assert response.status_code == 503
+        assert "WAREHOUSE360_SOURCE_MODE" in response.json()["detail"]
+        assert "legacy_wh360" in response.json()["detail"]
+        assert "governed_contracts" in response.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -569,5 +657,4 @@ class TestWarehouse360ResponseModelEnforcement:
     async def test_exceptions_response_model_is_wired(self) -> None:
         ref = await self._get_route_schema_ref("/api/warehouse360/exceptions")
         assert ref is not None and "Warehouse360ExceptionItem" in ref
-
 
