@@ -218,7 +218,8 @@ class DatabricksRepository:
 
             if entry is not None:
                 spec.cache_status = "HIT"
-                spec.cache_age_seconds = int(time.time() - entry.cached_at)
+                # entry.cached_at is a monotonic timestamp (see InMemoryCacheStore).
+                spec.cache_age_seconds = int(time.monotonic() - entry.cached_at)
                 spec.cache_ttl_seconds = entry.ttl
                 return mapper(entry.data), spec
             elif spec.cache_status != "BYPASS":

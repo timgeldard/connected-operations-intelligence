@@ -167,9 +167,11 @@ def map_spc_chart_response(
 
     for r in subgroup_rows:
         batch_n = r.get("batch_n") or 0
-        sum_value = r.get("sum_value") or 0.0
-        sum_squares = r.get("sum_squares") or 0.0
-        mean = float(sum_value) / batch_n if batch_n > 0 else None
+        # Coerce to float up front: Databricks DECIMAL columns return Decimal,
+        # and mixing Decimal with float/int below (e.g. sum_value ** 2) raises TypeError.
+        sum_value = float(r.get("sum_value") or 0.0)
+        sum_squares = float(r.get("sum_squares") or 0.0)
+        mean = sum_value / batch_n if batch_n > 0 else None
 
         std_dev = None
         if batch_n >= 2:
