@@ -17,7 +17,7 @@ from shared.query_service.object_resolver import resolve_domain_object
 from shared.query_service.query_spec import QuerySpec
 
 from ._types import Trace2BatchQualityPassportRequest
-from ._utils import _classify_coa_status
+from ._utils import _classify_coa_status, _date_to_utc
 
 # ---------------------------------------------------------------------------
 # Trace App slice — getBatchQualityPassport (partial: identity + stock + production)
@@ -195,8 +195,8 @@ def map_batch_quality_passport_partial(rows: list[dict]) -> Optional[dict]:
             "plantName": str(row.get("plant_name") or ""),
             "plantId": str(row.get("plant_id") or ""),
             "processOrderId": str(row.get("process_order_id") or ""),
-            "manufactureDate": str(row.get("manufacture_date") or ""),
-            "expiryDate": str(row.get("expiry_date") or ""),
+            "manufactureDate": _date_to_utc(row.get("manufacture_date")) if row.get("manufacture_date") else "",
+            "expiryDate": _date_to_utc(row.get("expiry_date")) if row.get("expiry_date") else "",
             "daysToExpiry": 0,  # frontend recomputes from expiryDate
             "uom": str(row.get("uom") or ""),
         },
@@ -465,7 +465,7 @@ def build_batch_quality_passport(
             result = "conditional"
         lot_history.append({
             "id": str(r.get("id") or ""),
-            "date": str(r.get("date") or "").split("T")[0],
+            "date": str(r.get("date") or "").replace(" ", "T").split("T")[0],
             "inspection": str(r.get("inspection") or ""),
             "result": result,
             "mics": failed_mics + accepted_results if (failed_mics or accepted_results) else 0,
