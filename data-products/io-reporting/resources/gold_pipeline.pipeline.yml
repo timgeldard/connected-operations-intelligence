@@ -57,6 +57,13 @@ resources:
         - file:
             path: ../gold/warehouse_kpis.py
 
+      # Editable-install the synced bundle root so the `gold` package is importable at DLT runtime
+      # (each gold module does `from gold._shared import ...`). Without this: ModuleNotFoundError.
+      # ${workspace.file_path} is the deployed bundle files root (contains pyproject.toml).
+      environment:
+        dependencies:
+          - --editable ${workspace.file_path}
+
       # Triggered pipeline, no restart_window needed as it runs to completion
 
       notifications:

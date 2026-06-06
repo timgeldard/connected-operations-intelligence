@@ -1,6 +1,18 @@
 [project]
 name = "connected-plant-reporting"
+version = "0.0.0"
 requires-python = ">=3.11"
+
+# Build config so the bundle root can be pip-installed (editable) into the serverless
+# pipeline environment — this is what puts `silver`/`gold` on sys.path at DLT runtime.
+# See resources/*.pipeline.yml `environment.dependencies: --editable ${workspace.file_path}`
+# and docs/runbooks/ioreporting-first-dev-deployment.md.
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["silver*", "gold*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

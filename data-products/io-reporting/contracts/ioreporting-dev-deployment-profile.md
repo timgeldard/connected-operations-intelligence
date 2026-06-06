@@ -109,15 +109,52 @@ shakedown. DEV schema is now `silver_io_reporting` + `gold_io_reporting`.
 - ⚠️ Consequence: the **runtime effect of `enable_hu_reconciliation` is UNVERIFIED** — execution
   never reaches the gate in `inbound.py`. The gating is deploy/validate-verified only.
 
+## Update 2026-06-07 — package-import root FIXED + runtime-verified
+
+**Root cause.** The entrypoints use absolute imports (`import silver.tables.*`,
+`from gold._shared import`) that need the bundle root on `sys.path`. At DLT runtime a `file:`
+library deep at `files/silver/dlt_silver_slow.py` only puts `files/silver/` on the path, so
+`silver`/`gold` are not importable. Masked locally because the bundle-root `pyproject.toml`
+sets pytest `pythonpath = ["."]`.
+
+**Fix.** Editable-install the synced bundle root into each pipeline's serverless environment:
+`environment.dependencies: [--editable ${workspace.file_path}]` on all four pipelines, plus a
+`[build-system]` + `[tool.setuptools.packages.find] include=["silver*","gold*"]` in the
+bundle-root `pyproject.toml`, and `__init__.py` markers for `silver`, `silver/tables`, `gold`,
+`gold/recon`, `gold/snapshots`. (The editable install is the load-bearing change; the
+`__init__.py` files exist so setuptools packages the dirs.) Guarded by
+`scripts/ci/check_pipeline_package_imports.py`.
+
+**Runtime-verified (silver_slow, update `eeedf7...`).**
+- ✅ Import resolved: the run got **past** `import silver.tables.inbound` into flow analysis /
+  graph construction — **no `ModuleNotFoundError`**.
+- ✅ **HU gate confirmed**: `handling_unit` is **absent** from the dev_shakedown graph — no
+  `handlingunit_vekp`/`vepo` resolution error, and 0 HU-related pipeline events. This
+  retroactively runtime-verifies PR #20's previously-unverified gating claim.
+- 📋 The run then failed on **separate DEV-data issues** (old/limited DEV data — expected for a
+  shakedown, NOT in scope for the import fix): `connected_plant_dev.sap.workcenterheader_crhd`
+  not found (`work_centre`); column `LGBKT` absent in `sap.storagebin_lagp` (`stg_storage_bin`);
+  `CANNOT_DETERMINE_TYPE` in `site_config_movement_type_classification`. Captured as shakedown
+  findings; per the task, execution stopped once imports were proven to load.
+
+**Known follow-up — jobs are NOT covered.** The editable install is on the four *pipelines*
+only. The three *jobs* (`gold_refresh_job`, `reconciliation`, `warehouse_snapshot`) run Python
+task files that also do package imports (`reconciliation_job.py`, `warehouse_snapshot.py` →
+`from gold._shared import`). They will hit the same `ModuleNotFoundError` until given an
+equivalent task-environment editable install. This matters: `warehouse_snapshot` produces
+`gold_warehouse_kpi_snapshot`, the base for `gold_warehouse_kpi_snapshot_secured` (one of the 7
+WH360 source objects). **Imports are fixed for pipelines and runtime-verified for silver_slow;
+jobs remain to be addressed in a separate task.**
+
 ## Next required Databricks execution (in order)
 
-1. **Fix the pipeline package-import root** so `import silver.*` / `from gold._shared import`
-   resolve at runtime (e.g. ensure the bundle files root is on `sys.path`, or adjust the
-   pipeline source layout). Blocks ALL silver/gold runs; not specific to shakedown.
-2. Re-run `silver_slow_pipeline` and confirm `handling_unit` is **absent** from the graph in
-   dev_shakedown (verifies the HU gate at runtime) → then `silver_fast` → `silver_quality`.
-3. Run `gold_pipeline` + `warehouse_snapshot` job.
-4. Apply `gold_security_dev.sql` then `gold_serving_views_dev.sql`.
-5. Re-run `warehouse360_dev_source_layer_preflight.sql` — expect 7/7 FOUND.
-6. Only then rerun the Warehouse360 validation pack (technical shakedown classification) and
+1. ✅ DONE — pipeline package-import root fixed and silver_slow import/graph load runtime-verified.
+2. Address the **DEV-data flow failures** above (missing `workcenterheader_crhd`, `LGBKT` column,
+   movement-type seed typing) so `silver_slow` completes — these are shakedown data findings.
+3. Apply the same editable-install mechanism to the **jobs** (separate task) before any chain
+   that runs `warehouse_snapshot` / `reconciliation`.
+4. Run `silver_fast` → `silver_quality` → `gold_pipeline` (+ `warehouse_snapshot`).
+5. Apply `gold_security_dev.sql` then `gold_serving_views_dev.sql`.
+6. Re-run `warehouse360_dev_source_layer_preflight.sql` — expect 7/7 FOUND.
+7. Only then rerun the Warehouse360 validation pack (technical shakedown classification) and
    update its evidence.

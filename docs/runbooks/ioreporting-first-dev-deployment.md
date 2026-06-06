@@ -26,6 +26,16 @@ governed Gold source layer that Warehouse360 depends on. Decision context:
 
 Run all `databricks bundle` commands from `data-products/io-reporting/`.
 
+> **Pipeline Python packaging (why imports work at runtime).** The entrypoints use absolute
+> imports (`import silver.tables.*`, `from gold._shared import`). Each pipeline editable-installs
+> the synced bundle root via `environment.dependencies: [--editable ${workspace.file_path}]`
+> (backed by `[build-system]` + `packages.find` in the bundle-root `pyproject.toml` and the
+> `__init__.py` markers) so `silver`/`gold` are importable in the serverless environment.
+> Without this the run fails with `ModuleNotFoundError: No module named 'silver'`. Guarded by
+> `scripts/ci/check_pipeline_package_imports.py`. **Caveat:** this covers the four *pipelines*
+> only — the *jobs* (`gold_refresh_job`, `reconciliation`, `warehouse_snapshot`) need the same
+> editable install on their task environments before they can run (separate follow-up).
+
 ## Deployment map
 
 **Created by `bundle deploy` (definitions only — no data):**

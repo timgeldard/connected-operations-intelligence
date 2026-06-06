@@ -27,6 +27,12 @@ resources:
         - file:
             path: ../silver/dlt_silver_quality.py
 
+      # Editable-install the synced bundle root so the `silver`/`gold` packages are importable
+      # at DLT runtime (entrypoint does `import silver.tables.*`). Without this: ModuleNotFoundError.
+      environment:
+        dependencies:
+          - --editable ${workspace.file_path}
+
       notifications:
         - email_recipients:
             - ${var.notification_email}
