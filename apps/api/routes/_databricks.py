@@ -64,6 +64,8 @@ def set_databricks_response_headers(response: Response, spec: QuerySpec) -> None
         response.headers["X-Cache-TTL-Seconds"] = str(spec.cache_ttl_seconds)
     if spec.cache_policy:
         response.headers["X-Data-Freshness-Policy"] = spec.cache_policy.value
+    if spec.contract_id:
+        response.headers["X-Contract-Id"] = spec.contract_id
 
 
 

@@ -88,6 +88,8 @@ class QueryExecutor:
         # Reserved keys written after spec.tags loop so they cannot be overridden by caller tags.
         tags["cache_policy"] = spec.cache_policy.value
         tags["source_badge"] = spec.source_badge
+        if spec.contract_id:
+            tags["contract_id"] = spec.contract_id
 
         _log.info(
             "QueryExecutor.execute",
@@ -273,4 +275,3 @@ class DatabricksRepository:
             )
         finally:
             catalog_context.reset(token)
-

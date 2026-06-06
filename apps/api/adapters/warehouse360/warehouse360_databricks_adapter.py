@@ -11,6 +11,7 @@ from typing import Optional
 
 from shared.query_service.cache_policy import CacheTier
 from shared.query_service.contract_resolver import resolve_contract_object
+from shared.query_service.errors import DatabricksConfigError
 from shared.query_service.object_resolver import resolve_domain_object
 from shared.query_service.query_executor import DatabricksRepository
 from shared.query_service.query_spec import QuerySpec
@@ -133,8 +134,9 @@ def _map_exception_severity(severity_raw: object, days_to_expiry_raw: object) ->
 def _get_source_mode() -> str:
     source_mode = os.getenv("WAREHOUSE360_SOURCE_MODE")
     if source_mode not in {"legacy_wh360", "governed_contracts"}:
-        raise RuntimeError(
-            "WAREHOUSE360_SOURCE_MODE must be set to 'legacy_wh360' or 'governed_contracts'"
+        raise DatabricksConfigError(
+            ["WAREHOUSE360_SOURCE_MODE"],
+            "WAREHOUSE360_SOURCE_MODE must be explicitly set to 'legacy_wh360' or 'governed_contracts'",
         )
     return source_mode
 
@@ -264,7 +266,7 @@ def get_warehouse_inbound_spec(request: WarehouseInboundRequest) -> QuerySpec:
         params["date_to"] = request.date_to
 
     where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
-    
+
     if source_mode == "governed_contracts":
         sql = f"""
         SELECT
@@ -316,7 +318,7 @@ def get_warehouse_inbound_spec(request: WarehouseInboundRequest) -> QuerySpec:
         {where_str}
         LIMIT {request.limit}
         """
-        
+
     return QuerySpec(
         name="warehouse360.get_inbound",
         module="wh360",
@@ -481,7 +483,7 @@ def get_warehouse_outbound_spec(request: WarehouseOutboundRequest) -> QuerySpec:
         params["date_to"] = request.date_to
 
     where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
-    
+
     if source_mode == "governed_contracts":
         sql = f"""
         SELECT
@@ -530,7 +532,7 @@ def get_warehouse_outbound_spec(request: WarehouseOutboundRequest) -> QuerySpec:
         {where_str}
         LIMIT {request.limit}
         """
-        
+
     return QuerySpec(
         name="warehouse360.get_outbound",
         module="wh360",
@@ -642,7 +644,7 @@ def get_warehouse_staging_spec(request: WarehouseStagingRequest) -> QuerySpec:
         params["date_to"] = request.date_to
 
     where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
-    
+
     if source_mode == "governed_contracts":
         sql = f"""
         SELECT
@@ -691,7 +693,7 @@ def get_warehouse_staging_spec(request: WarehouseStagingRequest) -> QuerySpec:
         {where_str}
         LIMIT {request.limit}
         """
-        
+
     return QuerySpec(
         name="warehouse360.get_staging",
         module="wh360",
@@ -849,7 +851,7 @@ def get_warehouse_exceptions_spec(request: WarehouseExceptionRequest) -> QuerySp
         params["date_to"] = request.date_to
 
     where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
-    
+
     if source_mode == "governed_contracts":
         sql = f"""
         SELECT
@@ -888,7 +890,7 @@ def get_warehouse_exceptions_spec(request: WarehouseExceptionRequest) -> QuerySp
         {where_str}
         LIMIT {request.limit}
         """
-        
+
     return QuerySpec(
         name="warehouse360.get_exceptions",
         module="wh360",
@@ -1014,4 +1016,3 @@ class Warehouse360Repository:
             spec_factory=lambda: get_warehouse_exceptions_spec(request),
             mapper=lambda rows: rows,
         )
-

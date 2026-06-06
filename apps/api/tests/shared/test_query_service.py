@@ -207,6 +207,38 @@ class TestQueryExecutor:
         assert received == ["bearer-xyz"]
         assert result == [{"col": "val"}]
 
+    async def test_passes_contract_id_to_query_tags(self) -> None:
+        received_tags: list[dict] = []
+
+        class CapturingClient(DatabricksQueryClient):
+            async def execute(self, *, sql, params, oauth_token, warehouse_id, timeout_seconds, tags):
+                received_tags.append(tags)
+                return [{"col": "val"}]
+
+        executor = QueryExecutor(client=CapturingClient())
+        identity = UserIdentity(user_id="u001", raw_oauth_token="bearer-xyz")
+        spec = QuerySpec(
+            name="x",
+            module="x",
+            endpoint="/x",
+            sql="SELECT 1",
+            contract_id="warehouse360.overview",
+        )
+
+        await executor.execute(spec, identity)
+
+        assert received_tags == [
+            {
+                "query_name": "x",
+                "module": "x",
+                "endpoint": "/x",
+                "user_id": "u001",
+                "cache_policy": "none",
+                "source_badge": "databricks-api",
+                "contract_id": "warehouse360.overview",
+            }
+        ]
+
     async def test_default_client_is_not_implemented(self) -> None:
         executor = QueryExecutor()
         identity = UserIdentity(user_id="u001", raw_oauth_token="tok")
@@ -369,4 +401,3 @@ class TestQuerySpecContractId:
                 sql="SELECT 1",
                 contract_id="warehouse360.non_existent_contract",
             )
-
