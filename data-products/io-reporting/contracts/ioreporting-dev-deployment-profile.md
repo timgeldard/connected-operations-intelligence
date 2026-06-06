@@ -88,12 +88,36 @@ compute. Continuous `silver_fast_pipeline` was **not** started.
   out of the DEV baseline + repoint the seed to `published_dev`). Not guessed
   here.
 
+## Update 2026-06-06 — dev_shakedown mode + first pipeline-run attempt
+
+The central_services blocker above is now addressed by **dev_shakedown mode** (see ADR
+`adr-ioreporting-dev-shakedown-vs-uat-validation`): the `dev` target reads
+`published_dev.central_services` directly and runs with `enable_hu_reconciliation=false`,
+so HU-dependent models are not built and the missing HU tables no longer block the non-HU
+shakedown. DEV schema is now `silver_io_reporting` + `gold_io_reporting`.
+
+- ✅ `ioreporting_dev_shakedown_preflight.sql` run live: SAP + `published_dev.central_services`
+  + all 9 non-HU reference tables **PRESENT**; both HU tables **ABSENT** (allowed in shakedown).
+- ✅ `bundle validate -t dev` and `-t uat` OK; `bundle deploy -t dev` OK (shakedown config applied).
+- ⛔ **First pipeline run attempt FAILED — new, separate blocker.** Triggered
+  `silver_slow_pipeline` (update `3b5f3f5f-...`) failed at INITIALIZING with
+  `ModuleNotFoundError: No module named 'silver'` on line 6 of `dlt_silver_slow.py`
+  (`import silver.tables.inbound`). This is a **package-path / pipeline-root** issue in the
+  never-run pipelines — the bundle files root is not on `sys.path`, so the `silver` (and by
+  extension `gold`) package is not importable. It is **independent of the HU-gating feature**
+  and occurs **before** any `@dlt` definition is evaluated.
+- ⚠️ Consequence: the **runtime effect of `enable_hu_reconciliation` is UNVERIFIED** — execution
+  never reaches the gate in `inbound.py`. The gating is deploy/validate-verified only.
+
 ## Next required Databricks execution (in order)
 
-1. Resolve central_services sourcing (above); make the DEV seed runnable.
-2. Run `silver_slow_pipeline` (creates `recipe_process_line`) → then
-   `silver_fast_pipeline` → `silver_quality_pipeline`.
+1. **Fix the pipeline package-import root** so `import silver.*` / `from gold._shared import`
+   resolve at runtime (e.g. ensure the bundle files root is on `sys.path`, or adjust the
+   pipeline source layout). Blocks ALL silver/gold runs; not specific to shakedown.
+2. Re-run `silver_slow_pipeline` and confirm `handling_unit` is **absent** from the graph in
+   dev_shakedown (verifies the HU gate at runtime) → then `silver_fast` → `silver_quality`.
 3. Run `gold_pipeline` + `warehouse_snapshot` job.
 4. Apply `gold_security_dev.sql` then `gold_serving_views_dev.sql`.
 5. Re-run `warehouse360_dev_source_layer_preflight.sql` — expect 7/7 FOUND.
-6. Only then rerun the Warehouse360 validation pack and update its evidence.
+6. Only then rerun the Warehouse360 validation pack (technical shakedown classification) and
+   update its evidence.
