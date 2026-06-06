@@ -1,0 +1,237 @@
+/* ConnectIO V2 shell geometry — import alongside tokens.css.
+   Tokens: override --shell-* in your app's :root to customise the shell. */
+
+:root {
+  --shell-rail-width:        56px;
+  --shell-topbar-height:     48px;
+  --shell-scopebar-height:   40px;
+  --shell-subnav-height:     38px;
+
+  --shell-rail-bg:     #0E2740;
+  --shell-rail-text:   #E8EFF3;
+  --shell-rail-hover:  #15334F;
+  --shell-rail-active: #00B6E0;
+  --shell-rail-logo:   #06101B;
+  --shell-surface:     #FFFFFF;
+  --shell-surface-2:   #FAFAF3;
+  --shell-bg:          #F7F7F1;
+  --shell-line:        #DAD9C9;
+  --shell-fg:          #0E1F0A;
+  --shell-fg-2:        #4A5C45;
+  --shell-fg-3:        #7A8A75;
+  --shell-accent:      var(--valentia-slate, #005776);
+  --shell-good:        #1F8B4C;
+  --shell-warn:        #C7821C;
+  --shell-bad:         #C73315;
+}
+
+[data-theme="dark"] {
+  --shell-rail-bg:     #06101B;
+  --shell-rail-text:   #C9D6DF;
+  --shell-rail-hover:  #0E1F30;
+  --shell-rail-active: #29C9F2;
+  --shell-surface:     #0F1E2D;
+  --shell-surface-2:   #122538;
+  --shell-bg:          #0A1622;
+  --shell-line:        #1E3447;
+  --shell-fg:          #E6EEF2;
+  --shell-fg-2:        #93A6B6;
+  --shell-fg-3:        #5E7588;
+}
+
+/* ---------- Shell grid ---------- */
+
+.connectio-shell {
+  display: grid;
+  grid-template-columns: var(--shell-rail-width) 1fr;
+  grid-template-rows: var(--shell-topbar-height) var(--shell-scopebar-height) 1fr;
+  grid-template-areas:
+    "rail topbar"
+    "rail scopebar"
+    "rail body";
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.connectio-shell.no-scope {
+  grid-template-rows: var(--shell-topbar-height) 0 1fr;
+}
+
+.connectio-shell.no-scope .connectio-scopebar { display: none; }
+
+.connectio-shell.fullscreen .connectio-rail,
+.connectio-shell.fullscreen .connectio-topbar,
+.connectio-shell.fullscreen .connectio-scopebar { display: none; }
+
+.connectio-shell.fullscreen {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  grid-template-areas: "body";
+}
+
+/* ---------- Left rail ---------- */
+
+.connectio-rail {
+  grid-area: rail;
+  background: var(--shell-rail-bg);
+  color: var(--shell-rail-text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-right: 1px solid #000;
+}
+
+.connectio-rail-logo {
+  width: var(--shell-rail-width);
+  height: var(--shell-topbar-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--shell-rail-logo);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.connectio-rail-item {
+  width: var(--shell-rail-width);
+  height: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: none;
+  background: transparent;
+  color: rgba(232, 239, 243, 0.6);
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  position: relative;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  transition: background var(--dur-fast, 180ms) var(--ease-out, ease),
+              color var(--dur-fast, 180ms);
+}
+
+.connectio-rail-item:hover { background: var(--shell-rail-hover); color: #fff; }
+
+.connectio-rail-item.active {
+  background: var(--shell-rail-hover);
+  color: #fff;
+  border-left-color: var(--shell-rail-active);
+}
+
+.connectio-rail-item svg { width: 20px; height: 20px; }
+
+.connectio-rail-spacer { flex: 1; }
+
+/* ---------- Top bar ---------- */
+
+.connectio-topbar {
+  grid-area: topbar;
+  background: var(--shell-surface);
+  border-bottom: 1px solid var(--shell-line);
+  display: flex;
+  align-items: center;
+  padding: 0 16px 0 20px;
+  gap: 16px;
+  font-size: 12.5px;
+}
+
+.connectio-topbar-right { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+
+/* ---------- Scope bar ---------- */
+
+.connectio-scopebar {
+  grid-area: scopebar;
+  background: var(--shell-surface-2);
+  border-bottom: 1px solid var(--shell-line);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  font-size: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.connectio-scopebar::-webkit-scrollbar { display: none; }
+
+.connectio-scopebar-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 100%;
+  border-right: 1px solid var(--shell-line);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.connectio-scopebar-field .lbl {
+  font-family: var(--font-mono, monospace);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--shell-fg-3);
+}
+
+.connectio-scopebar-field .val { font-weight: 500; color: var(--shell-fg); }
+
+.connectio-scopebar-spacer { flex: 1; }
+
+/* ---------- Body + Workspace SubNav ---------- */
+
+.connectio-body {
+  grid-area: body;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--shell-bg);
+}
+
+.connectio-workspace-subnav {
+  display: flex;
+  align-items: center;
+  background: var(--shell-surface);
+  border-bottom: 1px solid var(--shell-line);
+  padding: 0 20px;
+  height: var(--shell-subnav-height);
+  flex-shrink: 0;
+  gap: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.connectio-workspace-subnav::-webkit-scrollbar { display: none; }
+
+.connectio-workspace-subnav .tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: var(--shell-subnav-height);
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--shell-fg-2);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.connectio-workspace-subnav .tab:hover { color: var(--shell-fg); }
+
+.connectio-workspace-subnav .tab.active {
+  color: var(--shell-fg);
+  font-weight: 500;
+  border-bottom-color: var(--shell-accent);
+}
+
+.connectio-page {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}

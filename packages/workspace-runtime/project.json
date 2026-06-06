@@ -1,0 +1,28 @@
+{
+  "name": "workspace-runtime",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/workspace-runtime/src",
+  "projectType": "library",
+  "tags": ["scope:shared", "layer:workspace-runtime", "type:lib"],
+  "targets": {
+    "test": {
+      "executor": "@nx/vitest:test",
+      "options": {
+        "config": "packages/workspace-runtime/vitest.config.ts"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.json",
+        "cwd": "packages/workspace-runtime"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["packages/workspace-runtime/**/*.{ts,tsx}"]
+      }
+    }
+  }
+}

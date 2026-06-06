@@ -1,0 +1,46 @@
+{
+  "name": "data-contracts",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/data-contracts/src",
+  "projectType": "library",
+  "tags": ["scope:shared", "layer:data-contracts", "type:lib"],
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.json",
+        "cwd": "packages/data-contracts"
+      }
+    },
+    "test": {
+      "executor": "@nx/vitest:test",
+      "options": {
+        "config": "packages/data-contracts/vitest.config.ts"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["packages/data-contracts/**/*.{ts,tsx}"]
+      }
+    },
+    "sync-pydantic": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "npx tsx scripts/export-json-schema.ts",
+          "uv run --project ../../apps/api ../../apps/api/scripts/sync_contracts.py"
+        ],
+        "cwd": "packages/data-contracts",
+        "parallel": false
+      }
+    },
+    "check-pydantic": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "nx run data-contracts:sync-pydantic && git diff --exit-code dist-schema/contracts.json ../../apps/api/contracts/generated.py",
+        "cwd": "packages/data-contracts"
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "product-model",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/product-model/src",
+  "projectType": "library",
+  "tags": ["scope:shared", "layer:product-model", "type:lib"],
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.json",
+        "cwd": "packages/product-model"
+      }
+    },
+    "test": {
+      "executor": "@nx/vitest:test",
+      "options": {
+        "config": "packages/product-model/vitest.config.ts"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["packages/product-model/**/*.{ts,tsx}"]
+      }
+    }
+  }
+}

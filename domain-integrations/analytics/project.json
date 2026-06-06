@@ -1,0 +1,22 @@
+{
+  "name": "di-analytics",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "domain-integrations/analytics/src",
+  "projectType": "library",
+  "tags": ["scope:analytics", "layer:integration", "type:lib"],
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.json",
+        "cwd": "domain-integrations/analytics"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["domain-integrations/analytics/**/*.{ts,tsx}"]
+      }
+    }
+  }
+}

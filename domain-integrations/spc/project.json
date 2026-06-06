@@ -1,0 +1,28 @@
+{
+  "name": "di-spc",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "domain-integrations/spc/src",
+  "projectType": "library",
+  "tags": ["scope:spc", "layer:integration", "type:lib"],
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.json",
+        "cwd": "domain-integrations/spc"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["domain-integrations/spc/**/*.{ts,tsx}"]
+      }
+    },
+    "test": {
+      "executor": "@nx/vitest:test",
+      "options": {
+        "config": "domain-integrations/spc/vitest.config.ts"
+      }
+    }
+  }
+}

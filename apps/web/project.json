@@ -1,0 +1,31 @@
+{
+  "name": "web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/web/src",
+  "projectType": "application",
+  "tags": ["scope:app", "layer:app", "type:frontend"],
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": { "command": "vite", "cwd": "apps/web" }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "vite build", "cwd": "apps/web" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tsc --noEmit -p tsconfig.json", "cwd": "apps/web" }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": { "lintFilePatterns": ["apps/web/**/*.{ts,tsx}"] }
+    },
+    "test": {
+      "executor": "@nx/vitest:test",
+      "options": {
+        "config": "apps/web/vitest.config.ts"
+      }
+    }
+  }
+}

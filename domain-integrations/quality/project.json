@@ -1,0 +1,45 @@
+{
+  "name": "di-quality",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "domain-integrations/quality/src",
+  "projectType": "library",
+  "namedInputs": {
+    "backendDomain": [
+      "{workspaceRoot}/apps/api/adapters/quality/**/*.py",
+      "{workspaceRoot}/apps/api/adapters/cq/**/*.py",
+      "{workspaceRoot}/apps/api/routes/quality.py",
+      "{workspaceRoot}/apps/api/routes/connected_quality_lab.py",
+      "{workspaceRoot}/apps/api/routes/_databricks.py",
+      "{workspaceRoot}/apps/api/shared/query_service/**/*.py"
+    ],
+    "default": ["{projectRoot}/**/*", "sharedGlobals", "backendDomain"],
+    "production": [
+      "default",
+      "!{projectRoot}/**/?(*.)+(spec|test).[jt]s?(x)",
+      "!{projectRoot}/**/*.stories.[jt]s?(x)",
+      "!{projectRoot}/src/test-setup.[jt]s?(x)"
+    ]
+  },
+  "tags": ["scope:quality", "layer:integration", "type:lib"],
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.json",
+        "cwd": "domain-integrations/quality"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["domain-integrations/quality/**/*.{ts,tsx}"]
+      }
+    },
+    "test": {
+      "executor": "@nx/vitest:test",
+      "options": {
+        "config": "domain-integrations/quality/vitest.config.ts"
+      }
+    }
+  }
+}

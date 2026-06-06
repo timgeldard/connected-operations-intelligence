@@ -1,0 +1,7 @@
+{
+  "name": "source-adapters",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/source-adapters/src",
+  "projectType": "library",
+  "tags": ["scope:shared", "layer:source-adapters", "type:lib"]
+}

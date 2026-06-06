@@ -1,0 +1,7 @@
+{
+  "name": "personalization",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/personalization/src",
+  "projectType": "library",
+  "tags": ["scope:shared", "layer:personalization", "type:lib"]
+}

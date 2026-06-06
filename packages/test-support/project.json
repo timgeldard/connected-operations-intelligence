@@ -1,0 +1,9 @@
+{
+  "name": "test-support",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/test-support/src",
+  "projectType": "library",
+  "tags": ["scope:shared", "layer:integration"],
+  "// targets": "to see all targets run: nx show project test-support --web",
+  "targets": {}
+}

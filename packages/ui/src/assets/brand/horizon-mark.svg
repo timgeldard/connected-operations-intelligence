@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" role="img" aria-label="Kerry horizon">
+  
+  <circle cx="100" cy="78" r="34" fill="#E7A33C"></circle>
+  <path d="M 0 86 C 50 70, 150 102, 200 82" fill="none" stroke="#0B5D3B" stroke-width="4" stroke-linecap="round"></path>
+  <rect x="0" y="86" width="200" height="34" fill="#0B5D3B" opacity="0.08"></rect>
+</svg>

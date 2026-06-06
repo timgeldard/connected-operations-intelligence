@@ -1,0 +1,99 @@
+# Databricks Apps configuration for ConnectIO V2
+# Docs: https://docs.databricks.com/en/dev-tools/databricks-apps/index.html
+#
+# Deploy from the repo root:
+#   1. Prepare artifact: npm run prepare:databricks
+#   2. Bundle deploy:    databricks bundle deploy --target uat
+#
+# Secret scope "connectio-v2" must exist in the target workspace before deployment.
+# See docs/deployment/databricks-apps.md for full setup instructions.
+#
+# IMPORTANT: valueFrom must be a plain "scope/key" string.
+# Nested YAML dicts (valueFrom: {secretScope: ..., secretKey: ...}) are NOT supported
+# and cause "error reading app.yaml file" at startup.
+
+command:
+  - uvicorn
+  - main:app
+  - --host
+  - 0.0.0.0
+  - --port
+  - "8000"
+  - --workers
+  - "2"
+
+# OAuth scopes included in the forwarded user token (x-forwarded-access-token).
+# "sql" is required for the token to be accepted by the SQL statement API.
+# The resources block grants the service principal warehouse access but does NOT
+# add sql to the user's forwarded token — user_api_scopes does that.
+user_api_scopes:
+  - sql
+
+resources:
+  - name: connectio-warehouse
+    description: SQL warehouse for Databricks native reads
+    sql_warehouse:
+      id: e76480b94bea6ed5
+      permission: CAN_USE
+
+env:
+  # V1 backend URLs — format: valueFrom: scope/key
+  - name: V1_TRACE_API_BASE_URL
+    valueFrom: connectio-v2/v1-trace-api-base-url
+
+  - name: V1_WH360_API_BASE_URL
+    valueFrom: connectio-v2/v1-wh360-api-base-url
+
+  - name: V1_POH_API_BASE_URL
+    valueFrom: connectio-v2/v1-poh-api-base-url
+
+  - name: V1_CQ_API_BASE_URL
+    valueFrom: connectio-v2/v1-cq-api-base-url
+
+  # Backend adapter mode: "legacy-api" (proxy to V1) or "databricks-api" (native reads).
+  # Currently: databricks-api — native Databricks reads active for POH and CQ Lab plants.
+  - name: BACKEND_ADAPTER_MODE
+    value: databricks-api
+
+  # Databricks connection — non-secret config values set as literals.
+  # The workspace host and warehouse ID are not credentials; no need for secret scope.
+  # Note: DAB ${var.*} substitution applies to databricks.yml only, not app.yaml.
+  # Per-environment values live in the targets section of databricks.yml.
+  - name: DATABRICKS_HOST
+    value: https://adb-604667594731808.8.azuredatabricks.net
+
+  - name: SQL_WAREHOUSE_ID
+    value: e76480b94bea6ed5
+
+  # App behaviour (frontend adapter mode — baked into JS bundle at build time, informational only)
+  - name: ADAPTER_MODE
+    value: legacy-api
+
+  # Domain catalog/schema — non-secret config set as literals.
+  # Per-environment values live in the targets section of databricks.yml.
+  - name: POH_CATALOG
+    value: connected_plant_uat
+
+  - name: CQ_CATALOG
+    value: connected_plant_uat
+
+  # TRACE_CATALOG / TRACE_SCHEMA — required for Trace and EnvMon databricks-api routes.
+  # Activated q.txt (2026-05-18): POST /api/trace2/trace-graph + GET /api/envmon/* routes.
+  - name: TRACE_CATALOG
+    value: connected_plant_uat
+
+  - name: TRACE_SCHEMA
+    value: gold
+
+  # WH360 catalog/schema — required for GET /api/warehouse360/* native routes.
+  # WH360_SCHEMA defaults to "wh360" in object_resolver.py — matches UAT schema connected_plant_uat.wh360.*
+  - name: WH360_CATALOG
+    value: connected_plant_uat
+
+  # Auth diagnostics — DISABLED. OAuth headers confirmed 2026-05-17.
+  # Re-enable by adding: - name: ENABLE_AUTH_DIAGNOSTICS / value: "true"
+  # GET /api/diagnostics/auth-headers returns token_present/user_header_present (never raw token).
+
+  # Python runtime
+  - name: PYTHONUNBUFFERED
+    value: "1"
