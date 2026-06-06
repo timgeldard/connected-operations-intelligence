@@ -119,7 +119,9 @@ Deployment order: **Silver → Gold (+ snapshot job) → security SQL → servin
 - ✅ Bundle **validates** and **deploys** to DEV (`-t dev`): 4 pipelines + 3 jobs
   created in `adb-3548637138127338.18`. A real first-deploy bug was fixed en
   route — the Gold pipeline library glob `../gold/*.py` (single `*`, rejected by
-  Databricks) → `../gold/**`.
+  Databricks only at deploy, not validate) → explicit per-file `file:` entries
+  for the 10 top-level `gold/*.py` modules. Deploy-verified; runtime library load
+  is unverified until the pipeline can run (blocked by gap #3).
 - ⛔ Pipeline **runs not executed**: blocked by gap #3 above
   (`central_services` reference data cannot be seeded in the DEV workspace until
   the `published_dev` sourcing / missing HU-table decision is made). Silver

@@ -65,12 +65,17 @@ compute. Continuous `silver_fast_pipeline` was **not** started.
 2. **DEV-native source target** — added bundle target `dev` (now default) reading
    the real `connected_plant_dev.sap` (131 tables); existing `dev_uat_source` /
    `dev_sample` kept semantically intact. (ADR decision 3.)
-3. **First-deploy glob bug** — `resources/gold_pipeline.pipeline.yml` library glob
-   `../gold/*.py` (single `*`, rejected by Databricks: "Single asterisk glob
-   pattern is not supported") → `../gold/**`. The two subdir scripts pulled in by
-   `**` (`recon/reconciliation_job.py`, `snapshots/warehouse_snapshot.py`) define
-   no module-level `@dlt` tables and guard logic under `__main__`, so they are
-   inert as pipeline libraries.
+3. **First-deploy library bug** — `resources/gold_pipeline.pipeline.yml` used a
+   library glob `../gold/*.py`, which Databricks rejects at `terraform apply`
+   ("Single asterisk glob pattern is not supported"). Note `bundle validate`
+   passed on the broken glob — only `deploy` surfaced it. Replaced with explicit
+   per-file `file:` entries for the 10 top-level `gold/*.py` modules (mirrors the
+   silver pipelines' convention), which preserves the original "top-level `.py`
+   only" semantics exactly — avoiding both `design_spec.md` and the two standalone
+   job entrypoints under `gold/recon` / `gold/snapshots` that a recursive `**`
+   would pull in. **Deploy-verified** (bundle redeploys cleanly); the runtime
+   library *load* is not yet verified because the pipeline cannot run until the
+   central_services block is resolved.
 
 ## Unresolved errors / blockers
 
