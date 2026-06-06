@@ -1,16 +1,30 @@
 {
-  "name": "@connected-operations-intelligence/web",
-  "version": "1.0.0",
+  "name": "@connectio/web",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "lint": "eslint src --ext .ts,.tsx",
-    "typecheck": "tsc --noEmit",
-    "test": "echo 'No tests yet'"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@connectio/auth-scope": "workspace:*",
+    "@connectio/data-contracts": "workspace:*",
+    "@connectio/design-system": "workspace:*",
+    "@connectio/personalization": "workspace:*",
+    "@connectio/product-model": "workspace:*",
+    "@connectio/telemetry": "workspace:*",
+    "@connectio/workspace-runtime": "workspace:*",
+    "@tanstack/react-query": "^5",
+    "react": "^18",
+    "react-dom": "^18"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "eslint": "^8.56.0"
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "^4",
+    "typescript": "~5.6.3",
+    "vite": "^6"
   }
 }

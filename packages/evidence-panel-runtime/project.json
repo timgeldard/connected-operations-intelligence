@@ -1,0 +1,28 @@
+{
+  "name": "evidence-panel-runtime",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/evidence-panel-runtime/src",
+  "projectType": "library",
+  "tags": ["scope:shared", "layer:evidence-panel-runtime", "type:lib"],
+  "targets": {
+    "test": {
+      "executor": "@nx/vitest:test",
+      "options": {
+        "config": "packages/evidence-panel-runtime/vitest.config.ts"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.json",
+        "cwd": "packages/evidence-panel-runtime"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["packages/evidence-panel-runtime/**/*.{ts,tsx}"]
+      }
+    }
+  }
+}

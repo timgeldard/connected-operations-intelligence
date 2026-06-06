@@ -1,11 +1,14 @@
 # Connected Operations Intelligence
 
-Welcome to the internal monorepo for **Connected Operations Intelligence**, bringing together pre-production code for data engineering pipelines and the application runtime layer.
+Welcome to the internal monorepo for **Connected Operations Intelligence**, bringing together the pre-production code for data engineering pipelines and the application runtime layer.
 
-This monorepo currently contains:
+> [!NOTE]
+> This repository is an exercise in aligning two distinct codebases (the Databricks DLT pipeline data-product layer and the React/FastAPI application layer) into a single, unified, and governed monorepo.
+
+This monorepo contains:
 
 - **IOReporting** ([data-products/io-reporting](data-products/io-reporting)) — the governed SAP/Databricks data product layer.
-- **connectio-rad-v2** — pending import into `apps/web`, `apps/api`, `packages/*`, and `domain-integrations/*`.
+- **Application Layer** — the React frontend, FastAPI backend/runtime, and domain integrations imported from the `connectio-rad-v2` codebase (`apps/web`, `apps/api`, `packages/*`, and `domain-integrations/*`).
 
 ---
 

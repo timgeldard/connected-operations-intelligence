@@ -1,18 +1,20 @@
 {
-  "name": "@connected-operations-intelligence/domain-spc",
-  "version": "1.0.0",
+  "name": "@connectio/di-spc",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "scripts": {
-    "build": "tsc",
-    "lint": "eslint src --ext .ts",
-    "typecheck": "tsc --noEmit",
-    "test": "echo 'No tests yet'"
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
   },
-  "devDependencies": {
-    "typescript": "^5.0.0",
-    "eslint": "^8.56.0"
+  "dependencies": {
+    "@connectio/data-contracts": "workspace:*",
+    "@connectio/design-system": "workspace:*",
+    "@connectio/evidence-panel-runtime": "workspace:*",
+    "@connectio/feature-flags": "workspace:*",
+    "@connectio/product-model": "workspace:*",
+    "@connectio/source-adapters": "workspace:*",
+    "@tanstack/react-query": "^5",
+    "react": "^18.3.1"
   }
 }

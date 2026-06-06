@@ -7,7 +7,7 @@ install:
 
 test:
 	pnpm test
-	PYTHONPATH=data-products/io-reporting .venv/bin/pytest data-products/io-reporting/tests
+	PYTHONPATH=data-products/io-reporting .venv/bin/pytest --import-mode=importlib data-products/io-reporting/tests
 
 lint:
 	pnpm lint

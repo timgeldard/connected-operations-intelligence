@@ -1,0 +1,6 @@
+# Databricks Apps installs from this file (pip install -r requirements.txt).
+# Do NOT add shared-db here — it is a uv workspace-only package and is not
+# uploaded to Databricks Apps.  None of the route modules import shared_db.
+fastapi>=0.111
+uvicorn[standard]>=0.29
+httpx>=0.27

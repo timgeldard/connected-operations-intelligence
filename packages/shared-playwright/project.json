@@ -1,0 +1,28 @@
+{
+  "name": "shared-playwright",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/shared-playwright/src",
+  "projectType": "library",
+  "tags": [
+    "scope:shared",
+    "layer:testing",
+    "type:lib"
+  ],
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.json",
+        "cwd": "packages/shared-playwright"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": [
+          "packages/shared-playwright/**/*.{ts,tsx}"
+        ]
+      }
+    }
+  }
+}

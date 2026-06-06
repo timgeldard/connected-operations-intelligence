@@ -1,0 +1,265 @@
+/* ==========================================================================
+   Kerry Design System — tokens
+   Source: Kerry Brand Guidelines 2024 FINAL (v1, July 2024)
+   ========================================================================== */
+
+/* IBM Plex Mono — Google-hosted; @import must precede @font-face per CSS spec */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap');
+
+/* --- Noto Sans (self-hosted static weights, from Kerry brand font pack) --- */
+@font-face { font-family: "Noto Sans"; src: url("../fonts/NotoSans-Light.ttf") format("truetype");          font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url("../fonts/NotoSans-LightItalic.ttf") format("truetype");    font-weight: 300; font-style: italic; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url("../fonts/NotoSans-Regular.ttf") format("truetype");        font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url("../fonts/NotoSans-Italic.ttf") format("truetype");         font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url("../fonts/NotoSans-Medium.ttf") format("truetype");         font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url("../fonts/NotoSans-MediumItalic.ttf") format("truetype");   font-weight: 500; font-style: italic; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url("../fonts/NotoSans-SemiBold.ttf") format("truetype");       font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url("../fonts/NotoSans-SemiBoldItalic.ttf") format("truetype"); font-weight: 600; font-style: italic; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url("../fonts/NotoSans-Bold.ttf") format("truetype");           font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url("../fonts/NotoSans-BoldItalic.ttf") format("truetype");     font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url("../fonts/NotoSans-ExtraBold.ttf") format("truetype");      font-weight: 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "Noto Sans"; src: url("../fonts/NotoSans-ExtraBoldItalic.ttf") format("truetype");font-weight: 800; font-style: italic; font-display: swap; }
+
+/* Noto Sans Condensed — dedicated family; use weight 800 for IMPACT headlines */
+@font-face { font-family: "Noto Sans Condensed"; src: url("../fonts/NotoSans-Condensed.ttf") format("truetype");       font-weight: 400 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "Noto Sans Condensed"; src: url("../fonts/NotoSans-CondensedItalic.ttf") format("truetype"); font-weight: 400 800; font-style: italic; font-display: swap; }
+
+/* Noto Serif — variable (wdth + wght) */
+@font-face { font-family: "Noto Serif"; src: url("../fonts/NotoSerif-VariableFont_wdth_wght.ttf") format("truetype-variations"), url("../fonts/NotoSerif-VariableFont_wdth_wght.ttf") format("truetype"); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Noto Serif"; src: url("../fonts/NotoSerif-Italic-VariableFont_wdth_wght.ttf") format("truetype-variations"), url("../fonts/NotoSerif-Italic-VariableFont_wdth_wght.ttf") format("truetype"); font-weight: 100 900; font-style: italic; font-display: swap; }
+
+:root {
+  /* ==========================================================================
+     COLOUR — from Brand Guidelines p.35–37
+     ========================================================================== */
+
+  /* Primary foundations */
+  --valentia-slate: #005776;
+  --forest:         #143700;
+  --stone:          #F1F1E5;
+  --white:          #FFFFFF;
+  --black:          #000000;
+
+  /* Secondary — vibrant expression */
+  --sunrise:        #F9C20A;
+  --sunset:         #F24A00;
+  --amaranth:       #FFC2B3;
+  --sage:           #289BA2;
+  --jade:           #44CF93;
+  --innovation:     #DFFF11;
+
+  /* Tints — 80/60/40/20% for charts/graphs only */
+  --slate-80: color-mix(in srgb, var(--valentia-slate) 80%, white);
+  --slate-60: color-mix(in srgb, var(--valentia-slate) 60%, white);
+  --slate-40: color-mix(in srgb, var(--valentia-slate) 40%, white);
+  --slate-20: color-mix(in srgb, var(--valentia-slate) 20%, white);
+
+  --forest-80: color-mix(in srgb, var(--forest) 80%, white);
+  --forest-60: color-mix(in srgb, var(--forest) 60%, white);
+  --forest-40: color-mix(in srgb, var(--forest) 40%, white);
+  --forest-20: color-mix(in srgb, var(--forest) 20%, white);
+
+  /* Semantic aliases */
+  --brand:          var(--valentia-slate);
+  --brand-deep:     var(--forest);
+  --bg-paper:       var(--stone);
+  --bg-page:        #FFFFFF;
+  --fg:             var(--forest);
+  --fg-muted:       color-mix(in srgb, var(--forest) 60%, white);
+  --fg-on-brand:    #FFFFFF;
+  --accent-warm:    var(--sunrise);
+  --accent-hot:     var(--sunset);
+  --accent-cool:    var(--sage);
+  --accent-energy:  var(--innovation);
+
+  --stroke:         color-mix(in srgb, var(--forest) 18%, transparent);
+  --stroke-soft:    color-mix(in srgb, var(--forest) 10%, transparent);
+
+  /* Status semantics */
+  --status-good:    #1F8B4C;
+  --status-warn:    #C7821C;
+  --status-bad:     #C73315;
+  --status-info:    var(--sage);
+  --status-neutral: var(--fg-muted);
+
+  /* Lifecycle state colours */
+  --lifecycle-live:        var(--status-good);
+  --lifecycle-pilot:       var(--sage);
+  --lifecycle-concept-lab: var(--sunrise);
+  --lifecycle-deprecated:  var(--status-warn);
+
+  /* Confidence indicator */
+  --confidence-high:   var(--status-good);
+  --confidence-medium: var(--status-warn);
+  --confidence-low:    var(--status-bad);
+  --confidence-none:   var(--fg-muted);
+
+  /* ==========================================================================
+     TYPE — Noto family + IBM Plex Mono, per Brand Guidelines p.40–44
+     --------------------------------------------------------------------------
+     Hierarchy:
+       IMPACT headlines  → Noto Sans Condensed, ExtraBold 800, ALL CAPS
+       Primary headlines → Noto Sans, 700 / 500, sentence case
+       Human subheads    → Noto Serif, 400–500, sentence case
+       Scientific data   → IBM Plex Mono, 400–500, used sparingly for stats/proof
+       Body              → Noto Sans, 400
+     ========================================================================== */
+
+  --font-sans:    "Noto Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-impact:  "Noto Sans Condensed", "Noto Sans", ui-sans-serif, sans-serif;
+  --font-serif:   "Noto Serif", ui-serif, Georgia, serif;
+  --font-mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: var(--font-sans);
+
+  /* Weights */
+  --fw-light:     300;
+  --fw-regular:   400;
+  --fw-medium:    500;
+  --fw-semibold:  600;
+  --fw-bold:      700;
+  --fw-extrabold: 800;
+
+  /* Type scale */
+  --fs-12:  0.75rem;
+  --fs-14:  0.875rem;
+  --fs-16:  1rem;
+  --fs-18:  1.125rem;
+  --fs-20:  1.25rem;
+  --fs-24:  1.5rem;
+  --fs-32:  2rem;
+  --fs-40:  2.5rem;
+  --fs-56:  3.5rem;
+  --fs-72:  4.5rem;
+  --fs-96:  6rem;
+  --fs-128: 8rem;
+
+  /* Line heights */
+  --lh-tight:  1.02;
+  --lh-snug:   1.1;
+  --lh-head:   1.2;
+  --lh-body:   1.55;
+  --lh-loose:  1.75;
+
+  /* Letter spacing */
+  --ls-impact:  -0.01em;
+  --ls-display: -0.015em;
+  --ls-tight:   -0.01em;
+  --ls-normal:   0;
+  --ls-mono:     0.02em;
+  --ls-upper:    0.08em;
+
+  /* ==========================================================================
+     SHAPE — Radii, shadow, motion, layout
+     ========================================================================== */
+
+  /* Existing radius scale — preserved for UI compatibility */
+  --radius-sm:   3px;
+  --radius-md:   6px;
+  --radius-lg:   10px;
+  --radius-xl:   16px;
+  --radius-full: 9999px;
+
+  /* Kerry DS radius aliases */
+  --r-sm:   4px;
+  --r-md:   8px;
+  --r-lg:   16px;
+  --r-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(20,55,0,0.06), 0 2px 8px rgba(20,55,0,0.04);
+  --shadow-md: 0 2px 6px rgba(20,55,0,0.08), 0 10px 24px rgba(20,55,0,0.06);
+  --shadow-lg: 0 4px 12px rgba(20,55,0,0.10), 0 20px 48px rgba(20,55,0,0.10);
+
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:     cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --dur-fast: 180ms;
+  --dur-mid:  320ms;
+  --dur-slow: 520ms;
+
+  /* Layout */
+  --content-max: 1280px;
+  --gutter:      24px;
+  --page-x:      80px;
+
+  /* Spacing scale */
+  --sp-1:  0.25rem;
+  --sp-2:  0.5rem;
+  --sp-3:  0.75rem;
+  --sp-4:  1rem;
+  --sp-5:  1.25rem;
+  --sp-6:  1.5rem;
+  --sp-8:  2rem;
+  --sp-10: 2.5rem;
+  --sp-12: 3rem;
+}
+
+/* ==========================================================================
+   Back-compat aliases
+   ========================================================================== */
+:root {
+  /* Greens (legacy "kerry-green" scale → Forest anchor) */
+  --kerry-green-900: #0B1F00;
+  --kerry-green-800: var(--forest);
+  --kerry-green-700: color-mix(in srgb, var(--forest) 85%, white);
+  --kerry-green-600: color-mix(in srgb, var(--forest) 70%, white);
+  --kerry-green-500: color-mix(in srgb, var(--forest) 55%, white);
+  --kerry-green-200: color-mix(in srgb, var(--forest) 18%, white);
+  --kerry-green-100: color-mix(in srgb, var(--forest) 10%, white);
+
+  /* Creams → Stone */
+  --cream:     var(--stone);
+  --cream-50:  #FAF9F1;
+  --cream-100: var(--stone);
+
+  /* Stones (neutral scale) */
+  --stone-100: #EDEDE2;
+  --stone-200: #D9D9CB;
+  --stone-300: #C2C2B2;
+  --stone-400: #A5A595;
+
+  /* Amber → Sunrise family */
+  --amber-500: var(--sunrise);
+  --amber-600: color-mix(in srgb, var(--sunrise) 80%, var(--sunset));
+  --amber-700: var(--sunset);
+
+  /* Ink scale → body text on Forest */
+  --ink-900: var(--forest);
+  --ink-800: color-mix(in srgb, var(--forest) 85%, white);
+  --ink-700: color-mix(in srgb, var(--forest) 70%, white);
+  --ink-500: var(--fg-muted);
+  --ink-400: color-mix(in srgb, var(--forest) 45%, white);
+  --ink-300: color-mix(in srgb, var(--forest) 30%, white);
+
+  /* Semantic */
+  --success: var(--jade);
+  --warning: var(--sunrise);
+  --danger:  var(--sunset);
+  --info:    var(--sage);
+
+  --border:      var(--stroke);
+  --border-soft: var(--stroke-soft);
+  --fg-brand:    var(--valentia-slate);
+  --fg-link:     var(--valentia-slate);
+}
+
+/* ==========================================================================
+   Utility classes — opt-in, non-invasive
+   ========================================================================== */
+
+.t-impact {
+  font-family: var(--font-impact);
+  font-weight: var(--fw-extrabold);
+  text-transform: uppercase;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-impact);
+  color: var(--forest);
+}
+
+.t-display { font-family: var(--font-sans); font-weight: var(--fw-medium); line-height: var(--lh-snug); letter-spacing: var(--ls-display); color: var(--forest); }
+.t-serif   { font-family: var(--font-serif); font-weight: var(--fw-regular); line-height: var(--lh-head); color: var(--forest); }
+.t-mono    { font-family: var(--font-mono); font-weight: var(--fw-regular); letter-spacing: var(--ls-mono); color: var(--forest); }
+.t-eyebrow { font-family: var(--font-mono); font-size: var(--fs-12); letter-spacing: var(--ls-upper); text-transform: uppercase; color: var(--valentia-slate); font-weight: var(--fw-medium); }
+
+html { font-family: var(--font-sans); color: var(--fg); background: var(--bg-page); }
+body { font-family: var(--font-sans); font-weight: var(--fw-regular); line-height: var(--lh-body); color: var(--fg); }

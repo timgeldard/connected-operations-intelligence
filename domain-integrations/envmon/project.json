@@ -1,0 +1,28 @@
+{
+  "name": "di-envmon",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "domain-integrations/envmon/src",
+  "projectType": "library",
+  "tags": ["scope:envmon", "layer:integration", "type:lib"],
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.json",
+        "cwd": "domain-integrations/envmon"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["domain-integrations/envmon/**/*.{ts,tsx}"]
+      }
+    },
+    "test": {
+      "executor": "@nx/vitest:test",
+      "options": {
+        "config": "domain-integrations/envmon/vitest.config.ts"
+      }
+    }
+  }
+}

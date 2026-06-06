@@ -1,6 +1,6 @@
 # Contributing to Connected Operations Intelligence
 
-Thank you for contributing to this monorepo! This project integrates the IOReporting data product layer with the connectio-rad-v2 application layer.
+Thank you for contributing to this monorepo! This repository is an exercise in aligning two distinct codebases (the Databricks DLT pipeline data-product layer and the React/FastAPI application layer) into a single, unified, and governed monorepo.
 
 Please read the following guidelines to ensure a smooth development and review process.
 

@@ -1,0 +1,7 @@
+{
+  "name": "auth-scope",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/auth-scope/src",
+  "projectType": "library",
+  "tags": ["scope:shared", "layer:auth-scope", "type:lib"]
+}
