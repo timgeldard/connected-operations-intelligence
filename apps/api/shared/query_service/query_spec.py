@@ -44,9 +44,18 @@ class QuerySpec:
     max_rows: int = 10_000
     timeout_seconds: int = 30
     tags: list[str] = field(default_factory=list)
+    contract_id: Optional[str] = None
 
     # Cache execution metadata (populated at runtime by the repository/executor)
     cache_status: Optional[str] = None
     cache_age_seconds: Optional[int] = None
     cache_ttl_seconds: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.contract_id:
+            from shared.query_service.contract_resolver import resolve_contract_view
+            try:
+                resolve_contract_view(self.contract_id)
+            except ValueError as e:
+                raise ValueError(f"Failed to validate contract_id '{self.contract_id}': {e}") from e
 

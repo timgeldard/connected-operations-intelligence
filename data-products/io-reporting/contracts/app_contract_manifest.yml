@@ -15,23 +15,527 @@ contracts:
     lifecycle: draft
     description: Overview metrics for the Warehouse 360 dashboard.
     source_view: vw_consumption_warehouse360_overview
-    grain: one row per plant per refresh
+    grain: one row per plant_id and snapshot timestamp
     primary_key:
-      - plant_code
+      - plant_id
+      - snapshot_ts
     freshness:
       expected_minutes: 15
       warning_minutes: 30
       critical_minutes: 60
     access_policy:
-      row_level_key: plant_code
+      row_level_key: plant_id
       entitlement_source: published.central_services.user_plant_access
     fields:
-      - name: plant_code
+      - name: plant_id
         type: string
         required: true
-        description: SAP plant code
-      - name: occupancy_rate
+        description: SAP plant ID or 'GLOBAL'
+      - name: snapshot_ts
+        type: timestamp
+        required: true
+        description: Timestamp of overview snapshot generation
+      - name: orders_total
+        type: long
+        required: false
+        description: Total open process orders
+      - name: orders_red
+        type: long
+        required: false
+        description: Process orders in critical status (high risk)
+      - name: orders_amber
+        type: long
+        required: false
+        description: Process orders in warning status (medium risk)
+      - name: trs_open
+        type: long
+        required: false
+        description: Total open transfer requirements
+      - name: tos_open
+        type: long
+        required: false
+        description: Total open transfer orders
+      - name: deliveries_today
+        type: long
+        required: false
+        description: Total outbound deliveries scheduled for today
+      - name: deliveries_at_risk
+        type: long
+        required: false
+        description: Total outbound deliveries at risk of delay
+      - name: inbound_open
+        type: long
+        required: false
+        description: Total open inbound purchase orders
+      - name: bins_blocked
+        type: long
+        required: false
+        description: Total blocked storage bins
+      - name: bins_total
+        type: long
+        required: false
+        description: Total warehouse storage bins
+      - name: bin_util_pct
+        type: decimal
+        required: false
+        description: Bin occupancy utilization rate percentage
+
+  - id: warehouse360.inbound_backlog
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: Inbound purchase orders backlog workload and risk profile.
+    source_view: vw_consumption_warehouse360_inbound_backlog
+    grain: one row per plant_id, purchase order ID, and PO item
+    primary_key:
+      - plant_id
+      - po_id
+      - po_item
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: po_id
+        type: string
+        required: true
+        description: Purchase order ID
+      - name: po_item
+        type: string
+        required: true
+        description: Purchase order item line number
+      - name: doc_type
+        type: string
+        required: false
+        description: PO document type
+      - name: vendor_id
+        type: string
+        required: false
+        description: Vendor identifier
+      - name: vendor_name
+        type: string
+        required: false
+        description: Vendor name
+      - name: storage_loc
+        type: string
+        required: false
+        description: Target storage location ID
+      - name: material_id
+        type: string
+        required: false
+        description: Material code
+      - name: material_name
+        type: string
+        required: false
+        description: Material description
+      - name: ordered_qty
+        type: decimal
+        required: false
+        description: Total ordered quantity
+      - name: gr_qty
+        type: decimal
+        required: true
+        description: Goods receipt received quantity
+      - name: uom
+        type: string
+        required: false
+        description: Base unit of measure
+      - name: delivery_date
+        type: string
+        required: false
+        description: Planned delivery date (SAP string representation)
+      - name: po_date
+        type: string
+        required: false
+        description: Purchase order creation date (SAP string representation)
+      - name: open_qty
+        type: decimal
+        required: false
+        description: Remaining open quantity to receive
+      - name: qa_status
+        type: string
+        required: true
+        description: QA lot inspection status
+      - name: oldest_po_age_days
+        type: long
+        required: false
+        description: Age of the oldest open PO line in days
+      - name: inbound_backlog_risk_band
+        type: string
+        required: false
+        description: Backlog risk band (green/amber/red)
+
+  - id: warehouse360.outbound_backlog
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: Outbound deliveries picking backlog and cutoff risk.
+    source_view: vw_consumption_warehouse360_outbound_backlog
+    grain: one row per plant_id and delivery ID
+    primary_key:
+      - plant_id
+      - delivery_id
+    freshness:
+      expected_minutes: 15
+      warning_minutes: 30
+      critical_minutes: 60
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: delivery_id
+        type: string
+        required: true
+        description: Outbound delivery number
+      - name: delivery_type
+        type: string
+        required: false
+        description: Delivery document type
+      - name: customer_id
+        type: string
+        required: false
+        description: Ship-to customer number
+      - name: customer_name
+        type: string
+        required: false
+        description: Customer name
+      - name: carrier
+        type: string
+        required: false
+        description: Carrier code or name
+      - name: planned_gi_date
+        type: date
+        required: false
+        description: Planned goods issue date
+      - name: actual_gi_date
+        type: date
+        required: false
+        description: Actual goods issue date
+      - name: delivery_date
+        type: string
+        required: false
+        description: SAP delivery date (string)
+      - name: gross_weight
+        type: decimal
+        required: false
+        description: Gross weight of the delivery
+      - name: pick_pct
         type: double
         required: true
-        unit: percent
-        description: Percentage of occupied warehouse bins
+        description: Picking progress percentage
+      - name: line_count
+        type: long
+        required: true
+        description: Total line items in delivery
+      - name: risk
+        type: string
+        required: true
+        description: Computed risk band (red/amber/green/grey)
+      - name: shipped
+        type: boolean
+        required: true
+        description: Delivery goods-issue shipped status
+
+  - id: warehouse360.staging_workload
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: Production order component staging workload and readiness.
+    source_view: vw_consumption_warehouse360_staging_workload
+    grain: one row per plant_id, process order, reservation number, and batch ID
+    primary_key:
+      - plant_id
+      - order_id
+      - reservation_no
+      - batch_id
+    freshness:
+      expected_minutes: 15
+      warning_minutes: 30
+      critical_minutes: 60
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: order_id
+        type: string
+        required: true
+        description: Process order identifier
+      - name: material_id
+        type: string
+        required: false
+        description: Material code being staged
+      - name: order_qty
+        type: decimal
+        required: false
+        description: Process order total quantity
+      - name: uom
+        type: string
+        required: false
+        description: Unit of measure
+      - name: material_name
+        type: string
+        required: false
+        description: Material description
+      - name: sched_start
+        type: date
+        required: false
+        description: Scheduled production start date
+      - name: sched_finish
+        type: date
+        required: false
+        description: Scheduled production finish date
+      - name: staging_pct
+        type: double
+        required: true
+        description: Staging transfer order items completion percentage
+      - name: to_items_total
+        type: long
+        required: true
+        description: Total transfer order line items generated for staging
+      - name: to_items_done
+        type: long
+        required: true
+        description: Staged (completed) transfer order line items
+      - name: mins_to_start
+        type: double
+        required: false
+        description: Time remaining until scheduled production start in minutes
+      - name: risk
+        type: string
+        required: true
+        description: Computed component staging risk band (red/amber/green/grey/unvalidated)
+      - name: reservation_no
+        type: string
+        required: false
+        description: Material reservation document number
+      - name: batch_id
+        type: string
+        required: false
+        description: Target component batch number
+      - name: sap_order
+        type: string
+        required: true
+        description: Fully qualified SAP process order number
+
+  - id: warehouse360.stock_exceptions
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: Warehouse stock exceptions including expiry, shelf life breach, and status blocks.
+    source_view: vw_consumption_warehouse360_stock_exceptions
+    grain: one row per plant_id, material_id, batch_id, storage location, and exception type
+    primary_key:
+      - plant_id
+      - material_id
+      - batch_id
+      - storage_loc
+      - exception_type
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: material_id
+        type: string
+        required: true
+        description: Material code
+      - name: batch_id
+        type: string
+        required: true
+        description: Batch number
+      - name: storage_loc
+        type: string
+        required: true
+        description: Storage location ID
+      - name: exception_type
+        type: string
+        required: true
+        description: Computed exception bucket (EXPIRED/LT_7_DAYS/DAYS_7_30/DAYS_30_90)
+      - name: qty
+        type: decimal
+        required: false
+        description: Exceptional stock quantity
+      - name: minimum_days_to_expiry
+        type: long
+        required: false
+        description: Days remaining until the batch expires
+      - name: has_minimum_shelf_life_breach
+        type: boolean
+        required: false
+        description: True if remaining shelf life is below minimum limits
+
+  - id: warehouse360.shortfalls
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: Material shortfalls and staging transfer requirement backlogs.
+    source_view: vw_consumption_warehouse360_shortfalls
+    grain: one row per plant_id and material_id
+    primary_key:
+      - plant_id
+      - material_id
+    freshness:
+      expected_minutes: 15
+      warning_minutes: 30
+      critical_minutes: 60
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: material_id
+        type: string
+        required: true
+        description: Shortage material code
+      - name: shortfall_qty
+        type: decimal
+        required: false
+        description: Total open transfer requirement quantity pending staging
+      - name: open_items_count
+        type: long
+        required: false
+        description: Count of open transfer requirement lines for this material
+      - name: oldest_tr_date
+        type: date
+        required: false
+        description: Creation date of the oldest open transfer requirement
+
+  - id: warehouse360.im_wm_reconciliation
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: Discrepancies between Inventory Management (IM) and Warehouse Management (WM) stock.
+    source_view: vw_consumption_warehouse360_im_wm_reconciliation
+    grain: one row per plant_id, material_id, batch_id, storage location, bin, and exception type
+    primary_key:
+      - plant_id
+      - material_id
+      - batch_id
+      - storage_loc
+      - bin_id
+      - exception_type
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: material_id
+        type: string
+        required: false
+        description: Material code
+      - name: batch_id
+        type: string
+        required: false
+        description: Batch number
+      - name: storage_loc
+        type: string
+        required: false
+        description: Storage location ID
+      - name: exception_type
+        type: string
+        required: true
+        description: Type of discrepancy (e.g. IM-WM mismatch, interim storage block)
+      - name: severity
+        type: integer
+        required: true
+        description: Exception severity rating (higher is more critical)
+      - name: sla_hours
+        type: integer
+        required: true
+        description: Resolution SLA window in hours
+      - name: qty
+        type: decimal
+        required: false
+        description: Discrepant stock quantity
+      - name: bin_id
+        type: string
+        required: false
+        description: Warehouse storage bin number
+      - name: detail_text
+        type: string
+        required: false
+        description: Context detail description of the discrepancy
+      - name: detected_date
+        type: date
+        required: true
+        description: Date the exception was first detected
+
+  - id: warehouse360.dispensary_queue
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: Dispensary staging component weighing and preparation queue.
+    source_view: vw_consumption_warehouse360_dispensary_queue
+    grain: one row per plant_id, process order, component, and weighing task
+    primary_key:
+      - plant_id
+      - order_id
+      - component_id
+      - task_id
+    freshness:
+      expected_minutes: 15
+      warning_minutes: 30
+      critical_minutes: 60
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: order_id
+        type: string
+        required: true
+        description: Process order ID
+      - name: component_id
+        type: string
+        required: true
+        description: Weighing component material code
+      - name: task_id
+        type: string
+        required: true
+        description: Dispensary task identifier
+      - name: status
+        type: string
+        required: false
+        description: Dispensary task status

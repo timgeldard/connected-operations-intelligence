@@ -32,6 +32,7 @@ from shared.query_service.errors import DatabricksConfigError
 def _set_wh360_catalog(monkeypatch):
     monkeypatch.setenv("WH360_CATALOG", "wh360_uat_catalog")
     monkeypatch.setenv("WH360_SCHEMA", "wh360_uat_schema")
+    monkeypatch.setenv("WAREHOUSE360_SOURCE_MODE", "legacy_wh360")
 
 
 # ---------------------------------------------------------------------------
@@ -883,3 +884,51 @@ class TestWarehouseRowMappers:
         for forbidden in ("safe", "approved", "released", "cleared", "recallRecommended",
                           "rootCause", "healthy", "unhealthy"):
             assert forbidden not in res[0]
+
+
+# ---------------------------------------------------------------------------
+# Governed Contracts Mode Tests
+# ---------------------------------------------------------------------------
+
+class TestWarehouseGovernedSpecs:
+    @pytest.fixture(autouse=True)
+    def _set_governed_mode(self, monkeypatch):
+        monkeypatch.setenv("WAREHOUSE360_SOURCE_MODE", "governed_contracts")
+
+    def test_overview_governed_spec(self) -> None:
+        spec = get_warehouse_overview_spec(WarehouseOverviewRequest("WH01"))
+        assert spec.contract_id == "warehouse360.overview"
+        assert "vw_consumption_warehouse360_overview" in spec.sql
+        assert "`wh360_uat_catalog`.`wh360_uat_schema`.`vw_consumption_warehouse360_overview`" in spec.sql
+
+    def test_inbound_governed_spec(self) -> None:
+        spec = get_warehouse_inbound_spec(WarehouseInboundRequest("WH01"))
+        assert spec.contract_id == "warehouse360.inbound_backlog"
+        assert "vw_consumption_warehouse360_inbound_backlog" in spec.sql
+        # Check that ONLY governed columns are selected, and no legacy ones like doc_cat, delivery_complete, qa_lot_id
+        assert "doc_cat" not in spec.sql
+        assert "delivery_complete" not in spec.sql
+        assert "qa_lot_id" not in spec.sql
+        assert "inbound_backlog_risk_band" in spec.sql
+
+    def test_outbound_governed_spec(self) -> None:
+        spec = get_warehouse_outbound_spec(WarehouseOutboundRequest("WH01"))
+        assert spec.contract_id == "warehouse360.outbound_backlog"
+        assert "vw_consumption_warehouse360_outbound_backlog" in spec.sql
+        assert "loading_date" not in spec.sql
+        assert "pick_pct" in spec.sql
+
+    def test_staging_governed_spec(self) -> None:
+        spec = get_warehouse_staging_spec(WarehouseStagingRequest("WH01"))
+        assert spec.contract_id == "warehouse360.staging_workload"
+        assert "vw_consumption_warehouse360_staging_workload" in spec.sql
+        assert "planned_start" not in spec.sql
+        assert "sched_start" in spec.sql
+
+    def test_exceptions_governed_spec(self) -> None:
+        spec = get_warehouse_exceptions_spec(WarehouseExceptionRequest("WH01"))
+        assert spec.contract_id == "warehouse360.im_wm_reconciliation"
+        assert "vw_consumption_warehouse360_im_wm_reconciliation" in spec.sql
+        assert "material_name" not in spec.sql
+        assert "storage_loc_name" not in spec.sql
+
