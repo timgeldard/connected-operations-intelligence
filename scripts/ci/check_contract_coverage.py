@@ -67,7 +67,7 @@ def run_contract_coverage() -> None:
         sys.exit(1)
 
     with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
-        manifest = yaml.safe_load(f)
+        manifest = yaml.safe_load(f) or {}
 
     contracts = manifest.get("contracts", []) or []
     manifest_contract_ids = {c.get("id"): c for c in contracts}

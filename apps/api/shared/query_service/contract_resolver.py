@@ -25,7 +25,7 @@ def load_manifest() -> dict[str, Any]:
         if not os.path.exists(MANIFEST_PATH):
             raise FileNotFoundError(f"Contract manifest not found at {MANIFEST_PATH}")
         with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
-            _cached_manifest = yaml.safe_load(f)
+            _cached_manifest = yaml.safe_load(f) or {}
     return _cached_manifest
 
 

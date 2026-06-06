@@ -49,7 +49,7 @@ def generate_contracts():
 
     try:
         with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
-            manifest = yaml.safe_load(f)
+            manifest = yaml.safe_load(f) or {}
     except Exception as exc:
         print(f"Error reading manifest: {exc}")
         sys.exit(1)

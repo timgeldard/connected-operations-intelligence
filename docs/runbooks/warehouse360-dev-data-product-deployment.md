@@ -99,20 +99,20 @@ USE SCHEMA gold_dev;
 -- 1. Overview
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_overview AS
 SELECT
-  'GLOBAL' AS plant_id, -- Single global row (reconcile to plant-level when grain decided)
-  current_timestamp() AS snapshot_ts,
-  orders_total,
-  orders_red,
-  orders_amber,
-  trs_open,
-  tos_open,
-  deliveries_today,
-  deliveries_at_risk,
-  inbound_open,
-  bins_blocked,
-  bins_total,
-  bin_util_pct
-FROM connected_plant_dev.gold_dev.gold_kpi_snapshot_v_live; -- (Reconcile actual source)
+  plant_code AS plant_id,
+  CAST(snapshot_date AS TIMESTAMP) AS snapshot_ts,
+  active_order_count AS orders_total,
+  CAST(NULL AS LONG) AS orders_red,
+  CAST(NULL AS LONG) AS orders_amber,
+  open_tr_item_count AS trs_open,
+  open_to_item_count AS tos_open,
+  open_delivery_count AS deliveries_today,
+  CAST(NULL AS LONG) AS deliveries_at_risk,
+  open_inbound_item_count AS inbound_open,
+  blocked_bin_count AS bins_blocked,
+  total_bin_count AS bins_total,
+  CAST(bin_utilisation_pct AS DECIMAL(5,2)) AS bin_util_pct
+FROM connected_plant_dev.gold_dev.gold_warehouse_kpi_snapshot_secured;
 
 -- 2. Inbound Backlog
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_inbound_backlog AS
