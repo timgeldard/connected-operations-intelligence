@@ -1,17 +1,69 @@
 # Warehouse360 Contract Prep (Hardening Plan Task 3 / Wave 1)
 
-> **Status:** Prep / owner-decision package. **No manifest contracts authored yet** — see §4.
-> **Verified live against `connected_plant_uat.wh360.*` on 2026-06-06** (profile `uat`,
+> **Status:** Prep / **authoring on HOLD** — see the Decision below. No manifest contracts authored.
+> **Verified live against `connected_plant_uat` on 2026-06-06** (profile `uat`,
 > warehouse `e76480b94bea6ed5`) via `information_schema` + row-count probes.
-> Column names/types below are code-authoritative AND live-verified. Grain/primary-key are **not**
-> yet verifiable and require a data-product owner decision (§2).
 
 ## Purpose
 
 Task 3 asks us to expand `app_contract_manifest.yml` with the Wave-1 Warehouse360 contracts. While
-gathering the live schemas, two blockers surfaced that make blind authoring unsafe (it would
-fabricate keys and fail / mislead). This document records the verified evidence and the exact
-decisions needed so the contracts can be finalised in one pass.
+gathering live schemas, blockers surfaced that make blind authoring unsafe. This document records
+the verified evidence and the decision on which serving layer the contracts must target.
+
+---
+
+## Decision (2026-06-06): contracts target the `gold_io_reporting` governed layer
+
+The Warehouse360 app currently queries **legacy** `connected_plant_uat.wh360.*` views (from the
+connectio-rad-v2 import). These are **not** the contract target. Confirmed direction: **migrate to
+the io-reporting governed gold layer** and repoint the app onto it. Contracts must declare those
+views — **not** the legacy `wh360.*` views (which also carry data-quality issues; see §2).
+
+**This is a HOLD, not a go.** Three findings block authoring right now:
+
+1. **The governed layer is not deployed to UAT.** Live metastore shows only schemas `gold`,
+   `gold_test`, `wh360`. The target schema **`gold_io_reporting` does not exist** in UAT
+   (0 objects), so the governed views' real schema/grain cannot yet be verified.
+2. **The app is not repointed.** `warehouse360_databricks_adapter.py` + `app.yaml` resolve
+   `WH360_CATALOG=connected_plant_uat` / schema `wh360` — i.e. legacy. No code references
+   `gold_io_reporting`.
+3. **Three-way naming gap, none aligned:**
+   - legacy `connected_plant_uat.wh360.*` (what the app uses today),
+   - governed `connected_plant_uat.gold_io_reporting.gold_*_live` (defined in
+     `resources/sql/gold_serving_views_*.sql`, **undeployed**, RLS via `_secured` per ADR 012),
+   - contract convention `vw_consumption_*` (required by `validate_contracts.py:132` but **never
+     created anywhere** in the repo).
+   The contract `source_view` naming must be reconciled with the actual governed view names before
+   authoring (e.g. is `gold_*_live` renamed/wrapped to `vw_consumption_*`, or is the validator
+   rule updated?).
+
+### Governed target views (grain per `gold/design_spec.md`) — to be live-verified once deployed
+
+| Wave-1 contract | Governed serving view (`gold_io_reporting`) | Documented grain |
+|---|---|---|
+| `warehouse360.outbound_backlog` | `gold_delivery_pick_status_live` | 1 row per delivery (verify) |
+| `warehouse360.staging_workload` | `gold_process_order_staging_live` | per order / order×operation (verify) |
+| `warehouse360.inbound_backlog` | `gold_inbound_po_backlog_enhanced_live` | per PO line (verify) |
+| `warehouse360.stock_exceptions` | `gold_stock_expiry_risk_live` | 1 row per plant × material × batch × base UOM |
+| `warehouse360.shortfalls` | `gold_transfer_requirement_backlog` | 1 row per warehouse × plant × src/dst storage type × queue × priority |
+| `warehouse360.overview` | (KPI rollup MV — TBD) | TBD |
+
+These grains are **documented**, not yet live-verified (schema undeployed). They are cleaner than
+the legacy `wh360` views — they have real keys — so the §2 "no unique key" problem is expected to
+resolve naturally once we profile the governed layer.
+
+### Next steps (in order)
+
+1. Deploy the io-reporting bundle's `gold_io_reporting` layer (incl. `_secured` + `_live` serving
+   views) to UAT.
+2. Reconcile contract `source_view` naming (`gold_*_live` vs `vw_consumption_*`).
+3. Profile the governed views' live schema + grain (same method as §5, against `gold_io_reporting`).
+4. Repoint the Warehouse360 app off `wh360.*` onto the governed views.
+5. Author the Wave-1 contracts in one pass.
+
+> Everything below documents the **legacy `wh360.*` layer** (being superseded). It is retained as
+> reference — the verified column payloads in §5 are *not* the contract source of truth; the
+> governed `gold_io_reporting` views are.
 
 ---
 
