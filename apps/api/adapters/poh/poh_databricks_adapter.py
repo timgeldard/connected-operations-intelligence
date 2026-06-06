@@ -55,15 +55,15 @@ _ORDER_STATUS_MAP: dict[str, str] = {
     "NOT STARTED": "created",
     "RELEASED": "released",
     "IN PROGRESS": "in-process",
+    "PARTIALLY CONFIRMED": "partially-confirmed",  # must precede "CONFIRMED" — substring match
     "CONFIRMED": "confirmed",
-    "PARTIALLY CONFIRMED": "partially-confirmed",
     "COMPLETED": "confirmed",
     "CLOSED": "closed",
     "CANCELLED": "cancelled",
     # SAP technical fallbacks (in case view exposes AUOBJ codes)
     "CRTD": "created",
     "REL": "released",
-    "PCNF": "partially-confirmed",
+    "PCNF": "partially-confirmed",  # must precede "CNF" — substring match
     "CNF": "confirmed",
     "CLSD": "closed",
     "TECO": "closed",
