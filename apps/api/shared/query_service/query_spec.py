@@ -56,6 +56,6 @@ class QuerySpec:
             from shared.query_service.contract_resolver import resolve_contract_view
             try:
                 resolve_contract_view(self.contract_id)
-            except Exception as e:
+            except ValueError as e:
                 raise ValueError(f"Failed to validate contract_id '{self.contract_id}': {e}") from e
 

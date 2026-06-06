@@ -5,13 +5,13 @@ for Warehouse360 cockpit, inbound, outbound, staging, and exception monitoring.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Optional
 
-import os
 from shared.query_service.cache_policy import CacheTier
-from shared.query_service.object_resolver import resolve_domain_object
 from shared.query_service.contract_resolver import resolve_contract_object
+from shared.query_service.object_resolver import resolve_domain_object
 from shared.query_service.query_executor import DatabricksRepository
 from shared.query_service.query_spec import QuerySpec
 

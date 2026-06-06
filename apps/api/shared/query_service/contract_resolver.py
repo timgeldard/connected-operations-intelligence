@@ -8,12 +8,34 @@ import yaml
 
 from shared.query_service.object_resolver import resolve_domain_object
 
-MANIFEST_PATH = os.path.abspath(
-    os.path.join(
-        os.path.dirname(__file__),
-        "../../../../data-products/io-reporting/contracts/app_contract_manifest.yml"
+def _resolve_manifest_path() -> str:
+    # 1. Environment variable override
+    env_path = os.environ.get("APP_MANIFEST_PATH")
+    if env_path:
+        return os.path.abspath(env_path)
+
+    # 2. Walk up to find repo root
+    current = os.path.abspath(os.path.dirname(__file__))
+    markers = {".git", "pyproject.toml", "pnpm-workspace.yaml"}
+    while True:
+        if any(os.path.exists(os.path.join(current, m)) for m in markers):
+            manifest_path = os.path.join(current, "data-products/io-reporting/contracts/app_contract_manifest.yml")
+            if os.path.exists(manifest_path):
+                return os.path.abspath(manifest_path)
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+
+    # 3. Fallback to relative path traversal
+    return os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "../../../../data-products/io-reporting/contracts/app_contract_manifest.yml"
+        )
     )
-)
+
+MANIFEST_PATH = _resolve_manifest_path()
 
 _cached_manifest: dict[str, Any] | None = None
 

@@ -131,7 +131,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install pyyaml fastapi httpx
 
       - name: Run Contract Coverage Check
         run: python3 scripts/ci/check_contract_coverage.py
