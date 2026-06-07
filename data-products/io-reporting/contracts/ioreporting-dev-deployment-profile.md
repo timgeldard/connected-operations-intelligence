@@ -527,3 +527,32 @@ silver_fast rerun is dominated by the heavy **ungated** `process_order` backfill
 rerun for this reason). §E1/§E1b and the post-gate counts will refresh on the next full run; the §E1
 resolution is evidenced directly on bronze MCHB above. Gold + WH360 remain blocked by the separate
 pre-existing defects; Warehouse360 stays 0/7; no contract promoted.
+
+## Update 2026-06-07 (n) — SAP DDIC (DD03L) is available in Databricks; corroborates all approved mappings
+
+**Discovery:** the SAP DDIC field catalogue is replicated at
+`published_dev.central_services.datadictionaryfields_dd03l`. This upgrades the evidence chain for SAP
+field disputes — the agent need no longer rely only on `information_schema` + functional memory.
+
+**Evidence hierarchy (authoritative order):** (1) **DD03L** proves a field exists in SAP and on which
+SAP table; (2) `connected_plant_dev.information_schema.columns` proves DEV replicated availability;
+(3) `connected_plant_uat.information_schema.columns` proves UAT replicated availability; (4) SAP
+functional sign-off proves business meaning; (5) source contracts record the decision.
+*DD03L proves existence; information_schema proves replicated availability; functional sign-off proves
+meaning.*
+
+**Gotchas:** DD03L `TABNAME`/`FIELDNAME` are space-padded `CHAR` (must `TRIM`); `TABNAME` holds both
+standard SAP names (`LTAP`/`MSEG`/…) and namespaced extractor structures (`/AECOR/LTAP`/…) — use the
+standard names.
+
+**Result — DD03L confirms every approved Silver Fast mapping (no change to transformation code):**
+`ANFME`/`ENMNG`/`ISPOS` are **not** LTAP fields; `ENQTY` is **not** an LTBP field; bare `VBELN` is
+**not** an MSEG field; `MEINS` is **not** an MCHB field; `AERUNID`/`AERECNO`/`RecordActivity` are **not**
+SAP DDIC fields (Aecorsoft CDC metadata) → NOT_FOUND. The approved fields
+`VSOLM`/`VISTA`/`MENGE`/`TAMEN`/`VBELN_IM`/`VBELP_IM`/`MARA.MEINS` and the MCHB key
+(`MANDT,MATNR,WERKS,LGORT,CHARG`, `CHARG` = `CHAR(10)` key) are all DDIC_AND_REPLICATED. The MCHB
+KEYFLAG=X set independently confirms the exact natural key and the CHARG-exact decision.
+
+New validation: `validation/sap_dd03l_field_check.sql` — classifies each disputed field as
+DDIC_AND_REPLICATED / DDIC_ONLY_NOT_REPLICATED / REPLICATED_ONLY_NOT_IN_DDIC / NOT_FOUND. Evidence
+enhancement only — does not alter PR #23's scope, the gold/QM blockers, or the 0/7 Warehouse360 status.
