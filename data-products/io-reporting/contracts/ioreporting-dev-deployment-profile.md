@@ -456,9 +456,14 @@ are separate, pre-existing, out-of-scope defects to resolve next.
 
 ## Outstanding blockers (ordered) to reach Warehouse360 7/7
 
-1. **gold_pipeline** — resolve the duplicate `gold_storage_type_role_coverage_status` definition
-   (`readiness_validation.py` vs `warehouse_flow_gold.py`); rerun gold; expect possible further first-run
-   gold issues. [gold owner]
+1. **gold_pipeline** — ✅ RESOLVED (branch `fix/gold-duplicate-datasets`, 2026-06-07): the duplicate
+   `gold_storage_type_role_coverage_status` **and** a second duplicate `gold_process_order_staging_validation`
+   (both defined in `readiness_validation.py` *and* `warehouse_flow_gold.py`) are de-duplicated. Per the
+   gold-architecture decision, `warehouse_flow_gold.py` is canonical for both (detailed schema; documented
+   in design_spec + consumed by `freshness.py`); `readiness_validation.py`'s competing `@dlt.table` defs are
+   removed and its readiness dashboard now DERIVES uniform validation rows from the canonical tables
+   (original thresholds preserved). Rerun gold to confirm compile + surface any further first-run issues.
+   [gold owner]
 2. **silver_quality** (independent of WH360) — `stg_quality_inspection_lot` references `MANDT` absent
    from `inspection_qals`; source-guard or confirm replication. [QM domain]
 3. After gold builds: `gold_security_dev.sql` + `gold_serving_views_dev.sql` →

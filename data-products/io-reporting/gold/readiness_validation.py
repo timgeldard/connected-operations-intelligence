@@ -4,61 +4,43 @@ from pyspark.sql import functions as F
 
 from gold._shared import get_silver_schema, get_spark_session, gold_table_args
 
-# ── 1. STORAGE TYPE ROLE COVERAGE ─────────────────────────────────────────────
+# ── Canonical-table derivation note ───────────────────────────────────────────
+# `gold_storage_type_role_coverage_status` and `gold_process_order_staging_validation` are owned
+# CANONICALLY by gold/warehouse_flow_gold.py (detailed coverage_pct/coverage_status and
+# benum_match_pct/validation_status schemas — documented in design_spec.md and consumed by
+# gold/freshness.py). This module previously defined a SECOND table of each name (a DLT
+# duplicate-dataset compile error that blocked the whole gold build). Per the gold-architecture
+# decision, those competing definitions are removed; the readiness dashboard now DERIVES its uniform
+# validation rows from the canonical tables via the helpers below (original readiness thresholds
+# preserved). The helpers are plain functions, not @dlt.table — they emit no new dataset.
 
-@dlt.table(**gold_table_args(
-    comment="Validation check for warehouse storage type role mapping coverage.",
-    cluster_by=["plant_code"]
-))
-def gold_storage_type_role_coverage_status():
-    spark = get_spark_session()
-    silver_schema = get_silver_schema(spark)
+# ── 1. STORAGE TYPE ROLE COVERAGE → uniform validation rows ───────────────────
 
-    bins = spark.read.table(f"{silver_schema}.storage_bin")
-    roles = spark.read.table(f"{silver_schema}.site_config_storage_type_role")
-
-    active_types = bins.filter(F.col("plant_code") != "SHARED").select("plant_code", "warehouse_number", "storage_type").distinct()
-
-    joined = active_types.join(
-        roles,
-        ["plant_code", "warehouse_number", "storage_type"],
-        "left"
-    )
-
-    grouped = joined.groupBy("plant_code", "warehouse_number").agg(
-        F.count("*").alias("total_types"),
-        F.sum(F.when(F.col("storage_role").isNull() | (F.col("role_confidence") == "FALLBACK"), 1).otherwise(0)).alias("unmapped_types")
-    )
-
-    res = grouped.withColumn(
-        "match_rate",
-        F.when(F.col("total_types") > 0, (F.col("total_types") - F.col("unmapped_types")) / F.col("total_types"))
-        .otherwise(F.lit(None).cast("double"))
-    )
-
-    return (
-        res.select(
-            F.col("plant_code"),
-            F.col("warehouse_number"),
-            F.lit("gold_lineside_stock").alias("data_product_name"),
-            F.lit("Storage Type Role Coverage").alias("validation_name"),
-            F.when(F.col("match_rate").isNull(), "NOT_APPLICABLE")
-            .when(F.col("match_rate") >= 1.0, "READY")
-            .when(F.col("match_rate") >= 0.95, "READY_WITH_WARNINGS")
-            .when(F.col("match_rate") >= 0.5, "PILOT_ONLY")
-            .otherwise("BLOCKED").alias("validation_status"),
-            F.when(F.col("match_rate").isNull(), "INFO")
-            .when(F.col("match_rate") < 0.5, "HIGH")
-            .when(F.col("match_rate") < 0.95, "MEDIUM")
-            .when(F.col("match_rate") < 1.0, "LOW")
-            .otherwise("INFO").alias("severity"),
-            F.concat(F.round(F.col("match_rate") * 100, 1), F.lit("% matched")).alias("observed_value"),
-            F.lit("100% conformed").alias("threshold_value"),
-            F.col("unmapped_types").cast("long").alias("failed_record_count"),
-            F.lit(None).cast("string").alias("sample_evidence_json"),
-            F.current_timestamp().alias("last_checked_at"),
-            F.lit("Map all storage types to confirmed roles in site_config_storage_type_role.").alias("recommended_action")
-        )
+def _coverage_validation_rows():
+    """Uniform validation rows derived from the canonical gold_storage_type_role_coverage_status
+    (warehouse_flow_gold). Maps coverage_pct to the readiness READY/.../BLOCKED bands."""
+    cov = dlt.read("gold_storage_type_role_coverage_status")
+    return cov.select(
+        F.col("plant_code"),
+        F.col("warehouse_number"),
+        F.lit("gold_lineside_stock").alias("data_product_name"),
+        F.lit("Storage Type Role Coverage").alias("validation_name"),
+        F.when(F.col("coverage_pct").isNull(), "NOT_APPLICABLE")
+        .when(F.col("coverage_pct") >= 100.0, "READY")
+        .when(F.col("coverage_pct") >= 95.0, "READY_WITH_WARNINGS")
+        .when(F.col("coverage_pct") >= 50.0, "PILOT_ONLY")
+        .otherwise("BLOCKED").alias("validation_status"),
+        F.when(F.col("coverage_pct").isNull(), "INFO")
+        .when(F.col("coverage_pct") < 50.0, "HIGH")
+        .when(F.col("coverage_pct") < 95.0, "MEDIUM")
+        .when(F.col("coverage_pct") < 100.0, "LOW")
+        .otherwise("INFO").alias("severity"),
+        F.concat(F.coalesce(F.col("coverage_pct"), F.lit(0.0)), F.lit("% matched")).alias("observed_value"),
+        F.lit("100% conformed").alias("threshold_value"),
+        F.coalesce(F.col("unmapped_storage_types"), F.lit(0)).cast("long").alias("failed_record_count"),
+        F.lit(None).cast("string").alias("sample_evidence_json"),
+        F.current_timestamp().alias("last_checked_at"),
+        F.lit("Map all in-use storage types to confirmed roles in the storage_type_role_mapping config.").alias("recommended_action"),
     )
 
 # ── 2. MOVEMENT TYPE CLASSIFICATION COVERAGE ──────────────────────────────────
@@ -131,63 +113,34 @@ def gold_movement_type_classification_coverage():
         )
     )
 
-# ── 3. PROCESS ORDER STAGING VALIDATION ────────────────────────────────────────
+# ── 3. PROCESS ORDER STAGING VALIDATION → uniform validation rows ─────────────
 
-@dlt.table(**gold_table_args(
-    comment="Validation check for process order staging key matching.",
-    cluster_by=["plant_code"]
-))
-def gold_process_order_staging_validation():
-    spark = get_spark_session()
-    silver_schema = get_silver_schema(spark)
-
-    tos = spark.read.table(f"{silver_schema}.warehouse_transfer_order").filter(F.col("source_reference_type") == "F")
-    orders = spark.read.table(f"{silver_schema}.process_order").select("order_number", "plant_code").distinct()
-
-    joined = tos.alias("tos").join(
-        orders.alias("orders"),
-        (F.col("tos.source_reference_number") == F.col("orders.order_number")) & (F.col("tos.plant_code") == F.col("orders.plant_code")),
-        "left"
-    ).select(
-        F.col("tos.plant_code").alias("plant_code"),
-        "warehouse_number",
-        F.col("orders.order_number").alias("order_number")
-    )
-
-    grouped = joined.groupBy("plant_code", "warehouse_number").agg(
-        F.count("*").alias("total_to_items"),
-        F.sum(F.when(F.col("order_number").isNull(), 1).otherwise(0)).alias("unmatched_to_items")
-    )
-
-    res = grouped.withColumn(
-        "match_rate",
-        F.when(F.col("total_to_items") > 0, (F.col("total_to_items") - F.col("unmatched_to_items")) / F.col("total_to_items"))
-        .otherwise(F.lit(None).cast("double"))
-    )
-
-    return (
-        res.select(
-            F.col("plant_code"),
-            F.col("warehouse_number"),
-            F.lit("gold_process_order_staging").alias("data_product_name"),
-            F.lit("Process Order Staging Validation").alias("validation_name"),
-            F.when(F.col("match_rate").isNull(), "NOT_APPLICABLE")
-            .when(F.col("match_rate") >= 0.98, "READY")
-            .when(F.col("match_rate") >= 0.90, "READY_WITH_WARNINGS")
-            .when(F.col("match_rate") >= 0.70, "PILOT_ONLY")
-            .otherwise("BLOCKED").alias("validation_status"),
-            F.when(F.col("match_rate").isNull(), "INFO")
-            .when(F.col("match_rate") < 0.70, "HIGH")
-            .when(F.col("match_rate") < 0.90, "MEDIUM")
-            .when(F.col("match_rate") < 0.98, "LOW")
-            .otherwise("INFO").alias("severity"),
-            F.concat(F.round(F.col("match_rate") * 100, 1), F.lit("% keys matched")).alias("observed_value"),
-            F.lit(">= 98% matching").alias("threshold_value"),
-            F.col("unmatched_to_items").cast("long").alias("failed_record_count"),
-            F.lit(None).cast("string").alias("sample_evidence_json"),
-            F.current_timestamp().alias("last_checked_at"),
-            F.lit("Check why TO reference numbers (BENUM) do not exist in process_order.").alias("recommended_action")
-        )
+def _staging_validation_rows():
+    """Uniform validation rows derived from the canonical gold_process_order_staging_validation
+    (warehouse_flow_gold). Maps benum_match_pct to the readiness READY/.../BLOCKED bands."""
+    stg = dlt.read("gold_process_order_staging_validation")
+    return stg.select(
+        F.col("plant_code"),
+        F.col("warehouse_number"),
+        F.lit("gold_process_order_staging").alias("data_product_name"),
+        F.lit("Process Order Staging Validation").alias("validation_name"),
+        F.when(F.col("benum_match_pct").isNull(), "NOT_APPLICABLE")
+        .when(F.col("benum_match_pct") >= 98.0, "READY")
+        .when(F.col("benum_match_pct") >= 90.0, "READY_WITH_WARNINGS")
+        .when(F.col("benum_match_pct") >= 70.0, "PILOT_ONLY")
+        .otherwise("BLOCKED").alias("validation_status"),
+        F.when(F.col("benum_match_pct").isNull(), "INFO")
+        .when(F.col("benum_match_pct") < 70.0, "HIGH")
+        .when(F.col("benum_match_pct") < 90.0, "MEDIUM")
+        .when(F.col("benum_match_pct") < 98.0, "LOW")
+        .otherwise("INFO").alias("severity"),
+        F.concat(F.coalesce(F.col("benum_match_pct"), F.lit(0.0)), F.lit("% keys matched")).alias("observed_value"),
+        F.lit(">= 98% matching").alias("threshold_value"),
+        (F.coalesce(F.col("f_type_to_headers"), F.lit(0)) - F.coalesce(F.col("f_type_benum_matched"), F.lit(0)))
+        .cast("long").alias("failed_record_count"),
+        F.lit(None).cast("string").alias("sample_evidence_json"),
+        F.current_timestamp().alias("last_checked_at"),
+        F.lit("Check why TO reference numbers (BENUM) do not exist in process_order.").alias("recommended_action"),
     )
 
 # ── 4. RECIPE / PROCESS-LINE ENRICHMENT COVERAGE ──────────────────────────────
@@ -299,7 +252,7 @@ def gold_stock_reconciliation_readiness():
     slocs = spark.read.table(f"{silver_schema}.warehouse_storage_location_mapping")
     slocs_agg = slocs.groupBy("plant_code").agg(F.count("*").alias("mapped_slocs"))
 
-    roles_cov = dlt.read("gold_storage_type_role_coverage_status")
+    roles_cov = _coverage_validation_rows()
 
     joined = slocs_agg.join(
         roles_cov,
@@ -381,9 +334,9 @@ def gold_plant_freshness_readiness():
     cluster_by=["plant_code"]
 ))
 def gold_validation_failure_detail():
-    s1 = dlt.read("gold_storage_type_role_coverage_status")
+    s1 = _coverage_validation_rows()
     s2 = dlt.read("gold_movement_type_classification_coverage")
-    s3 = dlt.read("gold_process_order_staging_validation")
+    s3 = _staging_validation_rows()
     s4 = dlt.read("gold_recipe_line_enrichment_coverage")
     s5 = dlt.read("gold_delivery_pick_status_validation")
     s6 = dlt.read("gold_stock_reconciliation_readiness")
