@@ -413,3 +413,53 @@ is ~1:1, not strictly 1:1) — NOT caused by this change; small but real (slight
 yet validated (next: silver_quality → gold_pipeline → `warehouse360_dev_source_object_validation.sql`
 expecting 7/7 → WH360 pack). DEV remains a technical shakedown only; UAT is the first full business/HU
 validation. No contract promoted.
+
+## Update 2026-06-07 (j) — silver_quality: separate new blocker (QM domain); does NOT gate Warehouse360
+
+After silver_fast completed, ran `silver_quality_pipeline` (update f9e2949a). **FAILED at analysis** —
+a NEW, distinct, pre-existing blocker unrelated to this PR: `stg_quality_inspection_lot`
+(`silver/tables/quality.py:23`) reads `inspection_qals` and references `MANDT`, which is **absent**
+from the replicated `connected_plant_dev.sap.inspection_qals` (`UNRESOLVED_COLUMN`). This is a
+QM-domain replicated-schema gap (same class as the WM/MM and PP/PI gaps, different domain), in code
+this PR did not touch. **Not fixed here** (out of scope; needs the same source-guard/replication
+treatment as the other domains — a separate change).
+
+**Does NOT gate Warehouse360 or Gold:** silver_quality produces only `quality_inspection_lot`, and
+**no Gold module reads it** (verified). The 7 governed source objects depend on the WM/MM flows +
+process_order, not QM. So Gold was run regardless (see next).
+
+## Update 2026-06-07 (k) — gold_pipeline: separate new blocker (duplicate table def); 0/7 stands
+
+Ran `gold_pipeline` (update 45b908f4, first-ever gold run). **FAILED at graph construction:**
+`Found duplicate table 'connected_plant_dev.gold_io_reporting.gold_storage_type_role_coverage_status'`.
+The table is defined **twice**, in two different top-level gold modules with **different**
+implementations:
+- `gold/readiness_validation.py:13` — reads `storage_bin` + `site_config_storage_type_role`, emits a
+  `match_rate`.
+- `gold/warehouse_flow_gold.py:536` — reads `storage_bin` + `storage_type_role_mapping`, emits
+  VALIDATED/PARTIAL/MISSING.
+
+This is a **pre-existing gold defect** exposed on the first gold run — **unrelated** to this PR (PP/PI
+gating / WM/MM mappings; neither file touched here) and **not** caused by the `_read_or_empty` guards.
+It is **not** one of the 7 governed objects, but DLT graph construction is all-or-nothing, so it aborts
+the whole pipeline → the 7 cannot materialise. **Not fixed here:** the two definitions have different
+sources and output schemas, so choosing the canonical one (and retiring the other) is a gold-architecture
+decision for the gold owner, outside this PR's scope. There may be further first-run gold issues behind it.
+
+**`_read_or_empty` PP/PI guards:** not yet exercised at runtime — the duplicate-table error aborts
+*before* flow execution, so the empty-path verification is still pending the gold unblock.
+
+**Warehouse360 readiness: NOT claimed (Task 10).** Gold not built; `warehouse360_dev_source_object_validation.sql`
+remains **0/7**; consumption views not deployed; WH360 pack not run; no contract promoted. The
+silver_fast unblock (this PR's goal) is achieved and data-validated; the remaining gold/quality blockers
+are separate, pre-existing, out-of-scope defects to resolve next.
+
+## Outstanding blockers (ordered) to reach Warehouse360 7/7
+
+1. **gold_pipeline** — resolve the duplicate `gold_storage_type_role_coverage_status` definition
+   (`readiness_validation.py` vs `warehouse_flow_gold.py`); rerun gold; expect possible further first-run
+   gold issues. [gold owner]
+2. **silver_quality** (independent of WH360) — `stg_quality_inspection_lot` references `MANDT` absent
+   from `inspection_qals`; source-guard or confirm replication. [QM domain]
+3. After gold builds: `gold_security_dev.sql` + `gold_serving_views_dev.sql` →
+   `warehouse360_dev_source_object_validation.sql` (expect 7/7) → WH360 consumption views + pack.

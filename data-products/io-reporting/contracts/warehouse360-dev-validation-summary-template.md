@@ -17,7 +17,26 @@ source objects depend on HU. No contract is promoted; a green DEV shakedown does
 not imply UAT readiness. See ADR
 `docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`.
 
-## Status 2026-06-07 — WM/MM mappings implemented & resolving; silver_fast still blocked (0/7 unchanged)
+## Status 2026-06-07 (latest) — silver_fast COMPLETES & WM/MM mappings DATA-validated; Gold blocked on a pre-existing duplicate-table defect (0/7 stands)
+
+**silver_fast now COMPLETES.** The 3 PP/PI flows that blocked it were source-guarded out (their
+sources — AFVV / zmanpex / zpexpm_dwnt — lack AERUNID/AERECNO CDC metadata; confirmed NOT Warehouse360
+feeders by dependency trace), and a latent Photon broadcast-join OOM on `warehouse_transfer_order` was
+fixed (`spark.sql.autoBroadcastJoinThreshold=-1` → sort-merge). The 4 WM/MM-critical silver tables
+materialised (transfer_order 13.5M, transfer_requirement 15.9M, goods_movement 10.8M, batch_stock
+11.5M), and PR #23's mappings are now **DATA-validated** (silver_fast_mapping_validation.sql §B–E:
+alias invariant, open_quantity bounds, reference_type consistency, base_uom coverage all clean; one
+§E1 follow-up — 2,016 batch_stock key collisions / 4,039 rows / 0.035% from strip_zeros, pre-existing).
+
+**Warehouse360 still 0/7 — Gold not built.** `gold_pipeline` (first-ever run) fails at graph
+construction on a **pre-existing duplicate-table defect** (`gold_storage_type_role_coverage_status`
+defined in both `readiness_validation.py` and `warehouse_flow_gold.py`) — unrelated to this work; a
+gold-architecture decision for the gold owner. `silver_quality` has a separate QM-domain blocker
+(`inspection_qals.MANDT` absent) that does NOT gate Warehouse360 (no Gold module reads its output).
+**No contract promoted; readiness NOT claimed** (Task 10). See `ioreporting-dev-deployment-profile.md`
+§(i)/(j)/(k) for the full chain and the ordered outstanding blockers.
+
+## (Earlier) Status 2026-06-07 — WM/MM mappings implemented & resolving; silver_fast still blocked (0/7 unchanged)
 
 **Progress:** the approved SAP WM/MM field mappings are now implemented in `warehouse_fast.py`
 (functional sign-off): LTAP `requested/confirmed/picked` ← `VSOLM`/`VISTA` (picked aliases confirmed);
