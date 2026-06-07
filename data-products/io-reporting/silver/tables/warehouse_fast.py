@@ -8,6 +8,7 @@ Tables: goods_movement, batch_stock, warehouse_transfer_order,
 import dlt
 from pyspark.sql import functions as F
 
+from silver._plant_gate import apply_plant_gate, apply_warehouse_gate
 from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
 
 # ── 1. GOODS MOVEMENT ────────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ def stg_goods_movement():
             F.col("c.RecordActivity").alias("_change_record_activity"),
         )
     )
-    return (
+    movement_out = (
         movement_lines_to_refresh.alias("s")
         .join(mkpf.alias("h"), ["MBLNR", "MJAHR", "MANDT"], "left")
         .select(
@@ -127,6 +128,9 @@ def stg_goods_movement():
             ),
         )
     )
+    # Plant stage-gate (DIRECT WERKS): MSEG carries the true plant in WERKS. Scope to onboarded plants
+    # (base ioreporting gate). Stream-static left-semi against the governed active-plant set.
+    return apply_plant_gate(movement_out, "plant_code", "ioreporting", spark=spark)
 
 dlt.create_streaming_table(
     name="goods_movement",
@@ -185,7 +189,7 @@ def batch_stock():
         F.col("MATNR").alias("_mara_matnr"),
         F.col("MEINS").alias("base_uom"),
     )
-    return (
+    batch_stock_out = (
         mchb.alias("s")
         .join(
             mara.alias("m"),
@@ -219,6 +223,9 @@ def batch_stock():
             F.col("s.AEDATTM").alias("_replicated_at"),
         )
     )
+    # Plant stage-gate (DIRECT WERKS): MCHB carries the true plant in WERKS. Scope to plants onboarded
+    # for stock (batch_managed_flag). Batch-static left-semi against the governed active-plant set.
+    return apply_plant_gate(batch_stock_out, "plant_code", "stock", spark=spark)
 
 
 # ── 3. WAREHOUSE TRANSFER ORDER ───────────────────────────────────────────────
@@ -256,7 +263,7 @@ def stg_warehouse_transfer_order():
         )
     )
 
-    return (
+    transfer_order_out = (
         order_items_to_refresh.alias("i")
         .join(ltak.alias("h"), ["LGNUM", "TANUM", "MANDT"], "left")
         .select(
@@ -331,6 +338,12 @@ def stg_warehouse_transfer_order():
                 "record_activity"
             ),
         )
+    )
+    # Warehouse stage-gate (LGNUM -> WERKS via site_config_warehouse). WM flows are gated by warehouse,
+    # NOT raw LTAK.WERKS (verified unreliable: warehouse 208 has 393,612 TOs but only 369,694 carry
+    # WERKS=C061). Adds governed `plant_id` from the mapping, kept DISTINCT from the raw `plant_code`.
+    return apply_warehouse_gate(
+        transfer_order_out, "warehouse_number", "warehouse", add_plant_col="plant_id", spark=spark
     )
 
 dlt.create_streaming_table(
@@ -420,7 +433,7 @@ def stg_warehouse_transfer_requirement():
         )
     )
 
-    return (
+    transfer_requirement_out = (
         requirement_items_to_refresh.alias("i")
         .join(ltbk.alias("h"), ["LGNUM", "TBNUM", "MANDT"], "left")
         .select(
@@ -486,6 +499,11 @@ def stg_warehouse_transfer_requirement():
                 "record_activity"
             ),
         )
+    )
+    # Warehouse stage-gate (LGNUM -> WERKS via site_config_warehouse); adds governed `plant_id`,
+    # kept DISTINCT from the raw `plant_code`. WM flows gated by warehouse, not raw WERKS.
+    return apply_warehouse_gate(
+        transfer_requirement_out, "warehouse_number", "warehouse", add_plant_col="plant_id", spark=spark
     )
 
 dlt.create_streaming_table(

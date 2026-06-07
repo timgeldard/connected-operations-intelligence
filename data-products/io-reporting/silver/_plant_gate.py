@@ -1,0 +1,140 @@
+"""Plant/site stage-gate helpers for Bronze -> Silver.
+
+Bronze stays raw and unfiltered. All operational Bronze -> Silver processing is scoped to the
+plants / warehouses approved by the governed site stage-gate config before data enters Silver.
+Gold and serving views inherit Silver scope; user security is a separate concern and does NOT
+replace this plant gate.
+
+Source of truth (canonical gate): the governed `site_config_plant` and `site_config_warehouse`
+tables (built by the slow tier from the seeded config; see reference.py). This module reads them via
+the `site_config_plant_table` / `site_config_warehouse_table` Spark confs — the SAME confs the slow
+pipeline already sets to `${var.catalog}.${var.schema}.site_config_*`. They must also be set on any
+pipeline that applies a gate (see resources/*.pipeline.yml).
+
+Design rules (see source-contracts/site_stage_gate_contract.md):
+  * Do NOT filter Bronze. Gates apply at the Silver transform only.
+  * Do NOT hard-code plant lists. The active set comes from the config.
+  * Do NOT assume LGNUM = WERKS. Warehouse-keyed flows are gated via the site_config_warehouse
+    mapping (warehouse_number -> plant_code) and enriched with a governed `plant_id`, kept DISTINCT
+    from any raw WERKS the source carries.
+  * FAIL-LOUD, never silent. The config is read UNCONDITIONALLY (no relation_exists guard) — exactly
+    like recipe_process_line — because a guard would bake an empty-gate fallback into a CONTINUOUS
+    pipeline's plan for the life of the update. A missing config table raises at startup. An EMPTY
+    active set (table present, 0 active plants) is a misconfiguration that produces empty operational
+    output; that is NOT silent — silver_stage_gate_validation.sql asserts active_plants_in_gate > 0 and
+    reports before/after row counts, so any drop-all is loud in validation evidence.
+  * DEPLOY ORDER: the slow pipeline must build site_config_* BEFORE the continuous fast pipeline
+    starts (same dependency as recipe_process_line). On first deploy, run slow once, then start fast.
+
+Product-area gate semantics (DERIVED from the existing site_config_plant flags; no schema change):
+  active_for_ioreporting    := is_active AND go_live_status NOT IN (blocked statuses)
+  active_for_warehouse360   := <ioreporting> AND wm_enabled_flag
+  active_for_stock          := <ioreporting> AND batch_managed_flag
+  active_for_quality        := <ioreporting> AND qm_enabled_flag
+  active_for_process_order  := <ioreporting> AND process_manufacturing_flag
+technical_validated / business_validated are NOT yet first-class columns on the config (closest signal
+is the deployment_mode shakedown-vs-full_validation flag + last_validated_at). They are documented in
+the contract as a Phase-2 schema addition and are NOT silently assumed true here.
+"""
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
+
+from silver.helpers import get_spark
+
+# go_live_status values that exclude a plant even when is_active (defensive; extend via the contract).
+_BLOCKED_GO_LIVE_STATUSES = ["BLOCKED", "DECOMMISSIONED", "SUSPENDED"]
+
+# product_area -> the site_config_plant boolean flag that additionally includes a plant for that area.
+# None = base ioreporting gate (is_active + go_live_status only).
+_PRODUCT_AREA_FLAG = {
+    None: None,
+    "ioreporting": None,
+    "warehouse360": "wm_enabled_flag",
+    "warehouse": "wm_enabled_flag",
+    "stock": "batch_managed_flag",
+    "quality": "qm_enabled_flag",
+    "process_order": "process_manufacturing_flag",
+}
+
+
+def _require_conf(spark, key: str) -> str:
+    value = spark.conf.get(key, None)
+    if not value:
+        raise ValueError(
+            f"{key} configuration must be set for the plant stage-gate "
+            f"(see resources/*.pipeline.yml and source-contracts/site_stage_gate_contract.md)."
+        )
+    return value
+
+
+def active_plants_df(spark=None, product_area=None) -> DataFrame:
+    """Distinct active `plant_code` set from the governed site_config_plant gate, for a product area.
+
+    Read UNCONDITIONALLY (fail-loud): a missing site_config_plant table raises (slow pipeline must build
+    it first). Returns one column: `plant_code`.
+    """
+    spark = spark or get_spark()
+    if product_area not in _PRODUCT_AREA_FLAG:
+        raise ValueError(
+            f"Unknown product_area '{product_area}'. Allowed: {sorted(k for k in _PRODUCT_AREA_FLAG if k)}"
+        )
+    cfg = _require_conf(spark, "site_config_plant_table")
+    df = spark.read.table(cfg)
+    df = df.filter(
+        F.col("is_active") & (~F.col("go_live_status").isin(_BLOCKED_GO_LIVE_STATUSES))
+    )
+    flag = _PRODUCT_AREA_FLAG.get(product_area)
+    if flag:
+        df = df.filter(F.col(flag))
+    return df.select(F.col("plant_code")).distinct()
+
+
+def active_warehouses_df(spark=None, product_area="warehouse") -> DataFrame:
+    """Distinct active (warehouse_number, plant_code) from site_config_warehouse, restricted to plants
+    active for `product_area`. This IS the approved LGNUM -> WERKS mapping. Fail-loud read."""
+    spark = spark or get_spark()
+    cfg = _require_conf(spark, "site_config_warehouse_table")
+    wh = spark.read.table(cfg).filter(F.col("is_active"))
+    plants = active_plants_df(spark, product_area)
+    return (
+        wh.join(plants, "plant_code", "inner")
+        .select("warehouse_number", "plant_code")
+        .distinct()
+    )
+
+
+def apply_plant_gate(df: DataFrame, plant_col: str, product_area=None, spark=None) -> DataFrame:
+    """Keep only rows whose `plant_col` is an active plant for `product_area` (left-semi join against
+    the governed gate; broadcasts the tiny active-plant set). Drops nothing silently — see module
+    docstring + silver_stage_gate_validation.sql. Adds no columns (the row already carries its plant)."""
+    spark = spark or get_spark()
+    plants = active_plants_df(spark, product_area).select(
+        F.col("plant_code").alias("_gate_plant_code")
+    )
+    return df.join(
+        F.broadcast(plants), df[plant_col] == F.col("_gate_plant_code"), "left_semi"
+    )
+
+
+def apply_warehouse_gate(
+    df: DataFrame,
+    warehouse_col: str,
+    product_area="warehouse",
+    add_plant_col: str | None = "plant_id",
+    spark=None,
+) -> DataFrame:
+    """Keep only rows whose `warehouse_col` is an active warehouse, AND enrich with the governed
+    `plant_id` from the site_config_warehouse mapping (do NOT assume LGNUM = WERKS — this is the
+    config-approved plant, kept distinct from any raw WERKS the source carries). Inner join =
+    filter + enrich. Broadcasts the tiny mapping."""
+    spark = spark or get_spark()
+    whs = active_warehouses_df(spark, product_area).select(
+        F.col("warehouse_number").alias("_gate_warehouse"),
+        F.col("plant_code").alias("_gate_plant_id"),
+    )
+    out = df.join(
+        F.broadcast(whs), df[warehouse_col] == F.col("_gate_warehouse"), "inner"
+    )
+    if add_plant_col:
+        out = out.withColumn(add_plant_col, F.col("_gate_plant_id"))
+    return out.drop("_gate_warehouse", "_gate_plant_id")

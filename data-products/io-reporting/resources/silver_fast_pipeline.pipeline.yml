@@ -28,6 +28,12 @@ resources:
         # once (to create recipe_process_line) BEFORE first starting this continuous fast pipeline,
         # otherwise it fails loud at startup with table-not-found.
         recipe_process_line_table: ${var.catalog}.${var.schema}.recipe_process_line
+        # Plant/site stage-gate config (silver/_plant_gate.py). Same governed tables the slow tier
+        # builds; the fast operational flows read them to scope rows to onboarded plants/warehouses.
+        # DEPLOY ORDER: the slow pipeline must build site_config_plant/site_config_warehouse before
+        # this continuous pipeline starts (same dependency as recipe_process_line). Read fail-loud.
+        site_config_plant_table: ${var.catalog}.${var.schema}.site_config_plant
+        site_config_warehouse_table: ${var.catalog}.${var.schema}.site_config_warehouse
         # Force sort-merge over broadcast joins. The stg_warehouse_transfer_order stream-static join
         # (changed_keys ⋈ LTAP[i.*, 165 wide var-len cols] ⋈ LTAK) made Photon build a
         # BroadcastHashedRelation that ran the executor out of memory (SparkOutOfMemoryError, var-len

@@ -177,6 +177,25 @@ jobs:
       - name: Run silver_fast approved-mapping guard
         run: python3 scripts/ci/check_silver_fast_field_mappings.py
 
+  silver-stage-gate-coverage:
+    name: Silver Stage-Gate Coverage Guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run silver stage-gate coverage guard
+        run: python3 scripts/ci/check_silver_stage_gate_coverage.py
+
   validate-bundle:
     name: Validate Databricks Bundle
     runs-on: ubuntu-latest
