@@ -647,3 +647,24 @@ workspace IP ACL (403), so `bundle validate`/deploy/rerun could not run this ses
 **Follow-up (functional + DD03L, separate change):** confirm the renamed QALS fields, source usage-decision
 from QAVE, decide CDC-vs-snapshot for inspection_qals (functional sign-off, like MCHB), then fix the contract,
 add `apply_plant_gate(quality)`, reclassify ENFORCED. Warehouse360 readiness NOT claimed.
+
+## Update 2026-06-07 (q) — DEV Gold COMPILES + RUNS: duplicate-dataset blocker resolved (PR #31 verified)
+
+The gold_pipeline duplicate-dataset blocker from update (k) is **resolved and runtime-verified**. After
+PR #31 (de-duplicate `gold_storage_type_role_coverage_status` + `gold_process_order_staging_validation`;
+`warehouse_flow_gold.py` canonical, `readiness_validation.py` derives uniform rows) merged to `main`:
+
+- ✅ `bundle validate -t dev` OK; `bundle deploy -t dev` complete (de-duplicated code synced).
+- ✅ **gold_pipeline update `707a9eb5` COMPLETED** — the **first successful Gold build in DEV**. It
+  advanced past INITIALIZING (graph construction, where the duplicate-dataset error previously aborted
+  at update `45b908`) → `SETTING_UP_TABLES` → `COMPLETED`. No duplicate-dataset error; no ERROR events
+  for this update.
+- ✅ `connected_plant_dev.gold_io_reporting` now holds **87 objects**; both formerly-duplicate tables
+  present exactly once (built from the canonical `warehouse_flow_gold` definitions).
+- ◻️ **Governed Warehouse360 serving views still absent (0):** `vw_consumption_warehouse360_*` are built
+  by the serving-view SQL (`gold_serving_views_dev.sql`), NOT the gold pipeline — that is the next step
+  (revised plan PR #34: build/validate the route-covered governed views in DEV, then UAT).
+
+No further first-run Gold blocker surfaced (revised-plan "best case"), so PR #33 (next-blocker) is a
+no-op. **Warehouse360 readiness NOT claimed** — gold tables exist but the governed consumption views +
+contract validation + UAT business validation are still ahead. DEV remains a technical shakedown.
