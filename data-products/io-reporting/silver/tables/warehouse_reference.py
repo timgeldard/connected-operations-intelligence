@@ -146,21 +146,21 @@ def stg_storage_bin():
             ).alias("plant_code"),
 
             # ── Bin attributes
-            # LGBKT, LGPBE, MAXGW, MAXEI, ANZRE are NOT present in the replicated storagebin_lagp
-            # in either connected_plant_dev.sap OR connected_plant_uat.sap (confirmed 2026-06-07,
-            # 51 cols each). They are OPTIONAL descriptive bin attributes (not keys), so they degrade
-            # to typed NULL via col_or_null rather than failing the run with UNRESOLVED_COLUMN; the
-            # real field is used automatically if a future replication adds it. NOT remapped to a
-            # different field (e.g. LGBKT→LPTYP) — that mapping is a data-team decision, not assumed.
-            # Impact: gold_bin_occupancy loses bin_type as a grouping dimension (collapses to a single
-            # NULL group) — bin COUNTS, and therefore the Warehouse360 overview KPIs, are unaffected.
-            # These gaps also apply to UAT full_validation. See ioreporting_dev_source_schema_preflight.sql.
+            # LGBKT, LGPBE, MAXGW, BRGEW, MAXEI, ANZRE are NOT present in the replicated storagebin_lagp
+            # in either connected_plant_dev.sap OR connected_plant_uat.sap (confirmed live 2026-06-07).
+            # They are OPTIONAL descriptive bin attributes (not keys), so they degrade to typed NULL via
+            # col_or_null rather than failing the run with UNRESOLVED_COLUMN; the real field is used
+            # automatically if a future replication adds it. NOT remapped to a different field
+            # (e.g. LGBKT→LPTYP) — that mapping is a data-team decision, not assumed. None of these has a
+            # gold consumer except bin_type: gold_bin_occupancy loses bin_type as a grouping dimension
+            # (collapses to a single NULL group) — bin COUNTS, and therefore the Warehouse360 overview
+            # KPIs, are unaffected. These gaps also apply to UAT. See ioreporting_dev_source_schema_preflight.sql.
             F.col("b.LGBER").alias("storage_section"),
             col_or_null(lagp, "LGBKT", "string", "b").alias("bin_type"),
             F.col("b.KOBER").alias("picking_area"),
             col_or_null(lagp, "LGPBE", "string", "b").alias("storage_bin_structure"),
             col_or_null(lagp, "MAXGW", "double", "b").alias("maximum_weight"),
-            F.col("b.BRGEW").alias("current_weight"),
+            col_or_null(lagp, "BRGEW", "double", "b").alias("current_weight"),
             F.col("b.GEWEI").alias("weight_unit"),
             col_or_null(lagp, "MAXEI", "double", "b").alias("maximum_capacity_units"),
             col_or_null(lagp, "ANZRE", "double", "b").alias("current_capacity_units_used"),

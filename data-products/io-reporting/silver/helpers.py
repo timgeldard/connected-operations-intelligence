@@ -40,20 +40,40 @@ def bronze_published() -> str:
     return f"{catalog}.{schema}"
 
 
-def bronze_table_exists(name: str) -> bool:
-    """True if a bronze SAP source table exists, safe to call at module-eval to conditionally
-    define a DLT table.
+def relation_exists(fq_name: str) -> bool:
+    """True if a (fully-qualified) table/view exists, safe to call anywhere in pipeline code.
 
     Uses a lazy `spark.read.table` analysis probe rather than `spark.catalog.tableExists`, which is
     a BLOCKED Py4J API in the DLT serverless graph-construction environment (PY4J_BLOCKED_API).
     `read.table` resolves the relation (metadata only, no Spark job) and raises if it is absent.
-    Self-healing: returns True automatically once the source table is replicated.
+    Self-healing: returns True automatically once the relation exists.
     """
     try:
-        get_spark().read.table(f"{BRONZE}.{name}")
+        get_spark().read.table(fq_name)
         return True
+    except Exception:  # noqa: BLE001 - missing relation is a normal bootstrap condition
+        return False
+
+
+def bronze_table_exists(name: str) -> bool:
+    """True if a bronze SAP source table exists, safe to call at module-eval to conditionally
+    define a DLT table. See relation_exists for why this avoids spark.catalog.tableExists."""
+    return relation_exists(f"{BRONZE}.{name}")
+
+
+def bronze_columns_exist(name: str, columns) -> bool:
+    """True only if bronze SAP table `name` exists AND contains every column in `columns`.
+
+    Same lazy-probe rationale as relation_exists (spark.catalog.tableExists is blocked at DLT
+    graph-construction). For source-guarding models that reference SAP columns not guaranteed to be
+    replicated in every environment. Self-healing once the columns are replicated. Reading `.columns`
+    only inspects the resolved schema (no Spark job).
+    """
+    try:
+        present = set(get_spark().read.table(f"{BRONZE}.{name}").columns)
     except Exception:  # noqa: BLE001 - missing source is a normal bootstrap condition
         return False
+    return all(c in present for c in columns)
 
 
 def col_or_null(df, name: str, dtype: str, alias_prefix: str | None = None) -> Column:

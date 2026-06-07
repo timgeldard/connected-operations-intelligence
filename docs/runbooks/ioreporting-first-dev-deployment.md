@@ -92,10 +92,12 @@ these gaps also affect UAT). Then `validation/warehouse360_dev_source_layer_pref
 — expect `gold_io_reporting` MISSING and 0/7 objects on first pass (they materialise
 after the runs below).
 
-> **Known DEV-data blocker (as of 2026-06-07):** `silver_slow` does not yet complete —
-> after the source/schema fixes it stops on a separate code bug: `strip_zeros(F.coalesce(...))`
-> raises `NOT_ITERABLE` (the helper takes a column name, four callers pass a `Column`).
-> See `contracts/ioreporting-dev-deployment-profile.md`.
+> **Status (as of 2026-06-07): `silver_slow` COMPLETES** (update `0eb81b`) — Silver objects
+> materialise in `connected_plant_dev.silver_io_reporting` (e.g. `storage_bin`, `material`,
+> `purchase_order`). `work_centre` and `capacity_utilisation` are source-guarded out (replicated
+> SAP lacks their source tables/columns — also affects UAT). This is a technical shakedown only;
+> `silver_fast`/`silver_quality`/`gold` are next, and Warehouse360 validation is NOT rerun (its 7
+> source objects live in Gold). See `contracts/ioreporting-dev-deployment-profile.md`.
 
 ### 1. Validate the bundle
 ```bash

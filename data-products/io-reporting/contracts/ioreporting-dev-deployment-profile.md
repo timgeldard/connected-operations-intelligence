@@ -219,14 +219,43 @@ technical shakedown only.
   any table is written. **Warehouse360 validation NOT rerun; no contract promoted; DEV shakedown only.**
 - Still latent: `gold/freshness.py` uses the blocked `spark.catalog.tableExists` (gold-stage blocker).
 
+## Update 2026-06-07 (d) — silver_slow COMPLETES; capacity source-guarded; freshness/Py4J pre-fixed
+
+- **`stg_capacity_utilisation` source-guarded** (like `work_centre`): it references KAPA columns
+  absent from the replicated `shiftparametersavailablecapacity_kapa` (only `KAPAZ` of 10 present).
+  It has **no pipeline consumers** and is **not** in the WH360 critical path, so the whole model
+  (view + `capacity_utilisation` streaming table + apply_changes) is defined only when the required
+  KAPA columns exist, via new `bronze_columns_exist(...)`. Gap also affects UAT — flagged in the
+  source-schema preflight (new KAPA section). Not fabricated, not remapped.
+- **`stg_storage_bin` BRGEW** — `current_weight` (BRGEW) was the last unhandled missing LAGP column
+  (no gold consumer) → typed NULL via `col_or_null`, completing the storagebin_lagp tolerance.
+- **gold/freshness.py + gold/_shared.table_exists** — replaced `spark.catalog.tableExists` (a
+  **blocked Py4J API** in DLT serverless) with the lazy `spark.read.table` probe; the 9 silver
+  config-seed checks in `reference.py` were routed through the new `relation_exists(...)` too. New
+  static guard `scripts/ci/check_no_blocked_spark_apis.py` bans `catalog.tableExists` in DLT pipeline
+  code (excludes the standalone job scripts under `gold/recon` / `gold/snapshots`, which run in a
+  normal Spark context).
+
+**Runtime-verified (silver_slow, update `0eb81b` — COMPLETED).**
+- ✅ **silver_slow now runs end-to-end.** Silver objects **materialised** in
+  `connected_plant_dev.silver_io_reporting`: e.g. `storage_bin` 511,380 rows, `material` 2,111,130,
+  `purchase_order` 6,622,412, `movement_type_classification` 314, plus `customer`, `vendor`, `plant`,
+  `stock_at_location`, `physical_inventory_document`, `recipe_process_line`, `site_config_*`, etc.
+- ✅ `work_centre` and `capacity_utilisation` are **correctly absent** (source-guarded out) — verified
+  in the materialised schema.
+- ✅ `ioreporting_dev_source_schema_preflight.sql` (with new KAPA section) runs clean; verdict
+  SOURCE-SCHEMA READY.
+- This is a **TECHNICAL shakedown** result (the DLT silver reference pipeline runs against real DEV
+  SAP). It is **not** business validation. **Warehouse360 validation was NOT rerun** — the 7 WH360
+  source objects live in Gold, which has not been built. No contract promoted; DEV shakedown only.
+
 ## Next required Databricks execution (in order)
 
-1. ✅ DONE — pipeline imports; 3 DEV source/schema blockers; `strip_zeros` NOT_ITERABLE — all fixed
-   and runtime-verified.
-2. Resolve `stg_capacity_utilisation` KAPA column mismatch (9 columns absent — `col_or_null`/source
-   mapping decision), then re-run `silver_slow` to completion.
-3. Run `silver_fast` → `silver_quality` → `gold_pipeline` (+ `warehouse_snapshot`); expect the
-   `gold/freshness.py` `catalog.tableExists` Py4J block as the next gold-stage blocker.
+1. ✅ DONE — pipeline imports; the source/schema blockers (work_centre, storagebin_lagp incl. BRGEW,
+   movement-type seed, capacity); strip_zeros; freshness/Py4J — all fixed; **silver_slow COMPLETES**.
+2. Run `silver_fast` → `silver_quality` (expect possible further replicated-schema gaps to surface
+   per the established pattern; handle with the same source-guard / `col_or_null` tolerance).
+3. Run `gold_pipeline` (+ `warehouse_snapshot` job).
 4. Apply `gold_security_dev.sql` then `gold_serving_views_dev.sql`.
 5. Re-run `warehouse360_dev_source_layer_preflight.sql` — expect 7/7 FOUND.
 6. Only then rerun the Warehouse360 validation pack (technical shakedown classification) and

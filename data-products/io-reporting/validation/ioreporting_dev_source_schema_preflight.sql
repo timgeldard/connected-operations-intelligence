@@ -84,8 +84,30 @@ SELECT
 FROM optional_cols c LEFT JOIN actual a ON c.column_name=a.column_name
 ORDER BY c.column_name;
 
+-- 4b. KAPA extended columns (WARNING / tolerated gap): shiftparametersavailablecapacity_kapa is
+--     missing the columns stg_capacity_utilisation needs. capacity_utilisation has NO downstream
+--     pipeline consumers and is NOT in the Warehouse360 critical path, so the whole model is
+--     source-guarded OFF in dev_shakedown (tolerated — not a blocker). These columns are also absent
+--     in UAT, so capacity_utilisation is likewise gated in UAT full_validation until a source-mapping
+--     decision is made (it is NOT required by the 7 Warehouse360 source objects). NOT remapped/inferred.
+WITH kapa_cols AS (
+  SELECT explode(array('DAFBI','DAFEI','PAUSA','BEGDA','ENDDA','KAPAZ','MEINH','OEFFZ','NORMA','RUEZT')) AS column_name
+),
+actual AS (
+  SELECT column_name FROM connected_plant_dev.information_schema.columns
+  WHERE table_schema='sap' AND table_name='shiftparametersavailablecapacity_kapa'
+)
+SELECT
+  'shiftparametersavailablecapacity_kapa' AS table_name, k.column_name,
+  CASE WHEN a.column_name IS NULL
+    THEN 'WARN — absent, capacity_utilisation source-guarded OFF (tolerated in shakedown, also gates UAT)'
+    ELSE 'present' END AS status
+FROM kapa_cols k LEFT JOIN actual a ON k.column_name=a.column_name
+ORDER BY (a.column_name IS NULL) DESC, k.column_name;
+
 -- 5. Verdict: shakedown source-schema is READY when every required table (query 1) and required
---    column (query 3) is present. Tolerated gaps (2) and degraded columns (4) do NOT block.
+--    column (query 3) is present. Tolerated gaps (2), degraded LAGP columns (4) and the KAPA
+--    capacity gap (4b, source-guarded off) do NOT block.
 WITH required_tables AS (
   SELECT explode(array(
     'batchstock_mchb','quant_lqua','storagebin_lagp','storagelocation_t001l','storagelocationmaterial_mard',

@@ -37,8 +37,15 @@ def hu_reconciliation_enabled(spark: SparkSession) -> bool:
 
 
 def table_exists(spark: SparkSession, table_name: str) -> bool:
+    """True if a (fully-qualified) relation exists.
+
+    Uses a lazy `spark.read.table` analysis probe, NOT `spark.catalog.tableExists`, which is a
+    BLOCKED Py4J API in the DLT serverless environment (PY4J_BLOCKED_API). `read.table` resolves
+    the relation (metadata only, no Spark job) and raises if it is absent.
+    """
     try:
-        return spark.catalog.tableExists(table_name)
+        spark.read.table(table_name)
+        return True
     except Exception:  # noqa: BLE001 - missing UC catalog/schema is a normal bootstrap condition
         return False
 

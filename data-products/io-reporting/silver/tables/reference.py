@@ -10,9 +10,11 @@ from pyspark.sql.types import BooleanType, StringType, StructField, StructType
 from silver.helpers import (
     BRONZE,
     PROCESS_LINE_ATINN,
+    bronze_columns_exist,
     bronze_published,
     bronze_table_exists,
     get_spark,
+    relation_exists,
     sap_date,
     sap_flag,
     strip_zeros,
@@ -151,75 +153,87 @@ if bronze_table_exists("workcenterheader_crhd"):
 
 # ── 4. CAPACITY UTILISATION ───────────────────────────────────────────────────
 
-@dlt.view(name="stg_capacity_utilisation")
-@dlt.expect_all_or_drop({
-    "plant_code present": "plant_code IS NOT NULL",
-    "capacity_id present": "capacity_id IS NOT NULL"
-})
-def stg_capacity_utilisation():
-    spark = get_spark()
-    kapa_changes = spark.readStream.table(
-        f"{BRONZE}.shiftparametersavailablecapacity_kapa"
-    ).select("KAPID", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
-    kako_changes = spark.readStream.table(f"{BRONZE}.capacityheadersegment_kako").select(
-        "KAPID", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
-    )
-
-    changed_keys = kapa_changes.unionByName(kako_changes)
-    kapa = spark.read.table(f"{BRONZE}.shiftparametersavailablecapacity_kapa")
-    kako = spark.read.table(f"{BRONZE}.capacityheadersegment_kako").select(
-        "KAPID", "MANDT", "ARBPL", "WERKS", "KAPAR"
-    )
-    capacities_to_refresh = (
-        changed_keys.alias("c")
-        .join(kapa.alias("k"), ["KAPID", "MANDT"], "left")
-        .select(
-            "k.*",
-            F.col("c.AEDATTM").alias("_change_replicated_at"),
-            F.col("c.AERUNID").alias("_change_run_id"),
-            F.col("c.AERECNO").alias("_change_record_seq"),
+# Capacity utilisation is source-guarded: it references KAPA columns (DAFBI/DAFEI/PAUSA/BEGDA/ENDDA/
+# MEINH/OEFFZ/NORMA/RUEZT) that are NOT present in the replicated shiftparametersavailablecapacity_kapa
+# in EITHER connected_plant_dev.sap OR connected_plant_uat.sap (confirmed 2026-06-07 — only KAPAZ
+# of the referenced columns is present). capacity_utilisation has NO downstream pipeline consumers
+# (referenced only in silver/design_spec.md) and is NOT in the Warehouse360 critical path, so the
+# whole model is only defined when the required KAPA columns exist — like work_centre. This is a
+# replicated-schema gap that ALSO affects UAT full_validation; flagged by
+# ioreporting_dev_source_schema_preflight.sql. Do NOT fabricate capacity data; self-heals when
+# the columns are replicated.
+if bronze_columns_exist(
+    "shiftparametersavailablecapacity_kapa",
+    ["DAFBI", "DAFEI", "PAUSA", "BEGDA", "ENDDA", "KAPAZ", "MEINH", "OEFFZ", "NORMA", "RUEZT"],
+):
+    @dlt.view(name="stg_capacity_utilisation")
+    @dlt.expect_all_or_drop({
+        "plant_code present": "plant_code IS NOT NULL",
+        "capacity_id present": "capacity_id IS NOT NULL"
+    })
+    def stg_capacity_utilisation():
+        spark = get_spark()
+        kapa_changes = spark.readStream.table(
+            f"{BRONZE}.shiftparametersavailablecapacity_kapa"
+        ).select("KAPID", "MANDT", "AEDATTM", "AERUNID", "AERECNO")
+        kako_changes = spark.readStream.table(f"{BRONZE}.capacityheadersegment_kako").select(
+            "KAPID", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
         )
-    )
-    return (
-        capacities_to_refresh.alias("k")
-        .join(kako.alias("h"), ["KAPID", "MANDT"], "left")
-        .select(
-            F.col("k.KAPID").alias("capacity_id"),
-            F.col("h.ARBPL").alias("work_centre_code"),
-            F.col("h.WERKS").alias("plant_code"),
-            F.col("h.KAPAR").alias("capacity_category"),
 
-            sap_date("k.DAFBI").alias("valid_from_date"),
-            sap_date("k.DAFEI").alias("valid_to_date"),
-            F.col("k.PAUSA").alias("break_duration"),
-            F.col("k.BEGDA").alias("start_time"),
-            F.col("k.ENDDA").alias("end_time"),
-            F.col("k.KAPAZ").alias("available_capacity"),
-            F.col("k.MEINH").alias("capacity_unit"),
-            F.col("k.OEFFZ").alias("operating_time"),
-            F.col("k.NORMA").alias("normal_capacity"),
-            F.col("k.RUEZT").alias("setup_time_reduction"),
-
-            F.col("k._change_replicated_at").alias("_replicated_at"),
-            F.col("k._change_run_id").alias("_run_id"),
-            F.col("k._change_record_seq").alias("_record_seq"),
+        changed_keys = kapa_changes.unionByName(kako_changes)
+        kapa = spark.read.table(f"{BRONZE}.shiftparametersavailablecapacity_kapa")
+        kako = spark.read.table(f"{BRONZE}.capacityheadersegment_kako").select(
+            "KAPID", "MANDT", "ARBPL", "WERKS", "KAPAR"
         )
+        capacities_to_refresh = (
+            changed_keys.alias("c")
+            .join(kapa.alias("k"), ["KAPID", "MANDT"], "left")
+            .select(
+                "k.*",
+                F.col("c.AEDATTM").alias("_change_replicated_at"),
+                F.col("c.AERUNID").alias("_change_run_id"),
+                F.col("c.AERECNO").alias("_change_record_seq"),
+            )
+        )
+        return (
+            capacities_to_refresh.alias("k")
+            .join(kako.alias("h"), ["KAPID", "MANDT"], "left")
+            .select(
+                F.col("k.KAPID").alias("capacity_id"),
+                F.col("h.ARBPL").alias("work_centre_code"),
+                F.col("h.WERKS").alias("plant_code"),
+                F.col("h.KAPAR").alias("capacity_category"),
+
+                sap_date("k.DAFBI").alias("valid_from_date"),
+                sap_date("k.DAFEI").alias("valid_to_date"),
+                F.col("k.PAUSA").alias("break_duration"),
+                F.col("k.BEGDA").alias("start_time"),
+                F.col("k.ENDDA").alias("end_time"),
+                F.col("k.KAPAZ").alias("available_capacity"),
+                F.col("k.MEINH").alias("capacity_unit"),
+                F.col("k.OEFFZ").alias("operating_time"),
+                F.col("k.NORMA").alias("normal_capacity"),
+                F.col("k.RUEZT").alias("setup_time_reduction"),
+
+                F.col("k._change_replicated_at").alias("_replicated_at"),
+                F.col("k._change_run_id").alias("_run_id"),
+                F.col("k._change_record_seq").alias("_record_seq"),
+            )
+        )
+
+    dlt.create_streaming_table(
+        name="capacity_utilisation",
+        table_properties={"delta.enableChangeDataFeed": "true"},
+        cluster_by=["plant_code", "valid_from_date"],
     )
 
-dlt.create_streaming_table(
-    name="capacity_utilisation",
-    table_properties={"delta.enableChangeDataFeed": "true"},
-    cluster_by=["plant_code", "valid_from_date"],
-)
-
-dlt.apply_changes(
-    target="capacity_utilisation",
-    source="stg_capacity_utilisation",
-    keys=["capacity_id", "valid_from_date"],
-    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
-    stored_as_scd_type=1,
-)
-
+    dlt.apply_changes(
+        target="capacity_utilisation",
+        source="stg_capacity_utilisation",
+        keys=["capacity_id", "valid_from_date"],
+        sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
+        stored_as_scd_type=1,
+    )
 
 # ── 5. MOVEMENT TYPE CLASSIFICATION ───────────────────────────────────────────
 
@@ -238,7 +252,7 @@ def movement_type_classification():
 
     t156_exists = False
     try:
-        t156_exists = spark.catalog.tableExists(t156_table)
+        t156_exists = relation_exists(t156_table)
     except Exception:  # noqa: BLE001 - missing catalog/schema is expected in local/sample tests
         t156_exists = False
 
@@ -256,7 +270,7 @@ def movement_type_classification():
 
     t156t_exists = False
     try:
-        t156t_exists = spark.catalog.tableExists(t156t_table)
+        t156t_exists = relation_exists(t156t_table)
     except Exception:  # noqa: BLE001 - missing catalog/schema is expected in local/sample tests
         t156t_exists = False
 
@@ -549,7 +563,7 @@ def storage_type_role_mapping():
     table_exists = False
     if config_table:
         try:
-            table_exists = spark.catalog.tableExists(config_table)
+            table_exists = relation_exists(config_table)
         except Exception:  # noqa: BLE001 — missing catalog/schema is expected pre-bootstrap
             table_exists = False
     if table_exists:
@@ -729,7 +743,7 @@ def site_config_plant():
     table_exists = False
     if config_table:
         try:
-            table_exists = spark.catalog.tableExists(config_table)
+            table_exists = relation_exists(config_table)
         except Exception:
             table_exists = False
     if table_exists:
@@ -762,7 +776,7 @@ def site_config_warehouse():
     table_exists = False
     if config_table:
         try:
-            table_exists = spark.catalog.tableExists(config_table)
+            table_exists = relation_exists(config_table)
         except Exception:
             table_exists = False
     if table_exists:
@@ -791,7 +805,7 @@ def site_config_storage_type_role():
     table_exists = False
     if config_table:
         try:
-            table_exists = spark.catalog.tableExists(config_table)
+            table_exists = relation_exists(config_table)
         except Exception:
             table_exists = False
     if table_exists:
@@ -829,7 +843,7 @@ def site_config_movement_type_classification():
     table_exists = False
     if config_table:
         try:
-            table_exists = spark.catalog.tableExists(config_table)
+            table_exists = relation_exists(config_table)
         except Exception:
             table_exists = False
     if table_exists:
@@ -885,7 +899,7 @@ def site_config_staging_method():
     table_exists = False
     if config_table:
         try:
-            table_exists = spark.catalog.tableExists(config_table)
+            table_exists = relation_exists(config_table)
         except Exception:
             table_exists = False
     if table_exists:
@@ -912,7 +926,7 @@ def site_config_kpi_enablement():
     table_exists = False
     if config_table:
         try:
-            table_exists = spark.catalog.tableExists(config_table)
+            table_exists = relation_exists(config_table)
         except Exception:
             table_exists = False
     if table_exists:
