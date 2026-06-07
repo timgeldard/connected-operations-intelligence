@@ -55,24 +55,145 @@ GOLD_SOURCES_WITH_PLANT_CODE = {
 
 
 def split_select_fields(select_text: str) -> list[str]:
-    """Split SQL SELECT body by commas at the top-level (ignoring commas inside parentheses)."""
+    """Split SQL SELECT body by commas at the top-level (ignoring commas inside parentheses or string literals)."""
     fields = []
     current = []
     paren_depth = 0
-    for char in select_text:
-        if char == '(':
-            paren_depth += 1
-        elif char == ')':
-            paren_depth -= 1
+    in_quote = None
+    escape = False
 
-        if char == ',' and paren_depth == 0:
-            fields.append("".join(current).strip())
-            current = []
-        else:
+    for char in select_text:
+        if escape:
             current.append(char)
+            escape = False
+            continue
+
+        if char == '\\':
+            current.append(char)
+            escape = True
+            continue
+
+        if in_quote:
+            if char == in_quote:
+                in_quote = None
+            current.append(char)
+        else:
+            if char in ("'", '"', '`'):
+                in_quote = char
+                current.append(char)
+            elif char == '(':
+                paren_depth += 1
+                current.append(char)
+            elif char == ')':
+                paren_depth -= 1
+                current.append(char)
+            elif char == ',' and paren_depth == 0:
+                fields.append("".join(current).strip())
+                current = []
+            else:
+                current.append(char)
+
     if current:
         fields.append("".join(current).strip())
     return [f for f in fields if f]
+
+
+def parse_select_field(field: str) -> tuple[str, str]:
+    """Parse a SELECT field into (expression, alias) robustly."""
+    field = field.strip()
+    if not field:
+        return "", ""
+
+    paren_depth = 0
+    in_quote = None
+    escape = False
+    as_indices = []
+    n = len(field)
+
+    i = 0
+    while i < n:
+        char = field[i]
+        if escape:
+            escape = False
+            i += 1
+            continue
+        if char == '\\':
+            escape = True
+            i += 1
+            continue
+        if in_quote:
+            if char == in_quote:
+                in_quote = None
+            i += 1
+        else:
+            if char in ("'", '"', '`'):
+                in_quote = char
+                i += 1
+            elif char == '(':
+                paren_depth += 1
+                i += 1
+            elif char == ')':
+                paren_depth -= 1
+                i += 1
+            elif paren_depth == 0 and i + 2 <= n and field[i:i+2].upper() == "AS":
+                before_ok = (i == 0 or field[i-1].isspace() or field[i-1] in (',', ')', '`', '"', "'"))
+                after_ok = (i + 2 == n or field[i+2].isspace() or field[i+2] in ('(', '`', '"', "'"))
+                if before_ok and after_ok:
+                    as_indices.append(i)
+                i += 2
+            else:
+                i += 1
+
+    if as_indices:
+        last_as = as_indices[-1]
+        expr = field[:last_as].strip()
+        alias = field[last_as+2:].strip().strip('`').strip('"').strip("'")
+        return expr, alias
+
+    paren_depth = 0
+    in_quote = None
+    escape = False
+    space_indices = []
+    i = 0
+    while i < n:
+        char = field[i]
+        if escape:
+            escape = False
+            i += 1
+            continue
+        if char == '\\':
+            escape = True
+            i += 1
+            continue
+        if in_quote:
+            if char == in_quote:
+                in_quote = None
+            i += 1
+        else:
+            if char in ("'", '"', '`'):
+                in_quote = char
+                i += 1
+            elif char == '(':
+                paren_depth += 1
+                i += 1
+            elif char == ')':
+                paren_depth -= 1
+                i += 1
+            elif char.isspace() and paren_depth == 0:
+                space_indices.append(i)
+                i += 1
+            else:
+                i += 1
+
+    if space_indices:
+        last_space = space_indices[-1]
+        alias = field[last_space:].strip().strip('`').strip('"').strip("'")
+        expr = field[:last_space].strip()
+        if alias and not any(c in alias for c in ('(', ')', ',', '+', '-', '*', '/')):
+            return expr, alias
+
+    name = field.strip('`').strip('"').strip("'")
+    return field, name
 
 
 def parse_views_from_sql(sql_content: str) -> dict:
@@ -99,18 +220,8 @@ def parse_views_from_sql(sql_content: str) -> dict:
                 field = field.strip()
                 if not field:
                     continue
-                parts = re.split(r'\s+[aA][sS]\s+', field)
-                if len(parts) == 2:
-                    expr, alias = parts[0].strip(), parts[1].strip()
-                    alias = alias.strip('`')
-                    parsed_fields[alias] = expr
-                elif len(parts) == 1:
-                    name = parts[0].strip().strip('`')
-                    parsed_fields[name] = name
-                else:
-                    alias = parts[-1].strip().strip('`')
-                    expr = " AS ".join(parts[:-1]).strip()
-                    parsed_fields[alias] = expr
+                expr, alias = parse_select_field(field)
+                parsed_fields[alias] = expr
             views[view_name] = {
                 "source": source_table,
                 "fields": parsed_fields

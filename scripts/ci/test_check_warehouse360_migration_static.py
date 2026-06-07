@@ -73,3 +73,23 @@ def test_parse_views_from_sql():
         "plant_id": "plant_id",
         "po_id": "po_id"
     }
+
+
+def test_parse_views_with_nested_as_and_quoted_literals():
+    from check_warehouse360_migration_static import parse_views_from_sql
+    sql = """
+    CREATE VIEW vw_consumption_warehouse360_complex AS
+    SELECT
+      CAST(val AS DECIMAL(5,2)) AS decimal_val,
+      'hello, world (nested)' AS label_val,
+      CAST(val2 AS STRING)
+    FROM my_source;
+    """
+    views = parse_views_from_sql(sql)
+    assert "vw_consumption_warehouse360_complex" in views
+    complex_view = views["vw_consumption_warehouse360_complex"]
+    assert complex_view["fields"] == {
+        "decimal_val": "CAST(val AS DECIMAL(5,2))",
+        "label_val": "'hello, world (nested)'",
+        "CAST(val2 AS STRING)": "CAST(val2 AS STRING)"
+    }
