@@ -46,22 +46,53 @@ unresolved_sources:
     warehouse360_dependency: true   # warehouse_transfer_order is read by ALL 5 WH360-source gold modules; transfer_requirement/goods_movement/batch_stock feed transfer_requirement_backlog/stock_expiry_risk/exceptions
     affects_uat: true
     cannot_source_guard: "These 4 flows are WH360-critical — source-guarding them would delete WH360 source objects. Cannot typed-null core quantities (would fabricate business data)."
-    # Reconciliation (2026-06-07): full evidence + per-field decisions in
+    # Reconciliation (2026-06-07): full evidence + per-field decisions + open questions in
     # source-contracts/sap/silver_fast_field_reconciliation.md. DDIC DD03L (field->data element) is
     # UNAVAILABLE; scratch.gold_sap_table_metadata (table-level) and gold_sap_data_element_metadata
     # (data-element-level) exist but do NOT bridge field->meaning. So evidence proves field EXISTENCE,
     # not MEANING -> no remap is "proven" -> NO code changed (mapping from SAP training knowledge is
-    # barred as "public docs"). Candidates recorded for functional/DDIC confirmation only:
+    # barred as "public docs"). status enum: PENDING_FUNCTIONAL_CONFIRMATION | PENDING_DATA_MODEL_DECISION
+    # | PENDING_INFRASTRUCTURE | PROVEN_STRUCTURAL_HELD | APPROVED_FOR_IMPLEMENTATION | BLOCKED.
     reconciliation_candidates:
-      - {field: "LTAP.ANFME (requested_quantity)", candidate: "VSOLM (base UoM) / VSOLA (alt)", decision: functional_or_dd03l_confirmation_required}
-      - {field: "LTAP.ENMNG (confirmed_quantity)", candidate: "VISTM?", decision: functional_confirmation_required, note: "collapses onto same field as actual_quantity_picked"}
-      - {field: "LTAP.ISPOS (actual_quantity_picked)", candidate: "VISTM?", decision: functional_confirmation_required}
-      - {field: "LTBP.ENQTY (open_quantity)", candidate: "MENGE - MENGA (derivation)", decision: functional_confirmation_required, note: "inventing a derivation - least safe"}
-      - {field: "MSEG.VBELN (delivery_number)", candidate: "VBELN_IM (present, S/4 delivery-in-IM)", decision: functional_confirmation_required, note: "high plausibility"}
-      - {field: "MCHB.MEINS (base_uom)", candidate: "join materialmaster_mara.MEINS", decision: PROVEN_STRUCTURAL_held, note: "MCHB has no unit by design; held - does not unblock batch_stock alone"}
-      - {field: "MCHB.AERUNID/AERECNO (CDC sequencing)", candidate: "AEDATTM-only (only change-tracking field present; RecordActivity also absent)", decision: request_cdc_enabled_replication, note: "AEDATTM-only sequence_by breaks SCD1 determinism on tied timestamps - do NOT apply"}
+      - field: "LTAP.ANFME (requested_quantity)"
+        candidate: "VSOLM (source target qty, base UoM) / VSOLA (alt UoM)"
+        status: PENDING_FUNCTIONAL_CONFIRMATION
+        unblocked_by: "DD03L or functional sign-off confirming source target qty = VSOLM (base) / VSOLA (alt)"
+      - field: "LTAP.ENMNG (confirmed_quantity)"
+        candidate: "VISTM (source actual qty)"
+        status: PENDING_DATA_MODEL_DECISION
+        note: "collapses onto same real field as actual_quantity_picked"
+        unblocked_by: "data-model decision: keep confirmed_quantity + actual_quantity_picked as 2 contract fields from 1 source field, collapse to 1, or define a real semantic difference"
+      - field: "LTAP.ISPOS (actual_quantity_picked)"
+        candidate: "VISTM (source actual qty)"
+        status: PENDING_DATA_MODEL_DECISION
+        unblocked_by: "same data-model decision as LTAP.ENMNG"
+      - field: "LTAP destination-leg quantities (if required)"
+        candidate: "NSOLM/NSOLA (destination target) + NISTM/NISTA (destination actual)"
+        status: PENDING_DATA_MODEL_DECISION
+        unblocked_by: "decision on whether the contract needs put-away/destination quantities (not only source/pick)"
+      - field: "LTBP.ENQTY (open_quantity)"
+        candidate: "MENGE - MENGA (derivation)"
+        status: PENDING_FUNCTIONAL_CONFIRMATION
+        note: "inventing a derivation - least safe; null/negative behaviour must be defined"
+        unblocked_by: "functional confirmation of the derivation AND defined null/negative-result handling"
+      - field: "MSEG.VBELN (delivery_number)"
+        candidate: "VBELN_IM (present) IF intent is delivery reference"
+        status: PENDING_DATA_MODEL_DECISION
+        note: "VBELN_IM valid only if delivery reference is intended; material-doc=MBLNR/MJAHR/ZEILE, ref-doc=LFBNR/LFBJA/LFPOS"
+        unblocked_by: "confirm intended reference type (delivery vs material-document vs goods-movement)"
+      - field: "MCHB.MEINS (base_uom)"
+        candidate: "join materialmaster_mara.MEINS (MCHB has no unit by design)"
+        status: APPROVED_FOR_IMPLEMENTATION
+        note: "structural enrichment, implementable INDEPENDENTLY; does NOT unblock stg_batch_stock alone; deferred to the silver_fast unblock PR (this PR is evidence-only)"
+        unblocked_by: "nothing — ready; apply alongside the MCHB CDC fix"
+      - field: "MCHB.AERUNID/AERECNO (CDC sequencing for SCD1)"
+        candidate: "request CDC-enabled MCHB replication (RecordActivity also absent; only AEDATTM present)"
+        status: PENDING_INFRASTRUCTURE
+        note: "AEDATTM-only sequence_by breaks SCD1 determinism on tied timestamps - do NOT apply"
+        unblocked_by: "CDC-enabled MCHB replication (AERUNID/AERECNO/RecordActivity) OR approved snapshot/current-state design with a defined deterministic ordering key"
     decision_doc: data-products/io-reporting/source-contracts/sap/silver_fast_field_reconciliation.md
-    status: BLOCKER — silver_fast does not complete; WH360 gold layer cannot materialise in DEV until the field contract is reconciled (data-team / functional + DD03L or CDC-enabled MCHB replication). No transformation code changed (no mapping proven).
+    status: BLOCKED   # silver_fast hard-fails at analysis; WH360 gold cannot materialise in DEV until the field contract is reconciled. No transformation code changed (no mapping proven).
 
   - id: storagebin_lagp_attribute_columns
     model: stg_storage_bin / storage_bin (silver/tables/warehouse_reference.py)

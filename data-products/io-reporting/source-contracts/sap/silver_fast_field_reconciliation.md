@@ -58,6 +58,42 @@ present and already used. Cannot distinguish "real field, not replicated → req
 | `MEINS` | `base_uom` | unavailable | **absent on MCHB** (MCHB carries stock buckets `CLABS`/`CINSM`/`CSPEM`…, not a unit). `materialmaster_mara.MEINS` **present** | join `material` (MARA) on `material_code` for `base_uom` | **PROVEN (structural)** — batch stock has no unit column by SAP design; base UoM is a material attribute. (Task-sanctioned.) **Held, not applied** — see below | low; structural |
 | `AERUNID`, `AERECNO` | CDC sequencing (`_run_id`, `_record_seq` in `apply_changes sequence_by`) | n/a (Aecorsoft metadata) | **absent**; `RecordActivity` also absent; only `AEDATTM` present | rework `sequence_by` to `AEDATTM` only | **request CDC-enabled replication** (do NOT apply) | changing `sequence_by` from `(AEDATTM, AERUNID, AERECNO)` to `AEDATTM` alone breaks SCD1 determinism when two changes share a timestamp → wrong "latest" batch-stock row |
 
+## Open questions (decision needed before any code change)
+
+1. **MSEG — what reference is actually intended?** `delivery_number` (`VBELN`) must be disambiguated:
+   is the downstream intent the **delivery reference**, the **material-document reference**, or the
+   **goods-movement document reference**? `VBELN_IM` is a valid candidate **only if** the intended
+   field is the *delivery* reference. If material-doc/goods-movement reference is intended, the field
+   is `MBLNR`/`MJAHR`/`ZEILE` (the movement doc, already keyed) or `LFBNR`/`LFBJA`/`LFPOS` (reference
+   doc), **not** `VBELN_IM`.
+
+2. **LTAP — keep `confirmed_quantity` and `actual_quantity_picked` as separate contract fields?**
+   Both plausibly map to the *same* real field (source actual, likely `VISTM`). The product/functional
+   owner must decide whether to (a) keep two contract columns sourced from one field, (b) collapse to
+   one, or (c) define a real semantic difference (and which field carries each).
+
+3. **LTAP — destination-leg quantities.** The candidates above are *source-leg* (`VSOL*`/`VIST*`).
+   Where **destination-side** quantities are required, the destination-leg fields are
+   `NSOLM`/`NSOLA` (destination target, base/alt UoM) and `NISTM`/`NISTA` (destination actual). Add
+   these as candidates if the contract needs put-away/destination quantities, not just source/pick.
+
+4. **LTBP — `open_quantity = MENGE − MENGA` requires defined null/negative behaviour.** If this
+   derivation is confirmed, the contract must explicitly define: behaviour when `MENGE` or `MENGA` is
+   NULL (treat as 0? propagate NULL?), and whether a negative result (`MENGA > MENGE`, over-fulfilment)
+   is clamped to 0 or preserved. **Do not implement this derivation until functionally approved.**
+
+5. **MCHB — split the two issues.** `base_uom` ← `MARA.MEINS` is a **structural enrichment** that can
+   be implemented **independently** (it is correct regardless of the CDC question). However,
+   `AERUNID`/`AERECNO` remains the **deterministic-CDC blocker** for `stg_batch_stock` unless a
+   snapshot / current-state design (with a defined ordering key) is approved. The MARA join alone does
+   **not** unblock the flow.
+
+6. **DLT failure mode — hard blocked, not degraded.** The blocked flows fail at **graph
+   *analysis*/resolution** (`UNRESOLVED_COLUMN`), i.e. *before* any `@dlt.expect` runs — so they
+   cannot be handled as expectation failures or quarantined to a `_quarantine` table (quarantine
+   requires the flow to resolve and execute first). The current status is therefore **hard blocked**
+   (the whole `silver_fast` update fails to start), **not degraded** and **not partially materialised**.
+
 ## Decisions summary
 
 - **No transformation code changed** in this PR. No field is proven (semantics unavailable without
