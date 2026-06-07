@@ -99,7 +99,7 @@ unresolved_sources:
         note: "implemented: MCHB is stock current state, not an ordered event stream -> full-recompute materialized view keyed by the natural key (proven 1:1 unique, 11,499,051 rows = 11,499,051 distinct keys 2026-06-07). No apply_changes/CDC; AEDATTM kept as extraction timestamp only, NOT an ordering key. CDC-enabled MCHB replication is no longer needed."
         unblocked_by: "approved snapshot/current-state design (functional sign-off 2026-06-07)"
     decision_doc: data-products/io-reporting/source-contracts/sap/silver_fast_field_reconciliation.md
-    status: MAPPINGS_IMPLEMENTED_FLOWS_RESOLVE   # functional sign-off 2026-06-07; approved mappings implemented in warehouse_fast.py + regression guard scripts/ci/check_silver_fast_field_mappings.py. The 4 WH360-critical flows now RESOLVE at analysis (update 5abc0952 fails only on the 3 process_order flows, vs all 7 before). BUT silver_fast still does NOT complete (aborts on the out-of-scope process_order AERUNID blocker above) → nothing materialised → mappings not yet DATA-validated, gold not built, WH360 0/7 unchanged. DEV = technical shakedown only; UAT = first full business/HU validation.
+    status: RESOLVED_MAPPINGS_DATA_VALIDATED   # functional sign-off 2026-06-07; mappings implemented in warehouse_fast.py + guard scripts/ci/check_silver_fast_field_mappings.py. silver_fast now COMPLETES (update 281cffac): the 3 process_order blockers were source-guarded (see pp_pi_flows_missing_cdc_metadata) and a latent transfer_order broadcast-join OOM was fixed (spark.sql.autoBroadcastJoinThreshold=-1). The 4 WM/MM tables materialised (transfer_order 13.5M, transfer_requirement 15.9M, goods_movement 10.8M, batch_stock 11.5M) and the mappings are DATA-validated (silver_fast_mapping_validation.sql §B-E: alias invariant, open_quantity bounds, reference_type consistency, base_uom coverage all clean; one minor §E1 finding — 2,099 batch_stock dup keys from strip_zeros NULLing blank CHARG, 0.018%, pre-existing). Gold NOT yet built / WH360 not yet 7/7. DEV = technical shakedown only; UAT = first full business/HU validation.
 
   - id: storagebin_lagp_attribute_columns
     model: stg_storage_bin / storage_bin (silver/tables/warehouse_reference.py)
@@ -110,3 +110,22 @@ unresolved_sources:
     warehouse360_dependency: "indirect — bin_type feeds gold_bin_occupancy grouping dimension; bin COUNTS / WH360 overview KPIs unaffected."
     affects_uat: true
     status: tolerated (typed NULL); storage_bin materialised
+
+  - id: pp_pi_flows_missing_cdc_metadata
+    models: [stg_process_order_operation, stg_pi_sheet_execution, stg_downtime_event]
+    file: silver/tables/process_order.py
+    summary: "3 PP/PI silver_fast flows reference AERUNID/AERECNO(/RecordActivity) CDC sequencing metadata that is absent from their replicated source tables. Source-guarded out (not materialised) where the metadata is absent, so silver_fast can complete for the Warehouse360-critical flows."
+    # Live information_schema.columns 2026-06-07 (profile TG): which CDC cols each source carries.
+    cdc_metadata_by_source:
+      - {table: processorderobject_afvc, has: [AEDATTM, AERECNO, AERUNID, RecordActivity], note: "full CDC — fine"}
+      - {table: productionorderobject_afko, has: [AEDATTM, AERECNO, AERUNID, RecordActivity], note: "full CDC — fine"}
+      - {table: dbstructureoperationquantitydatevalues_afvv, has: [AEDATTM], missing: [AERUNID, AERECNO, RecordActivity], note: "blocks stg_process_order_operation (AFVV change-union select)"}
+      - {table: actualpistartenddatetime_zmanpex_e04_002, has: [AEDATTM], missing: [AERUNID, AERECNO], note: "blocks stg_pi_sheet_execution"}
+      - {table: downtime_zpexpm_dwnt, has: [AEDATTM], missing: [AERUNID, AERECNO], note: "blocks stg_downtime_event"}
+    warehouse360_dependency: false   # CONFIRMED via gold dependency trace (2026-06-07): none of the 3 feed any of the 7 WH360 governed source objects. They feed only gold_process_order_operations / gold_order_downtime_summary / gold_plant_production_quality_summary (NOT in the 7; NOT in warehouse360_consumption_views_dev.sql). The 7 governed objects depend only on the 4 WM/MM flows + process_order header.
+    affects_uat: true   # environment-wide replication gap (same in dev + uat), NOT a dev-only toggle
+    handling: "Source-guarded: each flow's full block (view + create_streaming_table + apply_changes) is wrapped in `if bronze_columns_exist(<source>, [CDC cols])` — when the CDC sequencing metadata is absent the flow is not defined, so deterministic SCD1 is never attempted on AEDATTM alone (no fabricated/invented CDC; no AEDATTM-as-sequence). Self-heals once the source is replicated with CDC metadata. The 3 gold consumers degrade to empty via gold._read_or_empty so gold_pipeline (and the 7 governed objects) are not blocked."
+    snapshot_redesign:
+      afvv: "NOT current-state — AFVV is the operation values sibling of AFVC (same AUFPL+APLZL key); AFVC carries full CDC. AFVV is transactional; snapshot would model the replication gap, not the domain. Correct fix = replicate AFVV with CDC metadata."
+      zmanpex_zpexpm: "possibly current-state (PI-sheet exec timing / downtime events). A snapshot/current-state redesign (à la MCHB) is a candidate but requires explicit functional sign-off per source before replacing CDC sequencing — NOT done here."
+    status: SOURCE_GUARDED_PENDING_CDC_OR_SNAPSHOT_SIGNOFF

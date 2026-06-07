@@ -28,6 +28,16 @@ resources:
         # once (to create recipe_process_line) BEFORE first starting this continuous fast pipeline,
         # otherwise it fails loud at startup with table-not-found.
         recipe_process_line_table: ${var.catalog}.${var.schema}.recipe_process_line
+        # Force sort-merge over broadcast joins. The stg_warehouse_transfer_order stream-static join
+        # (changed_keys ⋈ LTAP[i.*, 165 wide var-len cols] ⋈ LTAK) made Photon build a
+        # BroadcastHashedRelation that ran the executor out of memory (SparkOutOfMemoryError, var-len
+        # data) once the flow became runtime-reachable. -1 disables auto-broadcast so the build spills
+        # to disk via SMJ instead of OOMing. Pipeline-wide and reversible; the other stream-static
+        # flows (goods_movement, warehouse_transfer_requirement) already complete and tolerate SMJ. A
+        # narrower per-join merge hint is a possible prod-efficiency refinement. NOTE: the broadcast OOM
+        # is pre-existing in the join structure — it was simply unreachable while the flow failed at
+        # analysis on the legacy ANFME/ENQTY fields (resolved in PR #23).
+        spark.sql.autoBroadcastJoinThreshold: "-1"
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting

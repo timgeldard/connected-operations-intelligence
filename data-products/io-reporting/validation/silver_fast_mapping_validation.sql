@@ -9,6 +9,27 @@
 -- SECTION A is a PRE-RUN gate (source-side: do the approved fields exist?) — run BEFORE the pipeline,
 -- because `databricks bundle validate` does NOT catch a missing DLT column (only a pipeline update
 -- surfaces UNRESOLVED_COLUMN). SECTIONS B–E are POST-RUN checks against the materialised silver output.
+--
+-- RECORDED RESULTS — DEV update 281cffac, 2026-06-07 (first run where silver_fast COMPLETED, after the
+-- PP/PI source-guards + the autoBroadcastJoinThreshold=-1 fix). Row counts: transfer_order 13,485,287;
+-- transfer_requirement 15,934,046; goods_movement 10,761,727; batch_stock 11,499,051.
+--   §A : 0 missing approved fields; MARA fan-out guard 0 (973,314 rows = keys).
+--   §B : alias_mismatch = 0 (actual_quantity_picked === confirmed_quantity holds); requested/confirmed
+--        null = 3,472 (0.03%, both equal — TO items with no source quantity).
+--   §C : open_quantity null = 0, negative = 0, open > required = 0 — derivation sound.
+--   §D : reference_type inconsistent = 0; delivery_number null = 8,377,843 (78%, movement-type dependent,
+--        expected); reference_type='DELIVERY' = 2,383,884.
+--   §E2: base_uom null = 0 (MARA join covers 100%; no fan-out — output rows = MCHB rows).
+--   §E1: FINDING — 2,099 duplicate-natural-key rows (0.018%). NOT a fan-out and NOT a source dup: bronze
+--        MCHB is 1:1 on the raw key AND on the stripped key. The collisions come from strip_zeros mapping
+--        all-zero/blank CHARG -> NULL (its documented "all-zero -> NULL" rule), so blank-batch stock rows
+--        for the same material/plant/storage-location collapse to one (material_code, plant_code,
+--        storage_location_code, batch_number=NULL) key. This is a PRE-EXISTING silver-key nuance (the key
+--        omits MANDT and normalises identifiers), NOT introduced by the PP/PI gating or PR #23's mappings.
+--        Impact is negligible (blank-batch stock arguably should aggregate) but it means the batch_stock
+--        snapshot key is not strictly 1:1 in silver. FOLLOW-UP (separate decision): exclude blank-batch
+--        rows from the natural-key uniqueness claim, or carry batch_number_raw in the key. Tracked in
+--        sap_unresolved_sources.yml. Re-run §E1 in UAT business validation.
 
 -- ============================================================================
 -- SECTION A — PRE-RUN: approved source fields must exist in the replicated SAP schema

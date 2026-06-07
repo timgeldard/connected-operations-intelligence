@@ -363,3 +363,49 @@ on `AERUNID`/`AERECNO`/`RecordActivity` (CDC metadata absent; same gap class as 
 remain **candidate/pending**; DEV = technical shakedown only. **Next step (separate change, out of this
 PR's scope):** apply the MCHB-style snapshot/current-state pattern (or source-guard) to the 3
 process_order flows so silver_fast completes, then run §B–E + Gold + the WH360 source-object pack.
+
+## Update 2026-06-07 (i) — silver_fast COMPLETES (PP/PI gated; broadcast-OOM fixed); WM/MM mappings DATA-validated
+
+Two distinct changes in this update, both reversible:
+
+**(1) PP/PI source-gating [the asked change].** The 3 PP/PI flows that previously blocked the whole
+silver_fast update — `stg_process_order_operation`, `stg_pi_sheet_execution`, `stg_downtime_event`
+(silver/tables/process_order.py) — fail `UNRESOLVED_COLUMN` on `AERUNID`/`AERECNO`/`RecordActivity`,
+which are **absent** from their replicated sources (`dbstructureoperationquantitydatevalues_afvv`,
+`actualpistartenddatetime_zmanpex_e04_002`, `downtime_zpexpm_dwnt` — each carries only `AEDATTM`;
+AFVC/AFKO carry full CDC). **Dependency trace (confirmed):** none of the 3 feed any of the 7
+Warehouse360 governed source objects — they feed only `gold_process_order_operations` /
+`gold_order_downtime_summary` / `gold_plant_production_quality_summary` (not governed; not in the
+consumption views). So each flow is **source-guarded** (`if bronze_columns_exist(<source>, [CDC cols])`,
+the work_centre/capacity precedent): absent CDC → flow not defined → no fabricated CDC, no AEDATTM-as-
+sequence. The 3 non-governed Gold consumers degrade to empty via `gold._read_or_empty` so `gold_pipeline`
+is not blocked. Environment-wide gap (DEV+UAT) — not a dev-only toggle; self-heals once the sources are
+replicated with CDC metadata. Snapshot/current-state redesign is deferred pending per-source functional
+sign-off (AFVV is transactional — sibling of AFVC; zmanpex/zpexpm possibly current-state). See
+`source-contracts/sap/sap_unresolved_sources.yml` (`pp_pi_flows_missing_cdc_metadata`).
+
+**(2) Broadcast-join OOM fix [discovered, pre-existing].** With the 3 flows gated, silver_fast cleared
+analysis and reached runtime — exposing a latent Photon `SparkOutOfMemoryError` building a
+`BroadcastHashedRelation` in `stg_warehouse_transfer_order` (the changed_keys ⋈ LTAP[`i.*`, 165 wide
+var-len cols] ⋈ LTAK stream-static join). Only transfer_order OOM'd; goods_movement (the biggest join)
+and transfer_requirement completed. Fix: `spark.sql.autoBroadcastJoinThreshold: -1` on the pipeline
+(forces sort-merge; spills instead of OOM). Pre-existing in the join structure — unreachable while the
+flow failed analysis on the legacy ANFME/ENQTY fields (PR #23). Reversible; a narrower per-join merge
+hint is a possible prod-efficiency refinement.
+
+**Result (update 281cffac):** silver_fast **COMPLETES**. Materialised in
+`connected_plant_dev.silver_io_reporting`: warehouse_transfer_order **13,485,287**, warehouse_transfer_
+requirement **15,934,046**, goods_movement **10,761,727**, batch_stock **11,499,051**, process_order +
+the reference/flow tables; the 3 PP/PI tables correctly **absent** (gated). 0 OOM events.
+
+**WM/MM mappings now DATA-validated** (`validation/silver_fast_mapping_validation.sql` §B–E, first run
+they could execute): LTAP alias invariant holds (0 mismatches/13.5M); LTBP open_quantity 0 null/0 neg/0
+over-required; MSEG reference_type 100% consistent; MCHB base_uom 100% covered (no fan-out). One **§E1
+finding**: 2,099 batch_stock rows (0.018%) share a natural key after `strip_zeros` NULLs all-zero/blank
+CHARG — a pre-existing silver-key nuance (key omits MANDT + normalises blank batches), negligible impact,
+recorded as a follow-up; NOT caused by this change.
+
+**Warehouse360 readiness: still NOT claimed.** Gold not yet built and the 7 governed source objects not
+yet validated (next: silver_quality → gold_pipeline → `warehouse360_dev_source_object_validation.sql`
+expecting 7/7 → WH360 pack). DEV remains a technical shakedown only; UAT is the first full business/HU
+validation. No contract promoted.
