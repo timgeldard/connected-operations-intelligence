@@ -1,12 +1,15 @@
 # Silver stage-gate inventory — every Bronze -> Silver output classified.
 # Contract: source-contracts/site_stage_gate_contract.md. Guard: scripts/ci/check_silver_stage_gate_coverage.py.
 #
-# gating_category:
+# gating_category (DOCUMENTARY ONLY — not validated by the CI guard):
 #   A = plant-gated by DIRECT plant field (WERKS on the main source)
 #   B = plant-gated by WAREHOUSE mapping (LGNUM -> WERKS via site_config_warehouse)
 #   C = plant-gated by DERIVED order/material/header context
 #   D = global reference/config EXEMPTION (no plant dimension)
 #   E = BLOCKED — no approved plant derivation
+#   Descriptive aliases used by the stage-gate (Silver Fast) entries are equivalent to the letters above:
+#     DIRECT_PLANT == A (direct plant field, e.g. AUFK/AFVC.WERKS, inspection_qals.WERK).
+#   (The WM/MM reference entries predate the aliases and keep the A/B letters.)
 # current_status: ENFORCED | EXEMPT | BLOCKED | NEEDS_MAPPING
 #   ENFORCED      = gate helper applied in code (Phase 1 reference set).
 #   EXEMPT        = global reference/config; requires exempt_reason.
@@ -18,11 +21,11 @@ meta:
   canonical_gate_plant: site_config_plant
   canonical_gate_warehouse: site_config_warehouse
   helper: silver/_plant_gate.py
-  phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast (this change)
+  phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; + quality source-guarded
   enforced_count: 5            # 4 WM/MM + process_order (header)
-  source_guarded_count: 3      # process_order_operation / pi_sheet_execution / downtime_event — gate applied, CDC-blocked
+  source_guarded_count: 4      # process_order_operation / pi_sheet_execution / downtime_event + quality_inspection_lot — gate-ready/CDC-blocked
   exempt_count: 16
-  needs_mapping_count: 16
+  needs_mapping_count: 15
   blocked_count: 0
 
 silver_outputs:
@@ -75,13 +78,24 @@ silver_outputs:
   - table_name: quality_inspection_lot
     file: silver/tables/quality.py
     source_tables: [inspection_qals, qualitymessage_qmih]
-    gating_category: A
+    gating_category: DIRECT_PLANT   # plant is WERK on inspection_qals (NOT WERKS) — direct, once the contract is reconciled
     gate_field: plant_code
-    gate_join_path: "QALS.WERKS (direct)"
+    gate_join_path: "inspection_qals.WERK (direct)"
     gate_config_table: site_config_plant
     product_area: quality
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply apply_plant_gate(quality). NOTE: silver_quality also blocked separately on inspection_qals.MANDT absent (sap_unresolved_sources.yml)."
+    current_status: SOURCE_GUARDED
+    owner_action_required: >-
+      Source-guarded off (inspection_qals lacks AERUNID/AERECNO CDC metadata → no deterministic SCD1; only
+      AEDATTM present). Does NOT materialise, so it is NOT a recurring-cost flow. A plant gate is NOT yet
+      applied (deliberate): the transform's field contract mismatches the replicated inspection_qals, so a
+      gate/WERK fix in isolation gives no runtime benefit. FULL QM RECONCILIATION required before enabling:
+      (1) CDC metadata on inspection_qals (AERUNID/AERECNO) OR an approved snapshot/current-state design;
+      (2) field contract — plant WERK (not WERKS); LOTORIGIN/MENGE/MEINH appear renamed (HERKUNFT/LOSMENGE/
+      MENGENEINH — confirm via DD03L); VCODE/VENDAT (usage decision) are NOT on QALS (QAVE); ENSTDE/EENDDE/
+      KZLOESCH absent. MANDANT/client already fixed (#27). See sap_unresolved_sources.yml
+      (quality_inspection_qals_field_contract_and_cdc_gap) + validation/quality_qm_field_contract_check.sql.
+      Then add apply_plant_gate(quality) and reclassify ENFORCED. NOT a Warehouse360 feeder; no gold reads it.
+    validation_query_reference: validation/quality_qm_field_contract_check.sql
 
   - table_name: reservation_requirement
     file: silver/tables/warehouse_flow.py

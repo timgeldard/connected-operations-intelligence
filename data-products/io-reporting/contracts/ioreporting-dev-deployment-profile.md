@@ -609,3 +609,36 @@ NOT run it here (WM/MM scope; heavy reprocessing). `batch_stock` being correctly
 `apply_plant_gate` only, not `apply_warehouse_gate`.
 
 Gold duplicate-table fix intentionally deferred. Warehouse360 readiness NOT claimed (still 0/7).
+
+## Update 2026-06-07 (p) — Quality/QM stage-gating: quality is BLOCKED (not a cost flow); source-guarded to unblock silver_quality
+
+Attempted Quality/QM plant stage-gating. **The premise (quality processes all plants every run → recurring
+cost) is FALSE — quality cannot run at all.** `inspection_qals` (266 cols, live DEV) has TWO gaps:
+1. **No CDC metadata** — `AERUNID`/`AERECNO`/`RecordActivity` absent (only `AEDATTM`) → no deterministic
+   SCD1 (same gap class as AFVV/zmanpex/zpexpm/MCHB).
+2. **Broken field contract** — plant is `WERK` (not `WERKS`); client `MANDANT` (fixed in #27);
+   `LOTORIGIN`/`MENGE`/`MEINH` appear renamed (`HERKUNFT`/`LOSMENGE`/`MENGENEINH` — present in the dump,
+   confirm via DD03L); **`VCODE`/`VENDAT` (usage decision) are NOT QALS fields** (QAVE); `ENSTDE`/`EENDDE`/
+   `KZLOESCH` absent. So the transform's QM model is wrong against this source, not merely mis-named.
+
+**#27 did NOT make quality runnable** — it fixed `MANDANT`, which only moved the analysis failure to `WERK`,
+behind which sit the CDC gap and the field-contract mismatch.
+
+**Done (this PR):** source-guarded `quality_inspection_lot` —
+`if bronze_columns_exist("inspection_qals", ["AERUNID","AERECNO"])` — so `silver_quality` COMPLETES (flow
+not materialised) instead of failing analysis. **No plant gate and no field remap applied** (deliberate,
+advisor-confirmed: a gate/WERK fix while the contract is broken yields no runtime benefit and no readiness).
+Classified SOURCE_GUARDED in the inventory; full gap + reconciliation backlog documented in
+`sap_unresolved_sources.yml` (`quality_inspection_qals_field_contract_and_cdc_gap`) and the DD03L-backed
+`validation/quality_qm_field_contract_check.sql`. NOT a Warehouse360 feeder; no gold reads it
+(silver_quality has only this one flow).
+
+**Runtime verification PENDING (IP ACL block):** the source IP (194.9.112.164) is currently blocked by the
+workspace IP ACL (403), so `bundle validate`/deploy/rerun could not run this session. Local checks pass
+(ruff, stage-gate + mapping guards, yaml). When access is restored: `bundle validate -t dev`; rerun
+`silver_quality` (expect COMPLETE with quality_inspection_lot absent); run
+`validation/quality_qm_field_contract_check.sql`.
+
+**Follow-up (functional + DD03L, separate change):** confirm the renamed QALS fields, source usage-decision
+from QAVE, decide CDC-vs-snapshot for inspection_qals (functional sign-off, like MCHB), then fix the contract,
+add `apply_plant_gate(quality)`, reclassify ENFORCED. Warehouse360 readiness NOT claimed.
