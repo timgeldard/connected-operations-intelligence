@@ -32,7 +32,7 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_overview TO `users`;
 -- Grain: 1 row per plant_id + po_id + po_item
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_inbound_backlog AS
 SELECT
-  plant_id,
+  plant_code AS plant_id,
   po_id,
   po_item,
   doc_type,
@@ -59,7 +59,7 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_inbound_backlog TO `users`;
 -- Grain: 1 row per plant_id + delivery_id
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_outbound_backlog AS
 SELECT
-  plant_id,
+  plant_code AS plant_id,
   delivery_id,
   delivery_type,
   customer_id,
@@ -82,7 +82,7 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_outbound_backlog TO `users`;
 -- Grain: 1 row per plant_id + order_id + reservation_no + batch_id (order-component level)
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_staging_workload AS
 SELECT
-  plant_id,
+  plant_code AS plant_id,
   order_id,
   material_id,
   order_qty,
@@ -107,7 +107,7 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_staging_workload TO `users`;
 -- Grain: 1 row per plant_id + material_id + batch_id + storage_location_id + exception_type
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_stock_exceptions AS
 SELECT
-  plant_id,
+  plant_code AS plant_id,
   material_id,
   batch_id,
   storage_location_id AS storage_loc,
@@ -124,7 +124,7 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_stock_exceptions TO `users`;
 -- Grain: 1 row per plant_id + material_id
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_shortfalls AS
 SELECT
-  plant_id,
+  plant_code AS plant_id,
   material_id,
   open_tr_qty AS shortfall_qty,
   open_tr_items AS open_items_count,
@@ -138,7 +138,7 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_shortfalls TO `users`;
 -- Grain: 1 row per plant_id + material_id + batch_id + storage_location_id + bin_id + exception_type
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_im_wm_reconciliation AS
 SELECT
-  plant_id,
+  plant_code AS plant_id,
   material_id,
   batch_id,
   storage_location_id AS storage_loc,
