@@ -20,11 +20,15 @@ from silver.helpers import BRONZE, get_spark, sap_date, sap_flag, strip_zeros
 })
 def stg_quality_inspection_lot():
     spark = get_spark()
+    # Replicated QM inspection client field is MANDANT on inspection_qals — NOT MANDT. This is a
+    # replicated-source naming convention for QM inspection objects, NOT a global SAP rule:
+    # qualitymessage_qmih still uses MANDT. Verified live (DEV information_schema, 2026-06-07). Both
+    # change-streams are standardised to `client` so the union and key logic stay name-agnostic.
     qals_changes = spark.readStream.table(f"{BRONZE}.inspection_qals").select(
-        "PRUEFLOS", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
+        "PRUEFLOS", F.col("MANDANT").alias("client"), "AEDATTM", "AERUNID", "AERECNO"
     )
     qmih_changes = spark.readStream.table(f"{BRONZE}.qualitymessage_qmih").select(
-        "PRUEFLOS", "MANDT", "AEDATTM", "AERUNID", "AERECNO"
+        "PRUEFLOS", F.col("MANDT").alias("client"), "AEDATTM", "AERUNID", "AERECNO"
     )
 
     changed_keys = qals_changes.unionByName(qmih_changes)
@@ -34,7 +38,12 @@ def stg_quality_inspection_lot():
     )
     lots_to_refresh = (
         changed_keys.alias("c")
-        .join(qals.alias("l"), ["PRUEFLOS", "MANDT"], "left")
+        # qals client field is MANDANT; join the standardised changed-keys client to it.
+        .join(
+            qals.alias("l"),
+            (F.col("c.PRUEFLOS") == F.col("l.PRUEFLOS")) & (F.col("c.client") == F.col("l.MANDANT")),
+            "left",
+        )
         .select(
             "l.*",
             F.col("c.AEDATTM").alias("_change_replicated_at"),
@@ -44,8 +53,10 @@ def stg_quality_inspection_lot():
     )
     return (
         lots_to_refresh.alias("l")
-        .join(qmih.alias("m"), (F.col("l.PRUEFLOS") == F.col("m.PRUEFLOS")) & (F.col("l.MANDT") == F.col("m.MANDT")), "left")
+        # Cross-naming client join: qals.MANDANT = qmih.MANDT (inspection uses MANDANT, QM message uses MANDT).
+        .join(qmih.alias("m"), (F.col("l.PRUEFLOS") == F.col("m.PRUEFLOS")) & (F.col("l.MANDANT") == F.col("m.MANDT")), "left")
         .select(
+            F.col("l.MANDANT").alias("client"),
             F.col("l.PRUEFLOS").alias("inspection_lot_number"),
             F.col("l.WERKS").alias("plant_code"),
             strip_zeros("l.MATNR").alias("material_code"),
