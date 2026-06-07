@@ -307,3 +307,27 @@ technical shakedown only; this field-contract gap also blocks **UAT** full valid
 5. Re-run `warehouse360_dev_source_object_validation.sql` — expect 7/7 FOUND.
 6. Only then deploy consumption views + run the Warehouse360 validation pack (technical shakedown
    classification) and update its evidence.
+
+## Update 2026-06-07 (g) — silver_fast field reconciliation produced; still BLOCKED (no remap proven)
+
+Reconciled the 4 WH360-critical missing-field gaps against all available evidence (Aecorsoft 1:1
+replication, `information_schema.columns` DEV+UAT, and the DDIC-style `scratch.gold_sap_table_metadata`
+/ `gold_sap_data_element_metadata`). **DDIC `DD03L` (field→data element) is unavailable**, and the
+table-/data-element-level metadata does **not** bridge field→meaning. So the evidence proves field
+**existence, not meaning** — mapping a missing field to a same-purpose replicated field would rely on
+SAP training knowledge, which the task bars. **No transformation code changed.**
+
+Per-field decisions (full detail: `source-contracts/sap/silver_fast_field_reconciliation.md`):
+- LTAP `ANFME`/`ENMNG`/`ISPOS` → candidates `VSOLM`/`VISTM` — **functional/DD03L confirmation required**
+  (and `confirmed`/`picked` collapse onto one real field — a functional owner must define the 3 columns).
+- LTBP `ENQTY` → candidate `MENGE - MENGA` — **confirmation required** (proposing a derivation).
+- MSEG `VBELN` → candidate `VBELN_IM` (present) — **confirmation required** (high plausibility).
+- MCHB `MEINS` → join `materialmaster_mara.MEINS` — **PROVEN structural** but **held** (does not unblock
+  `stg_batch_stock` alone — its CDC gap remains; applied together with the CDC fix).
+- MCHB `AERUNID`/`AERECNO` (CDC sequencing) → **request CDC-enabled MCHB replication** (AEDATTM-only
+  `sequence_by` would break SCD1 determinism — not applied).
+
+`silver_fast` therefore **remains blocked**; Gold not built; Warehouse360 still **0/7**; consumption
+views not deployed; validation pack not run; contracts remain **candidate/pending**. Gaps also block
+UAT. Next: data-team supplies DD03L / functional sign-off + CDC-enabled MCHB replication, then apply
+the confirmed mappings and re-run.

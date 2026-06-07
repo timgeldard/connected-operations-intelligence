@@ -29,7 +29,9 @@ source-guardable; they need a data-team/functional reconciliation (not invented/
 Consequently Gold is not built; `warehouse360_dev_source_object_validation.sql` reruns to **0/7**;
 consumption views were **not** deployed and the validation pack was **not** run. **All contracts
 remain candidate/pending — none are `ready_for_dev_app_shakedown`.** Detail:
-`ioreporting-dev-deployment-profile.md` §(f) and `source-contracts/sap/sap_unresolved_sources.yml`.
+`ioreporting-dev-deployment-profile.md` §(f)/§(g), `source-contracts/sap/sap_unresolved_sources.yml`,
+and the full reconciliation (evidence + candidates + decisions; **no remap proven** — DDIC DD03L
+unavailable) in `source-contracts/sap/silver_fast_field_reconciliation.md`.
 
 ## Next validation attempt prerequisites (added 2026-06-06)
 
