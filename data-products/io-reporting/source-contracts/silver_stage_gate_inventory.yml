@@ -18,10 +18,11 @@ meta:
   canonical_gate_plant: site_config_plant
   canonical_gate_warehouse: site_config_warehouse
   helper: silver/_plant_gate.py
-  phase: 1
-  enforced_count: 4
+  phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast (this change)
+  enforced_count: 5            # 4 WM/MM + process_order (header)
+  source_guarded_count: 3      # process_order_operation / pi_sheet_execution / downtime_event — gate applied, CDC-blocked
   exempt_count: 16
-  needs_mapping_count: 20
+  needs_mapping_count: 16
   blocked_count: 0
 
 silver_outputs:
@@ -151,46 +152,50 @@ silver_outputs:
   - table_name: process_order
     file: silver/tables/process_order.py
     source_tables: [ordermaster_aufk, productionorderobject_afko, recipe_process_line]
-    gating_category: A
+    gating_category: DIRECT_PLANT
     gate_field: plant_code
-    gate_join_path: "AUFK.WERKS (direct)"
+    gate_join_path: "AUFK.WERKS (direct). Gate applied EARLY on the AUFK static read (before AFKO/recipe joins + SCD1) for cost, plus an output gate for null-plant delete rows."
     gate_config_table: site_config_plant
     product_area: process_order
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply apply_plant_gate(process_order). Already AUTYP/AUART source-scoped (not a site gate)."
+    current_status: ENFORCED
+    owner_action_required: none
+    validation_query_reference: validation/silver_process_order_stage_gate_validation.sql
 
   - table_name: process_order_operation
     file: silver/tables/process_order.py
     source_tables: [processorderobject_afvc, dbstructureoperationquantitydatevalues_afvv, productionorderobject_afko]
-    gating_category: C
+    gating_category: DIRECT_PLANT
     gate_field: plant_code
-    gate_join_path: "AFVC.WERKS / via AFKO->AUFK"
+    gate_join_path: "AFVC.WERKS (direct)"
     gate_config_table: site_config_plant
     product_area: process_order
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply gate when unblocked. Currently source-guarded off (AFVV lacks CDC — pp_pi_flows_missing_cdc_metadata)."
+    current_status: SOURCE_GUARDED
+    owner_action_required: "Gate IS applied (apply_plant_gate on the output) — gate-ready. Flow does not materialise yet: source-guarded off because AFVV lacks AERUNID/AERECNO CDC metadata (pp_pi_flows_missing_cdc_metadata). Becomes ENFORCED automatically when AFVV CDC is replicated."
+    validation_query_reference: validation/silver_process_order_stage_gate_validation.sql
 
   - table_name: pi_sheet_execution
     file: silver/tables/process_order.py
     source_tables: [actualpistartenddatetime_zmanpex_e04_002]
-    gating_category: A
+    gating_category: DIRECT_PLANT
     gate_field: plant_code
     gate_join_path: "ZWERKS (direct)"
     gate_config_table: site_config_plant
     product_area: process_order
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply gate when unblocked. Currently source-guarded off (no CDC metadata)."
+    current_status: SOURCE_GUARDED
+    owner_action_required: "Gate IS applied (apply_plant_gate on the output) — gate-ready. Source-guarded off (no AERUNID/AERECNO CDC metadata). Becomes ENFORCED when CDC is replicated."
+    validation_query_reference: validation/silver_process_order_stage_gate_validation.sql
 
   - table_name: downtime_event
     file: silver/tables/process_order.py
     source_tables: [downtime_zpexpm_dwnt]
-    gating_category: A
+    gating_category: DIRECT_PLANT
     gate_field: plant_code
     gate_join_path: "WERKS (direct)"
     gate_config_table: site_config_plant
     product_area: process_order
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply gate when unblocked. Currently source-guarded off (no CDC metadata)."
+    current_status: SOURCE_GUARDED
+    owner_action_required: "Gate IS applied (apply_plant_gate on the output) — gate-ready. Source-guarded off (no AERUNID/AERECNO CDC metadata). Becomes ENFORCED when CDC is replicated."
+    validation_query_reference: validation/silver_process_order_stage_gate_validation.sql
 
   - table_name: capacity_utilisation
     file: silver/tables/reference.py
