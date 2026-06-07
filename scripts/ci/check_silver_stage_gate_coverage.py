@@ -82,15 +82,20 @@ def _fn_body(src: str, fn_names) -> str | None:
     """Body of the first `def <fn>(` in fn_names, up to the next top-level def/decorator/section marker.
     Returns None if no candidate function is defined in src."""
     lines = src.splitlines()
+    # match `def <fn>(` at any indentation (flows may live inside `if bronze_columns_exist(...)` blocks).
     start = next(
-        (i for i, ln in enumerate(lines) if any(ln.startswith(f"def {fn}(") for fn in fn_names)),
+        (i for i, ln in enumerate(lines) if any(ln.lstrip().startswith(f"def {fn}(") for fn in fn_names)),
         None,
     )
     if start is None:
         return None
+    indent = len(lines[start]) - len(lines[start].lstrip())
     end = len(lines)
     for j in range(start + 1, len(lines)):
-        if lines[j].startswith(("def ", "@dlt", "dlt.")) or lines[j].startswith("# ─"):
+        s = lines[j].lstrip()
+        # next sibling def/registration/section marker at the same-or-shallower indent ends the body.
+        same_or_shallower = (len(lines[j]) - len(s)) <= indent and lines[j].strip()
+        if same_or_shallower and (s.startswith(("def ", "@dlt", "dlt.")) or s.startswith("# ─")):
             end = j
             break
     return "\n".join(lines[start:end])
@@ -109,7 +114,7 @@ def run_checks() -> int:
         if name not in entries:
             errors.append(
                 f"[{rel}] Silver output '{name}' is NOT in silver_stage_gate_inventory.yml — "
-                f"classify it ENFORCED/EXEMPT/BLOCKED/NEEDS_MAPPING."
+                f"classify it ENFORCED/EXEMPT/SOURCE_GUARDED/BLOCKED/NEEDS_MAPPING."
             )
 
     # 2. ENFORCED -> the output's PRODUCING FUNCTION applies a gate helper (per-function, not file-level:
@@ -120,6 +125,8 @@ def run_checks() -> int:
         rel = e.get("file", "")
         if status == "EXEMPT" and not e.get("exempt_reason"):
             errors.append(f"[{name}] EXEMPT without exempt_reason.")
+        if status == "SOURCE_GUARDED" and not e.get("owner_action_required"):
+            errors.append(f"[{name}] SOURCE_GUARDED without owner_action_required (document why/when it materialises).")
         if status == "ENFORCED":
             # inventory `file:` paths are relative to the io-reporting product dir
             path = os.path.join(PRODUCT, rel) if rel else None

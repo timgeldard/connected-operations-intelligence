@@ -5,6 +5,7 @@ Process Order domain tables.
 import dlt
 from pyspark.sql import functions as F
 
+from silver._plant_gate import apply_plant_gate
 from silver.helpers import (
     BRONZE,
     PP_PI_ORDER_CATEGORY,
@@ -42,6 +43,11 @@ def stg_process_order():
 
     changed_keys = aufk_changes.unionByName(afko_changes)
     aufk = spark.read.table(f"{BRONZE}.ordermaster_aufk")
+    # Plant stage-gate, applied EARLY for cost: prune the AUFK static side to onboarded plants (AUFK
+    # carries WERKS) BEFORE the AFKO/recipe joins + SCD1, so non-onboarded plants' orders never enter the
+    # expensive join/write path. The output gate below additionally drops any null-plant delete rows that
+    # arrive via changed_keys with no matching (now-pruned) AUFK row. See site_stage_gate_contract.md.
+    aufk = apply_plant_gate(aufk, "WERKS", "process_order", spark=spark)
     afko = spark.read.table(f"{BRONZE}.productionorderobject_afko")
 
     # ── Process-line enrichment — read the slow-tier recipe_process_line reference map ──
@@ -82,7 +88,7 @@ def stg_process_order():
     )
     process_order_filter = is_delete | ((F.col("k.AUTYP") == PP_PI_ORDER_CATEGORY) & order_type_filter)
 
-    return (
+    process_order_out = (
         changed_keys.alias("c")
         .join(aufk.alias("k"), ["AUFNR", "MANDT"], "left")
         .join(afko.alias("h"), ["AUFNR", "MANDT"], "left")
@@ -164,6 +170,9 @@ def stg_process_order():
             ),
         )
     )
+    # Output gate: scope to onboarded plants and drop any null-plant delete rows (changed_keys with no
+    # matching active-plant AUFK). Redundant with the early AUFK prune for non-delete rows, but correct.
+    return apply_plant_gate(process_order_out, "plant_code", "process_order", spark=spark)
 
 dlt.create_streaming_table(
     name="process_order",
@@ -241,7 +250,7 @@ if bronze_columns_exist("dbstructureoperationquantitydatevalues_afvv", ["AERUNID
             )
         )
 
-        return (
+        operation_out = (
             operations_to_refresh.alias("o")
             .join(afvv.alias("v"),  ["AUFPL", "APLZL", "MANDT"], "left")
             .join(afko.alias("h"),  ["AUFPL",           "MANDT"], "left")
@@ -300,6 +309,8 @@ if bronze_columns_exist("dbstructureoperationquantitydatevalues_afvv", ["AERUNID
                 ),
             )
         )
+        # Plant stage-gate (DIRECT WERKS via AFVC). Gate-ready for when AFVV CDC unblocks this flow.
+        return apply_plant_gate(operation_out, "plant_code", "process_order", spark=spark)
 
     dlt.create_streaming_table(
         name="process_order_operation",
@@ -346,7 +357,8 @@ if bronze_columns_exist("actualpistartenddatetime_zmanpex_e04_002", ["AERUNID", 
             .withColumn("pi_sheet_start_datetime", sap_datetime("ZSDATS", "ZSTIMS"))
             .withColumn("pi_sheet_end_datetime", sap_datetime("ZEDATS", "ZETIMS"))
         )
-        return src_with_datetimes.select(
+        # Plant stage-gate (DIRECT ZWERKS). Gate-ready for when CDC unblocks this flow.
+        return apply_plant_gate(src_with_datetimes.select(
             F.col("ZWERKS").alias("plant_code"),
             strip_zeros("ZAUFNR").alias("order_number"),
             F.col("ZAUFNR").alias("order_number_raw"),
@@ -367,7 +379,7 @@ if bronze_columns_exist("actualpistartenddatetime_zmanpex_e04_002", ["AERUNID", 
             F.col("AEDATTM").alias("_replicated_at"),
             F.col("AERUNID").alias("_run_id"),
             F.col("AERECNO").alias("_record_seq"),
-        )
+        ), "plant_code", "process_order", spark=spark)
 
     dlt.create_streaming_table(
         name="pi_sheet_execution",
@@ -407,7 +419,7 @@ if bronze_columns_exist("downtime_zpexpm_dwnt", ["AERUNID", "AERECNO"]):
         src = spark.readStream.table(f"{BRONZE}.downtime_zpexpm_dwnt")
         start_datetime = sap_datetime("ZAUSVN", "ZAUZTV")
         end_datetime = sap_datetime("ZAUSBS", "ZAUZTB")
-        return (
+        downtime_out = (
             src.filter(F.col("ZDEL").isNull() | (F.col("ZDEL") != "X"))   # exclude soft-deleted rows
             .select(
                 # ── Natural key (composite — no single surrogate in Z-table)
@@ -453,6 +465,8 @@ if bronze_columns_exist("downtime_zpexpm_dwnt", ["AERUNID", "AERECNO"]):
                 F.col("AERECNO").alias("_record_seq"),
             )
         )
+        # Plant stage-gate (DIRECT WERKS). Gate-ready for when CDC unblocks this flow.
+        return apply_plant_gate(downtime_out, "plant_code", "process_order", spark=spark)
 
     dlt.create_streaming_table(
         name="downtime_event",
