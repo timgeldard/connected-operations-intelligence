@@ -23,6 +23,10 @@ def generate_sql_for_env(env: str, config: dict) -> str:
 
     catalog = env_config.get("catalog")
     schema = env_config.get("schema")
+    if not catalog:
+        raise ValueError(f"Catalog not specified for environment '{env}' in targets.")
+    if not schema:
+        raise ValueError(f"Schema not specified for environment '{env}' in targets.")
     views = config.get("views", [])
 
     sql_parts = []
@@ -40,9 +44,21 @@ def generate_sql_for_env(env: str, config: dict) -> str:
         row_level_key = view.get("row_level_key")
         freshness_column = view.get("freshness_column")
 
+        # Validate columns against expected_columns
+        expected_cols_set = {c.get("name") for c in view.get("expected_columns", []) if c.get("name")}
+        if primary_key:
+            missing_pk = [col for col in primary_key if col not in expected_cols_set]
+            if missing_pk:
+                raise ValueError(f"View '{view_name}': primary_key columns not in expected_columns: {missing_pk}")
+        if must_not_be_null:
+            missing_nn = [col for col in must_not_be_null if col not in expected_cols_set]
+            if missing_nn:
+                raise ValueError(f"View '{view_name}': must_not_be_null columns not in expected_columns: {missing_nn}")
+        if freshness_column and freshness_column not in expected_cols_set:
+            raise ValueError(f"View '{view_name}': freshness_column '{freshness_column}' not in expected_columns")
+
         # Exists check for plant_id
-        expected_cols = [c.get("name") for c in view.get("expected_columns", [])]
-        has_plant_id = "plant_id" in expected_cols
+        has_plant_id = "plant_id" in expected_cols_set
 
         full_view_name = f"{catalog}.{schema}.{view_name}"
 
@@ -128,8 +144,15 @@ def main() -> int:
         print(f"Expectations YAML not found: {EXPECTATIONS_PATH}", file=sys.stderr)
         return 1
 
-    with open(EXPECTATIONS_PATH, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    try:
+        with open(EXPECTATIONS_PATH, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        print(f"Failed to parse expectations YAML file at {EXPECTATIONS_PATH}: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Failed to read expectations YAML file at {EXPECTATIONS_PATH}: {e}", file=sys.stderr)
+        return 1
 
     environments = list(config.get("environment_targets", {}).keys())
     drift_detected = False

@@ -38,6 +38,7 @@ def sample_config():
                 "expected_columns": [
                     {"name": "plant_id", "type": "string"},
                     {"name": "po_id", "type": "string"},
+                    {"name": "po_item", "type": "string"},
                 ],
                 "freshness_column": None,
             },
@@ -164,3 +165,30 @@ def test_check_mode_detects_drift(tmp_path, sample_config):
         with patch("sys.argv", ["generate_warehouse360_validation_sql.py", "--check"]):
             code = generate_warehouse360_validation_sql.main()
             assert code == 1
+
+
+def test_generate_sql_validation_errors(sample_config):
+    import copy
+    # 1. Missing Catalog/Schema in targets
+    bad_config = copy.deepcopy(sample_config)
+    bad_config["environment_targets"]["dev"]["catalog"] = ""
+    with pytest.raises(ValueError, match="Catalog not specified"):
+        generate_sql_for_env("dev", bad_config)
+
+    # 2. Missing primary key column from expected_columns
+    bad_config = copy.deepcopy(sample_config)
+    bad_config["views"][0]["primary_key"].append("missing_col")
+    with pytest.raises(ValueError, match="primary_key columns not in expected_columns"):
+        generate_sql_for_env("dev", bad_config)
+
+    # 3. Missing must_not_be_null column from expected_columns
+    bad_config = copy.deepcopy(sample_config)
+    bad_config["views"][0]["must_not_be_null"].append("missing_col")
+    with pytest.raises(ValueError, match="must_not_be_null columns not in expected_columns"):
+        generate_sql_for_env("dev", bad_config)
+
+    # 4. Missing freshness_column from expected_columns
+    bad_config = copy.deepcopy(sample_config)
+    bad_config["views"][0]["freshness_column"] = "missing_col"
+    with pytest.raises(ValueError, match="freshness_column 'missing_col' not in expected_columns"):
+        generate_sql_for_env("dev", bad_config)
