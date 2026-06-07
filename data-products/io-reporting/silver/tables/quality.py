@@ -9,16 +9,27 @@ from silver.helpers import BRONZE, bronze_columns_exist, get_spark, sap_date, sa
 
 # ── 1. QUALITY INSPECTION LOT ────────────────────────────────────────────────
 
-# Source-guard (QM). quality_inspection_lot does NOT materialise: the replicated inspection_qals lacks
-# the AERUNID/AERECNO CDC sequencing metadata required for deterministic SCD1 (only AEDATTM is present),
-# AND its field contract mismatches this transform — plant is WERK not WERKS, client is MANDANT (fixed in
-# #27), several fields are renamed (LOTORIGIN/MENGE/MEINH) or live on a different table (VCODE/VENDAT are
-# usage-decision/QAVE, not QALS). So the flow is gated off until a QM field-contract + CDC reconciliation
-# lands (see source-contracts/sap/sap_unresolved_sources.yml + validation/quality_qm_field_contract_check.sql).
-# NOT a Warehouse360 feeder; no gold module reads quality_inspection_lot. This unblocks silver_quality
-# (it COMPLETES with the flow not materialised, instead of failing analysis). Self-heals when CDC + the
-# field contract are reconciled; the plant gate (apply_plant_gate on plant_code) is to be added THEN, not
-# now — fixing fields piecemeal while the contract is broken gives no runtime benefit.
+# Source-guard (QM). quality_inspection_lot does NOT materialise. The SELECT below is the ORIGINAL
+# imported transform and is KNOWN-WRONG — it is left in place deliberately, NOT corrected piecemeal,
+# because the guard keeps it un-evaluated (fixing fields while the flow can't run yields no benefit).
+#
+# The corrected functional model is RESOLVED and documented in docs/quality_qm_functional_model.md
+# (legacy silver_qals.csv/silver_qave.csv + DD03L, 2026-06-07). Summary of what is wrong here:
+#   - plant is WERK not WERKS; client is MANDANT not MANDT (MANDANT fix already applied, #27);
+#   - renames: LOTORIGIN->HERKUNFT, MENGE->LOSMENGE, MEINH->MENGENEINH;
+#   - inspection dates: ENSTDE/EENDDE are wrong -> QALS.PASTRTERM / QALS.PAENDTERM (lot-grain planned);
+#   - order_number: should be QALS.AUFNR directly, NOT qmih.AUFNR (lossy 1:many notification join);
+#   - usage decision (VCODE/VENDAT) is NOT QALS — it is QAVE, a SEPARATE 1:many child table
+#     (quality_inspection_usage_decision); accept/reject is QAVE.VBEWERTUNG, not VCODE; date is VDATUM;
+#   - is_deletion_flagged: no KZLOESCH on QALS -> drop (deletion is system-status-derived);
+#   - CDC: inspection_qals/qave have only AEDATTM (no AERUNID/AERECNO) -> corrected SCD1 sequences on
+#     AEDATTM (MCHB pattern), NOT struct(_run_id,_record_seq).
+#
+# RUN-ELIGIBILITY HOLD: the guard tests AERUNID/AERECNO (always false) so silver_quality COMPLETES with
+# the flow not defined (was failing analysis). DO NOT flip this guard / make the flow run-eligible until
+# the quality plant gate is verified in — implementing the corrected model must also add
+# apply_plant_gate(plant_code, "quality") so the lot table can never materialise all-plants. NOT a
+# Warehouse360 feeder; no gold module reads quality_inspection_lot.
 if bronze_columns_exist("inspection_qals", ["AERUNID", "AERECNO"]):
     @dlt.view(name="stg_quality_inspection_lot")
     @dlt.expect_all_or_drop({

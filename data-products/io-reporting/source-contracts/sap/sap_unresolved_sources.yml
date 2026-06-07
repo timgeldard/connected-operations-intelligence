@@ -177,17 +177,22 @@ unresolved_sources:
         LOTORIGIN: "QALS.HERKUNFT (data element QHERK — lot origin)"
         MENGE: "QALS.LOSMENGE (QLOSMENGE — inspection lot quantity)"
         MEINH: "QALS.MENGENEINH (QLOSMENGEH — lot quantity unit)"
-      usage_decision_on_qave:   # VCODE/VENDAT are NOT QALS; QAVE (inspection_qave) IS replicated
-        VCODE: "QAVE.VCODE (QVCODE — usage-decision code)"
-        VENDAT: "QAVE.VDATUM (usage-decision date)"
-        join: "QALS -> QAVE on PRUEFLOS + MANDANT (QAVE keys PRUEFLOS/MANDANT; QAVE uses MANDANT like QALS)"
-      needs_functional_signoff:
-        inspection_start_date: "ENSTDE not a QALS field. Candidates: QALS.PASTRTERM (QPRSTART, plan start) / ENSTEHDAT (QENTST, creation)."
-        inspection_end_date: "EENDDE not a QALS field. Candidate: QALS.PAENDTERM (QPRENDE, plan end)."
-        is_deletion_flagged: "KZLOESCH not a QALS field. Deletion is status-derived (system status via OBJNR), not a direct flag."
-      cdc: "BOTH inspection_qals AND inspection_qave lack AERUNID/AERECNO (only AEDATTM) -> snapshot-vs-CDC design decision needed (functional sign-off, like MCHB)."
+      usage_decision_separate_table:   # QAVE is a CHILD of the lot (1:many), NOT a lot attribute
+        grain: "PRUEFLOS + KZART + ZAEHLER — a lot can carry multiple usage decisions (ZAEHLER counter)."
+        VCODE: "QAVE.VCODE (QVCODE — plant-specific usage-decision catalog code; NOT accept/reject)."
+        VENDAT: "WRONG — usage-decision date is QAVE.VDATUM (legacy silver_qave.csv)."
+        accept_reject: "QAVE.VBEWERTUNG (valuation code), NOT VCODE. Value domain (A/R) pending data confirmation."
+        modelling: "New silver table quality_inspection_usage_decision; do NOT fold into the lot row 1:1."
+      resolved_via_legacy:   # legacy silver_qals.csv resolves what DD03L left as candidates
+        inspection_start_date: "QALS.PASTRTERM (planned inspection start, lot grain). ENSTDE was wrong."
+        inspection_end_date: "QALS.PAENDTERM (planned inspection end, lot grain). EENDDE was wrong."
+        lot_created_date: "QALS.ENSTEHDAT — DISTINCT field (lot creation, not inspection start)."
+        order_number: "QALS.AUFNR directly — NOT qmih.AUFNR (lossy 1:many quality-notification object)."
+        is_deletion_flagged: "DROP — no KZLOESCH field on QALS. Deletion is system-status-derived (OBJNR/STATxx) if needed."
+      cdc: "BOTH inspection_qals AND inspection_qave lack AERUNID/AERECNO (only AEDATTM). Legacy configs use effective_column AEDATTM (current-state/merge) -> corrected SCD1 sequences on AEDATTM (MCHB pattern), NOT struct(_run_id,_record_seq)."
     warehouse360_dependency: false   # quality_inspection_lot feeds no gold module / none of the 7 governed objects
     affects_uat: true
     handling: "Source-guarded: the whole flow is wrapped in `if bronze_columns_exist('inspection_qals', ['AERUNID','AERECNO'])` — absent CDC metadata -> flow not defined -> silver_quality COMPLETES (was failing analysis on MANDT->WERK->...). NO plant gate applied yet and NO field remap done (deliberate — a gate/WERK fix while the contract is broken yields no runtime benefit; advisor-confirmed). NO fabricated fields."
-    follow_up: "QM reconciliation (functional + DD03L): confirm the renamed fields, source usage-decision from QAVE, decide CDC-vs-snapshot for inspection_qals. THEN fix the contract, add apply_plant_gate(quality), reclassify ENFORCED. Characterisation query: validation/quality_qm_field_contract_check.sql."
-    status: SOURCE_GUARDED_PENDING_QM_RECONCILIATION
+    model_resolved: "Field contract + grain split + AEDATTM ingestion model RESOLVED in docs/quality_qm_functional_model.md (2026-06-07, legacy silver_qals.csv/silver_qave.csv + DD03L). Remaining is implementation + the run-eligibility hold below."
+    follow_up: "Implement the corrected model (lot=QALS PASTRTERM/PAENDTERM/AUFNR/WERK..., new quality_inspection_usage_decision from QAVE, AEDATTM-sequenced SCD1, apply_plant_gate(quality) on plant_code). DO NOT flip the source-guard / make the flow run-eligible until the quality plant gate is verified in ('we don't run anything until the plant gate is in'). Then reclassify ENFORCED. Characterisation query: validation/quality_qm_field_contract_check.sql."
+    status: MODEL_RESOLVED_SOURCE_GUARDED_PENDING_PLANT_GATE

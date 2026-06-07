@@ -13,17 +13,23 @@
 --     inspection_lot_qty    : MENGE  -> QALS.LOSMENGE      (QLOSMENGE)
 --     inspection_lot_uom    : MEINH  -> QALS.MENGENEINH    (QLOSMENGEH)
 --     client                : MANDT  -> QALS.MANDANT       (fixed #27)
---   USAGE DECISION is on QAVE, not QALS (inspection_qave IS replicated):
---     usage_decision_code   : VCODE  -> QAVE.VCODE  ; usage_decision_date: VENDAT -> QAVE.VDATUM
---     join QALS->QAVE on PRUEFLOS + MANDANT (QAVE uses MANDANT, keys PRUEFLOS/MANDANT)
---   NEEDS FUNCTIONAL SIGN-OFF (ambiguous / not a direct field):
---     inspection_start_date : ENSTDE  -> candidate QALS.PASTRTERM (QPRSTART) or ENSTEHDAT (QENTST)
---     inspection_end_date   : EENDDE  -> candidate QALS.PAENDTERM (QPRENDE)
---     is_deletion_flagged   : KZLOESCH -> status-derived (system status via OBJNR), no direct flag
---   CDC: BOTH inspection_qals AND inspection_qave lack AERUNID/AERECNO (only AEDATTM) -> snapshot-vs-CDC
---        design decision (functional sign-off, like MCHB). This is the remaining hard blocker to materialise.
---   => Confirmed-renames + QAVE join unblock the FIELD contract; dates/deletion + the CDC/snapshot call
---      remain functional decisions. NOT applied to code (flow stays source-guarded until those land).
+--   USAGE DECISION is a SEPARATE table/grain — QAVE, 1:many per lot (PK PRUEFLOS+KZART+ZAEHLER):
+--     usage_decision_code   : VCODE  -> QAVE.VCODE  (plant-specific catalog code, NOT accept/reject)
+--     usage_decision_date   : VENDAT -> QAVE.VDATUM  (VENDAT was wrong; legacy maps VDATUM)
+--     accept/reject signal  : QAVE.VBEWERTUNG (valuation) — NOT VCODE. Value domain A/R pending data.
+--     => model as quality_inspection_usage_decision (child), NOT folded into the lot row 1:1.
+--   RESOLVED via legacy (silver_qals.csv) — previously "needs functional sign-off":
+--     inspection_start_date : QALS.PASTRTERM (planned inspection start, lot grain). ENSTDE was wrong.
+--     inspection_end_date   : QALS.PAENDTERM (planned inspection end, lot grain).   EENDDE was wrong.
+--       (ENSTEHDAT is a DISTINCT field = lot-creation date, not inspection start.)
+--     order_number          : QALS.AUFNR directly (NOT qmih.AUFNR — lossy 1:many notification object).
+--     is_deletion_flagged   : NO KZLOESCH field on QALS -> drop the bespoke flag; deletion is
+--                             system-status-derived (OBJNR/STATxx) if ever needed.
+--   CDC: BOTH inspection_qals AND inspection_qave lack AERUNID/AERECNO (only AEDATTM) -> corrected SCD1
+--        sequences on AEDATTM (current-state / MCHB pattern), NOT struct(_run_id,_record_seq).
+--   => Field contract + grain split + ingestion model are RESOLVED in docs/quality_qm_functional_model.md.
+--      NOT applied as run-eligible code: the flow stays source-guarded (guard NOT flipped) until the
+--      quality plant gate is verified in — "we don't run anything until the plant gate is in".
 
 -- ============================================================================
 -- SECTION 1 — CDC metadata gap on inspection_qals (drives the source-guard)
