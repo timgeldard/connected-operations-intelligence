@@ -48,7 +48,8 @@ SELECT 'goods_movement_unapproved_plant' AS check, plant_code, COUNT(*) AS n
 FROM connected_plant_dev.silver_io_reporting.goods_movement
 WHERE plant_code NOT IN (
   SELECT plant_code FROM connected_plant_dev.silver_io_reporting.site_config_plant
-  WHERE is_active AND go_live_status NOT IN ('BLOCKED','DECOMMISSIONED','SUSPENDED'))
+  WHERE is_active AND go_live_status NOT IN ('BLOCKED','DECOMMISSIONED','SUSPENDED')
+    AND plant_code IS NOT NULL)   -- NULL-safe: a NULL in a NOT IN set would mask all leakage
 GROUP BY plant_code;
 
 -- 3b. batch_stock plant_code not active:
@@ -56,21 +57,24 @@ SELECT 'batch_stock_unapproved_plant' AS check, plant_code, COUNT(*) AS n
 FROM connected_plant_dev.silver_io_reporting.batch_stock
 WHERE plant_code NOT IN (
   SELECT plant_code FROM connected_plant_dev.silver_io_reporting.site_config_plant
-  WHERE is_active AND go_live_status NOT IN ('BLOCKED','DECOMMISSIONED','SUSPENDED'))
+  WHERE is_active AND go_live_status NOT IN ('BLOCKED','DECOMMISSIONED','SUSPENDED')
+    AND plant_code IS NOT NULL)   -- NULL-safe: a NULL in a NOT IN set would mask all leakage
 GROUP BY plant_code;
 
 -- 3c. transfer_order warehouse_number not active:
 SELECT 'transfer_order_unapproved_warehouse' AS check, warehouse_number, COUNT(*) AS n
 FROM connected_plant_dev.silver_io_reporting.warehouse_transfer_order
 WHERE warehouse_number NOT IN (
-  SELECT warehouse_number FROM connected_plant_dev.silver_io_reporting.site_config_warehouse WHERE is_active)
+  SELECT warehouse_number FROM connected_plant_dev.silver_io_reporting.site_config_warehouse
+  WHERE is_active AND warehouse_number IS NOT NULL)   -- NULL-safe NOT IN set
 GROUP BY warehouse_number;
 
 -- 3d. transfer_requirement warehouse_number not active:
 SELECT 'transfer_requirement_unapproved_warehouse' AS check, warehouse_number, COUNT(*) AS n
 FROM connected_plant_dev.silver_io_reporting.warehouse_transfer_requirement
 WHERE warehouse_number NOT IN (
-  SELECT warehouse_number FROM connected_plant_dev.silver_io_reporting.site_config_warehouse WHERE is_active)
+  SELECT warehouse_number FROM connected_plant_dev.silver_io_reporting.site_config_warehouse
+  WHERE is_active AND warehouse_number IS NOT NULL)   -- NULL-safe NOT IN set
 GROUP BY warehouse_number;
 
 -- ============================================================================
@@ -95,7 +99,8 @@ FROM connected_plant_dev.silver_io_reporting.warehouse_transfer_order;
 SELECT 'bronze_warehouses_not_in_gate' AS metric, LGNUM AS warehouse_number, COUNT(*) AS bronze_rows
 FROM connected_plant_dev.sap.transferorderobjects_ltak
 WHERE LGNUM NOT IN (
-  SELECT warehouse_number FROM connected_plant_dev.silver_io_reporting.site_config_warehouse WHERE is_active)
+  SELECT warehouse_number FROM connected_plant_dev.silver_io_reporting.site_config_warehouse
+  WHERE is_active AND warehouse_number IS NOT NULL)   -- NULL-safe NOT IN set
 GROUP BY LGNUM ORDER BY bronze_rows DESC LIMIT 25;
 
 -- ============================================================================

@@ -36,7 +36,7 @@ technical_validated / business_validated are NOT yet first-class columns on the 
 is the deployment_mode shakedown-vs-full_validation flag + last_validated_at). They are documented in
 the contract as a Phase-2 schema addition and are NOT silently assumed true here.
 """
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, Window
 from pyspark.sql import functions as F
 
 from silver.helpers import get_spark
@@ -90,16 +90,29 @@ def active_plants_df(spark=None, product_area=None) -> DataFrame:
 
 
 def active_warehouses_df(spark=None, product_area="warehouse") -> DataFrame:
-    """Distinct active (warehouse_number, plant_code) from site_config_warehouse, restricted to plants
-    active for `product_area`. This IS the approved LGNUM -> WERKS mapping. Fail-loud read."""
+    """The approved LGNUM -> WERKS mapping: exactly ONE governing (warehouse_number, plant_code) row per
+    active warehouse, restricted to plants active for `product_area`. Fail-loud read.
+
+    A warehouse can be configured against multiple active plants (shared warehouse). Returning all of
+    them would fan out fact rows on join and corrupt aggregates, so we resolve a SINGLE governing plant
+    per warehouse: prefer relationship_type='PRIMARY', then the lexicographically-smallest plant_code as
+    a deterministic tie-break. (Splitting a genuinely shared warehouse across plants is a deeper modelling
+    decision — tracked, not done here; DEV is one plant per warehouse so this is a no-op in DEV.)"""
     spark = spark or get_spark()
     cfg = _require_conf(spark, "site_config_warehouse_table")
     wh = spark.read.table(cfg).filter(F.col("is_active"))
     plants = active_plants_df(spark, product_area)
+    mapped = wh.join(plants, "plant_code", "inner").select(
+        "warehouse_number", "plant_code", "relationship_type"
+    )
+    one_per_wh = Window.partitionBy("warehouse_number").orderBy(
+        F.when(F.col("relationship_type") == "PRIMARY", 0).otherwise(1),
+        F.col("plant_code"),
+    )
     return (
-        wh.join(plants, "plant_code", "inner")
+        mapped.withColumn("_rn", F.row_number().over(one_per_wh))
+        .filter(F.col("_rn") == 1)
         .select("warehouse_number", "plant_code")
-        .distinct()
     )
 
 
@@ -129,7 +142,8 @@ def apply_warehouse_gate(
     """Keep only rows whose `warehouse_col` is an active warehouse, AND enrich with the governed
     `plant_id` from the site_config_warehouse mapping (do NOT assume LGNUM = WERKS — this is the
     config-approved plant, kept distinct from any raw WERKS the source carries). Inner join =
-    filter + enrich. Broadcasts the tiny mapping."""
+    filter + enrich. The mapping is 1:1 per warehouse (active_warehouses_df resolves one governing
+    plant per warehouse), so this join does NOT fan out fact rows. Broadcasts the tiny mapping."""
     spark = spark or get_spark()
     whs = active_warehouses_df(spark, product_area).select(
         F.col("warehouse_number").alias("_gate_warehouse"),

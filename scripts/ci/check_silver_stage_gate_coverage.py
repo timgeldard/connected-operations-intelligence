@@ -78,6 +78,24 @@ def _silver_outputs_in_code():
     return {k: v for k, v in outputs.items() if not k.startswith("stg_")}
 
 
+def _fn_body(src: str, fn_names) -> str | None:
+    """Body of the first `def <fn>(` in fn_names, up to the next top-level def/decorator/section marker.
+    Returns None if no candidate function is defined in src."""
+    lines = src.splitlines()
+    start = next(
+        (i for i, ln in enumerate(lines) if any(ln.startswith(f"def {fn}(") for fn in fn_names)),
+        None,
+    )
+    if start is None:
+        return None
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith(("def ", "@dlt", "dlt.")) or lines[j].startswith("# ─"):
+            end = j
+            break
+    return "\n".join(lines[start:end])
+
+
 def run_checks() -> int:
     print("Running silver stage-gate coverage check...")
     errors = []
@@ -94,7 +112,8 @@ def run_checks() -> int:
                 f"classify it ENFORCED/EXEMPT/BLOCKED/NEEDS_MAPPING."
             )
 
-    # 2. ENFORCED -> file applies a gate helper. EXEMPT -> exempt_reason present.
+    # 2. ENFORCED -> the output's PRODUCING FUNCTION applies a gate helper (per-function, not file-level:
+    #    a file-level check lets one gated output mask another that forgot the gate). EXEMPT -> reason.
     file_cache = {}
     for name, e in entries.items():
         status = e.get("current_status")
@@ -107,9 +126,13 @@ def run_checks() -> int:
             src = ""
             if path and os.path.exists(path):
                 src = file_cache.setdefault(path, open(path, encoding="utf-8").read())
-            if not any(h in src for h in GATE_HELPERS):
+            # producing function = the materialized name, or its `stg_` staging view (warehouse flows
+            # gate inside the stg_ view that feeds create_streaming_table).
+            body = _fn_body(src, [name, f"stg_{name}"])
+            scope, where = (body, f"function for '{name}'") if body is not None else (src, f"file (fn not found) for '{name}'")
+            if not any(h in scope for h in GATE_HELPERS):
                 errors.append(
-                    f"[{rel}] '{name}' is ENFORCED but the file calls no gate helper "
+                    f"[{rel}] '{name}' is ENFORCED but the {where} calls no gate helper "
                     f"({' / '.join(GATE_HELPERS)})."
                 )
 

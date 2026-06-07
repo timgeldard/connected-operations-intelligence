@@ -164,9 +164,13 @@ jobs:
   silver-fast-mapping-check:
     name: Silver Fast Approved-Mapping Guard
     runs-on: ubuntu-latest
+    permissions:
+      contents: read   # least-privilege: read-only static guard, no write to repo
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # guard job does not push; do not leave the token on disk
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -180,9 +184,13 @@ jobs:
   silver-stage-gate-coverage:
     name: Silver Stage-Gate Coverage Guard
     runs-on: ubuntu-latest
+    permissions:
+      contents: read   # least-privilege: read-only static guard, no write to repo
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # guard job does not push; do not leave the token on disk
 
       - name: Set up Python
         uses: actions/setup-python@v5
