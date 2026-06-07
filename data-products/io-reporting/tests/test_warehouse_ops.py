@@ -3,13 +3,13 @@ Tests for the warehouse operations silver transformations.
 
 Business rules under test:
   - warehouse_transfer_order: PQUIT/KQUIT status derivation, LTAP+LTAK left join,
-    zero-padding on MATNR/CHARG/VBELN/BENUM, RecordActivity CDC
+    zero-stripping on MATNR/VBELN/BENUM (NOT CHARG — batch is an exact identifier), RecordActivity CDC
   - warehouse_transfer_requirement: ELIKZ flag, OPFLAG CDC, custom ZZ fields,
     LTBP+LTBK left join
   - goods_movement: RecordActivity CDC delete propagation
   - storage_bin: LAGP+LQUA left join (empty bins retain bin attributes, NULL stock),
     SPGRU blocking flag
-  - batch_stock: compound natural key, all stock type quantities, zero-padding
+  - batch_stock: compound natural key (CHARG exact), all stock type quantities
 """
 
 from typing import List
@@ -22,7 +22,7 @@ from tests.conftest import all_rows, first_row
 
 _LTAP_SCHEMA = (
     "LGNUM STRING, TANUM STRING, TAPOS STRING, MANDT STRING, WERKS STRING, "
-    "MATNR STRING, CHARG STRING, ANFME DOUBLE, ENMNG DOUBLE, PQUIT STRING"
+    "MATNR STRING, CHARG STRING, VSOLM DOUBLE, VISTA DOUBLE, PQUIT STRING"
 )
 _LTAK_SCHEMA = (
     "LGNUM STRING, TANUM STRING, MANDT STRING, KQUIT STRING, "
@@ -31,7 +31,7 @@ _LTAK_SCHEMA = (
 )
 _LTBP_SCHEMA = (
     "LGNUM STRING, TBNUM STRING, TBPOS STRING, MANDT STRING, WERKS STRING, "
-    "MATNR STRING, MENGE DOUBLE, ENQTY DOUBLE, ELIKZ STRING"
+    "MATNR STRING, MENGE DOUBLE, TAMEN DOUBLE, ELIKZ STRING"
 )
 _LTBK_SCHEMA = (
     "LGNUM STRING, TBNUM STRING, MANDT STRING, ZZ_CAMPAIGN STRING, "
@@ -169,9 +169,10 @@ def apply_transfer_order_transform(
             F.col("i.TAPOS").alias("item_number"),
             F.col("i.WERKS").alias("plant_code"),
             strip_zeros("i.MATNR").alias("material_code"),
-            strip_zeros("i.CHARG").alias("batch_number"),
-            F.col("i.ANFME").alias("requested_quantity"),
-            F.col("i.ENMNG").alias("confirmed_quantity"),
+            F.col("i.CHARG").alias("batch_number"),  # CHARG exact — no strip
+            F.col("i.VSOLM").alias("requested_quantity"),
+            F.col("i.VISTA").alias("confirmed_quantity"),
+            F.col("i.VISTA").alias("actual_quantity_picked"),
             F.when(F.col("i.PQUIT") == "B", "Fully Confirmed")
              .when(F.col("i.PQUIT") == "A", "Partially Confirmed")
              .otherwise("Open").alias("item_status"),
@@ -195,14 +196,14 @@ def make_ltap(
     WERKS="1000",
     MATNR="000000000000012345",
     CHARG="0000001234",
-    ANFME=100.0,
-    ENMNG=100.0,
+    VSOLM=100.0,
+    VISTA=100.0,
     PQUIT="",
 ):
     return Row(
         LGNUM=LGNUM, TANUM=TANUM, TAPOS=TAPOS, MANDT=MANDT,
         WERKS=WERKS, MATNR=MATNR, CHARG=CHARG,
-        ANFME=ANFME, ENMNG=ENMNG, PQUIT=PQUIT,
+        VSOLM=VSOLM, VISTA=VISTA, PQUIT=PQUIT,
     )
 
 
@@ -248,7 +249,10 @@ def apply_transfer_requirement_transform(
             F.col("i.WERKS").alias("plant_code"),
             strip_zeros("i.MATNR").alias("material_code"),
             F.col("i.MENGE").alias("required_quantity"),
-            F.col("i.ENQTY").alias("open_quantity"),
+            F.greatest(
+                F.coalesce(F.col("i.MENGE"), F.lit(0)) - F.coalesce(F.col("i.TAMEN"), F.lit(0)),
+                F.lit(0),
+            ).alias("open_quantity"),
             sap_flag("i.ELIKZ").alias("is_processing_complete"),
             F.col("h.ZZ_CAMPAIGN").alias("campaign_reference"),
             F.col("h.ZZ_PICK_STAT_M").alias("manual_pick_status"),
@@ -268,12 +272,12 @@ def make_ltbp(
     WERKS="1000",
     MATNR="000000000000012345",
     MENGE=50.0,
-    ENQTY=50.0,
+    TAMEN=0.0,
     ELIKZ="",
 ):
     return Row(
         LGNUM=LGNUM, TBNUM=TBNUM, TBPOS=TBPOS, MANDT=MANDT,
-        WERKS=WERKS, MATNR=MATNR, MENGE=MENGE, ENQTY=ENQTY, ELIKZ=ELIKZ,
+        WERKS=WERKS, MATNR=MATNR, MENGE=MENGE, TAMEN=TAMEN, ELIKZ=ELIKZ,
     )
 
 
@@ -373,7 +377,7 @@ def apply_storage_bin_transform(
             F.coalesce(F.col("q.LQNUM"), F.lit("__EMPTY__")).alias("_storage_bin_occupancy_key"),
             F.col("q.LQNUM").alias("quant_number"),
             strip_zeros("q.MATNR").alias("material_code"),
-            strip_zeros("q.CHARG").alias("batch_number"),
+            F.col("q.CHARG").alias("batch_number"),  # CHARG exact — no strip
             F.col("q.GESME").alias("total_quantity"),
             F.col("q.VERME").alias("available_quantity"),
             F.greatest(F.col("b.AEDATTM"), F.col("q.AEDATTM")).alias("_replicated_at"),
@@ -445,7 +449,7 @@ def apply_batch_stock_transform(spark: SparkSession, mchb_rows: List[Row]) -> Da
         strip_zeros("MATNR").alias("material_code"),
         F.col("WERKS").alias("plant_code"),
         F.col("LGORT").alias("storage_location_code"),
-        strip_zeros("CHARG").alias("batch_number"),
+        F.col("CHARG").alias("batch_number"),  # CHARG exact — no strip
         F.col("CLABS").alias("unrestricted_quantity"),
         F.col("CINSM").alias("quality_inspection_quantity"),
         F.col("CSPEM").alias("blocked_quantity"),
@@ -528,11 +532,12 @@ class TestTransferOrderKeyStripping:
         )
         assert first_row(df)["material_code"] == "99999"
 
-    def test_batch_number_stripped(self, spark):
+    def test_batch_number_preserved_exactly(self, spark):
+        # CHARG is an exact SAP identifier — leading zeros preserved, NOT stripped.
         df = apply_transfer_order_transform(
             spark, [make_ltap(CHARG="0000099999")], [make_ltak()]
         )
-        assert first_row(df)["batch_number"] == "99999"
+        assert first_row(df)["batch_number"] == "0000099999"
 
     def test_delivery_number_stripped(self, spark):
         df = apply_transfer_order_transform(
@@ -588,6 +593,57 @@ class TestTransferRequirementStatus:
             spark, [make_ltbp()], [make_ltbk(OPFLAG="D")]
         )
         assert first_row(df)["record_activity"] == "D"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Transfer Requirement — open_quantity derivation
+#   open_quantity = greatest(coalesce(MENGE, 0) - coalesce(TAMEN, 0), 0)
+#   (MENGE = required qty; TAMEN = qty already converted to transfer orders)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTransferRequirementOpenQuantity:
+    def test_standard_menge_gt_tamen(self, spark):
+        df = apply_transfer_requirement_transform(
+            spark, [make_ltbp(MENGE=50.0, TAMEN=20.0)], [make_ltbk()]
+        )
+        assert first_row(df)["open_quantity"] == 30.0
+
+    def test_clamp_tamen_gt_menge(self, spark):
+        """Over-conversion (TAMEN > MENGE) clamps to 0, never negative."""
+        df = apply_transfer_requirement_transform(
+            spark, [make_ltbp(MENGE=20.0, TAMEN=50.0)], [make_ltbk()]
+        )
+        assert first_row(df)["open_quantity"] == 0.0
+
+    def test_null_menge_treated_as_zero_then_clamped(self, spark):
+        # coalesce(NULL,0) - coalesce(10,0) = -10 -> clamped to 0
+        df = apply_transfer_requirement_transform(
+            spark, [make_ltbp(MENGE=None, TAMEN=10.0)], [make_ltbk()]
+        )
+        assert first_row(df)["open_quantity"] == 0.0
+
+    def test_null_tamen_treated_as_zero(self, spark):
+        # coalesce(40,0) - coalesce(NULL,0) = 40
+        df = apply_transfer_requirement_transform(
+            spark, [make_ltbp(MENGE=40.0, TAMEN=None)], [make_ltbk()]
+        )
+        assert first_row(df)["open_quantity"] == 40.0
+
+    def test_both_null_is_zero(self, spark):
+        df = apply_transfer_requirement_transform(
+            spark, [make_ltbp(MENGE=None, TAMEN=None)], [make_ltbk()]
+        )
+        assert first_row(df)["open_quantity"] == 0.0
+
+    def test_completed_tr_open_quantity_zero(self, spark):
+        """A completed TR (ELIKZ='X') with MENGE fully converted shows is_processing_complete
+        and a clamped-zero open_quantity."""
+        df = apply_transfer_requirement_transform(
+            spark, [make_ltbp(MENGE=50.0, TAMEN=50.0, ELIKZ="X")], [make_ltbk()]
+        )
+        row = first_row(df)
+        assert row["is_processing_complete"] is True
+        assert row["open_quantity"] == 0.0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -796,11 +852,12 @@ class TestBatchStock:
         )
         assert first_row(df)["material_code"] == "99999"
 
-    def test_batch_number_stripped(self, spark):
+    def test_batch_number_preserved_exactly(self, spark):
+        # CHARG is an exact SAP identifier — leading zeros preserved, NOT stripped.
         df = apply_batch_stock_transform(
             spark, [make_mchb(CHARG="0000099999")]
         )
-        assert first_row(df)["batch_number"] == "99999"
+        assert first_row(df)["batch_number"] == "0000099999"
 
     def test_unrestricted_quantity(self, spark):
         df = apply_batch_stock_transform(
@@ -838,7 +895,8 @@ class TestBatchStock:
         rows = all_rows(df)
         assert len(rows) == 2
         totals = {r["batch_number"]: r["unrestricted_quantity"] for r in rows}
-        assert totals == {"1": 100.0, "2": 200.0}
+        # CHARG exact — batch keys keep their leading zeros.
+        assert totals == {"0000000001": 100.0, "0000000002": 200.0}
 
     def test_same_batch_different_locations_separate_rows(self, spark):
         """Same batch split across two storage locations are separate rows (compound key)."""

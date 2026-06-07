@@ -2,6 +2,14 @@
 
 This is an evidence capture log for the Warehouse360 DEV validation pack.
 
+> **Plant stage gate (2026-06-07).** Bronze→Silver is now plant/site stage-gated repo-wide: operational
+> Silver is scoped to onboarded plants/warehouses (`site_config_plant`/`site_config_warehouse`) before
+> entering Silver; **Gold inherits Silver scope**; secured/serving views handle *user access*, NOT
+> onboarding inclusion. Warehouse360's source objects therefore reflect only onboarded plants (DEV: C061
+> / wh 208). Contract: `source-contracts/site_stage_gate_contract.md`. This does not change the 0/7
+> status below (Gold still not built — pre-existing gold/QM defects), but it governs which plants appear
+> once Gold is built. UAT is the first full business validation.
+
 **Outcome (2026-06-06): BLOCKED at the source-object gate.** The governed DEV
 gold source layer is not deployed in the DEV workspace, so the consumption views
 cannot be built and the schema/key/data-quality/contract checks cannot run. No

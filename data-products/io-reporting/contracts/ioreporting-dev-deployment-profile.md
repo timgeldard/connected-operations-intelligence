@@ -331,3 +331,199 @@ Per-field decisions (full detail: `source-contracts/sap/silver_fast_field_reconc
 views not deployed; validation pack not run; contracts remain **candidate/pending**. Gaps also block
 UAT. Next: data-team supplies DD03L / functional sign-off + CDC-enabled MCHB replication, then apply
 the confirmed mappings and re-run.
+
+## Update 2026-06-07 (h) — approved WM/MM mappings IMPLEMENTED; 4 critical flows resolve; silver_fast still blocked on process_order
+
+**Functional sign-off received** (supersedes (g)'s "confirmation required"). Implemented the approved
+mappings in `silver/tables/warehouse_fast.py` and re-verified every source field exists live
+(`information_schema.columns`, 2026-06-07):
+
+| Flow | Approved mapping (implemented) |
+|---|---|
+| `stg_warehouse_transfer_order` (LTAP) | `requested_quantity`←`VSOLM`; `confirmed_quantity`←`VISTA`; `actual_quantity_picked`←`VISTA` (alias of confirmed — WM picking & confirmation collapse to one persisted qty). Note: functional chose `VISTA`, **not** the earlier `VISTM` guess. `PQUIT`/`PVQUI`/`KQUIT` preserved. |
+| `stg_warehouse_transfer_requirement` (LTBP) | `open_quantity`←`greatest(coalesce(MENGE,0)-coalesce(TAMEN,0),0)` (null-safe, clamped ≥0). `TAMEN` confirmed present; functional chose `TAMEN`, **not** `MENGA`. |
+| `stg_goods_movement` (MSEG) | `delivery_number`←`VBELN_IM`, `delivery_item`←`VBELP_IM`; NULL when blank (no fallback); new `reference_type='DELIVERY'` when populated. |
+| `batch_stock` (MCHB) | `base_uom`←`MARA.MEINS` (join `MCHB.MATNR=MARA.MATNR` on `MANDT+MATNR`); modelled as a **snapshot/current-state materialized view** (no `apply_changes`/CDC; `AEDATTM` kept as extraction timestamp only). MARA verified 1:1 (973,314 rows = 973,314 keys → no join fan-out). |
+
+Regression guard added: `scripts/ci/check_silver_fast_field_mappings.py` (bans the invalid fields +
+the MCHB CDC pattern). Validation SQL added: `validation/silver_fast_mapping_validation.sql`
+(pre-run existence/fan-out gate §A + post-run output checks §B–E). Bundle validates; pre-run gate §A
+GREEN (0 missing fields, 0 MARA fan-out).
+
+**Run result (update `5abc0952`):** the **4 WH360-critical flows now RESOLVE** — the update fails on
+only *"`stg_process_order_operation` and 2 other flows"*, vs *"`stg_warehouse_transfer_order` and 6
+other flows"* before. **But silver_fast still does NOT complete:** DLT analysis is all-or-nothing, so
+the 3 remaining flows abort the whole update → nothing materialises. The 3 are the out-of-scope PP/PI
+flows in `process_order.py` — `stg_process_order_operation` (`processorderobject_afvc`),
+`stg_pi_sheet_execution`, `stg_downtime_event` (`downtime_zpexpm_dwnt`) — failing `UNRESOLVED_COLUMN`
+on `AERUNID`/`AERECNO`/`RecordActivity` (CDC metadata absent; same gap class as MCHB, different domain).
+
+**Consequences unchanged:** mappings resolved but **not yet DATA-validated** (§B–E couldn't run); Gold
+**not built**; Warehouse360 **0/7**; consumption views not deployed; validation pack not run; contracts
+remain **candidate/pending**; DEV = technical shakedown only. **Next step (separate change, out of this
+PR's scope):** apply the MCHB-style snapshot/current-state pattern (or source-guard) to the 3
+process_order flows so silver_fast completes, then run §B–E + Gold + the WH360 source-object pack.
+
+## Update 2026-06-07 (i) — silver_fast COMPLETES (PP/PI gated; broadcast-OOM fixed); WM/MM mappings DATA-validated
+
+Two distinct changes in this update, both reversible:
+
+**(1) PP/PI source-gating [the asked change].** The 3 PP/PI flows that previously blocked the whole
+silver_fast update — `stg_process_order_operation`, `stg_pi_sheet_execution`, `stg_downtime_event`
+(silver/tables/process_order.py) — fail `UNRESOLVED_COLUMN` on `AERUNID`/`AERECNO`/`RecordActivity`,
+which are **absent** from their replicated sources (`dbstructureoperationquantitydatevalues_afvv`,
+`actualpistartenddatetime_zmanpex_e04_002`, `downtime_zpexpm_dwnt` — each carries only `AEDATTM`;
+AFVC/AFKO carry full CDC). **Dependency trace (confirmed):** none of the 3 feed any of the 7
+Warehouse360 governed source objects — they feed only `gold_process_order_operations` /
+`gold_order_downtime_summary` / `gold_plant_production_quality_summary` (not governed; not in the
+consumption views). So each flow is **source-guarded** (`if bronze_columns_exist(<source>, [CDC cols])`,
+the work_centre/capacity precedent): absent CDC → flow not defined → no fabricated CDC, no AEDATTM-as-
+sequence. The 3 non-governed Gold consumers degrade to empty via `gold._read_or_empty` so `gold_pipeline`
+is not blocked. Environment-wide gap (DEV+UAT) — not a dev-only toggle; self-heals once the sources are
+replicated with CDC metadata. Snapshot/current-state redesign is deferred pending per-source functional
+sign-off (AFVV is transactional — sibling of AFVC; zmanpex/zpexpm possibly current-state). See
+`source-contracts/sap/sap_unresolved_sources.yml` (`pp_pi_flows_missing_cdc_metadata`).
+
+**(2) Broadcast-join OOM fix [discovered, pre-existing].** With the 3 flows gated, silver_fast cleared
+analysis and reached runtime — exposing a latent Photon `SparkOutOfMemoryError` building a
+`BroadcastHashedRelation` in `stg_warehouse_transfer_order` (the changed_keys ⋈ LTAP[`i.*`, 165 wide
+var-len cols] ⋈ LTAK stream-static join). Only transfer_order OOM'd; goods_movement (the biggest join)
+and transfer_requirement completed. Fix: `spark.sql.autoBroadcastJoinThreshold: -1` on the pipeline
+(forces sort-merge; spills instead of OOM). Pre-existing in the join structure — unreachable while the
+flow failed analysis on the legacy ANFME/ENQTY fields (PR #23). Reversible; a narrower per-join merge
+hint is a possible prod-efficiency refinement.
+
+**Result (update 281cffac):** silver_fast **COMPLETES**. Materialised in
+`connected_plant_dev.silver_io_reporting`: warehouse_transfer_order **13,485,287**, warehouse_transfer_
+requirement **15,934,046**, goods_movement **10,761,727**, batch_stock **11,499,051**, process_order +
+the reference/flow tables; the 3 PP/PI tables correctly **absent** (gated). 0 OOM events.
+
+**WM/MM mappings now DATA-validated** (`validation/silver_fast_mapping_validation.sql` §B–E, first run
+they could execute): LTAP alias invariant holds (0 mismatches/13.5M); LTBP open_quantity 0 null/0 neg/0
+over-required; MSEG reference_type 100% consistent; MCHB base_uom 100% covered (no fan-out). One **§E1
+finding** (measured with `GROUP BY..HAVING`, not the confounded `COUNT(*)-COUNT(DISTINCT)`): **2,016
+colliding key groups / 4,039 rows (0.035%)** in batch_stock — GENUINE duplicate keys, **not** a NULL
+artifact (only 77 NULL-batch rows total, 2 in collisions). Cause: `strip_zeros` collapses distinct raw
+MATNR/CHARG (leading-zero/format variants) to the same `(material_code, batch_number)`, and the silver
+key omits MANDT; bronze is 1:1 on the raw key. Pre-existing PR #23 batch_stock key nuance (snapshot key
+is ~1:1, not strictly 1:1) — NOT caused by this change; small but real (slight stock double-count in
+`gold_stock_*`). Recorded as a follow-up (needs a key-design call); re-validate in UAT.
+
+**Warehouse360 readiness: still NOT claimed.** Gold not yet built and the 7 governed source objects not
+yet validated (next: silver_quality → gold_pipeline → `warehouse360_dev_source_object_validation.sql`
+expecting 7/7 → WH360 pack). DEV remains a technical shakedown only; UAT is the first full business/HU
+validation. No contract promoted.
+
+## Update 2026-06-07 (j) — silver_quality: separate new blocker (QM domain); does NOT gate Warehouse360
+
+After silver_fast completed, ran `silver_quality_pipeline` (update f9e2949a). **FAILED at analysis** —
+a NEW, distinct, pre-existing blocker unrelated to this PR: `stg_quality_inspection_lot`
+(`silver/tables/quality.py:23`) reads `inspection_qals` and references `MANDT`, which is **absent**
+from the replicated `connected_plant_dev.sap.inspection_qals` (`UNRESOLVED_COLUMN`). This is a
+QM-domain replicated-schema gap (same class as the WM/MM and PP/PI gaps, different domain), in code
+this PR did not touch. **Not fixed here** (out of scope; needs the same source-guard/replication
+treatment as the other domains — a separate change).
+
+**Does NOT gate Warehouse360 or Gold:** silver_quality produces only `quality_inspection_lot`, and
+**no Gold module reads it** (verified). The 7 governed source objects depend on the WM/MM flows +
+process_order, not QM. So Gold was run regardless (see next).
+
+## Update 2026-06-07 (k) — gold_pipeline: separate new blocker (duplicate table def); 0/7 stands
+
+Ran `gold_pipeline` (update 45b908f4, first-ever gold run). **FAILED at graph construction:**
+`Found duplicate table 'connected_plant_dev.gold_io_reporting.gold_storage_type_role_coverage_status'`.
+The table is defined **twice**, in two different top-level gold modules with **different**
+implementations:
+- `gold/readiness_validation.py:13` — reads `storage_bin` + `site_config_storage_type_role`, emits a
+  `match_rate`.
+- `gold/warehouse_flow_gold.py:536` — reads `storage_bin` + `storage_type_role_mapping`, emits
+  VALIDATED/PARTIAL/MISSING.
+
+This is a **pre-existing gold defect** exposed on the first gold run — **unrelated** to this PR (PP/PI
+gating / WM/MM mappings; neither file touched here) and **not** caused by the `_read_or_empty` guards.
+It is **not** one of the 7 governed objects, but DLT graph construction is all-or-nothing, so it aborts
+the whole pipeline → the 7 cannot materialise. **Not fixed here:** the two definitions have different
+sources and output schemas, so choosing the canonical one (and retiring the other) is a gold-architecture
+decision for the gold owner, outside this PR's scope. There may be further first-run gold issues behind it.
+
+**`_read_or_empty` PP/PI guards:** not yet exercised at runtime — the duplicate-table error aborts
+*before* flow execution, so the empty-path verification is still pending the gold unblock.
+
+**Warehouse360 readiness: NOT claimed (Task 10).** Gold not built; `warehouse360_dev_source_object_validation.sql`
+remains **0/7**; consumption views not deployed; WH360 pack not run; no contract promoted. The
+silver_fast unblock (this PR's goal) is achieved and data-validated; the remaining gold/quality blockers
+are separate, pre-existing, out-of-scope defects to resolve next.
+
+## Outstanding blockers (ordered) to reach Warehouse360 7/7
+
+1. **gold_pipeline** — resolve the duplicate `gold_storage_type_role_coverage_status` definition
+   (`readiness_validation.py` vs `warehouse_flow_gold.py`); rerun gold; expect possible further first-run
+   gold issues. [gold owner]
+2. **silver_quality** (independent of WH360) — `stg_quality_inspection_lot` references `MANDT` absent
+   from `inspection_qals`; source-guard or confirm replication. [QM domain]
+3. After gold builds: `gold_security_dev.sql` + `gold_serving_views_dev.sql` →
+   `warehouse360_dev_source_object_validation.sql` (expect 7/7) → WH360 consumption views + pack.
+
+## Update 2026-06-07 (l) — plant stage gate (Phase 1): code-verified + effect-measured; re-materialisation deferred
+
+Implemented the repo-wide Bronze→Silver plant stage gate (Phase 1 — WM/MM reference set). Canonical
+gate: `site_config_plant` (active C061) + `site_config_warehouse` (208→C061). Helpers in
+`silver/_plant_gate.py`; enforced on goods_movement + batch_stock (direct WERKS) and
+warehouse_transfer_order + warehouse_transfer_requirement (warehouse gate + governed `plant_id`).
+
+**Verification status (honest):**
+- ✅ Code: compiles, ruff clean, `bundle validate -t dev` OK, deploys, and the silver_fast update
+  **passed DLT graph analysis** with the gate active — the conf-driven config read resolved and the
+  stream-static gate joins are valid (no fail-loud error, no UNRESOLVED). Gate wiring is correct.
+- ✅ CI guard `check_silver_stage_gate_coverage.py`: 40/40 outputs classified; ENFORCED files call the
+  helper.
+- ✅ Gate EFFECT measured directly (gate predicate applied to the current all-plant Silver, 2026-06-07):
+
+  | Flow | gate | in-gate (post-gate) | total (pre-gate) |
+  |---|---|---|---|
+  | goods_movement | plant C061 | 315,540 | 10,761,727 |
+  | batch_stock | plant C061 | 646,702 | 11,499,051 |
+  | warehouse_transfer_order | wh 208 | 393,612 | 13,485,287 |
+  | warehouse_transfer_requirement | wh 208 | 375,822 | 15,934,046 |
+
+  DEV bronze is multi-plant (P223/P509/P705/…); the gate scopes operational Silver to C061/208 only
+  (~3–6%). **LGNUM≠WERKS confirmed:** warehouse 208 has 393,612 TOs but only 369,694 carry WERKS=C061
+  (23,918 gap) — hence WM flows gate by warehouse, not raw WERKS, and add governed `plant_id`.
+- ⏸ **Re-materialisation DEFERRED (not yet runtime-enforced in the materialised tables).** The silver
+  tables still hold **pre-gate** (all-plant) data — a cold full silver_fast rerun is dominated by the
+  heavy **ungated** `process_order` backfill (all plants), so the run was cancelled. The leak-checks in
+  `validation/silver_stage_gate_validation.sql` §3 will only pass after re-materialisation. Re-run on a
+  normal scheduled silver_fast cycle; note that gating `process_order` (Phase 2) makes reruns cheap
+  (C061-only), removing this bottleneck.
+
+**Warehouse360 readiness: still NOT claimed.** Gold/WH360 source validation remain blocked by the prior
+round's pre-existing gold duplicate-table + QM defects, independent of this gating work.
+
+## Update 2026-06-07 (m) — pre-merge review fixes: CHARG exact-preservation + §E1 resolved + validation/guard hardening
+
+Pre-merge correctness pass on PR #23 (still a Silver Fast / WM-MM shakedown milestone — Gold NOT fixed here):
+
+- **CHARG preserved exactly (repo-wide).** `CHARG` is an exact SAP batch identifier — removed `strip_zeros`
+  from `batch_number` in **all** silver transforms (warehouse_fast, warehouse_flow, warehouse_reference,
+  inbound, quality). `batch_number == batch_number_raw == CHARG`. MATNR display-normalisation is unchanged
+  (kept separate per the decision).
+- **§E1 batch_stock key — RESOLVED.** Exposed `client` (MCHB.MANDT) and re-keyed the uniqueness check on the
+  exact SAP key (`client, material_code_raw, plant_code, storage_location_code, batch_number_raw`). Measured
+  on bronze MCHB: **0 colliding groups** on the raw key AND on the display key once CHARG is exact (was
+  2,016/4,039 — caused specifically by stripping CHARG). Display-level collisions reported separately
+  (§E1b), never treated as the true key.
+- **Validation SQL fixes:** reference_type invariant now uses `delivery_number` (not `delivery_number_raw`);
+  all derived tables in `FROM (...)` aliased; §E1 uses GROUP BY..HAVING on the raw key.
+- **Guard hardened** (`check_silver_fast_field_mappings.py`): CHARG strip/trim/normalisation banned
+  repo-wide; invalid-field regex now catches bare AND alias-qualified tokens (ANFME/ENMNG/ISPOS/ENQTY,
+  VBELN-as-delivery, MCHB MEINS/AERUNID/AERECNO/RecordActivity); allows VBELN_IM/VBELP_IM.
+- **Tests:** renamed/flipped the "batch stripped" assertions to "batch preserved exactly"; added six
+  LTBP `open_quantity` tests (standard / clamp / null MENGE / null TAMEN / both null / completed TR).
+  pytest needs Java (not available locally) — CI verifies; ruff + py_compile pass.
+
+**Runtime status (unchanged from §(l)):** ruff, all guards, and `bundle validate -t dev` pass. The gated
++ CHARG-exact code is **deployed**, but the silver tables are **not re-materialised** — a cold full
+silver_fast rerun is dominated by the heavy **ungated** `process_order` backfill (the user cancelled the
+rerun for this reason). §E1/§E1b and the post-gate counts will refresh on the next full run; the §E1
+resolution is evidenced directly on bronze MCHB above. Gold + WH360 remain blocked by the separate
+pre-existing defects; Warehouse360 stays 0/7; no contract promoted.

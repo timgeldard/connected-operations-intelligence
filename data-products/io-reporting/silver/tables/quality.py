@@ -50,7 +50,8 @@ def stg_quality_inspection_lot():
             F.col("l.WERKS").alias("plant_code"),
             strip_zeros("l.MATNR").alias("material_code"),
             F.col("l.MATNR").alias("material_code_raw"),
-            strip_zeros("l.CHARG").alias("batch_number"),
+            # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+            F.col("l.CHARG").alias("batch_number"),
             F.col("l.CHARG").alias("batch_number_raw"),
             strip_zeros("m.AUFNR").alias("order_number"),
             F.col("m.AUFNR").alias("order_number_raw"),

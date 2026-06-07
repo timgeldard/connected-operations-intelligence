@@ -8,6 +8,7 @@ Tables: goods_movement, batch_stock, warehouse_transfer_order,
 import dlt
 from pyspark.sql import functions as F
 
+from silver._plant_gate import apply_plant_gate, apply_warehouse_gate
 from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
 
 # ── 1. GOODS MOVEMENT ────────────────────────────────────────────────────────
@@ -63,7 +64,7 @@ def stg_goods_movement():
             F.col("c.RecordActivity").alias("_change_record_activity"),
         )
     )
-    return (
+    movement_out = (
         movement_lines_to_refresh.alias("s")
         .join(mkpf.alias("h"), ["MBLNR", "MJAHR", "MANDT"], "left")
         .select(
@@ -79,7 +80,9 @@ def stg_goods_movement():
             # ── Material & batch
             strip_zeros("s.MATNR").alias("material_code"),
             F.col("s.MATNR").alias("material_code_raw"),
-            strip_zeros("s.CHARG").alias("batch_number"),
+            # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+            # See source-contracts/site_stage_gate_contract.md + silver_fast_field_reconciliation.md.
+            F.col("s.CHARG").alias("batch_number"),
             F.col("s.CHARG").alias("batch_number_raw"),
 
             # ── Movement
@@ -104,8 +107,15 @@ def stg_goods_movement():
             strip_zeros("s.EBELN").alias("purchase_order_number"),
             F.col("s.EBELN").alias("purchase_order_number_raw"),
             F.col("s.EBELP").alias("purchase_order_item"),
-            strip_zeros("s.VBELN").alias("delivery_number"),
-            F.col("s.VBELN").alias("delivery_number_raw"),
+            # Approved IM delivery mapping (source-contracts/sap/silver_fast_field_reconciliation.md):
+            # MSEG.VBELN is absent; VBELN_IM/VBELP_IM are the IM delivery reference. Movement-type
+            # dependent — may be blank, so delivery_number stays NULL (no fake fallback to
+            # MBLNR/KDAUF/LFBNR). reference_type = 'DELIVERY' only when VBELN_IM is populated.
+            strip_zeros("s.VBELN_IM").alias("delivery_number"),
+            F.col("s.VBELN_IM").alias("delivery_number_raw"),
+            F.col("s.VBELP_IM").alias("delivery_item"),
+            F.when(strip_zeros("s.VBELN_IM").isNotNull(), F.lit("DELIVERY"))
+             .otherwise(F.lit(None).cast("string")).alias("reference_type"),
             F.col("s.KDAUF").alias("sales_order_number"),
 
             # ── User
@@ -120,6 +130,9 @@ def stg_goods_movement():
             ),
         )
     )
+    # Plant stage-gate (DIRECT WERKS): MSEG carries the true plant in WERKS. Scope to onboarded plants
+    # (base ioreporting gate). Stream-static left-semi against the governed active-plant set.
+    return apply_plant_gate(movement_out, "plant_code", "ioreporting", spark=spark)
 
 dlt.create_streaming_table(
     name="goods_movement",
@@ -142,48 +155,19 @@ dlt.apply_changes(
 
 
 # ── 2. BATCH STOCK ────────────────────────────────────────────────────────────
+# Approved architecture (source-contracts/sap/silver_fast_field_reconciliation.md): MCHB is a stock
+# CURRENT-STATE table, not an ordered event stream. The replicated MCHB carries no CDC sequencing
+# metadata (AERUNID/AERECNO/RecordActivity absent — only AEDATTM, kept as an extraction timestamp and
+# NOT used for event ordering). It is therefore modelled as a current-state snapshot (materialized
+# view, full recompute) keyed by (material_code, plant_code, storage_location_code, batch_number) —
+# proven 1:1 unique in the replicated MCHB (11,499,051 rows = 11,499,051 distinct keys, 2026-06-07).
+# No dlt.apply_changes / CDC. base_uom is enriched from MARA (MCHB carries no unit; stock buckets are
+# in the material base UoM); join on MANDT+MATNR (MARA unique per client+material → no fan-out).
 
-@dlt.view(name="stg_batch_stock")
-@dlt.expect_all_or_drop({
-    "material_code present": "material_code IS NOT NULL",
-    "plant_code present": "plant_code IS NOT NULL"
-})
-@dlt.expect_all({
-    "unrestricted quantity non-negative": "unrestricted_quantity >= 0"
-})
-def stg_batch_stock():
-    spark = get_spark()
-    src = spark.readStream.table(f"{BRONZE}.batchstock_mchb")
-    return src.select(
-        strip_zeros("MATNR").alias("material_code"),
-        F.col("MATNR").alias("material_code_raw"),
-        F.col("WERKS").alias("plant_code"),
-        F.col("LGORT").alias("storage_location_code"),
-        strip_zeros("CHARG").alias("batch_number"),
-        F.col("CHARG").alias("batch_number_raw"),
-
-        F.col("CLABS").alias("unrestricted_quantity"),
-        F.col("CINSM").alias("quality_inspection_quantity"),
-        F.col("CSPEM").alias("blocked_quantity"),
-        F.col("CEINM").alias("restricted_use_quantity"),
-        F.col("CUMLM").alias("in_transfer_quantity"),
-        F.col("CRETM").alias("blocked_returns_quantity"),
-        F.col("MEINS").alias("base_uom"),
-
-        # Previous period (for trend / delta)
-        F.col("CVMLA").alias("prev_period_unrestricted_quantity"),
-        F.col("CVMIN").alias("prev_period_quality_inspection_quantity"),
-
-        F.col("LFGJA").alias("fiscal_year"),
-        F.col("LFMON").alias("fiscal_period"),
-
-        F.col("AEDATTM").alias("_replicated_at"),
-        F.col("AERUNID").alias("_run_id"),
-        F.col("AERECNO").alias("_record_seq"),
-    )
-
-dlt.create_streaming_table(
+@dlt.table(
     name="batch_stock",
+    comment="Batch stock current state (MCHB) — one row per material/plant/storage-location/batch; "
+            "base_uom from MARA. Current-state snapshot (no CDC; MCHB has no apply_changes metadata).",
     table_properties={
         "delta.enableChangeDataFeed": "true",
         "delta.autoOptimize.optimizeWrite": "true",
@@ -191,14 +175,64 @@ dlt.create_streaming_table(
     },
     cluster_by=["plant_code", "storage_location_code"],
 )
+@dlt.expect_all_or_drop({
+    "material_code present": "material_code IS NOT NULL",
+    "plant_code present": "plant_code IS NOT NULL"
+})
+@dlt.expect_all({
+    "unrestricted quantity non-negative": "unrestricted_quantity >= 0"
+})
+def batch_stock():
+    spark = get_spark()
+    mchb = spark.read.table(f"{BRONZE}.batchstock_mchb")
+    # base_uom from material master (MCHB has no MEINS); MARA is unique per MANDT+MATNR.
+    mara = spark.read.table(f"{BRONZE}.materialmaster_mara").select(
+        F.col("MANDT").alias("_mara_mandt"),
+        F.col("MATNR").alias("_mara_matnr"),
+        F.col("MEINS").alias("base_uom"),
+    )
+    batch_stock_out = (
+        mchb.alias("s")
+        .join(
+            mara.alias("m"),
+            (F.col("s.MANDT") == F.col("m._mara_mandt")) & (F.col("s.MATNR") == F.col("m._mara_matnr")),
+            "left",
+        )
+        .select(
+            # client (MANDT) — part of the exact SAP natural key (material/plant/storage-loc/batch
+            # are unique only within a client). DEV is single-client; exposed for the multi-client key.
+            F.col("s.MANDT").alias("client"),
+            strip_zeros("s.MATNR").alias("material_code"),
+            F.col("s.MATNR").alias("material_code_raw"),
+            F.col("s.WERKS").alias("plant_code"),
+            F.col("s.LGORT").alias("storage_location_code"),
+            # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+            # See source-contracts/site_stage_gate_contract.md + silver_fast_field_reconciliation.md.
+            F.col("s.CHARG").alias("batch_number"),
+            F.col("s.CHARG").alias("batch_number_raw"),
 
-dlt.apply_changes(
-    target="batch_stock",
-    source="stg_batch_stock",
-    keys=["material_code", "plant_code", "storage_location_code", "batch_number"],
-    sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
-    stored_as_scd_type=1,
-)
+            F.col("s.CLABS").alias("unrestricted_quantity"),
+            F.col("s.CINSM").alias("quality_inspection_quantity"),
+            F.col("s.CSPEM").alias("blocked_quantity"),
+            F.col("s.CEINM").alias("restricted_use_quantity"),
+            F.col("s.CUMLM").alias("in_transfer_quantity"),
+            F.col("s.CRETM").alias("blocked_returns_quantity"),
+            F.col("m.base_uom").alias("base_uom"),
+
+            # Previous period (for trend / delta)
+            F.col("s.CVMLA").alias("prev_period_unrestricted_quantity"),
+            F.col("s.CVMIN").alias("prev_period_quality_inspection_quantity"),
+
+            F.col("s.LFGJA").alias("fiscal_year"),
+            F.col("s.LFMON").alias("fiscal_period"),
+
+            # Extraction timestamp only — NOT an event-ordering / CDC sequence key.
+            F.col("s.AEDATTM").alias("_replicated_at"),
+        )
+    )
+    # Plant stage-gate (DIRECT WERKS): MCHB carries the true plant in WERKS. Scope to plants onboarded
+    # for stock (batch_managed_flag). Batch-static left-semi against the governed active-plant set.
+    return apply_plant_gate(batch_stock_out, "plant_code", "stock", spark=spark)
 
 
 # ── 3. WAREHOUSE TRANSFER ORDER ───────────────────────────────────────────────
@@ -236,7 +270,7 @@ def stg_warehouse_transfer_order():
         )
     )
 
-    return (
+    transfer_order_out = (
         order_items_to_refresh.alias("i")
         .join(ltak.alias("h"), ["LGNUM", "TANUM", "MANDT"], "left")
         .select(
@@ -251,7 +285,8 @@ def stg_warehouse_transfer_order():
             # ── Material & batch
             strip_zeros("i.MATNR").alias("material_code"),
             F.col("i.MATNR").alias("material_code_raw"),
-            strip_zeros("i.CHARG").alias("batch_number"),
+            # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+            F.col("i.CHARG").alias("batch_number"),
             F.col("i.CHARG").alias("batch_number_raw"),
             F.col("i.MEINS").alias("base_uom"),
             F.col("i.BESTQ").alias("stock_category_code"),
@@ -262,10 +297,15 @@ def stg_warehouse_transfer_order():
             F.col("i.NLTYP").alias("destination_storage_type"),
             F.col("i.NLPLA").alias("destination_bin"),
 
-            # ── Quantities
-            F.col("i.ANFME").alias("requested_quantity"),
-            F.col("i.ENMNG").alias("confirmed_quantity"),
-            F.col("i.ISPOS").alias("actual_quantity_picked"),
+            # ── Quantities (approved WM mapping — source-contracts/sap/silver_fast_field_reconciliation.md)
+            # ANFME/ENMNG/ISPOS are not LTAP fields. requested = source target qty (VSOLM);
+            # confirmed = source actual qty (VISTA) — both source-side (do NOT mix with destination
+            # NSOLM/NISTM). In WM, picking and confirmation collapse to the same persisted LTAP quantity
+            # for this use case, so actual_quantity_picked is aliased to confirmed_quantity (kept for
+            # downstream-contract compatibility; NOT an independent business measure).
+            F.col("i.VSOLM").alias("requested_quantity"),
+            F.col("i.VISTA").alias("confirmed_quantity"),
+            F.col("i.VISTA").alias("actual_quantity_picked"),
 
             # ── Status
             F.when(F.col("i.PQUIT") == "B", "Fully Confirmed")
@@ -306,6 +346,12 @@ def stg_warehouse_transfer_order():
                 "record_activity"
             ),
         )
+    )
+    # Warehouse stage-gate (LGNUM -> WERKS via site_config_warehouse). WM flows are gated by warehouse,
+    # NOT raw LTAK.WERKS (verified unreliable: warehouse 208 has 393,612 TOs but only 369,694 carry
+    # WERKS=C061). Adds governed `plant_id` from the mapping, kept DISTINCT from the raw `plant_code`.
+    return apply_warehouse_gate(
+        transfer_order_out, "warehouse_number", "warehouse", add_plant_col="plant_id", spark=spark
     )
 
 dlt.create_streaming_table(
@@ -395,7 +441,7 @@ def stg_warehouse_transfer_requirement():
         )
     )
 
-    return (
+    transfer_requirement_out = (
         requirement_items_to_refresh.alias("i")
         .join(ltbk.alias("h"), ["LGNUM", "TBNUM", "MANDT"], "left")
         .select(
@@ -410,13 +456,21 @@ def stg_warehouse_transfer_requirement():
             # ── Material & batch
             strip_zeros("i.MATNR").alias("material_code"),
             F.col("i.MATNR").alias("material_code_raw"),
-            strip_zeros("i.CHARG").alias("batch_number"),
+            # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+            F.col("i.CHARG").alias("batch_number"),
             F.col("i.CHARG").alias("batch_number_raw"),
             F.col("i.MEINS").alias("base_uom"),
 
-            # ── Quantities
+            # ── Quantities (approved derivation — source-contracts/sap/silver_fast_field_reconciliation.md)
+            # ENQTY is not an LTBP field. open_quantity = required (MENGE) minus quantity already
+            # converted to transfer orders (TAMEN — confirmed present in the replicated LTBP),
+            # null-safe and clamped to >= 0. Completed TRs (ELIKZ) are exposed via is_processing_complete
+            # below and naturally yield open_quantity 0; backlog consumers filter on open_quantity > 0.
             F.col("i.MENGE").alias("required_quantity"),
-            F.col("i.ENQTY").alias("open_quantity"),
+            F.greatest(
+                F.coalesce(F.col("i.MENGE"), F.lit(0)) - F.coalesce(F.col("i.TAMEN"), F.lit(0)),
+                F.lit(0),
+            ).alias("open_quantity"),
 
             # ── Locations
             F.col("h.VLTYP").alias("source_storage_type"),
@@ -454,6 +508,11 @@ def stg_warehouse_transfer_requirement():
                 "record_activity"
             ),
         )
+    )
+    # Warehouse stage-gate (LGNUM -> WERKS via site_config_warehouse); adds governed `plant_id`,
+    # kept DISTINCT from the raw `plant_code`. WM flows gated by warehouse, not raw WERKS.
+    return apply_warehouse_gate(
+        transfer_requirement_out, "warehouse_number", "warehouse", add_plant_col="plant_id", spark=spark
     )
 
 dlt.create_streaming_table(

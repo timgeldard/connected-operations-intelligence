@@ -175,7 +175,8 @@ def stg_storage_bin():
             F.col("q.LQNUM").alias("quant_number"),
             strip_zeros("q.MATNR").alias("material_code"),
             F.col("q.MATNR").alias("material_code_raw"),
-            strip_zeros("q.CHARG").alias("batch_number"),
+            # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+            F.col("q.CHARG").alias("batch_number"),
             F.col("q.CHARG").alias("batch_number_raw"),
             F.col("q.BESTQ").alias("stock_category_code"),
             F.col("q.GESME").alias("total_quantity"),

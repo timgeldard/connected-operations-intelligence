@@ -12,7 +12,48 @@ Deployed via DAB bundle: databricks.yml / resources/gold_pipeline.pipeline.yml
 import dlt
 from pyspark.sql import functions as F
 
-from gold._shared import get_silver_schema, get_spark_session, gold_table_args
+from gold._shared import get_silver_schema, get_spark_session, gold_table_args, table_exists
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PP/PI input resilience (NOT Warehouse360 source objects)
+# ─────────────────────────────────────────────────────────────────────────────
+# The PP/PI silver inputs process_order_operation / pi_sheet_execution / downtime_event are
+# source-guarded out of silver_fast wherever their AERUNID/AERECNO CDC sequencing metadata is absent
+# (AFVV / zmanpex / zpexpm_dwnt lack it in the replicated source — see silver/tables/process_order.py).
+# These three gold tables consume them but are NOT among the 7 Warehouse360 governed source objects, so
+# rather than abort the whole (all-or-nothing) gold_pipeline — which would also block the 7 governed
+# objects — they degrade to an EMPTY result when a PP/PI input is absent. The DDL schemas below carry
+# exactly the columns the transforms reference, so the real transformation produces the correct output
+# schema on empty input (no hand-maintained output schema, no drift). Self-heals once CDC is replicated.
+_PROCESS_ORDER_OPERATION_GOLD_SCHEMA = (
+    "order_number string, operation_number string, routing_number string, operation_counter string, "
+    "plant_code string, scheduled_start_datetime timestamp, scheduled_finish_datetime timestamp, "
+    "actual_start_datetime timestamp, actual_finish_date date, work_centre_internal_id string, "
+    "planned_work double, actual_work double, is_confirmed boolean, confirmed_yield_quantity double, "
+    "confirmed_scrap_quantity double, control_key string, number_of_employees int"
+)
+_PI_SHEET_EXECUTION_GOLD_SCHEMA = (
+    "order_number string, operation_number string, pi_sheet_status string, duration_hours double"
+)
+_DOWNTIME_EVENT_GOLD_SCHEMA = (
+    "plant_code string, order_number string, operation_number string, work_centre_code string, "
+    "downtime_reason_code string, downtime_reason_description string, sub_reason_code string, "
+    "sub_reason_description string, duration_minutes double, start_datetime timestamp, "
+    "end_datetime timestamp"
+)
+
+
+def _read_or_empty(spark, fq_table: str, ddl_schema: str):
+    """Read `fq_table` if it exists, else an empty DataFrame with `ddl_schema`.
+
+    Used only for the source-guarded PP/PI inputs above. table_exists is a lazy spark.read.table probe
+    (no Spark job, not the blocked catalog.tableExists). Always registers/returns a DataFrame, so the
+    gold table resolves at analysis whether or not the PP/PI silver input was materialised.
+    """
+    if table_exists(spark, fq_table):
+        return spark.read.table(fq_table)
+    return spark.createDataFrame([], ddl_schema)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ── Gold Tables ──────────────────────────────────────────────────────────────
@@ -127,7 +168,11 @@ def gold_plant_production_quality_summary():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
     orders = spark.read.table(f"{silver_schema}.process_order")
-    downtime = spark.read.table(f"{silver_schema}.downtime_event")
+    # downtime is an optional enrichment here — process_order (present) drives yield/scrap; a missing
+    # PP/PI downtime input degrades to 0 downtime, it does not gate this table.
+    downtime = _read_or_empty(
+        spark, f"{silver_schema}.downtime_event", _DOWNTIME_EVENT_GOLD_SCHEMA
+    )
 
     # Sum of downtime hours per plant
     plant_downtime = (
@@ -177,9 +222,15 @@ def gold_process_order_operations():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
 
-    operations = spark.read.table(f"{silver_schema}.process_order_operation")
-    pi_sheets = spark.read.table(f"{silver_schema}.pi_sheet_execution")
-    downtimes = spark.read.table(f"{silver_schema}.downtime_event")
+    operations = _read_or_empty(
+        spark, f"{silver_schema}.process_order_operation", _PROCESS_ORDER_OPERATION_GOLD_SCHEMA
+    )
+    pi_sheets = _read_or_empty(
+        spark, f"{silver_schema}.pi_sheet_execution", _PI_SHEET_EXECUTION_GOLD_SCHEMA
+    )
+    downtimes = _read_or_empty(
+        spark, f"{silver_schema}.downtime_event", _DOWNTIME_EVENT_GOLD_SCHEMA
+    )
     orders = spark.read.table(f"{silver_schema}.process_order")
 
     operation_number_counts = (
@@ -272,7 +323,9 @@ def gold_process_order_operations():
 def gold_order_downtime_summary():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)
-    downtimes = spark.read.table(f"{silver_schema}.downtime_event")
+    downtimes = _read_or_empty(
+        spark, f"{silver_schema}.downtime_event", _DOWNTIME_EVENT_GOLD_SCHEMA
+    )
     orders = spark.read.table(f"{silver_schema}.process_order").select(
         "order_number", "material_code", "scheduled_start_date", "production_line_description"
     )

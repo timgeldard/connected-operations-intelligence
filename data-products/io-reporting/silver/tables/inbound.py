@@ -201,7 +201,8 @@ if hu_reconciliation_enabled():
                 F.col("i.POSNR").alias("delivery_item_number"),
                 strip_zeros("i.MATNR").alias("material_code"),
                 F.col("i.MATNR").alias("material_code_raw"),
-                strip_zeros("i.CHARG").alias("batch_number"),
+                # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+                F.col("i.CHARG").alias("batch_number"),
                 F.col("i.CHARG").alias("batch_number_raw"),
                 F.col("i.VEMNG").alias("packed_quantity"),
                 F.col("i.VEMEH").alias("packed_uom"),
@@ -243,7 +244,8 @@ def physical_inventory_document():
             F.col("i.LGORT").alias("storage_location_code"),
             strip_zeros("i.MATNR").alias("material_code"),
             F.col("i.MATNR").alias("material_code_raw"),
-            strip_zeros("i.CHARG").alias("batch_number"),
+            # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+            F.col("i.CHARG").alias("batch_number"),
             F.col("i.CHARG").alias("batch_number_raw"),
             F.col("i.BSTAR").alias("stock_type_code"),
             F.col("h.VGART").alias("transaction_event_type"),
