@@ -8,6 +8,7 @@ import yaml
 
 from shared.query_service.object_resolver import resolve_domain_object
 
+
 def _resolve_manifest_path() -> str:
     # 1. Environment variable override
     env_path = os.environ.get("APP_MANIFEST_PATH")
