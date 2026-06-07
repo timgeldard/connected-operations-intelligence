@@ -7,6 +7,17 @@ gold source layer is not deployed in the DEV workspace, so the consumption views
 cannot be built and the schema/key/data-quality/contract checks cannot run. No
 contract advances beyond candidate/pending. See §2 and §12–13 for detail.
 
+> **Re-confirmed 2026-06-07: still 0/7, contracts remain candidate.**
+> `warehouse360_dev_source_object_validation.sql` was rerun — still **0/7** source
+> objects (`gold_io_reporting` not yet created). `silver_slow` now completes
+> (silver tables materialised), but `silver_fast` is **blocked** on a fast-tier
+> SAP field-contract gap (core columns `ANFME`/`ENMNG`/`ISPOS`/`ENQTY`/`VBELN`/
+> MCHB CDC metadata absent from the replicated tables — WH360-critical, needs
+> data-team reconciliation; see `ioreporting-dev-deployment-profile.md` §(f) and
+> `source-contracts/sap/sap_unresolved_sources.yml`). So Gold has not been built;
+> consumption views were **not** deployed and the validation pack was **not** run.
+> All contracts stay candidate/pending; no `ready_for_dev_app_shakedown`.
+
 > **Next validation attempt prerequisites (added 2026-06-06).** This validation
 > has **not** been rerun — the result below still stands. Rerunning requires the
 > IOReporting governed source layer to exist in `connected_plant_dev.gold_io_reporting`.

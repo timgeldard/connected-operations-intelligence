@@ -17,6 +17,20 @@ source objects depend on HU. No contract is promoted; a green DEV shakedown does
 not imply UAT readiness. See ADR
 `docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`.
 
+## Status 2026-06-07 — still BLOCKED upstream (0/7), contracts remain candidate
+
+`silver_slow` completes (silver tables materialised), but `silver_fast` is **blocked** on a
+fast-tier SAP field-contract gap: 4 WH360-critical staging flows reference core columns absent from
+the replicated tables — `transferorderobjects_ltap.{ANFME,ENMNG,ISPOS}`,
+`transferrequirementobjects_ltbp.ENQTY`, `inventorymovement_mseg.VBELN`,
+`batchstock_mchb.{AERECNO,AERUNID,MEINS}` (identical in dev + uat). These are core
+transactional/structural fields → not nullable, and the flows are WH360-critical → not
+source-guardable; they need a data-team/functional reconciliation (not invented/remapped here).
+Consequently Gold is not built; `warehouse360_dev_source_object_validation.sql` reruns to **0/7**;
+consumption views were **not** deployed and the validation pack was **not** run. **All contracts
+remain candidate/pending — none are `ready_for_dev_app_shakedown`.** Detail:
+`ioreporting-dev-deployment-profile.md` §(f) and `source-contracts/sap/sap_unresolved_sources.yml`.
+
 ## Next validation attempt prerequisites (added 2026-06-06)
 
 This pack has **not** been rerun since the original BLOCKED result below. Before

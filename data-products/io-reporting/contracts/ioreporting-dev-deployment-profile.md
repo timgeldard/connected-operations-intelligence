@@ -249,14 +249,61 @@ technical shakedown only.
   SAP). It is **not** business validation. **Warehouse360 validation was NOT rerun** — the 7 WH360
   source objects live in Gold, which has not been built. No contract promoted; DEV shakedown only.
 
+## Update 2026-06-07 (f) — silver_fast BLOCKED on a fast-tier field-contract gap (WH360-critical)
+
+Baseline re-confirmed on merged main (PR #20 = `088c3b4`): `connected_plant_dev.silver_io_reporting`
+exists with 24 tables; `silver_slow` outputs persist (storage_bin 511,380 / material 2,111,130 /
+purchase_order 6,622,412 / movement_type_classification 314). `gold_io_reporting` not yet created.
+
+Ran `silver_fast` (continuous; started + stopped). **Fails at analysis** — **7 staging flows**
+reference SAP columns absent from the replicated source tables. Complete static audit (warehouse_fast.py
+vs live `information_schema.columns`, identical in dev + uat):
+
+| Flow (WH360-critical) | Source table (replicated cols) | MISSING columns |
+|---|---|---|
+| `stg_warehouse_transfer_order` | `transferorderobjects_ltap` (165) | `ANFME, ENMNG, ISPOS` |
+| `stg_warehouse_transfer_requirement` | `transferrequirementobjects_ltbp` (52) | `ENQTY` |
+| `stg_goods_movement` | `inventorymovement_mseg` (214) | `VBELN` |
+| `stg_batch_stock` | `batchstock_mchb` (44) | `AERECNO, AERUNID, MEINS` |
+
+(`ltak`, `ltbk`, `mkpf` fully present.) 3 further failing flows — `stg_process_order_operation`,
+`stg_downtime_event`, `stg_pi_sheet_execution` (process_order.py) — are **NOT** WH360-source feeders.
+
+**WH360-criticality trace:** `warehouse_transfer_order` is read by **all 5** WH360-source gold modules;
+`warehouse_transfer_requirement`/`goods_movement`/`batch_stock` feed `gold_transfer_requirement_backlog`/
+`gold_stock_expiry_risk`/`gold_warehouse_exceptions`. So the 4 critical flows block essentially all 7
+WH360 gold sources.
+
+**Disposition — NOT fixed (by design, per constraints):** missing fields are **core
+transactional/structural** (TO/TR quantities, item position, delivery ref, CDC sequencing metadata) —
+not optional → **cannot be typed-nulled** (would fabricate business data); and the flows are
+WH360-critical → **cannot be source-guarded away** (would delete WH360 sources). Likely **incorrect
+field names** in the silver code (e.g. LTAP source-target quantities are `VSOLA`/`VSOLM`/`NSOLA`, not
+`ANFME`) OR fields excluded from the curated replication. Requires **functional/data-team
+reconciliation** (do not invent fields, do not silently remap). Recorded in
+`source-contracts/sap/sap_unresolved_sources.yml`.
+
+**Pipeline outcomes this round:**
+- `silver_slow`: ✅ COMPLETE (prior; outputs persist). `silver_fast`: ⛔ FAILS at analysis.
+- `silver_quality`, `gold_pipeline`, `warehouse_snapshot`, `gold_security_dev.sql`,
+  `gold_serving_views_dev.sql`: **NOT run** (would fail on absent silver_fast inputs).
+- `warehouse360_dev_source_object_validation.sql`: ✅ ran → **0/7** source objects FOUND
+  (`gold_io_reporting` absent). Per the gate, consumption views **NOT** deployed; WH360 validation
+  pack **NOT** run.
+
+**Status:** Warehouse360 contracts remain **candidate/pending** (source objects missing). DEV
+technical shakedown only; this field-contract gap also blocks **UAT** full validation.
+
 ## Next required Databricks execution (in order)
 
-1. ✅ DONE — pipeline imports; the source/schema blockers (work_centre, storagebin_lagp incl. BRGEW,
-   movement-type seed, capacity); strip_zeros; freshness/Py4J — all fixed; **silver_slow COMPLETES**.
-2. Run `silver_fast` → `silver_quality` (expect possible further replicated-schema gaps to surface
-   per the established pattern; handle with the same source-guard / `col_or_null` tolerance).
-3. Run `gold_pipeline` (+ `warehouse_snapshot` job).
+1. ✅ DONE — silver_slow blockers; **silver_slow COMPLETES**. silver_fast field-contract gap fully
+   inventoried (above) and recorded in `sap_unresolved_sources.yml`.
+2. **BLOCKER — data-team / functional:** reconcile the silver_fast field contract with the replicated
+   SAP schema (LTAP `ANFME`/`ENMNG`/`ISPOS`, LTBP `ENQTY`, MSEG `VBELN`, MCHB `AERECNO`/`AERUNID`/`MEINS`)
+   — confirm correct field names (e.g. LTAP qty `VSOLA`/`VSOLM`) or add the fields to the replication.
+   WH360-critical + business-valued → confirmation required, NOT nulling. Then re-run `silver_fast`.
+3. Run `silver_quality`; then `gold_pipeline` (+ `warehouse_snapshot`).
 4. Apply `gold_security_dev.sql` then `gold_serving_views_dev.sql`.
-5. Re-run `warehouse360_dev_source_layer_preflight.sql` — expect 7/7 FOUND.
-6. Only then rerun the Warehouse360 validation pack (technical shakedown classification) and
-   update its evidence.
+5. Re-run `warehouse360_dev_source_object_validation.sql` — expect 7/7 FOUND.
+6. Only then deploy consumption views + run the Warehouse360 validation pack (technical shakedown
+   classification) and update its evidence.

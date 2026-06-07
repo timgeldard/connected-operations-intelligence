@@ -1,0 +1,59 @@
+# Unresolved SAP source gaps for the IOReporting data product.
+# Evidence basis: information_schema.columns of connected_plant_dev.sap (DEV, profile TG) and
+# connected_plant_uat.sap (UAT) — confirmed live 2026-06-07. DDIC (DD03L/DD04L/DD01L) is not
+# replicated in an accessible catalog, so the replicated schema is the ground truth.
+# These are SOURCE/replication gaps, not transformation bugs; none are remapped/fabricated.
+
+unresolved_sources:
+  - id: capacity_utilisation_kapa_fields
+    model: stg_capacity_utilisation / capacity_utilisation (silver/tables/reference.py)
+    expected_source: connected_plant_dev.sap.shiftparametersavailablecapacity_kapa
+    expected_fields: [DAFBI, DAFEI, PAUSA, BEGDA, ENDDA, KAPAZ, MEINH, OEFFZ, NORMA, RUEZT]
+    present_fields: [KAPAZ]
+    missing_fields: [DAFBI, DAFEI, PAUSA, BEGDA, ENDDA, MEINH, OEFFZ, NORMA, RUEZT]
+    evidence: "Live information_schema.columns — 9 of 10 expected fields absent in BOTH dev and uat sap.shiftparametersavailablecapacity_kapa."
+    candidate_real_fields: {PAUSA: PAUSE, MEINH: MEINS (KAKO), NORMA: AZNOR (KAKO), OEFFZ: "derive from BEGZT/ENDZT/PAUSE"}
+    available_alternatives: "KAKO (capacityheadersegment_kako, 77 cols incl. BEGZT/ENDZT/PAUSE/NGRAD/AZNOR/AZMAX/MEINS/KAPAR/WERKS) + KAPA shift intervals."
+    not_replicated: [CRHD, CRCA, KBED, KBEZ]
+    warehouse360_dependency: false
+    affects_uat: true
+    status: source-guarded (bronze_columns_exist); deferred functional redesign
+    decision_doc: data-products/io-reporting/source-contracts/sap/capacity_utilisation_source_decision.md
+
+  - id: work_centre_crhd_crtx_absent
+    model: work_centre (silver/tables/reference.py)
+    expected_source: [connected_plant_dev.sap.workcenterheader_crhd, connected_plant_dev.sap.workcentertext_crtx]
+    evidence: "Live: zero crhd/crtx tables in BOTH dev and uat sap (work-centre master not replicated)."
+    warehouse360_dependency: false
+    affects_uat: true
+    status: source-guarded (bronze_table_exists); not materialised until CRHD/CRTX replicated
+
+  - id: silver_fast_core_field_contract_mismatch
+    models: [stg_warehouse_transfer_order, stg_warehouse_transfer_requirement, stg_goods_movement, stg_batch_stock, stg_process_order_operation, stg_downtime_event, stg_pi_sheet_execution]
+    file: silver/tables/warehouse_fast.py (+ warehouse_flow / process_order / quality)
+    summary: "7 silver_fast staging flows fail analysis — they reference SAP columns absent from the replicated source tables, which are otherwise richly replicated."
+    # COMPLETE missing-field inventory (static audit of warehouse_fast.py vs live replicated schema,
+    # 2026-06-07; identical in dev and uat). Tables are richly replicated but miss these specific cols.
+    confirmed_missing_wh360_critical:
+      - {table: transferorderobjects_ltap, total_cols: 165, missing: [ANFME, ENMNG, ISPOS], model: stg_warehouse_transfer_order, note: "TO requested/confirmed quantity + item-position indicator"}
+      - {table: transferrequirementobjects_ltbp, total_cols: 52, missing: [ENQTY], model: stg_warehouse_transfer_requirement, note: "TR quantity"}
+      - {table: inventorymovement_mseg, total_cols: 214, missing: [VBELN], model: stg_goods_movement, note: "delivery/sales-doc reference"}
+      - {table: batchstock_mchb, total_cols: 44, missing: [AERECNO, AERUNID, MEINS], model: stg_batch_stock, note: "AERECNO/AERUNID are CDC sequencing metadata (other tables have them); MEINS base UoM"}
+    fully_present_tables: [transferorderobjects_ltak, transferrequirementobjects_ltbk, materialdocument_mkpf]
+    non_critical_flows_also_failing: [stg_process_order_operation, stg_downtime_event, stg_pi_sheet_execution]  # process_order.py; NOT WH360-source feeders (per gold dependency trace); columns not audited
+    evidence: "Live information_schema.columns 2026-06-07 (dev + uat identical). warehouse360_dev_source_object_validation.sql confirms 0/7 gold source objects (gold layer absent)."
+    nature: "Core TRANSACTIONAL/structural fields (TO/TR quantities, item position, delivery ref, CDC sequencing) — NOT optional/nullable. Likely incorrect field names in the silver code (e.g. LTAP source-target quantities are VSOLA/VSOLM/NSOLA, not ANFME) OR fields excluded from the curated replication. Requires functional/data-team reconciliation; NOT remapped or nulled here (do not invent fields)."
+    warehouse360_dependency: true   # warehouse_transfer_order is read by ALL 5 WH360-source gold modules; transfer_requirement/goods_movement/batch_stock feed transfer_requirement_backlog/stock_expiry_risk/exceptions
+    affects_uat: true
+    cannot_source_guard: "These 4 flows are WH360-critical — source-guarding them would delete WH360 source objects. Cannot typed-null core quantities (would fabricate business data)."
+    status: BLOCKER — silver_fast does not complete; WH360 gold layer cannot materialise in DEV until the field contract is reconciled with the replicated SAP schema (data-team / functional task).
+
+  - id: storagebin_lagp_attribute_columns
+    model: stg_storage_bin / storage_bin (silver/tables/warehouse_reference.py)
+    expected_source: connected_plant_dev.sap.storagebin_lagp
+    missing_fields: [LGBKT, LGPBE, MAXGW, BRGEW, MAXEI, ANZRE]
+    evidence: "Live: 6 descriptive bin-attribute columns absent in BOTH dev and uat sap.storagebin_lagp."
+    handling: "Optional descriptive attributes emitted as typed NULL via col_or_null (storage_bin still materialises). bin_type (LGBKT) candidate real field LPTYP — NOT remapped pending data-team confirmation."
+    warehouse360_dependency: "indirect — bin_type feeds gold_bin_occupancy grouping dimension; bin COUNTS / WH360 overview KPIs unaffected."
+    affects_uat: true
+    status: tolerated (typed NULL); storage_bin materialised
