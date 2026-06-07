@@ -463,3 +463,38 @@ are separate, pre-existing, out-of-scope defects to resolve next.
    from `inspection_qals`; source-guard or confirm replication. [QM domain]
 3. After gold builds: `gold_security_dev.sql` + `gold_serving_views_dev.sql` →
    `warehouse360_dev_source_object_validation.sql` (expect 7/7) → WH360 consumption views + pack.
+
+## Update 2026-06-07 (l) — plant stage gate (Phase 1): code-verified + effect-measured; re-materialisation deferred
+
+Implemented the repo-wide Bronze→Silver plant stage gate (Phase 1 — WM/MM reference set). Canonical
+gate: `site_config_plant` (active C061) + `site_config_warehouse` (208→C061). Helpers in
+`silver/_plant_gate.py`; enforced on goods_movement + batch_stock (direct WERKS) and
+warehouse_transfer_order + warehouse_transfer_requirement (warehouse gate + governed `plant_id`).
+
+**Verification status (honest):**
+- ✅ Code: compiles, ruff clean, `bundle validate -t dev` OK, deploys, and the silver_fast update
+  **passed DLT graph analysis** with the gate active — the conf-driven config read resolved and the
+  stream-static gate joins are valid (no fail-loud error, no UNRESOLVED). Gate wiring is correct.
+- ✅ CI guard `check_silver_stage_gate_coverage.py`: 40/40 outputs classified; ENFORCED files call the
+  helper.
+- ✅ Gate EFFECT measured directly (gate predicate applied to the current all-plant Silver, 2026-06-07):
+
+  | Flow | gate | in-gate (post-gate) | total (pre-gate) |
+  |---|---|---|---|
+  | goods_movement | plant C061 | 315,540 | 10,761,727 |
+  | batch_stock | plant C061 | 646,702 | 11,499,051 |
+  | warehouse_transfer_order | wh 208 | 393,612 | 13,485,287 |
+  | warehouse_transfer_requirement | wh 208 | 375,822 | 15,934,046 |
+
+  DEV bronze is multi-plant (P223/P509/P705/…); the gate scopes operational Silver to C061/208 only
+  (~3–6%). **LGNUM≠WERKS confirmed:** warehouse 208 has 393,612 TOs but only 369,694 carry WERKS=C061
+  (23,918 gap) — hence WM flows gate by warehouse, not raw WERKS, and add governed `plant_id`.
+- ⏸ **Re-materialisation DEFERRED (not yet runtime-enforced in the materialised tables).** The silver
+  tables still hold **pre-gate** (all-plant) data — a cold full silver_fast rerun is dominated by the
+  heavy **ungated** `process_order` backfill (all plants), so the run was cancelled. The leak-checks in
+  `validation/silver_stage_gate_validation.sql` §3 will only pass after re-materialisation. Re-run on a
+  normal scheduled silver_fast cycle; note that gating `process_order` (Phase 2) makes reruns cheap
+  (C061-only), removing this bottleneck.
+
+**Warehouse360 readiness: still NOT claimed.** Gold/WH360 source validation remain blocked by the prior
+round's pre-existing gold duplicate-table + QM defects, independent of this gating work.

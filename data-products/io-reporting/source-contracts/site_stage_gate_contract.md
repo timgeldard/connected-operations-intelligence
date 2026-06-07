@@ -2,6 +2,14 @@
 
 **Status:** Phase 1 (foundation + WM/MM reference enforcement). Author: data-product architecture, 2026-06-07.
 
+> **DEV verification status (2026-06-07):** the gate is code-deployed and **passes DLT graph analysis**
+> (config read + gate joins resolve, no fail-loud error); the CI guard passes (40/40 classified); the
+> gate **effect** is measured (see `ioreporting-dev-deployment-profile.md` §(l) — C061/208 is ~3–6% of
+> bronze). **Re-materialisation of the gated tables in DEV is DEFERRED** — a cold full silver_fast rerun
+> is dominated by the heavy *ungated* `process_order` backfill, so the leak-checks
+> (`validation/silver_stage_gate_validation.sql` §3) pass only after the next full run. Gating
+> `process_order` (Phase 2) removes that bottleneck.
+
 ## Principle
 
 - **Bronze is raw and unfiltered.** No plant/site filtering is ever applied to Bronze.

@@ -4,6 +4,30 @@ This runbook outlines the operational process to onboard a new plant, warehouse,
 
 ---
 
+## 0. Stage-gate enforcement (Bronze → Silver) — read first
+
+IOReporting enforces a **plant/site stage gate** between Bronze and Silver (canonical contract:
+[`source-contracts/site_stage_gate_contract.md`](../source-contracts/site_stage_gate_contract.md)):
+
+- **Bronze is raw and unfiltered** — every plant is replicated.
+- **Silver is stage-gated** — operational Bronze → Silver flows are scoped to the plants/warehouses in
+  the governed gate (`site_config_plant` + `site_config_warehouse`) **before** entering Silver. A plant
+  not in the gate does not appear in Silver, repo-wide (not only Warehouse360).
+- **Gold and serving views inherit Silver scope** — they do not re-open the gate.
+- **Secured / serving views handle user access, NOT onboarding inclusion** — row-level security and the
+  plant gate are independent; security never substitutes for the stage gate.
+- **A new plant must pass the stage gate before inclusion.** Onboarding = activating it in the gate
+  config (below). No transformation-code change, no hard-coded plant lists.
+- **DEV is a technical shakedown** — currently one onboarded plant, `C061` (warehouse `208`); DEV bronze
+  is multi-plant, so the gate is a real filter. **UAT is the first full business validation.**
+
+Enforcement rolls out in phases (see the contract + `source-contracts/silver_stage_gate_inventory.yml`,
+which classifies every Silver output ENFORCED / EXEMPT / BLOCKED / NEEDS_MAPPING). Phase 1 enforces the
+WM/MM reference flows; the inventory tracks the rest. The CI guard
+`scripts/ci/check_silver_stage_gate_coverage.py` fails if any Silver output is unclassified.
+
+---
+
 ## 1. The Rollout Lifecycle
 
 Plants onboard through a six-stage lifecycle:

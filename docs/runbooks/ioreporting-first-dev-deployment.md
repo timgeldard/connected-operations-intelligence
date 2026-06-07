@@ -8,6 +8,16 @@ governed Gold source layer that Warehouse360 depends on. Decision context:
 > DEV/UAT. Do not promote Warehouse360 contracts and do not claim DEV app
 > readiness until the full Warehouse360 pack passes on materialised objects.
 
+> **Stage gate (Bronze → Silver).** Bronze is raw; operational Silver is scoped to
+> plants/warehouses in the governed gate (`site_config_plant` + `site_config_warehouse`)
+> before entering Silver — repo-wide. Gold/serving inherit Silver scope; user security is
+> separate. DEPLOY ORDER: run the **slow** pipeline first (it builds the gate config tables)
+> before starting the continuous **fast** pipeline (which reads them fail-loud) — same
+> dependency as `recipe_process_line`. DEV onboards one plant (`C061`/wh `208`); DEV bronze
+> is multi-plant so the gate really filters. Contract:
+> `data-products/io-reporting/source-contracts/site_stage_gate_contract.md`; verify with
+> `validation/silver_stage_gate_validation.sql`.
+
 ## Environment
 
 | Field | Value |
