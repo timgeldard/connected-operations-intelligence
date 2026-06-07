@@ -45,17 +45,25 @@ tests/                            # Unit tests for silver helpers and gold table
 
 ```bash
 # Validate bundle config
+databricks bundle validate -t dev --profile TG            # DEV-native: reads connected_plant_dev.sap (default target)
 databricks bundle validate -t dev_uat_source --profile DEFAULT
 databricks bundle validate -t dev_sample --profile DEFAULT
 databricks bundle validate -t uat --profile DEFAULT
 databricks bundle validate -t prod --profile DEFAULT
 
 # Deploy to specific targets
+databricks bundle deploy -t dev --profile TG --var notification_email=<dl>   # DEV-native (default)
 databricks bundle deploy -t dev_uat_source --profile DEFAULT
 databricks bundle deploy -t dev_sample --profile DEFAULT
 databricks bundle deploy -t uat --profile DEFAULT
 databricks bundle deploy -t prod --profile DEFAULT
 ```
+
+> The `dev` target (profile `TG`) is the DEV-native deployment: it reads the real
+> `connected_plant_dev.sap` source and writes the governed serving layer to
+> `connected_plant_dev.gold_io_reporting`. `dev_uat_source` requires a workspace
+> where `connected_plant_uat` is bound (not the DEV workspace). See
+> `docs/architecture/adr-ioreporting-dev-deployment-baseline.md`.
 
 The Silver pipelines are configured with different update modes (fast is continuous, slow and quality are triggered). The Gold pipeline is triggered (batch) mode.
 

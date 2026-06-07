@@ -23,9 +23,33 @@ resources:
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting
 
+      # Explicit per-file libraries (mirrors the silver pipelines' convention). Databricks
+      # pipeline settings reject a single-'*' glob ('../gold/*.py'), and a recursive
+      # '../gold/**' would also pull in non-source files (design_spec.md) and the two
+      # standalone JOB entrypoints under gold/recon and gold/snapshots. Listing the
+      # top-level Gold DLT modules explicitly preserves the original '*.py' semantics
+      # exactly. Add new top-level gold/*.py modules here.
       libraries:
-        - glob:
-            include: ../gold/*.py
+        - file:
+            path: ../gold/dlt_gold_pipeline.py
+        - file:
+            path: ../gold/_shared.py
+        - file:
+            path: ../gold/freshness.py
+        - file:
+            path: ../gold/readiness_validation.py
+        - file:
+            path: ../gold/servicenow.py
+        - file:
+            path: ../gold/warehouse_exceptions.py
+        - file:
+            path: ../gold/warehouse_flow_gold.py
+        - file:
+            path: ../gold/warehouse_inbound_gold.py
+        - file:
+            path: ../gold/warehouse_kpi_snapshot.py
+        - file:
+            path: ../gold/warehouse_kpis.py
 
       # Triggered pipeline, no restart_window needed as it runs to completion
 
