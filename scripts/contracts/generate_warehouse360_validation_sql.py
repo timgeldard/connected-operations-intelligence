@@ -87,8 +87,8 @@ def generate_sql_for_env(env: str, config: dict) -> str:
                 f"SELECT\n"
                 f"  '{view_name}' AS view_name,\n"
                 f"  COUNT(*) AS total_rows,\n"
-                f"  COUNT(DISTINCT CONCAT_WS('||', {pk_cols_str})) AS distinct_pk_rows,\n"
-                f"  COUNT(*) - COUNT(DISTINCT CONCAT_WS('||', {pk_cols_str})) AS duplicate_pk_rows\n"
+                f"  COUNT(DISTINCT struct({pk_cols_str})) AS distinct_pk_rows,\n"
+                f"  COUNT(*) - COUNT(DISTINCT struct({pk_cols_str})) AS duplicate_pk_rows\n"
                 f"FROM {full_view_name};"
             )
 

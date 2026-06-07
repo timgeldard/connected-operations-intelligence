@@ -69,9 +69,9 @@ def test_generate_sql_correct_catalog_schema(sample_config):
 def test_generate_sql_primary_key_duplicate_check(sample_config):
     sql = generate_sql_for_env("dev", sample_config)
     # Overview PK is plant_id, snapshot_ts
-    assert "COUNT(DISTINCT CONCAT_WS('||', plant_id, snapshot_ts)) AS distinct_pk_rows" in sql
+    assert "COUNT(DISTINCT struct(plant_id, snapshot_ts)) AS distinct_pk_rows" in sql
     # Inbound PK is plant_id, po_id, po_item
-    assert "COUNT(DISTINCT CONCAT_WS('||', plant_id, po_id, po_item)) AS distinct_pk_rows" in sql
+    assert "COUNT(DISTINCT struct(plant_id, po_id, po_item)) AS distinct_pk_rows" in sql
 
 
 def test_generate_sql_nullability_checks(sample_config):

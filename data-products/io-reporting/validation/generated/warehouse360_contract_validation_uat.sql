@@ -21,8 +21,8 @@ FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_overview;
 SELECT
   'vw_consumption_warehouse360_overview' AS view_name,
   COUNT(*) AS total_rows,
-  COUNT(DISTINCT CONCAT_WS('||', plant_id, snapshot_ts)) AS distinct_pk_rows,
-  COUNT(*) - COUNT(DISTINCT CONCAT_WS('||', plant_id, snapshot_ts)) AS duplicate_pk_rows
+  COUNT(DISTINCT struct(plant_id, snapshot_ts)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(plant_id, snapshot_ts)) AS duplicate_pk_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_overview;
 
 SELECT
@@ -62,8 +62,8 @@ FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_inbound_b
 SELECT
   'vw_consumption_warehouse360_inbound_backlog' AS view_name,
   COUNT(*) AS total_rows,
-  COUNT(DISTINCT CONCAT_WS('||', plant_id, po_id, po_item)) AS distinct_pk_rows,
-  COUNT(*) - COUNT(DISTINCT CONCAT_WS('||', plant_id, po_id, po_item)) AS duplicate_pk_rows
+  COUNT(DISTINCT struct(plant_id, po_id, po_item)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(plant_id, po_id, po_item)) AS duplicate_pk_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_inbound_backlog;
 
 SELECT
@@ -97,8 +97,8 @@ FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_outbound_
 SELECT
   'vw_consumption_warehouse360_outbound_backlog' AS view_name,
   COUNT(*) AS total_rows,
-  COUNT(DISTINCT CONCAT_WS('||', plant_id, delivery_id)) AS distinct_pk_rows,
-  COUNT(*) - COUNT(DISTINCT CONCAT_WS('||', plant_id, delivery_id)) AS duplicate_pk_rows
+  COUNT(DISTINCT struct(plant_id, delivery_id)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(plant_id, delivery_id)) AS duplicate_pk_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_outbound_backlog;
 
 SELECT
@@ -134,8 +134,8 @@ FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_staging_w
 SELECT
   'vw_consumption_warehouse360_staging_workload' AS view_name,
   COUNT(*) AS total_rows,
-  COUNT(DISTINCT CONCAT_WS('||', plant_id, order_id, reservation_no, batch_id)) AS distinct_pk_rows,
-  COUNT(*) - COUNT(DISTINCT CONCAT_WS('||', plant_id, order_id, reservation_no, batch_id)) AS duplicate_pk_rows
+  COUNT(DISTINCT struct(plant_id, order_id, reservation_no, batch_id)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(plant_id, order_id, reservation_no, batch_id)) AS duplicate_pk_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_staging_workload;
 
 SELECT
@@ -172,8 +172,8 @@ FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_stock_exc
 SELECT
   'vw_consumption_warehouse360_stock_exceptions' AS view_name,
   COUNT(*) AS total_rows,
-  COUNT(DISTINCT CONCAT_WS('||', plant_id, material_id, batch_id, storage_loc, exception_type)) AS distinct_pk_rows,
-  COUNT(*) - COUNT(DISTINCT CONCAT_WS('||', plant_id, material_id, batch_id, storage_loc, exception_type)) AS duplicate_pk_rows
+  COUNT(DISTINCT struct(plant_id, material_id, batch_id, storage_loc, exception_type)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(plant_id, material_id, batch_id, storage_loc, exception_type)) AS duplicate_pk_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_stock_exceptions;
 
 SELECT
@@ -207,8 +207,8 @@ FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_shortfall
 SELECT
   'vw_consumption_warehouse360_shortfalls' AS view_name,
   COUNT(*) AS total_rows,
-  COUNT(DISTINCT CONCAT_WS('||', plant_id, material_id)) AS distinct_pk_rows,
-  COUNT(*) - COUNT(DISTINCT CONCAT_WS('||', plant_id, material_id)) AS duplicate_pk_rows
+  COUNT(DISTINCT struct(plant_id, material_id)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(plant_id, material_id)) AS duplicate_pk_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_shortfalls;
 
 SELECT
@@ -246,8 +246,8 @@ FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_im_wm_rec
 SELECT
   'vw_consumption_warehouse360_im_wm_reconciliation' AS view_name,
   COUNT(*) AS total_rows,
-  COUNT(DISTINCT CONCAT_WS('||', plant_id, material_id, batch_id, storage_loc, bin_id, exception_type)) AS distinct_pk_rows,
-  COUNT(*) - COUNT(DISTINCT CONCAT_WS('||', plant_id, material_id, batch_id, storage_loc, bin_id, exception_type)) AS duplicate_pk_rows
+  COUNT(DISTINCT struct(plant_id, material_id, batch_id, storage_loc, bin_id, exception_type)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(plant_id, material_id, batch_id, storage_loc, bin_id, exception_type)) AS duplicate_pk_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_im_wm_reconciliation;
 
 SELECT
