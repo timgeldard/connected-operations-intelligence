@@ -27,7 +27,7 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-from gold._shared import get_silver_schema, get_spark_session
+from gold._shared import get_silver_schema, get_spark_session, table_exists
 
 # has_watermark=False → a seed/config table with no _replicated_at (reported STATIC, never STALE).
 FRESHNESS_CONTRACTS = [
@@ -83,7 +83,7 @@ def gold_data_freshness_status():
                 F.lit(None).cast(TimestampType()).alias("latest_replicated_at"),
                 F.lit("STATIC").alias("_base_status"),
             )
-        elif not spark.catalog.tableExists(fq):
+        elif not table_exists(spark, fq):
             q = spark.range(1).select(
                 F.lit(table_name).alias("table_name"),
                 F.lit(None).cast(TimestampType()).alias("latest_replicated_at"),

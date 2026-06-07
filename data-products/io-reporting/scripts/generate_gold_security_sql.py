@@ -27,6 +27,9 @@ ENVIRONMENTS = {
         "gold_schema": "gold_io_reporting",
         "consumer_group": "users",
         "security_model": None,  # dev: no filter — return all rows (no published_<env>.security available)
+        # dev_shakedown: HU-dependent Gold tables are not materialised (central_services lacks
+        # handlingunit_vekp/vepo), so their secured views are skipped — see databricks.yml.
+        "enable_hu_reconciliation": False,
         "filename": "resources/sql/gold_security_dev.sql",
     },
     "uat": {
@@ -34,6 +37,7 @@ ENVIRONMENTS = {
         "gold_schema": "gold_io_reporting",
         "consumer_group": "users",
         "security_model": "published_uat.security.model",
+        "enable_hu_reconciliation": True,
         "filename": "resources/sql/gold_security_uat.sql",
     },
     "prod": {
@@ -41,9 +45,15 @@ ENVIRONMENTS = {
         "gold_schema": "gold_io_reporting",
         "consumer_group": "users",
         "security_model": "published_prod.security.model",
+        "enable_hu_reconciliation": True,
         "filename": "resources/sql/gold_security_prod.sql",
     },
 }
+
+# Gold tables that depend on the handling-unit (HU) silver source. Not materialised when
+# enable_hu_reconciliation is false (dev_shakedown), so their secured views/REVOKEs are skipped.
+# Keep in sync with the hu_reconciliation_enabled() gating in gold/*.py and silver/tables/inbound.py.
+HU_DEPENDENT_GOLD_TABLES = {"gold_hu_reconciliation", "gold_handling_unit_summary"}
 
 # Every plant-scoped Gold materialized view (all carry a plant_code column). Keep in sync
 # with the gold/*.py table definitions.
@@ -238,13 +248,24 @@ def generate_sql():
         group = cfg["consumer_group"]
         where = _security_filter(cfg["security_model"])
 
+        # In dev_shakedown, HU-dependent Gold tables are not built, so skip their secured views.
+        env_tables = [
+            t for t in GOLD_TABLES
+            if cfg["enable_hu_reconciliation"] or t not in HU_DEPENDENT_GOLD_TABLES
+        ]
+
         sql = TEMPLATE.format(
             env_upper=env.upper(), env_lower=env,
             catalog=catalog, gold_schema=cfg["gold_schema"],
         )
+        if not cfg["enable_hu_reconciliation"]:
+            sql += (
+                "\n-- NOTE: enable_hu_reconciliation=false — HU-dependent secured views "
+                f"({', '.join(sorted(HU_DEPENDENT_GOLD_TABLES))}) are intentionally omitted.\n"
+            )
 
         sql += "\n-- ── Secured views + consumer grants ──\n"
-        for table in GOLD_TABLES:
+        for table in env_tables:
             view = f"{gold}.{table}_secured"
             base = f"{gold}.{table}"
             if table in CUSTOM_SELECTS:
@@ -272,7 +293,7 @@ def generate_sql():
             "-- Revokes direct SELECT on the un-trimmed base Gold tables from the consumer group, so\n"
             "-- plant-scoped users can only read the row-filtered *_secured views (ADR 012).\n\n"
         )
-        for table in GOLD_TABLES:
+        for table in env_tables:
             harden += f"REVOKE SELECT ON TABLE {gold}.{table} FROM `{group}`;\n"
         harden_fn = os.path.join(os.path.dirname(cfg["filename"]), f"gold_security_harden_{env}.sql")
         with open(harden_fn, "w", encoding="utf-8", newline="\n") as f:

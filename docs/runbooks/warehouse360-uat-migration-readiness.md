@@ -2,10 +2,24 @@
 
 This runbook defines the gates that must pass before Warehouse360 governed contracts move from DEV app testing toward UAT migration planning.
 
+## UAT is the first full-validation environment
+
+DEV is a **technical shakedown only** (`dev_shakedown`, `enable_hu_reconciliation=false`)
+— see ADR `docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`.
+**UAT runs in `full_validation` mode** (`enable_hu_reconciliation=true`) and is the
+first environment where HU reconciliation and business validation occur.
+
+Before the gates below, run **`validation/ioreporting_uat_full_validation_preflight.sql`**:
+it **requires** the full `published_uat.central_services` set, including
+`handlingunit_vekp` and `handlingunit_vepo` — UAT must not proceed if either HU
+table is missing. A green DEV shakedown alone does **not** satisfy any UAT gate.
+
 ## Non-Negotiable Gates
 
 | Gate | Required Evidence |
 |---|---|
+| UAT full-validation preflight | `ioreporting_uat_full_validation_preflight.sql` passes — all reference tables present **incl. HU** (`handlingunit_vekp`/`vepo`). |
+| HU reconciliation | `gold_hu_reconciliation` / `gold_handling_unit_summary` materialise and reconcile in UAT (excluded in DEV shakedown). |
 | DEV source object validation | All active Wave 1 governed source objects are `FOUND`. |
 | DEV source column validation | All adapter-selected and contract-required columns are `FOUND` or have accepted documented exceptions. |
 | Consumption view deployment | Active Wave 1 DEV views compile in `connected_plant_dev.gold_io_reporting`. |

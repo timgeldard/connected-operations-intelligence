@@ -30,6 +30,7 @@ from gold._shared import (
     get_silver_schema,
     get_spark_session,
     gold_table_args,
+    hu_reconciliation_enabled,
     table_exists,
 )
 
@@ -970,62 +971,67 @@ def gold_movement_reconciliation():
 
 
 # ── 12. HU RECONCILIATION ─────────────────────────────────────────────────────
+# Only materialised when handling-unit reconciliation is enabled (full_validation).
+# In dev_shakedown the silver handling_unit table is absent (central_services lacks
+# handlingunit_vekp/vepo), so this and gold_handling_unit_summary are not in the graph.
 
-@dlt.table(**gold_table_args(
-    comment=(
-        "Handling-unit packed quantity reconciled to WM quant stock by plant × warehouse × "
-        "material × batch. Supports HU/batch traceability checks."
-    ),
-    cluster_by=["plant_code", "warehouse_number"],
-))
-def gold_hu_reconciliation():
-    spark = get_spark_session()
-    ss = get_silver_schema(spark)
+if hu_reconciliation_enabled(get_spark_session()):
 
-    hu = spark.read.table(f"{ss}.handling_unit")
-    storage_bin = spark.read.table(f"{ss}.storage_bin")
+    @dlt.table(**gold_table_args(
+        comment=(
+            "Handling-unit packed quantity reconciled to WM quant stock by plant × warehouse × "
+            "material × batch. Supports HU/batch traceability checks."
+        ),
+        cluster_by=["plant_code", "warehouse_number"],
+    ))
+    def gold_hu_reconciliation():
+        spark = get_spark_session()
+        ss = get_silver_schema(spark)
 
-    hu_stock = (
-        hu
-        .withColumn("base_uom", F.col("packed_uom"))
-        .groupBy("plant_code", "warehouse_number", "material_code", "batch_number", "base_uom")
-        .agg(
-            F.count_distinct("handling_unit_number").alias("handling_unit_count"),
-            F.count(F.lit(1)).alias("handling_unit_item_count"),
-            F.coalesce(F.sum("packed_quantity"), F.lit(0.0)).alias("hu_packed_quantity"),
-            F.count_distinct("sscc").alias("sscc_count"),
+        hu = spark.read.table(f"{ss}.handling_unit")
+        storage_bin = spark.read.table(f"{ss}.storage_bin")
+
+        hu_stock = (
+            hu
+            .withColumn("base_uom", F.col("packed_uom"))
+            .groupBy("plant_code", "warehouse_number", "material_code", "batch_number", "base_uom")
+            .agg(
+                F.count_distinct("handling_unit_number").alias("handling_unit_count"),
+                F.count(F.lit(1)).alias("handling_unit_item_count"),
+                F.coalesce(F.sum("packed_quantity"), F.lit(0.0)).alias("hu_packed_quantity"),
+                F.count_distinct("sscc").alias("sscc_count"),
+            )
         )
-    )
 
-    wm_stock = (
-        storage_bin
-        .filter(F.col("quant_number").isNotNull())
-        .groupBy("plant_code", "warehouse_number", "material_code", "batch_number", "base_uom")
-        .agg(
-            F.count_distinct("quant_number").alias("wm_quant_count"),
-            F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("wm_quantity"),
+        wm_stock = (
+            storage_bin
+            .filter(F.col("quant_number").isNotNull())
+            .groupBy("plant_code", "warehouse_number", "material_code", "batch_number", "base_uom")
+            .agg(
+                F.count_distinct("quant_number").alias("wm_quant_count"),
+                F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("wm_quantity"),
+            )
         )
-    )
 
-    keys = ["plant_code", "warehouse_number", "material_code", "batch_number", "base_uom"]
-    return (
-        hu_stock.join(wm_stock, keys, "full")
-        .withColumn("handling_unit_count", F.coalesce(F.col("handling_unit_count"), F.lit(0)))
-        .withColumn("handling_unit_item_count", F.coalesce(F.col("handling_unit_item_count"), F.lit(0)))
-        .withColumn("sscc_count", F.coalesce(F.col("sscc_count"), F.lit(0)))
-        .withColumn("wm_quant_count", F.coalesce(F.col("wm_quant_count"), F.lit(0)))
-        .withColumn("hu_packed_quantity", F.coalesce(F.col("hu_packed_quantity"), F.lit(0.0)))
-        .withColumn("wm_quantity", F.coalesce(F.col("wm_quantity"), F.lit(0.0)))
-        .withColumn("delta_quantity", F.col("wm_quantity") - F.col("hu_packed_quantity"))
-        .withColumn("abs_delta_quantity", F.abs(F.col("delta_quantity")))
-        .withColumn(
-            "hu_reconciliation_status",
-            F.when(F.col("abs_delta_quantity") <= F.lit(0.001), F.lit("MATCHED"))
-            .when(F.col("handling_unit_count") == 0, F.lit("WM_WITHOUT_HU"))
-            .when(F.col("wm_quant_count") == 0, F.lit("HU_WITHOUT_WM_QUANT"))
-            .otherwise(F.lit("QUANTITY_VARIANCE")),
+        keys = ["plant_code", "warehouse_number", "material_code", "batch_number", "base_uom"]
+        return (
+            hu_stock.join(wm_stock, keys, "full")
+            .withColumn("handling_unit_count", F.coalesce(F.col("handling_unit_count"), F.lit(0)))
+            .withColumn("handling_unit_item_count", F.coalesce(F.col("handling_unit_item_count"), F.lit(0)))
+            .withColumn("sscc_count", F.coalesce(F.col("sscc_count"), F.lit(0)))
+            .withColumn("wm_quant_count", F.coalesce(F.col("wm_quant_count"), F.lit(0)))
+            .withColumn("hu_packed_quantity", F.coalesce(F.col("hu_packed_quantity"), F.lit(0.0)))
+            .withColumn("wm_quantity", F.coalesce(F.col("wm_quantity"), F.lit(0.0)))
+            .withColumn("delta_quantity", F.col("wm_quantity") - F.col("hu_packed_quantity"))
+            .withColumn("abs_delta_quantity", F.abs(F.col("delta_quantity")))
+            .withColumn(
+                "hu_reconciliation_status",
+                F.when(F.col("abs_delta_quantity") <= F.lit(0.001), F.lit("MATCHED"))
+                .when(F.col("handling_unit_count") == 0, F.lit("WM_WITHOUT_HU"))
+                .when(F.col("wm_quant_count") == 0, F.lit("HU_WITHOUT_WM_QUANT"))
+                .otherwise(F.lit("QUANTITY_VARIANCE")),
+            )
         )
-    )
 
 
 # ── 13. PHYSICAL INVENTORY RECONCILIATION ─────────────────────────────────────
@@ -1100,24 +1106,28 @@ def gold_reconciliation_alerts():
         )
     )
 
-    hu = (
-        dlt.read("gold_hu_reconciliation")
-        .filter(F.col("hu_reconciliation_status") != "MATCHED")
-        .select(
-            F.concat_ws(
-                "|",
-                F.lit("HU"), "plant_code", "warehouse_number", "material_code",
-                "batch_number", "base_uom", "hu_reconciliation_status",
-            ).alias("alert_key"),
-            F.lit("HU_RECONCILIATION").alias("alert_type"),
-            F.lit("P3").alias("alert_priority"),
-            "plant_code", "warehouse_number", "material_code", "batch_number",
-            F.col("hu_reconciliation_status").alias("reason_code"),
-            F.col("delta_quantity"),
-            F.lit(None).cast("double").alias("delta_value"),
-            F.to_json(F.struct("handling_unit_count", "wm_quant_count", "sscc_count")).alias("alert_context_json"),
+    # HU alerts only when HU reconciliation is enabled (gold_hu_reconciliation is only
+    # defined in full_validation; absent in dev_shakedown).
+    hu = None
+    if hu_reconciliation_enabled(get_spark_session()):
+        hu = (
+            dlt.read("gold_hu_reconciliation")
+            .filter(F.col("hu_reconciliation_status") != "MATCHED")
+            .select(
+                F.concat_ws(
+                    "|",
+                    F.lit("HU"), "plant_code", "warehouse_number", "material_code",
+                    "batch_number", "base_uom", "hu_reconciliation_status",
+                ).alias("alert_key"),
+                F.lit("HU_RECONCILIATION").alias("alert_type"),
+                F.lit("P3").alias("alert_priority"),
+                "plant_code", "warehouse_number", "material_code", "batch_number",
+                F.col("hu_reconciliation_status").alias("reason_code"),
+                F.col("delta_quantity"),
+                F.lit(None).cast("double").alias("delta_value"),
+                F.to_json(F.struct("handling_unit_count", "wm_quant_count", "sscc_count")).alias("alert_context_json"),
+            )
         )
-    )
 
     physical_inventory = (
         dlt.read("gold_physical_inventory_recon")
@@ -1141,7 +1151,10 @@ def gold_reconciliation_alerts():
         )
     )
 
-    return stock.unionByName(hu).unionByName(physical_inventory)
+    result = stock.unionByName(physical_inventory)
+    if hu is not None:
+        result = result.unionByName(hu)
+    return result
 
 
 # ── 15. STOCK RECONCILIATION EXCEPTIONS V2 ────────────────────────────────────

@@ -17,12 +17,24 @@ governed Gold source layer that Warehouse360 depends on. Decision context:
 | SQL warehouse (validation) | `connected_plant_dev`, id `8fae28f1808dbf75` (serverless PRO) |
 | Target catalog | `connected_plant_dev` |
 | Source schema | `connected_plant_dev.sap` (131 SAP tables) |
-| Silver schema | `connected_plant_dev.silver_dev` |
+| Reference schema | `published_dev.central_services` (externally owned; no HU tables) |
+| Silver schema | `connected_plant_dev.silver_io_reporting` |
 | Governed serving schema | `connected_plant_dev.gold_io_reporting` |
+| Mode | `dev_shakedown` · `enable_hu_reconciliation=false` (technical shakedown only) |
 | Bundle | `data-products/io-reporting/databricks.yml`, target `dev` |
 | Notification email | passed via `--var notification_email=<dl>` (no default) |
 
 Run all `databricks bundle` commands from `data-products/io-reporting/`.
+
+> **Pipeline Python packaging (why imports work at runtime).** The entrypoints use absolute
+> imports (`import silver.tables.*`, `from gold._shared import`). Each pipeline editable-installs
+> the synced bundle root via `environment.dependencies: [--editable ${workspace.file_path}]`
+> (backed by `[build-system]` + `packages.find` in the bundle-root `pyproject.toml` and the
+> `__init__.py` markers) so `silver`/`gold` are importable in the serverless environment.
+> Without this the run fails with `ModuleNotFoundError: No module named 'silver'`. Guarded by
+> `scripts/ci/check_pipeline_package_imports.py`. **Caveat:** this covers the four *pipelines*
+> only — the *jobs* (`gold_refresh_job`, `reconciliation`, `warehouse_snapshot`) need the same
+> editable install on their task environments before they can run (separate follow-up).
 
 ## Deployment map
 
@@ -50,15 +62,18 @@ Reference & config tables the pipelines depend on:
 - `resources/sql/process_order_staging_reference_mapping_dev.sql`
 - `resources/sql/row_filter_dev.sql` (DEV applies no row filter — see generator)
 
-> ⛔ **KNOWN BLOCKER (central_services).** `sample_central_services_dev.sql`
-> currently copies from `published_uat.central_services.*`, but `published_uat`
-> is **not bound in the DEV workspace**. The DEV-native source is
-> `published_dev.central_services` (present, 120 tables) — but it is **missing
-> `handlingunit_vekp` and `handlingunit_vepo`** (9 of 11 needed tables present).
-> Before the Silver reference pipeline can run in DEV, the data team must decide:
-> source the 2 HU tables into `published_dev`, or scope HU reconciliation out of
-> the DEV baseline (then repoint the seed to `published_dev`). Until then,
-> steps 4–8 below cannot complete and Warehouse360 stays blocked.
+> ✅ **RESOLVED via dev_shakedown mode.** `central_services` is externally owned;
+> `published_dev.central_services` exists (120 tables) but lacks the HU tables
+> `handlingunit_vekp`/`vepo` (9 of 11 needed present). Rather than seed from the
+> unreachable `published_uat`, the `dev` target now reads reference data directly
+> from `published_dev.central_services` and runs in **`dev_shakedown`** mode
+> (`enable_hu_reconciliation=false`), so the HU-dependent models are **not built**
+> and the missing HU tables do not block the non-HU Silver/Gold shakedown. The
+> `sample_central_services_dev.sql` seed is therefore **not required** for the
+> `dev` target. HU reconciliation is validated in UAT only. See ADR
+> `docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`.
+> Run `validation/ioreporting_dev_shakedown_preflight.sql` first to confirm the
+> non-HU reference tables are present.
 
 ## Execution order
 
@@ -67,8 +82,22 @@ Reference & config tables the pipelines depend on:
 databricks catalogs list -p TG          # confirm connected_plant_dev is bound
 databricks schemas  list connected_plant_dev -p TG   # confirm 'sap' exists
 ```
-Run `validation/warehouse360_dev_source_layer_preflight.sql` on warehouse
-`8fae28f1808dbf75` — expect `gold_io_reporting` MISSING and 0/7 objects on first pass.
+Run `validation/ioreporting_dev_shakedown_preflight.sql` on warehouse
+`8fae28f1808dbf75` — expect SAP + `published_dev.central_services` + all 9 non-HU
+reference tables present (HU tables ABSENT is OK in shakedown). Then
+`validation/ioreporting_dev_source_schema_preflight.sql` — confirms required SAP
+source tables/columns exist and flags the tolerated gaps (CRHD tables → `work_centre`
+not built; `storagebin_lagp` LGBKT/LGPBE/MAXGW/MAXEI/ANZRE → typed-NULL bin attributes;
+these gaps also affect UAT). Then `validation/warehouse360_dev_source_layer_preflight.sql`
+— expect `gold_io_reporting` MISSING and 0/7 objects on first pass (they materialise
+after the runs below).
+
+> **Status (as of 2026-06-07): `silver_slow` COMPLETES** (update `0eb81b`) — Silver objects
+> materialise in `connected_plant_dev.silver_io_reporting` (e.g. `storage_bin`, `material`,
+> `purchase_order`). `work_centre` and `capacity_utilisation` are source-guarded out (replicated
+> SAP lacks their source tables/columns — also affects UAT). This is a technical shakedown only;
+> `silver_fast`/`silver_quality`/`gold` are next, and Warehouse360 validation is NOT rerun (its 7
+> source objects live in Gold). See `contracts/ioreporting-dev-deployment-profile.md`.
 
 ### 1. Validate the bundle
 ```bash
@@ -82,12 +111,15 @@ databricks bundle deploy -t dev --profile TG --var notification_email=<dl@kerry.
 ```
 
 ### 3. Seed reference/config tables
-Run the prerequisite SQL seeds (above) on the DEV SQL warehouse.
+Run the config seeds on the DEV SQL warehouse: `site_config_dev.sql`,
+`storage_type_role_mapping_dev.sql`, `process_order_staging_reference_mapping_dev.sql`.
+The `central_services` seed (`sample_central_services_dev.sql`) is **not** needed for
+the `dev` target — it reads `published_dev.central_services` directly.
 
-### 4. Run Silver pipelines
+### 4. Run Silver pipelines (slow first — it creates recipe_process_line that the continuous fast pipeline needs)
 ```bash
-databricks bundle run silver_fast_pipeline    -t dev --profile TG --var notification_email=<dl@kerry.com>
 databricks bundle run silver_slow_pipeline    -t dev --profile TG --var notification_email=<dl@kerry.com>
+databricks bundle run silver_fast_pipeline    -t dev --profile TG --var notification_email=<dl@kerry.com>
 databricks bundle run silver_quality_pipeline -t dev --profile TG --var notification_email=<dl@kerry.com>
 ```
 
@@ -106,7 +138,8 @@ resources/sql/gold_serving_views_dev.sql  -- *_live views
 
 ### 7. Confirm the 7 governed source objects exist
 Re-run `validation/warehouse360_dev_source_layer_preflight.sql` — expect 7/7 FOUND
-in `gold_io_reporting`, 0 in `gold_dev`.
+in `gold_io_reporting`. (None of the 7 depend on HU, so they materialise in
+`dev_shakedown` despite HU being disabled.)
 
 ### 8. Only if sources pass — Warehouse360 validation pack (in order)
 ```text
@@ -118,6 +151,12 @@ validation/warehouse360_dev_key_validation.sql
 validation/warehouse360_dev_data_quality_validation.sql
 validation/warehouse360_dev_contract_validation.sql
 ```
+
+### 9. Classify outputs — TECHNICAL SHAKEDOWN ONLY
+A green run here validates **deployment mechanics and non-HU contract structure**.
+It is **not** business validation (DEV data is old/limited), HU-dependent outputs
+are excluded, and no Warehouse360 contract is promoted. Full HU/business
+validation happens in UAT (see `warehouse360-uat-migration-readiness.md`).
 
 ## Evidence to capture
 
@@ -135,5 +174,5 @@ databricks bundle destroy -t dev --profile TG --var notification_email=<dl@kerry
 ```
 `destroy` removes pipeline/job definitions but not materialised tables. For a
 clean teardown, drop `connected_plant_dev.gold_io_reporting` and
-`connected_plant_dev.silver_dev` manually. The config/SQL change itself reverts
-via `git revert` + regenerate (`scripts/generate_gold_*_sql.py`).
+`connected_plant_dev.silver_io_reporting` manually. The config/SQL change itself
+reverts via `git revert` + regenerate (`scripts/generate_gold_*_sql.py`).

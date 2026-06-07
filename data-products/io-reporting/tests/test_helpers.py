@@ -8,6 +8,7 @@ propagates to all 14 tables, so every edge case is covered explicitly.
 from datetime import date, datetime
 
 from pyspark.sql import Row
+from pyspark.sql import functions as F
 
 from silver.helpers import sap_date, sap_datetime, sap_flag, strip_zeros
 
@@ -63,6 +64,36 @@ class TestStripZeros:
         df = spark.createDataFrame([Row(AUFNR="000000123456")])
         result = df.withColumn("out", strip_zeros("AUFNR")).collect()[0]["out"]
         assert result == "123456"
+
+    # ── Column input (regression for NOT_ITERABLE): accept a Column, not just a name ──
+
+    def test_column_input(self, spark):
+        """A pyspark Column is accepted directly (equivalent to passing the name)."""
+        df = spark.createDataFrame([Row(MATNR="000000000000012345")])
+        result = df.withColumn("out", strip_zeros(F.col("MATNR"))).collect()[0]["out"]
+        assert result == "12345"
+
+    def test_coalesce_column_input(self, spark):
+        """strip_zeros(F.coalesce(...)) — the exact call shape that raised NOT_ITERABLE."""
+        df = spark.createDataFrame([Row(EBELN="0000004500", _change_ebeln=None)], "EBELN STRING, _change_ebeln STRING")
+        result = df.withColumn(
+            "out", strip_zeros(F.coalesce(F.col("EBELN"), F.col("_change_ebeln")))
+        ).collect()[0]["out"]
+        assert result == "4500"
+
+    def test_coalesce_column_input_uses_fallback(self, spark):
+        """Coalesce falls back to the second column when the first is NULL; then strips."""
+        df = spark.createDataFrame([Row(EBELN=None, _change_ebeln="0000004500")], "EBELN STRING, _change_ebeln STRING")
+        result = df.withColumn(
+            "out", strip_zeros(F.coalesce(F.col("EBELN"), F.col("_change_ebeln")))
+        ).collect()[0]["out"]
+        assert result == "4500"
+
+    def test_column_input_null(self, spark):
+        """NULL through a Column input stays NULL."""
+        df = spark.createDataFrame([Row(v=None)], "v STRING")
+        result = df.withColumn("out", strip_zeros(F.col("v"))).collect()[0]["out"]
+        assert result is None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

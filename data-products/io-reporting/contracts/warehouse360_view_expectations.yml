@@ -16,7 +16,29 @@ source_schema_assumption:
   uat_sap_catalog: connected_plant_uat
   uat_sap_schema: sap
 
+# DEV is a technical shakedown only; UAT is the first full-validation environment.
+# See docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md.
+validation_modes:
+  dev:
+    deployment_mode: dev_shakedown
+    enable_hu_reconciliation: false
+    purpose: Validate deployment mechanics and non-HU contract structure only — NOT business validation (DEV data is old/limited and not business-representative).
+    hu_dependent_outputs: not materialised in DEV; HU-dependent outputs remain NOT business-validated here.
+    note: None of the 7 Warehouse360 governed source objects depend on HU, so non-HU contract structure can be shaken down in DEV.
+  uat:
+    deployment_mode: full_validation
+    enable_hu_reconciliation: true
+    purpose: First environment for full HU/business validation; requires published_uat.central_services incl. handlingunit_vekp/vepo.
+
+# HU-dependent models excluded in DEV shakedown (none are in the Warehouse360 critical path):
+hu_dependent_models:
+  - handling_unit               # silver (inbound.py)
+  - gold_hu_reconciliation      # gold
+  - gold_handling_unit_summary  # gold
+  - gold_reconciliation_alerts (HU branch only)
+
 unresolved_assumptions:
+  - DEV is a technical shakedown only; no Warehouse360 contract is business-validated from DEV, and HU-dependent outputs are not validated until UAT.
   - DEV validation has not yet confirmed that all governed source objects exist in connected_plant_dev.gold_io_reporting.
   - DEV validation has not yet confirmed that source columns used by warehouse360_consumption_views_dev.sql are present and type-compatible.
   - Candidate primary keys remain pending live duplicate checks before contract promotion.

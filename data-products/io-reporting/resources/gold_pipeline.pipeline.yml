@@ -19,6 +19,12 @@ resources:
       configuration:
         silver_catalog: ${var.catalog}
         silver_schema: ${var.schema}
+        # Shakedown vs full-validation. When enable_hu_reconciliation=false the HU-dependent
+        # Gold models (gold_hu_reconciliation, gold_handling_unit_summary, and the HU branch of
+        # gold_reconciliation_alerts) are NOT materialised — the upstream silver handling_unit
+        # table is absent in dev_shakedown. None of the 7 Warehouse360 source objects depend on HU.
+        deployment_mode: ${var.deployment_mode}
+        enable_hu_reconciliation: ${var.enable_hu_reconciliation}
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting
@@ -50,6 +56,13 @@ resources:
             path: ../gold/warehouse_kpi_snapshot.py
         - file:
             path: ../gold/warehouse_kpis.py
+
+      # Editable-install the synced bundle root so the `gold` package is importable at DLT runtime
+      # (each gold module does `from gold._shared import ...`). Without this: ModuleNotFoundError.
+      # ${workspace.file_path} is the deployed bundle files root (contains pyproject.toml).
+      environment:
+        dependencies:
+          - --editable ${workspace.file_path}
 
       # Triggered pipeline, no restart_window needed as it runs to completion
 

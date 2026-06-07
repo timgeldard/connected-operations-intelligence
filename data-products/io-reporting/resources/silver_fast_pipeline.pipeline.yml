@@ -36,6 +36,14 @@ resources:
         - file:
             path: ../silver/dlt_silver_fast.py
 
+      # Editable-install the synced bundle root so the `silver`/`gold` packages are importable
+      # at DLT runtime (the entrypoint does `import silver.tables.*`). Without this the bundle
+      # root is not on sys.path and the run fails with ModuleNotFoundError: No module named 'silver'.
+      # ${workspace.file_path} is the deployed bundle files root (contains pyproject.toml).
+      environment:
+        dependencies:
+          - --editable ${workspace.file_path}
+
       # Daily restart window — low-traffic period (UTC)
       restart_window:
         start_hour: 2
