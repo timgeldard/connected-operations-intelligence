@@ -32,11 +32,16 @@ resources:
         # (changed_keys ⋈ LTAP[i.*, 165 wide var-len cols] ⋈ LTAK) made Photon build a
         # BroadcastHashedRelation that ran the executor out of memory (SparkOutOfMemoryError, var-len
         # data) once the flow became runtime-reachable. -1 disables auto-broadcast so the build spills
-        # to disk via SMJ instead of OOMing. Pipeline-wide and reversible; the other stream-static
-        # flows (goods_movement, warehouse_transfer_requirement) already complete and tolerate SMJ. A
-        # narrower per-join merge hint is a possible prod-efficiency refinement. NOTE: the broadcast OOM
-        # is pre-existing in the join structure — it was simply unreachable while the flow failed at
+        # to disk via SMJ instead of OOMing. Verified on DEV: transfer_order completes, 0 OOM, the other
+        # stream-static flows (goods_movement, warehouse_transfer_requirement) tolerate SMJ. NOTE: the
+        # broadcast OOM is pre-existing in the join structure — unreachable while the flow failed at
         # analysis on the legacy ANFME/ENQTY fields (resolved in PR #23).
+        # ⚠ PRE-PROD DECISION (not an optional tidy-up): this conf is pipeline-WIDE and has no per-target
+        # override, so UAT/PROD inherit it. On this CONTINUOUS pipeline at prod volume, forcing SMJ on
+        # every join (incl. small dimension joins that broadcast cheaply) can be a real throughput
+        # regression. Before promoting, decide between (a) keeping the global disable, or (b) replacing it
+        # with a targeted merge hint on the transfer_order LTAP/LTAK join only and restoring auto-broadcast
+        # elsewhere. DEV is fine either way; this is a forward-looking prod throughput call.
         spark.sql.autoBroadcastJoinThreshold: "-1"
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
