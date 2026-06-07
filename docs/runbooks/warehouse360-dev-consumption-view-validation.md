@@ -10,6 +10,7 @@ Before executing the validation, ensure the following milestones are met:
 * [ ] **PR #32** is merged (DEV Gold successfully compiles/runs, and the catalog contains Gold objects).
 * [ ] **PR #33** is merged (secured/live generation boundaries fixed, `_secured` views are RLS pass-throughs).
 * [ ] **PR #34** is merged (static consumption-view alignment and static checks in place).
+* [ ] **PR #36** is merged or pending (static CI guardrails for duplicate DLT datasets and secured/live SQL ownership). Recommended before repeated validation cycles.
 * [ ] You have target-level access to the DEV catalog (`connected_plant_dev.gold_io_reporting`).
 
 > [!WARNING]
@@ -18,25 +19,26 @@ Before executing the validation, ensure the following milestones are met:
 ---
 
 ## 2. SQL Execution Sequence
-To validate the consumption views in DEV, execute the following SQL scripts in the exact order below:
+To validate the consumption views in DEV, execute the following SQL scripts in the exact order below.
+
+Use the workspace-approved SQL execution method:
+* Databricks SQL editor
+* Databricks CLI or approved run-sql wrapper (e.g. `databricks labs sandbox run-sql --file <path> --profile DEFAULT`)
+* Databricks notebook attached to the appropriate SQL warehouse
+
+Do not manually modify the SQL scripts before execution.
+
+### Execution steps:
 
 1. **Deploy Security Views**:
-   ```bash
-   databricks labs sandbox run-sql --file data-products/io-reporting/resources/sql/gold_security_dev.sql --profile DEFAULT
-   ```
+   Deploy: `data-products/io-reporting/resources/sql/gold_security_dev.sql`
 2. **Deploy Serving Views**:
-   ```bash
-   databricks labs sandbox run-sql --file data-products/io-reporting/resources/sql/gold_serving_views_dev.sql --profile DEFAULT
-   ```
+   Deploy: `data-products/io-reporting/resources/sql/gold_serving_views_dev.sql`
 3. **Deploy Consumption Views**:
-   ```bash
-   databricks labs sandbox run-sql --file data-products/io-reporting/resources/sql/warehouse360_consumption_views_dev.sql --profile DEFAULT
-   ```
+   Deploy: `data-products/io-reporting/resources/sql/warehouse360_consumption_views_dev.sql`
 4. **Run Generated Validation SQL**:
    Execute the read-only generated contract validation script:
-   ```bash
-   databricks labs sandbox run-sql --file data-products/io-reporting/validation/generated/warehouse360_contract_validation_dev.sql --profile DEFAULT
-   ```
+   `data-products/io-reporting/validation/generated/warehouse360_contract_validation_dev.sql`
 
 ---
 
@@ -72,4 +74,19 @@ Capture validation outcomes in the following table format:
 | vw_consumption_warehouse360_inbound_backlog | TBD | TBD | TBD | TBD | n/a | TBD |
 | vw_consumption_warehouse360_outbound_backlog | TBD | TBD | TBD | TBD | n/a | TBD |
 | vw_consumption_warehouse360_staging_workload | TBD | TBD | TBD | TBD | n/a | TBD |
+| vw_consumption_warehouse360_stock_exceptions | TBD | TBD | TBD | TBD | n/a | TBD |
+| vw_consumption_warehouse360_shortfalls | TBD | TBD | TBD | TBD | n/a | TBD |
 | vw_consumption_warehouse360_im_wm_reconciliation | TBD | TBD | TBD | TBD | n/a | TBD |
+
+---
+
+## 6. Scope of Validation
+
+This runbook proves only DEV technical validity.
+
+It does not prove:
+* UAT readiness
+* Production readiness
+* Application cutover readiness
+* Business correctness
+* Entitlement/RLS correctness unless tested with representative identities
