@@ -20,16 +20,18 @@
 --   §D : reference_type inconsistent = 0; delivery_number null = 8,377,843 (78%, movement-type dependent,
 --        expected); reference_type='DELIVERY' = 2,383,884.
 --   §E2: base_uom null = 0 (MARA join covers 100%; no fan-out — output rows = MCHB rows).
---   §E1: FINDING — 2,099 duplicate-natural-key rows (0.018%). NOT a fan-out and NOT a source dup: bronze
---        MCHB is 1:1 on the raw key AND on the stripped key. The collisions come from strip_zeros mapping
---        all-zero/blank CHARG -> NULL (its documented "all-zero -> NULL" rule), so blank-batch stock rows
---        for the same material/plant/storage-location collapse to one (material_code, plant_code,
---        storage_location_code, batch_number=NULL) key. This is a PRE-EXISTING silver-key nuance (the key
---        omits MANDT and normalises identifiers), NOT introduced by the PP/PI gating or PR #23's mappings.
---        Impact is negligible (blank-batch stock arguably should aggregate) but it means the batch_stock
---        snapshot key is not strictly 1:1 in silver. FOLLOW-UP (separate decision): exclude blank-batch
---        rows from the natural-key uniqueness claim, or carry batch_number_raw in the key. Tracked in
---        sap_unresolved_sources.yml. Re-run §E1 in UAT business validation.
+--   §E1: FINDING (measured with GROUP BY..HAVING) — 2,016 colliding key groups, 4,039 rows (0.035%).
+--        GENUINE collisions, NOT a NULL artifact: only 77 rows have NULL batch_number and only 2 of the
+--        4,039 collision rows are in a NULL-batch group. (The earlier COUNT(*)-COUNT(DISTINCT) reading of
+--        "2,099" was confounded — Spark drops NULL-key rows from COUNT(DISTINCT) — and is superseded.)
+--        NOT a fan-out and NOT a source dup: bronze MCHB is 1:1 on the raw key. The collisions arise from
+--        strip_zeros normalising distinct raw MATNR/CHARG identifiers (leading-zero / format variants) to
+--        the same (material_code, batch_number); the silver key also omits MANDT. PRE-EXISTING silver-key
+--        nuance — NOT introduced by the PP/PI gating, and a PR #23 batch_stock concern (snapshot key is
+--        ~1:1, not strictly 1:1). Impact small (0.035%) but real — would slightly double-count stock for
+--        those batches in gold_stock_* aggregates. FOLLOW-UP (separate change, needs a key-design call):
+--        e.g. key on the raw identifiers, or add MANDT, or dedup the snapshot. Tracked in
+--        sap_unresolved_sources.yml. Re-validate in UAT business validation.
 
 -- ============================================================================
 -- SECTION A — PRE-RUN: approved source fields must exist in the replicated SAP schema
@@ -134,13 +136,21 @@ FROM connected_plant_dev.silver_io_reporting.goods_movement;
 -- ============================================================================
 -- SECTION E — MCHB / batch_stock (POST-RUN)
 -- ============================================================================
--- E1. Natural-key uniqueness (snapshot/current-state MV must be 1:1 on the key).
+-- E1. Natural-key uniqueness (snapshot/current-state MV should be ~1:1 on the key).
+--   IMPORTANT: do NOT use COUNT(*) - COUNT(DISTINCT a,b,c,d) — Spark drops rows where ANY key column
+--   is NULL from the COUNT(DISTINCT) term, so blank/NULL batch_number rows inflate it and it cannot
+--   distinguish a NULL from a real collision. Use GROUP BY ... HAVING COUNT(*) > 1, which groups NULLs
+--   together and counts only GENUINE collisions.
 SELECT
-  COUNT(*)                                                                   AS rows_total,
-  COUNT(DISTINCT material_code, plant_code, storage_location_code, batch_number) AS distinct_keys,
-  COUNT(*) - COUNT(DISTINCT material_code, plant_code, storage_location_code, batch_number)
-                                                                            AS dup_rows_should_be_0
-FROM connected_plant_dev.silver_io_reporting.batch_stock;
+  COUNT(*)                                          AS colliding_key_groups,   -- groups with >1 row
+  COALESCE(SUM(c), 0)                               AS rows_in_collisions,
+  COALESCE(SUM(CASE WHEN batch_number IS NULL THEN c ELSE 0 END), 0) AS rows_in_null_batch_groups
+FROM (
+  SELECT material_code, plant_code, storage_location_code, batch_number, COUNT(*) AS c
+  FROM connected_plant_dev.silver_io_reporting.batch_stock
+  GROUP BY 1, 2, 3, 4
+  HAVING COUNT(*) > 1
+);
 
 -- E2. base_uom coverage (MARA join). A non-zero null rate = MCHB rows whose MATNR has no MARA row;
 --     report it (expected small) — it does not block, but flags master-data gaps.

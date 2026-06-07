@@ -99,7 +99,7 @@ unresolved_sources:
         note: "implemented: MCHB is stock current state, not an ordered event stream -> full-recompute materialized view keyed by the natural key (proven 1:1 unique, 11,499,051 rows = 11,499,051 distinct keys 2026-06-07). No apply_changes/CDC; AEDATTM kept as extraction timestamp only, NOT an ordering key. CDC-enabled MCHB replication is no longer needed."
         unblocked_by: "approved snapshot/current-state design (functional sign-off 2026-06-07)"
     decision_doc: data-products/io-reporting/source-contracts/sap/silver_fast_field_reconciliation.md
-    status: RESOLVED_MAPPINGS_DATA_VALIDATED   # functional sign-off 2026-06-07; mappings implemented in warehouse_fast.py + guard scripts/ci/check_silver_fast_field_mappings.py. silver_fast now COMPLETES (update 281cffac): the 3 process_order blockers were source-guarded (see pp_pi_flows_missing_cdc_metadata) and a latent transfer_order broadcast-join OOM was fixed (spark.sql.autoBroadcastJoinThreshold=-1). The 4 WM/MM tables materialised (transfer_order 13.5M, transfer_requirement 15.9M, goods_movement 10.8M, batch_stock 11.5M) and the mappings are DATA-validated (silver_fast_mapping_validation.sql §B-E: alias invariant, open_quantity bounds, reference_type consistency, base_uom coverage all clean; one minor §E1 finding — 2,099 batch_stock dup keys from strip_zeros NULLing blank CHARG, 0.018%, pre-existing). Gold NOT yet built / WH360 not yet 7/7. DEV = technical shakedown only; UAT = first full business/HU validation.
+    status: RESOLVED_MAPPINGS_DATA_VALIDATED   # functional sign-off 2026-06-07; mappings implemented in warehouse_fast.py + guard scripts/ci/check_silver_fast_field_mappings.py. silver_fast now COMPLETES (update 281cffac): the 3 process_order blockers were source-guarded (see pp_pi_flows_missing_cdc_metadata) and a latent transfer_order broadcast-join OOM was fixed (spark.sql.autoBroadcastJoinThreshold=-1). The 4 WM/MM tables materialised (transfer_order 13.5M, transfer_requirement 15.9M, goods_movement 10.8M, batch_stock 11.5M) and the mappings are DATA-validated (silver_fast_mapping_validation.sql §B-E: alias invariant, open_quantity bounds, reference_type consistency, base_uom coverage all clean; one §E1 finding — 2,016 genuine colliding key groups / 4,039 batch_stock rows (0.035%) from strip_zeros collapsing distinct raw MATNR/CHARG to the same key + the key omitting MANDT; bronze is 1:1 on the raw key; pre-existing PR #23 batch_stock nuance, NOT a NULL artifact, see pp_pi note + batch_stock follow-up). Gold NOT yet built / WH360 not yet 7/7. DEV = technical shakedown only; UAT = first full business/HU validation.
 
   - id: storagebin_lagp_attribute_columns
     model: stg_storage_bin / storage_bin (silver/tables/warehouse_reference.py)
@@ -129,3 +129,15 @@ unresolved_sources:
       afvv: "NOT current-state — AFVV is the operation values sibling of AFVC (same AUFPL+APLZL key); AFVC carries full CDC. AFVV is transactional; snapshot would model the replication gap, not the domain. Correct fix = replicate AFVV with CDC metadata."
       zmanpex_zpexpm: "possibly current-state (PI-sheet exec timing / downtime events). A snapshot/current-state redesign (à la MCHB) is a candidate but requires explicit functional sign-off per source before replacing CDC sequencing — NOT done here."
     status: SOURCE_GUARDED_PENDING_CDC_OR_SNAPSHOT_SIGNOFF
+
+  - id: batch_stock_natural_key_not_strictly_unique
+    model: batch_stock (silver/tables/warehouse_fast.py)
+    file: silver/tables/warehouse_fast.py
+    summary: "batch_stock snapshot natural key (material_code, plant_code, storage_location_code, batch_number) is ~1:1 but not strictly 1:1: 2,016 colliding key groups / 4,039 rows (0.035%) measured live 2026-06-07 via GROUP BY..HAVING."
+    evidence: "silver_fast_mapping_validation.sql §E1 (use GROUP BY..HAVING, NOT COUNT(*)-COUNT(DISTINCT) which Spark confounds by dropping NULL-key rows). Bronze MCHB is 1:1 on the RAW key (MANDT,MATNR,WERKS,LGORT,CHARG). Collisions are GENUINE, not a NULL artifact (only 77 NULL batch_number rows, 2 in collisions)."
+    cause: "strip_zeros normalises distinct raw MATNR/CHARG (leading-zero / format variants) to the same material_code/batch_number, and the silver key omits MANDT. Pre-existing PR #23 batch_stock design; NOT introduced by the PP/PI gating."
+    warehouse360_dependency: "indirect — batch_stock feeds gold_stock_expiry_risk / stock reconciliation; 0.035% colliding rows would slightly double-count stock for those batches."
+    impact: low
+    affects_uat: true
+    follow_up: "Key-design decision (separate change): key on raw identifiers (material_code_raw/batch_number_raw), and/or add MANDT, and/or dedup the snapshot. Re-validate §E1 in UAT business validation."
+    status: RECORDED_FOLLOW_UP_NOT_FIXED   # out of scope of the PP/PI unblock PR; PR #23 batch_stock concern

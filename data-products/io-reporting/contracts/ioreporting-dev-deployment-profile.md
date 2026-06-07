@@ -401,9 +401,13 @@ the reference/flow tables; the 3 PP/PI tables correctly **absent** (gated). 0 OO
 **WM/MM mappings now DATA-validated** (`validation/silver_fast_mapping_validation.sql` §B–E, first run
 they could execute): LTAP alias invariant holds (0 mismatches/13.5M); LTBP open_quantity 0 null/0 neg/0
 over-required; MSEG reference_type 100% consistent; MCHB base_uom 100% covered (no fan-out). One **§E1
-finding**: 2,099 batch_stock rows (0.018%) share a natural key after `strip_zeros` NULLs all-zero/blank
-CHARG — a pre-existing silver-key nuance (key omits MANDT + normalises blank batches), negligible impact,
-recorded as a follow-up; NOT caused by this change.
+finding** (measured with `GROUP BY..HAVING`, not the confounded `COUNT(*)-COUNT(DISTINCT)`): **2,016
+colliding key groups / 4,039 rows (0.035%)** in batch_stock — GENUINE duplicate keys, **not** a NULL
+artifact (only 77 NULL-batch rows total, 2 in collisions). Cause: `strip_zeros` collapses distinct raw
+MATNR/CHARG (leading-zero/format variants) to the same `(material_code, batch_number)`, and the silver
+key omits MANDT; bronze is 1:1 on the raw key. Pre-existing PR #23 batch_stock key nuance (snapshot key
+is ~1:1, not strictly 1:1) — NOT caused by this change; small but real (slight stock double-count in
+`gold_stock_*`). Recorded as a follow-up (needs a key-design call); re-validate in UAT.
 
 **Warehouse360 readiness: still NOT claimed.** Gold not yet built and the 7 governed source objects not
 yet validated (next: silver_quality → gold_pipeline → `warehouse360_dev_source_object_validation.sql`
