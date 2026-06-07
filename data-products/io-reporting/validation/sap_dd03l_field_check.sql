@@ -61,9 +61,11 @@ dtel AS (
   FROM IDENTIFIER(v_dd04l)
 ),
 repl AS (
+  -- information_schema casing varies by environment; compare case-insensitively (DEV stores the SAP
+  -- column names upper-case + table names lower-case, but UAT/PROD may differ — this check is env-portable).
   SELECT table_name AS replicated_table, column_name AS field
   FROM IDENTIFIER(v_repl_cols)
-  WHERE table_schema = 'sap'
+  WHERE LOWER(table_schema) = 'sap'
 )
 SELECT
   e.sap_table, e.field,
@@ -80,9 +82,10 @@ SELECT
     ELSE 'NOT_FOUND'
   END AS classification
 FROM expected e
-LEFT JOIN ddic d ON d.sap_table = e.sap_table AND d.field = e.field
+LEFT JOIN ddic d ON d.sap_table = e.sap_table AND d.field = e.field   -- DD03L is reliably upper-case SAP
 LEFT JOIN dtel de ON de.data_element = d.data_element
-LEFT JOIN repl r ON r.replicated_table = e.replicated_table AND r.field = e.field
+-- information_schema casing is env-dependent: match case-insensitively to avoid false NOT_FOUND.
+LEFT JOIN repl r ON LOWER(r.replicated_table) = LOWER(e.replicated_table) AND LOWER(r.field) = LOWER(e.field)
 ORDER BY e.sap_table, e.field;
 
 -- ============================================================================
