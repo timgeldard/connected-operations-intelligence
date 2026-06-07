@@ -15,6 +15,33 @@ approved mappings **are implemented** in `silver/tables/warehouse_fast.py` (see 
 > engineering guess. Existence of every approved/candidate field was re-verified against
 > `connected_plant_dev.information_schema.columns` on 2026-06-07 before implementation.
 
+> **UPDATE 2026-06-07 — DDIC DD03L is now AVAILABLE in Databricks** at
+> `published_dev.central_services.datadictionaryfields_dd03l`. The "DD03L unavailable" limitation below
+> was true at reconciliation time but **no longer holds** — and DD03L now **authoritatively corroborates
+> every approved mapping** (it does not change them). Querying DD03L (TRIM `TABNAME`/`FIELDNAME` — both
+> are space-padded `CHAR`) for the disputed fields:
+>
+> | SAP table | field | DD03L verdict | approved mapping |
+> |---|---|---|---|
+> | LTAP | `ANFME`/`ENMNG`/`ISPOS` | **not LTAP fields** (NOT_FOUND) | original code was wrong ✓ |
+> | LTAP | `VSOLM`, `VISTA` | exist (`LTAP_VSOLM`/`LTAP_VISTA`, QUAN) | requested=VSOLM, confirmed=VISTA ✓ |
+> | LTBP | `ENQTY` | **not an LTBP field** | original code was wrong ✓ |
+> | LTBP | `MENGE`, `TAMEN` | exist (`LTBP_MENGE`/`LTBP_TAMEN`, QUAN) | open = MENGE − TAMEN ✓ |
+> | MSEG | `VBELN` | **not an MSEG field** | bare VBELN was wrong ✓ |
+> | MSEG | `VBELN_IM`, `VBELP_IM` | exist (`VBELN_VL`/`POSNR_VL`) | delivery ref ✓ |
+> | MCHB | `MEINS` | **not an MCHB field** | base_uom from MARA ✓ |
+> | MCHB | `AERUNID`/`AERECNO`/`RecordActivity` | **not SAP DDIC fields** (Aecorsoft CDC metadata) | snapshot / no-CDC ✓ |
+> | MCHB | `MANDT,MATNR,WERKS,LGORT,CHARG` | all `KEYFLAG=X`; `CHARG` = `CHAR(10)` key | exact natural key + CHARG-exact ✓ |
+> | MARA | `MEINS` | exists | base_uom source ✓ |
+>
+> So the functional decisions stand AND are now backed by authoritative DDIC evidence. The evidence
+> hierarchy going forward: **(1) DD03L** proves SAP field existence + table membership; **(2)**
+> `connected_plant_dev.information_schema.columns` proves DEV replicated availability; **(3)**
+> `connected_plant_uat.information_schema.columns` proves UAT replicated availability; **(4)** functional
+> sign-off proves business meaning; **(5)** source contracts record the decision. See
+> `validation/sap_dd03l_field_check.sql` (classifies each field DDIC_AND_REPLICATED /
+> DDIC_ONLY_NOT_REPLICATED / REPLICATED_ONLY_NOT_IN_DDIC / NOT_FOUND).
+
 ## Evidence basis & limitation (read first)
 
 | Source | Available? | What it proves |
@@ -23,7 +50,7 @@ approved mappings **are implemented** in `silver/tables/warehouse_fast.py` (see 
 | `connected_plant_dev` / `connected_plant_uat` `information_schema.columns` | yes | Which fields **exist** in the replicated tables (DEV = UAT for all gaps here). |
 | `scratch.gold_sap_table_metadata` (DDIC table-level / DD02L-like) | yes | Table class only (e.g. `/AECOR/LTAP` = TRANSP). **No field list.** |
 | `scratch.gold_sap_data_element_metadata` (DD04L-like) | yes | data_element → domain / type / length / decimals. **No field→data-element link, no description text.** |
-| DDIC **DD03L** (field → data element) | **NO** | — the field→meaning bridge is unavailable. |
+| DDIC **DD03L** (field → table/data element) | **YES (found 2026-06-07)** — `published_dev.central_services.datadictionaryfields_dd03l` | Proves a field **exists in SAP and on which table** (TABNAME/FIELDNAME are space-padded — TRIM). Supersedes the "unavailable" caveat below; corroborates all approved mappings (see UPDATE box above). |
 | LeanX / public docs | **barred by task** | — |
 
 **Therefore the available evidence proves field _existence_, not field _meaning_.** Mapping a missing
@@ -124,6 +151,13 @@ deliberately kept separate.
 Applied repo-wide across the silver transforms (warehouse_fast, warehouse_flow, warehouse_reference,
 inbound, quality). Enforced by `scripts/ci/check_silver_fast_field_mappings.py` (bans `strip_zeros`/
 `trim`/normalisation on `CHARG`; requires `batch_number`/`_raw` to be a direct CHARG column).
+
+**Now DDIC-backed (DD04L `CONVEXIT`, 2026-06-07):** the data element `CHARG_D` has **no conversion exit**
+(`CONVEXIT=''`) → leading zeros are significant → preserve exactly. By contrast `MATNR` has `CONVEXIT=MATN1`
+and `VBELN_VL` has `CONVEXIT=ALPHA` (display ALPHA exits) → zero-stripping IS the SAP-correct display form
+for material/delivery. So the *split* — strip MATNR/delivery, preserve CHARG — is authoritatively
+corroborated by DDIC, not just functional preference. (DD02L `CLIDEP=X` on MCHB also confirms the table is
+client-dependent → `client`/MANDT belongs in the batch_stock key.) See `validation/sap_dd03l_field_check.sql`.
 
 **§E1 batch_stock key — RESOLVED.** The earlier finding (2,016 colliding key groups / 4,039 rows) was
 caused by `strip_zeros` on `CHARG` (leading-zero/blank collapse) plus the key omitting `MANDT`. Fix:

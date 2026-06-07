@@ -1,7 +1,22 @@
 # Unresolved SAP source gaps for the IOReporting data product.
 # Evidence basis: information_schema.columns of connected_plant_dev.sap (DEV, profile TG) and
-# connected_plant_uat.sap (UAT) — confirmed live 2026-06-07. DDIC (DD03L/DD04L/DD01L) is not
-# replicated in an accessible catalog, so the replicated schema is the ground truth.
+# connected_plant_uat.sap (UAT) — confirmed live 2026-06-07.
+#
+# UPDATE 2026-06-07: SAP DDIC DD03L IS now available in Databricks at
+#   published_dev.central_services.datadictionaryfields_dd03l
+# (TABNAME/FIELDNAME are space-padded CHAR — TRIM before comparing; TABNAME holds standard SAP names
+# LTAP/LTBP/MSEG/MCHB/MARA as well as /AECOR/* extractor structures). This SUPERSEDES the earlier
+# "DDIC not accessible" assumption. Evidence hierarchy for SAP field disputes:
+#   1. DD03L                                  -> field EXISTS in SAP + on which SAP table
+#   2. connected_plant_dev.information_schema -> field REPLICATED into DEV Databricks
+#   3. connected_plant_uat.information_schema -> field REPLICATED into UAT
+#   4. SAP functional sign-off                -> business MEANING / approved mapping
+#   5. these source contracts                 -> record the decision
+# DD03L queried 2026-06-07 CONFIRMS every approved silver_fast mapping (ANFME/ENMNG/ISPOS not on LTAP;
+# ENQTY not on LTBP; VBELN not on MSEG; MEINS not on MCHB; VSOLM/VISTA/MENGE/TAMEN/VBELN_IM/VBELP_IM/
+# MARA.MEINS all exist; MCHB key = MANDT+MATNR+WERKS+LGORT+CHARG, CHARG = CHAR(10) key). No mapping
+# changed. See validation/sap_dd03l_field_check.sql.
+#
 # These are SOURCE/replication gaps, not transformation bugs; none are remapped/fabricated.
 
 unresolved_sources:
