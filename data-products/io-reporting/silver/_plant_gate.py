@@ -104,16 +104,19 @@ def active_warehouses_df(spark=None, product_area="warehouse") -> DataFrame:
 
 
 def apply_plant_gate(df: DataFrame, plant_col: str, product_area=None, spark=None) -> DataFrame:
-    """Keep only rows whose `plant_col` is an active plant for `product_area` (left-semi join against
-    the governed gate; broadcasts the tiny active-plant set). Drops nothing silently — see module
-    docstring + silver_stage_gate_validation.sql. Adds no columns (the row already carries its plant)."""
+    """Keep only rows whose `plant_col` is an active plant for `product_area`. INNER join against the
+    DISTINCT active-plant set (broadcast), then drop the helper column — semantically a semi-join (the
+    gate set is distinct on plant_code, so no row fan-out) but using INNER, the well-supported
+    stream-static join type (same as apply_warehouse_gate). Avoids relying on left-semi stream-static
+    support. Adds no business columns. Drops nothing silently — see module docstring +
+    silver_stage_gate_validation.sql."""
     spark = spark or get_spark()
     plants = active_plants_df(spark, product_area).select(
         F.col("plant_code").alias("_gate_plant_code")
     )
     return df.join(
-        F.broadcast(plants), df[plant_col] == F.col("_gate_plant_code"), "left_semi"
-    )
+        F.broadcast(plants), df[plant_col] == F.col("_gate_plant_code"), "inner"
+    ).drop("_gate_plant_code")
 
 
 def apply_warehouse_gate(
