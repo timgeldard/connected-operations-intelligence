@@ -55,7 +55,7 @@ unresolved_sources:
     # | PENDING_INFRASTRUCTURE | PROVEN_STRUCTURAL_HELD | APPROVED_FOR_IMPLEMENTATION | BLOCKED.
     reconciliation_candidates:
       - field: "LTAP.ANFME (requested_quantity)"
-        candidate: "VSOLM (source target qty, base UoM) / VSOLA (alt UoM)"
+        candidate: "VSOLM (source target qty, base UoM) / VSOLA (qty in alt UoM)"
         status: PENDING_FUNCTIONAL_CONFIRMATION
         unblocked_by: "DD03L or functional sign-off confirming source target qty = VSOLM (base) / VSOLA (alt)"
       - field: "LTAP.ENMNG (confirmed_quantity)"

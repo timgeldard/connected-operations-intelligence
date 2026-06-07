@@ -31,9 +31,9 @@ WH360-critical quantities.
 
 | Code field | Aliased to (business meaning) | DDIC (DD03L) | Replicated finding | Candidate | Decision | Risk |
 |---|---|---|---|---|---|---|
-| `ANFME` | `requested_quantity` (TO source target qty) | unavailable | **absent**; not a standard LTAP field. LTAP source/dest quantity pairs present: `VSOLA`/`VSOLM`, `NSOLA`/`NSOLM`, `VISTA`/`VISTM`, `NISTA`/`NISTM`, diffs `VDIF*`/`NDIF*` | `VSOLM` (base UoM) / `VSOLA` (alt UoM) | **functional/DDIC confirmation required** | wrong qty field → corrupt backlog/staging quantities |
+| `ANFME` | `requested_quantity` (TO source target qty) | unavailable | **absent**; not a standard LTAP field. LTAP source/dest quantity pairs present: `VSOLA`/`VSOLM`, `NSOLA`/`NSOLM`, `VISTA`/`VISTM`, `NISTA`/`NISTM`, diffs `VDIF*`/`NDIF*` | `VSOLM` (qty in base UoM) / `VSOLA` (qty in alt UoM) | **functional/DDIC confirmation required** | wrong qty field → corrupt backlog/staging quantities |
 | `ENMNG` | `confirmed_quantity` | unavailable | absent; not standard LTAP | `VISTM`? (overlaps `actual_quantity_picked`) | **functional confirmation required** | `confirmed_quantity` and `actual_quantity_picked` collapse onto ONE real field (`VISTM`) — a functional owner must define what these 3 columns mean |
-| `ISPOS` | `actual_quantity_picked` | unavailable | absent; not standard LTAP | `VISTM` (base UoM); pick-confirm flag is `PQUIT`/`PVQUI` (present, already used) | **functional confirmation required** | as above |
+| `ISPOS` | `actual_quantity_picked` | unavailable | absent; not standard LTAP | `VISTM` (actual qty in base UoM); pick-confirm flag is `PQUIT`/`PVQUI` (present, already used) | **functional confirmation required** | as above |
 
 Note: status (`PQUIT`/`KQUIT`), locations (`VLTYP`/`VLPLA`/`NLTYP`/`NLPLA`), `MEINS`, `VBELN` are
 present and already used. Cannot distinguish "real field, not replicated → request replication" from
@@ -43,7 +43,7 @@ present and already used. Cannot distinguish "real field, not replicated → req
 
 | Code field | Aliased to | DDIC | Replicated finding | Candidate | Decision | Risk |
 |---|---|---|---|---|---|---|
-| `ENQTY` | `open_quantity` | unavailable | **absent**. Quantity fields present: `MENGE`, `MENGA` (+ `MEINS`) | `MENGE − MENGA` (derivation) or a single field | **functional confirmation required** | proposing a *derivation* from assumed field meanings is the least safe — do not invent |
+| `ENQTY` | `open_quantity` | unavailable | **absent**. Quantity fields present: `MENGE`, `MENGA` (+ `MEINS`) | `MENGE - MENGA` (derivation) or a single field | **functional confirmation required** | proposing a *derivation* from assumed field meanings is the least safe — do not invent |
 
 ### 3. `stg_goods_movement` ← `inventorymovement_mseg` (MSEG, 214 cols)
 
@@ -77,7 +77,7 @@ present and already used. Cannot distinguish "real field, not replicated → req
    `NSOLM`/`NSOLA` (destination target, base/alt UoM) and `NISTM`/`NISTA` (destination actual). Add
    these as candidates if the contract needs put-away/destination quantities, not just source/pick.
 
-4. **LTBP — `open_quantity = MENGE − MENGA` requires defined null/negative behaviour.** If this
+4. **LTBP — `open_quantity = MENGE - MENGA` requires defined null/negative behaviour.** If this
    derivation is confirmed, the contract must explicitly define: behaviour when `MENGE` or `MENGA` is
    NULL (treat as 0? propagate NULL?), and whether a negative result (`MENGA > MENGE`, over-fulfilment)
    is clamped to 0 or preserved. **Do not implement this derivation until functionally approved.**
@@ -108,7 +108,7 @@ present and already used. Cannot distinguish "real field, not replicated → req
 
 1. Provide **DD03L** (field → data-element) for LTAP/LTBP/MSEG/MCHB, or a functional sign-off, to
    confirm: LTAP `requested/confirmed/picked` quantities (candidates `VSOLM`/`VISTM`); LTBP
-   `open_quantity` (candidate `MENGE − MENGA`); MSEG `delivery_number` (candidate `VBELN_IM`).
+   `open_quantity` (candidate `MENGE - MENGA`); MSEG `delivery_number` (candidate `VBELN_IM`).
 2. **Enable CDC metadata** (`AERUNID`/`AERECNO`/`RecordActivity`) on the MCHB replication, or confirm
    `AEDATTM` is unique per change so it can serve as the sole sequencing key.
 3. Once confirmed, apply the proven mappings (with this doc referenced), add the MARA join for MCHB

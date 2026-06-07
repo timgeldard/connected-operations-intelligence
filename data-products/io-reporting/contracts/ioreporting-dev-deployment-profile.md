@@ -320,7 +320,7 @@ SAP training knowledge, which the task bars. **No transformation code changed.**
 Per-field decisions (full detail: `source-contracts/sap/silver_fast_field_reconciliation.md`):
 - LTAP `ANFME`/`ENMNG`/`ISPOS` → candidates `VSOLM`/`VISTM` — **functional/DD03L confirmation required**
   (and `confirmed`/`picked` collapse onto one real field — a functional owner must define the 3 columns).
-- LTBP `ENQTY` → candidate `MENGE − MENGA` — **confirmation required** (proposing a derivation).
+- LTBP `ENQTY` → candidate `MENGE - MENGA` — **confirmation required** (proposing a derivation).
 - MSEG `VBELN` → candidate `VBELN_IM` (present) — **confirmation required** (high plausibility).
 - MCHB `MEINS` → join `materialmaster_mara.MEINS` — **PROVEN structural** but **held** (does not unblock
   `stg_batch_stock` alone — its CDC gap remains; applied together with the CDC fix).
