@@ -152,6 +152,12 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml
 
+      - name: Run Warehouse360 validation SQL generator tests
+        run: PYTHONPATH=scripts/contracts python3 -m pytest scripts/contracts/test_generate_warehouse360_validation_sql.py -q
+
+      - name: Run Warehouse360 validation SQL drift check
+        run: python3 scripts/contracts/generate_warehouse360_validation_sql.py --check
+
       - name: Run Warehouse360 static migration check
         run: python3 scripts/ci/check_warehouse360_migration_static.py
 
