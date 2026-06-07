@@ -65,11 +65,15 @@ def test_run_checks_commented_forbidden_pattern_passes(tmp_path):
     sql_dir = tmp_path / "sql"
     sql_dir.mkdir()
 
-    # Create mock secured views file with forbidden word in comments only
+    # Create mock secured views file with forbidden word and semicolons in comments only
     sec_file = sql_dir / "gold_security_dev.sql"
     sec_file.write_text("""
-    -- This view does not use current_date() or datediff
-    /* min_days_to_expiry is also not used here */
+    -- This view does not use current_date() or datediff;
+    /* 
+    Some explanation;
+    CREATE VIEW my_view AS SELECT a;
+    min_days_to_expiry is also not used here 
+    */
     CREATE OR REPLACE VIEW my_view_secured AS
       SELECT * FROM my_view;
     """, encoding="utf-8")

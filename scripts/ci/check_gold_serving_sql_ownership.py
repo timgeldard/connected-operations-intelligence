@@ -88,7 +88,7 @@ def run_checks() -> list[str]:
                 errors.append(f"[{sf}] Violation: Contains forbidden pattern '{pattern}'")
 
         # Check Rule 2: Pass-through structure for views
-        statements = content.split(";")
+        statements = content_clean.split(";")
         for stmt in statements:
             err = check_secured_view_statement(stmt)
             if err:
