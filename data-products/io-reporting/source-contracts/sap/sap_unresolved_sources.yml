@@ -46,7 +46,22 @@ unresolved_sources:
     warehouse360_dependency: true   # warehouse_transfer_order is read by ALL 5 WH360-source gold modules; transfer_requirement/goods_movement/batch_stock feed transfer_requirement_backlog/stock_expiry_risk/exceptions
     affects_uat: true
     cannot_source_guard: "These 4 flows are WH360-critical — source-guarding them would delete WH360 source objects. Cannot typed-null core quantities (would fabricate business data)."
-    status: BLOCKER — silver_fast does not complete; WH360 gold layer cannot materialise in DEV until the field contract is reconciled with the replicated SAP schema (data-team / functional task).
+    # Reconciliation (2026-06-07): full evidence + per-field decisions in
+    # source-contracts/sap/silver_fast_field_reconciliation.md. DDIC DD03L (field->data element) is
+    # UNAVAILABLE; scratch.gold_sap_table_metadata (table-level) and gold_sap_data_element_metadata
+    # (data-element-level) exist but do NOT bridge field->meaning. So evidence proves field EXISTENCE,
+    # not MEANING -> no remap is "proven" -> NO code changed (mapping from SAP training knowledge is
+    # barred as "public docs"). Candidates recorded for functional/DDIC confirmation only:
+    reconciliation_candidates:
+      - {field: "LTAP.ANFME (requested_quantity)", candidate: "VSOLM (base UoM) / VSOLA (alt)", decision: functional_or_dd03l_confirmation_required}
+      - {field: "LTAP.ENMNG (confirmed_quantity)", candidate: "VISTM?", decision: functional_confirmation_required, note: "collapses onto same field as actual_quantity_picked"}
+      - {field: "LTAP.ISPOS (actual_quantity_picked)", candidate: "VISTM?", decision: functional_confirmation_required}
+      - {field: "LTBP.ENQTY (open_quantity)", candidate: "MENGE - MENGA (derivation)", decision: functional_confirmation_required, note: "inventing a derivation - least safe"}
+      - {field: "MSEG.VBELN (delivery_number)", candidate: "VBELN_IM (present, S/4 delivery-in-IM)", decision: functional_confirmation_required, note: "high plausibility"}
+      - {field: "MCHB.MEINS (base_uom)", candidate: "join materialmaster_mara.MEINS", decision: PROVEN_STRUCTURAL_held, note: "MCHB has no unit by design; held - does not unblock batch_stock alone"}
+      - {field: "MCHB.AERUNID/AERECNO (CDC sequencing)", candidate: "AEDATTM-only (only change-tracking field present; RecordActivity also absent)", decision: request_cdc_enabled_replication, note: "AEDATTM-only sequence_by breaks SCD1 determinism on tied timestamps - do NOT apply"}
+    decision_doc: data-products/io-reporting/source-contracts/sap/silver_fast_field_reconciliation.md
+    status: BLOCKER — silver_fast does not complete; WH360 gold layer cannot materialise in DEV until the field contract is reconciled (data-team / functional + DD03L or CDC-enabled MCHB replication). No transformation code changed (no mapping proven).
 
   - id: storagebin_lagp_attribute_columns
     model: stg_storage_bin / storage_bin (silver/tables/warehouse_reference.py)

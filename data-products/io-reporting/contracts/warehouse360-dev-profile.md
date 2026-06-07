@@ -13,10 +13,12 @@ contract advances beyond candidate/pending. See §2 and §12–13 for detail.
 > (silver tables materialised), but `silver_fast` is **blocked** on a fast-tier
 > SAP field-contract gap (core columns `ANFME`/`ENMNG`/`ISPOS`/`ENQTY`/`VBELN`/
 > MCHB CDC metadata absent from the replicated tables — WH360-critical, needs
-> data-team reconciliation; see `ioreporting-dev-deployment-profile.md` §(f) and
+> data-team reconciliation; see `ioreporting-dev-deployment-profile.md` §(f)/§(g) and
 > `source-contracts/sap/sap_unresolved_sources.yml`). So Gold has not been built;
 > consumption views were **not** deployed and the validation pack was **not** run.
 > All contracts stay candidate/pending; no `ready_for_dev_app_shakedown`.
+> Full SAP field reconciliation (evidence + candidates + decisions; **no remap
+> proven** — DDIC DD03L unavailable): `source-contracts/sap/silver_fast_field_reconciliation.md`.
 
 > **Next validation attempt prerequisites (added 2026-06-06).** This validation
 > has **not** been rerun — the result below still stands. Rerunning requires the
