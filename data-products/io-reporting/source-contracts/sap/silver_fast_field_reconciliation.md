@@ -152,6 +152,13 @@ Applied repo-wide across the silver transforms (warehouse_fast, warehouse_flow, 
 inbound, quality). Enforced by `scripts/ci/check_silver_fast_field_mappings.py` (bans `strip_zeros`/
 `trim`/normalisation on `CHARG`; requires `batch_number`/`_raw` to be a direct CHARG column).
 
+**Now DDIC-backed (DD04L `CONVEXIT`, 2026-06-07):** the data element `CHARG_D` has **no conversion exit**
+(`CONVEXIT=''`) → leading zeros are significant → preserve exactly. By contrast `MATNR` has `CONVEXIT=MATN1`
+and `VBELN_VL` has `CONVEXIT=ALPHA` (display ALPHA exits) → zero-stripping IS the SAP-correct display form
+for material/delivery. So the *split* — strip MATNR/delivery, preserve CHARG — is authoritatively
+corroborated by DDIC, not just functional preference. (DD02L `CLIDEP=X` on MCHB also confirms the table is
+client-dependent → `client`/MANDT belongs in the batch_stock key.) See `validation/sap_dd03l_field_check.sql`.
+
 **§E1 batch_stock key — RESOLVED.** The earlier finding (2,016 colliding key groups / 4,039 rows) was
 caused by `strip_zeros` on `CHARG` (leading-zero/blank collapse) plus the key omitting `MANDT`. Fix:
 preserve `CHARG` exactly **and** expose `client` (`MCHB.MANDT`), then key on the exact SAP key

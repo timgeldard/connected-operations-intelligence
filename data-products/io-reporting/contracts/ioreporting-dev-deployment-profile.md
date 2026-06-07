@@ -556,3 +556,13 @@ KEYFLAG=X set independently confirms the exact natural key and the CHARG-exact d
 New validation: `validation/sap_dd03l_field_check.sql` — classifies each disputed field as
 DDIC_AND_REPLICATED / DDIC_ONLY_NOT_REPLICATED / REPLICATED_ONLY_NOT_IN_DDIC / NOT_FOUND. Evidence
 enhancement only — does not alter PR #23's scope, the gold/QM blockers, or the 0/7 Warehouse360 status.
+
+**Three DDIC tables are present** (`published_dev.central_services`): `datadictionaryfields_dd03l`
+(fields), `metadata_dataelement_dd04l` (data elements + `CONVEXIT`), `metadata_saptable_dd02l` (table
+class + `CLIDEP`). The check now uses all three: DD03L for existence/key; **DD04L `CONVEXIT`**
+authoritatively justifies the normalisation split — `CHARG_D` has **no** conversion exit (preserve
+exactly) while `MATNR`=`MATN1` / `VBELN_VL`=`ALPHA` are display-ALPHA (zero-strip correct); **DD02L
+`CLIDEP=X`** on all five tables confirms client-dependency → MANDT in key → corroborates exposing
+`client`. No DD03T/DD04T text tables exist, so field *descriptions* (meaning) still come from functional
+sign-off. The check is **parameterised across environments** via a leading `DECLARE` block (DEV defaults;
+swap the `published_*` / `connected_plant_*` identifiers for UAT/PROD).
