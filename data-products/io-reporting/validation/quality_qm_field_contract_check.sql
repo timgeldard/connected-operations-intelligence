@@ -5,6 +5,25 @@
 -- Purpose: CHARACTERISE (not fix) the gap that source-guards quality_inspection_lot. Evidence for the QM
 -- reconciliation follow-up (sap_unresolved_sources.yml: quality_inspection_qals_field_contract_and_cdc_gap).
 -- Do NOT guess-remap from this output — it is diagnostic; the remap needs functional sign-off.
+--
+-- RECORDED RESULTS (DD03L rec, 2026-06-07) — of the transform's QALS refs, ONLY WERK is a real QALS field:
+--   CONFIRMED renames (real QALS fields, present in replicated inspection_qals):
+--     plant_code            : WERKS  -> QALS.WERK
+--     inspection_lot_origin : LOTORIGIN -> QALS.HERKUNFT   (QHERK)
+--     inspection_lot_qty    : MENGE  -> QALS.LOSMENGE      (QLOSMENGE)
+--     inspection_lot_uom    : MEINH  -> QALS.MENGENEINH    (QLOSMENGEH)
+--     client                : MANDT  -> QALS.MANDANT       (fixed #27)
+--   USAGE DECISION is on QAVE, not QALS (inspection_qave IS replicated):
+--     usage_decision_code   : VCODE  -> QAVE.VCODE  ; usage_decision_date: VENDAT -> QAVE.VDATUM
+--     join QALS->QAVE on PRUEFLOS + MANDANT (QAVE uses MANDANT, keys PRUEFLOS/MANDANT)
+--   NEEDS FUNCTIONAL SIGN-OFF (ambiguous / not a direct field):
+--     inspection_start_date : ENSTDE  -> candidate QALS.PASTRTERM (QPRSTART) or ENSTEHDAT (QENTST)
+--     inspection_end_date   : EENDDE  -> candidate QALS.PAENDTERM (QPRENDE)
+--     is_deletion_flagged   : KZLOESCH -> status-derived (system status via OBJNR), no direct flag
+--   CDC: BOTH inspection_qals AND inspection_qave lack AERUNID/AERECNO (only AEDATTM) -> snapshot-vs-CDC
+--        design decision (functional sign-off, like MCHB). This is the remaining hard blocker to materialise.
+--   => Confirmed-renames + QAVE join unblock the FIELD contract; dates/deletion + the CDC/snapshot call
+--      remain functional decisions. NOT applied to code (flow stays source-guarded until those land).
 
 -- ============================================================================
 -- SECTION 1 — CDC metadata gap on inspection_qals (drives the source-guard)

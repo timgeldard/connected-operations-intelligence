@@ -167,12 +167,25 @@ unresolved_sources:
       present: [AEDATTM]
       missing: [AERUNID, AERECNO, RecordActivity]
       effect: "No deterministic SCD1 sequencing (same gap class as AFVV/zmanpex/zpexpm_dwnt / MCHB). Needs CDC-enabled replication OR an approved snapshot/current-state design (functional sign-off, like MCHB) — NOT decided here."
+    # DD03L RECONCILIATION (run 2026-06-07; published_dev.central_services.datadictionaryfields_dd03l +
+    # information_schema). Of the transform's QALS references ONLY WERK is a real QALS field — the rest are
+    # wrong-name or wrong-table. Authoritative mapping below (CONFIRMED = DD03L + replicated).
     field_contract_gap:
-      client: "inspection_qals uses MANDANT (NOT MANDT) — already fixed in PR #27. qualitymessage_qmih uses MANDT."
-      plant: "inspection_qals uses WERK (NOT WERKS) — transform still references WERKS."
-      renamed_candidates: {LOTORIGIN: HERKUNFT, MENGE: LOSMENGE, MEINH: MENGENEINH}   # plausible, NOT confirmed — verify via DD03L, do NOT guess-remap
-      not_on_qals: "VCODE / VENDAT (usage decision) are NOT QALS fields — they live on QAVE (usage-decision). The transform's QM model is wrong against this source, not merely mis-named."
-      absent: [ENSTDE, EENDDE, KZLOESCH]
+      client: "QALS uses MANDANT (NOT MANDT) — fixed #27. qmih uses MANDT; QAVE uses MANDANT."
+      plant: "QALS.WERK (NOT WERKS) — CONFIRMED."
+      confirmed_renames_dd03l:   # real QALS fields, present in replicated inspection_qals
+        LOTORIGIN: "QALS.HERKUNFT (data element QHERK — lot origin)"
+        MENGE: "QALS.LOSMENGE (QLOSMENGE — inspection lot quantity)"
+        MEINH: "QALS.MENGENEINH (QLOSMENGEH — lot quantity unit)"
+      usage_decision_on_qave:   # VCODE/VENDAT are NOT QALS; QAVE (inspection_qave) IS replicated
+        VCODE: "QAVE.VCODE (QVCODE — usage-decision code)"
+        VENDAT: "QAVE.VDATUM (usage-decision date)"
+        join: "QALS -> QAVE on PRUEFLOS + MANDANT (QAVE keys PRUEFLOS/MANDANT; QAVE uses MANDANT like QALS)"
+      needs_functional_signoff:
+        inspection_start_date: "ENSTDE not a QALS field. Candidates: QALS.PASTRTERM (QPRSTART, plan start) / ENSTEHDAT (QENTST, creation)."
+        inspection_end_date: "EENDDE not a QALS field. Candidate: QALS.PAENDTERM (QPRENDE, plan end)."
+        is_deletion_flagged: "KZLOESCH not a QALS field. Deletion is status-derived (system status via OBJNR), not a direct flag."
+      cdc: "BOTH inspection_qals AND inspection_qave lack AERUNID/AERECNO (only AEDATTM) -> snapshot-vs-CDC design decision needed (functional sign-off, like MCHB)."
     warehouse360_dependency: false   # quality_inspection_lot feeds no gold module / none of the 7 governed objects
     affects_uat: true
     handling: "Source-guarded: the whole flow is wrapped in `if bronze_columns_exist('inspection_qals', ['AERUNID','AERECNO'])` — absent CDC metadata -> flow not defined -> silver_quality COMPLETES (was failing analysis on MANDT->WERK->...). NO plant gate applied yet and NO field remap done (deliberate — a gate/WERK fix while the contract is broken yields no runtime benefit; advisor-confirmed). NO fabricated fields."
