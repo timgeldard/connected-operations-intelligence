@@ -247,7 +247,7 @@ def apply_quality_lot_transform(
             F.col("l.PRUEFLOS").alias("inspection_lot_number"),
             F.col("l.WERKS").alias("plant_code"),
             strip_zeros("l.MATNR").alias("material_code"),
-            strip_zeros("l.CHARG").alias("batch_number"),
+            F.col("l.CHARG").alias("batch_number"),  # CHARG exact — no strip
             strip_zeros("m.AUFNR").alias("order_number"),
             F.col("m.QMNUM").alias("quality_notification_number"),
             F.col("l.MENGE").alias("inspection_lot_quantity"),
@@ -578,7 +578,8 @@ class TestQualityInspectionLot:
         assert rows[0]["inspection_lot_number"] == "000000000099"
         assert rows[0]["order_number"] is None
 
-    def test_material_and_batch_stripped(self, spark):
+    def test_material_stripped_batch_preserved_exactly(self, spark):
+        # MATNR is display-normalised (stripped); CHARG is an exact identifier (preserved).
         df = apply_quality_lot_transform(
             spark,
             [make_qals(MATNR="000000000000099999", CHARG="0000099999")],
@@ -586,7 +587,7 @@ class TestQualityInspectionLot:
         )
         row = first_row(df)
         assert row["material_code"] == "99999"
-        assert row["batch_number"] == "99999"
+        assert row["batch_number"] == "0000099999"
 
     def test_order_number_stripped_via_qmih(self, spark):
         df = apply_quality_lot_transform(

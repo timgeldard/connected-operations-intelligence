@@ -18,10 +18,14 @@ Bans:
 MCHB batch_stock invariants (scoped to the `def batch_stock()` body):
   * no apply_changes / streaming-CDC pattern (it is a snapshot/current-state materialized view)
   * no `stg_batch_stock` streaming view name
-  * no read of MEINS / AERUNID / AERECNO from the MCHB source alias `s` (base_uom comes from MARA;
-    MCHB carries no CDC metadata)
+  * no read of MEINS / AERUNID / AERECNO / RecordActivity from the MCHB source alias `s` (base_uom
+    comes from MARA; MCHB carries no CDC metadata)
   * MUST read materialmaster_mara (positive assertion — base_uom enrichment)
+CHARG exact-preservation (repo-wide across all silver/tables/*.py):
+  * CHARG is an exact SAP identifier — NO strip_zeros / trim / upper / pad / regexp on CHARG;
+  * batch_number and batch_number_raw must each be a direct F.col("...CHARG...").alias(...).
 """
+import glob
 import os
 import re
 import sys
@@ -29,12 +33,26 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "../.."))
 PRODUCT = os.path.join(REPO_ROOT, "data-products/io-reporting")
+TABLES_DIR = os.path.join(PRODUCT, "silver", "tables")
 TRANSFORM = os.path.join(PRODUCT, "silver", "tables", "warehouse_fast.py")
 
-# Field-access bans: a quoted `<alias>.<FIELD>` reference (closing quote pins the exact field, so
-# VBELN does not match VBELN_IM). These are valid anywhere in the silver transform.
-INVALID_QTY_RE = re.compile(r"""["']\w+\.(ANFME|ENMNG|ISPOS|ENQTY)["']""")
-MSEG_VBELN_RE = re.compile(r"""["']\w+\.VBELN["']""")  # bare VBELN as delivery; VBELN_IM is allowed
+# Field-access bans: a quoted field reference, with an OPTIONAL alias prefix, so BOTH bare "ANFME" and
+# alias-qualified "i.ANFME" are caught. The closing quote pins the exact field (VBELN != VBELN_IM).
+INVALID_QTY_RE = re.compile(r"""["'](?:\w+\.)?(ANFME|ENMNG|ISPOS|ENQTY)["']""")
+MSEG_VBELN_RE = re.compile(r"""["'](?:\w+\.)?VBELN["']""")  # bare/aliased VBELN; VBELN_IM/VBELP_IM allowed
+
+# CHARG exact-preservation (repo-wide across silver transforms). CHARG is an exact SAP identifier:
+# no strip_zeros / trim / display-normalisation. batch_number and batch_number_raw must both be a
+# direct F.col(...CHARG...). See source-contracts/site_stage_gate_contract.md.
+CHARG_STRIP_RE = re.compile(r"""strip_zeros\([^)]*CHARG""")
+CHARG_TRIM_RE = re.compile(r"""(?:F\.)?trim\([^)]*CHARG""")
+CHARG_OTHER_XFORM_RE = re.compile(
+    r"""(?:upper|lower|lpad|rpad|substring|regexp_replace|ltrim|rtrim)\([^)]*CHARG"""
+)
+BATCH_ALIAS_RE = re.compile(r"""\.alias\(\s*["']batch_number(?:_raw)?["']\s*\)""")
+BATCH_ALLOWED_RE = re.compile(
+    r"""F\.col\(\s*["'][^"']*CHARG["']\s*\)\.alias\(\s*["']batch_number(?:_raw)?["']\s*\)"""
+)
 
 
 def _extract_fn_body(text: str, fn_name: str) -> str:
@@ -97,16 +115,34 @@ def run_checks() -> int:
                 f"[{rel}] batch_stock references the removed `stg_batch_stock` streaming view — "
                 f"MCHB is now a single snapshot @dlt.table"
             )
-        if re.search(r"""["']s\.(MEINS|AERUNID|AERECNO)["']""", body):
+        if re.search(r"""["']s\.(MEINS|AERUNID|AERECNO|RecordActivity)["']""", body):
             errors.append(
-                f"[{rel}] batch_stock reads MEINS/AERUNID/AERECNO from the MCHB source — these are "
-                f"absent on MCHB; base_uom must come from MARA.MEINS and there is no CDC sequencing"
+                f"[{rel}] batch_stock reads MEINS/AERUNID/AERECNO/RecordActivity from the MCHB source — "
+                f"these are absent on MCHB; base_uom must come from MARA.MEINS and there is no CDC sequencing"
             )
         if "materialmaster_mara" not in body:
             errors.append(
                 f"[{rel}] batch_stock does not read materialmaster_mara — base_uom must be enriched "
                 f"from MARA.MEINS (MCHB carries no unit)"
             )
+
+    # ── CHARG exact-preservation (repo-wide across silver transforms) ──────────────────────────────
+    for path in sorted(glob.glob(os.path.join(TABLES_DIR, "*.py"))):
+        frel = os.path.relpath(path, REPO_ROOT)
+        for i, line in enumerate(open(path, encoding="utf-8").read().splitlines(), 1):
+            if CHARG_STRIP_RE.search(line):
+                errors.append(f"[{frel}:{i}] strip_zeros() applied to CHARG — CHARG is an exact SAP "
+                              f"identifier; preserve as replicated (F.col(...CHARG...)).")
+            if CHARG_TRIM_RE.search(line):
+                errors.append(f"[{frel}:{i}] trim() applied to CHARG — do not trim an exact batch identifier.")
+            if CHARG_OTHER_XFORM_RE.search(line):
+                errors.append(f"[{frel}:{i}] CHARG is transformed (upper/lower/pad/regexp/...) — preserve exactly.")
+            # batch_number / batch_number_raw must be a direct F.col(...CHARG...) — nothing else.
+            if BATCH_ALIAS_RE.search(line) and not BATCH_ALLOWED_RE.search(line):
+                errors.append(
+                    f"[{frel}:{i}] batch_number/batch_number_raw must be a direct "
+                    f'F.col("...CHARG...").alias(...) — got a transformed or non-CHARG expression.'
+                )
 
     if errors:
         print("\nsilver_fast approved-mapping check FAILED:")

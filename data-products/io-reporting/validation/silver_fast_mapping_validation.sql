@@ -20,18 +20,16 @@
 --   §D : reference_type inconsistent = 0; delivery_number null = 8,377,843 (78%, movement-type dependent,
 --        expected); reference_type='DELIVERY' = 2,383,884.
 --   §E2: base_uom null = 0 (MARA join covers 100%; no fan-out — output rows = MCHB rows).
---   §E1: FINDING (measured with GROUP BY..HAVING) — 2,016 colliding key groups, 4,039 rows (0.035%).
---        GENUINE collisions, NOT a NULL artifact: only 77 rows have NULL batch_number and only 2 of the
---        4,039 collision rows are in a NULL-batch group. (The earlier COUNT(*)-COUNT(DISTINCT) reading of
---        "2,099" was confounded — Spark drops NULL-key rows from COUNT(DISTINCT) — and is superseded.)
---        NOT a fan-out and NOT a source dup: bronze MCHB is 1:1 on the raw key. The collisions arise from
---        strip_zeros normalising distinct raw MATNR/CHARG identifiers (leading-zero / format variants) to
---        the same (material_code, batch_number); the silver key also omits MANDT. PRE-EXISTING silver-key
---        nuance — NOT introduced by the PP/PI gating, and a PR #23 batch_stock concern (snapshot key is
---        ~1:1, not strictly 1:1). Impact small (0.035%) but real — would slightly double-count stock for
---        those batches in gold_stock_* aggregates. FOLLOW-UP (separate change, needs a key-design call):
---        e.g. key on the raw identifiers, or add MANDT, or dedup the snapshot. Tracked in
---        sap_unresolved_sources.yml. Re-validate in UAT business validation.
+--   §E1: RESOLVED by preserving CHARG exactly + keying on the RAW SAP key. The earlier finding (2,016
+--        colliding key groups / 4,039 rows on the DISPLAY key material_code[stripped]+batch_number[stripped])
+--        was caused by strip_zeros collapsing distinct raw MATNR/CHARG identifiers + the key omitting
+--        MANDT. This PR (a) stops stripping CHARG (batch_number == batch_number_raw == CHARG) and (b)
+--        exposes `client` (MCHB.MANDT) and re-keys the E1 check on (client, material_code_raw, plant_code,
+--        storage_location_code, batch_number_raw). On that exact SAP key bronze MCHB is 1:1, so
+--        colliding_key_groups is expected = 0. §E1b reports DISPLAY-level collisions separately
+--        (material_code is still display-stripped for MATNR — a separate, documented display concern; the
+--        TRUE key never uses display fields). RE-MEASURE on the next full silver_fast run (the tables
+--        below still hold pre-CHARG-fix data until re-materialised — see deployment profile §(m)).
 
 -- ============================================================================
 -- SECTION A — PRE-RUN: approved source fields must exist in the replicated SAP schema
@@ -120,37 +118,51 @@ FROM connected_plant_dev.silver_io_reporting.warehouse_transfer_requirement;
 -- SECTION D — MSEG / goods_movement (POST-RUN)
 -- ============================================================================
 -- D1. delivery_number (VBELN_IM) null rate + reference_type consistency.
---   reference_type must be 'DELIVERY' exactly when delivery_number_raw is populated, else NULL.
+--   Invariant (on the EXPOSED delivery_number, not the raw audit field):
+--     delivery_number IS NOT NULL  =>  reference_type = 'DELIVERY'
+--     delivery_number IS NULL      =>  reference_type IS NULL
+--   delivery_number_raw is kept for audit only and must NOT drive this invariant.
 SELECT
   COUNT(*)                                                                   AS rows_total,
   SUM(CASE WHEN delivery_number IS NULL THEN 1 ELSE 0 END)                   AS delivery_number_null,
   SUM(CASE WHEN reference_type = 'DELIVERY' THEN 1 ELSE 0 END)               AS reference_type_delivery,
   -- inconsistency invariant: must be 0
-  SUM(CASE WHEN (delivery_number_raw IS NOT NULL AND nullif(delivery_number_raw,'') IS NOT NULL
-                 AND reference_type IS DISTINCT FROM 'DELIVERY')
-            OR  ((delivery_number_raw IS NULL OR nullif(delivery_number_raw,'') IS NULL)
-                 AND reference_type = 'DELIVERY')
+  SUM(CASE WHEN (delivery_number IS NOT NULL AND reference_type IS DISTINCT FROM 'DELIVERY')
+            OR  (delivery_number IS NULL     AND reference_type IS NOT NULL)
            THEN 1 ELSE 0 END)                                                AS reference_type_inconsistent_should_be_0
 FROM connected_plant_dev.silver_io_reporting.goods_movement;
 
 -- ============================================================================
 -- SECTION E — MCHB / batch_stock (POST-RUN)
 -- ============================================================================
--- E1. Natural-key uniqueness (snapshot/current-state MV should be ~1:1 on the key).
---   IMPORTANT: do NOT use COUNT(*) - COUNT(DISTINCT a,b,c,d) — Spark drops rows where ANY key column
---   is NULL from the COUNT(DISTINCT) term, so blank/NULL batch_number rows inflate it and it cannot
---   distinguish a NULL from a real collision. Use GROUP BY ... HAVING COUNT(*) > 1, which groups NULLs
---   together and counts only GENUINE collisions.
+-- E1. Natural-key uniqueness on the EXACT SAP key — client + RAW material + plant + storage-loc + RAW
+--   batch. CHARG is an exact identifier (no strip/trim), so batch_number_raw == batch_number == CHARG;
+--   the TRUE key uses the raw, untransformed identifiers (NOT the display-normalised material_code).
+--   Use GROUP BY ... HAVING COUNT(*) > 1 (groups NULLs together; counts GENUINE collisions only). Do
+--   NOT use COUNT(*) - COUNT(DISTINCT ...) — Spark drops any-NULL-key rows from COUNT(DISTINCT) and
+--   conflates NULLs with collisions. Expect colliding_key_groups = 0 (bronze MCHB is 1:1 on the raw key).
 SELECT
-  COUNT(*)                                          AS colliding_key_groups,   -- groups with >1 row
-  COALESCE(SUM(c), 0)                               AS rows_in_collisions,
-  COALESCE(SUM(CASE WHEN batch_number IS NULL THEN c ELSE 0 END), 0) AS rows_in_null_batch_groups
+  COUNT(*)                                          AS colliding_key_groups,
+  COALESCE(SUM(g.c), 0)                             AS rows_in_collisions
 FROM (
-  SELECT material_code, plant_code, storage_location_code, batch_number, COUNT(*) AS c
+  SELECT client, material_code_raw, plant_code, storage_location_code, batch_number_raw, COUNT(*) AS c
   FROM connected_plant_dev.silver_io_reporting.batch_stock
-  GROUP BY 1, 2, 3, 4
+  GROUP BY 1, 2, 3, 4, 5
   HAVING COUNT(*) > 1
-);
+) AS g;
+
+-- E1b. DISPLAY-level collisions (INFORMATIONAL, NOT the SAP key): the display-normalised
+--   (material_code, batch_number) — now that CHARG is exact, batch_number is raw, so collisions here
+--   can only come from MATNR display-stripping. Reported separately; never treated as the true key.
+SELECT
+  COUNT(*)                                          AS display_colliding_groups,
+  COALESCE(SUM(g.c), 0)                             AS rows_in_display_collisions
+FROM (
+  SELECT client, material_code, plant_code, storage_location_code, batch_number, COUNT(*) AS c
+  FROM connected_plant_dev.silver_io_reporting.batch_stock
+  GROUP BY 1, 2, 3, 4, 5
+  HAVING COUNT(*) > 1
+) AS g;
 
 -- E2. base_uom coverage (MARA join). A non-zero null rate = MCHB rows whose MATNR has no MARA row;
 --     report it (expected small) — it does not block, but flags master-data gaps.

@@ -498,3 +498,32 @@ warehouse_transfer_order + warehouse_transfer_requirement (warehouse gate + gove
 
 **Warehouse360 readiness: still NOT claimed.** Gold/WH360 source validation remain blocked by the prior
 round's pre-existing gold duplicate-table + QM defects, independent of this gating work.
+
+## Update 2026-06-07 (m) — pre-merge review fixes: CHARG exact-preservation + §E1 resolved + validation/guard hardening
+
+Pre-merge correctness pass on PR #23 (still a Silver Fast / WM-MM shakedown milestone — Gold NOT fixed here):
+
+- **CHARG preserved exactly (repo-wide).** `CHARG` is an exact SAP batch identifier — removed `strip_zeros`
+  from `batch_number` in **all** silver transforms (warehouse_fast, warehouse_flow, warehouse_reference,
+  inbound, quality). `batch_number == batch_number_raw == CHARG`. MATNR display-normalisation is unchanged
+  (kept separate per the decision).
+- **§E1 batch_stock key — RESOLVED.** Exposed `client` (MCHB.MANDT) and re-keyed the uniqueness check on the
+  exact SAP key (`client, material_code_raw, plant_code, storage_location_code, batch_number_raw`). Measured
+  on bronze MCHB: **0 colliding groups** on the raw key AND on the display key once CHARG is exact (was
+  2,016/4,039 — caused specifically by stripping CHARG). Display-level collisions reported separately
+  (§E1b), never treated as the true key.
+- **Validation SQL fixes:** reference_type invariant now uses `delivery_number` (not `delivery_number_raw`);
+  all derived tables in `FROM (...)` aliased; §E1 uses GROUP BY..HAVING on the raw key.
+- **Guard hardened** (`check_silver_fast_field_mappings.py`): CHARG strip/trim/normalisation banned
+  repo-wide; invalid-field regex now catches bare AND alias-qualified tokens (ANFME/ENMNG/ISPOS/ENQTY,
+  VBELN-as-delivery, MCHB MEINS/AERUNID/AERECNO/RecordActivity); allows VBELN_IM/VBELP_IM.
+- **Tests:** renamed/flipped the "batch stripped" assertions to "batch preserved exactly"; added six
+  LTBP `open_quantity` tests (standard / clamp / null MENGE / null TAMEN / both null / completed TR).
+  pytest needs Java (not available locally) — CI verifies; ruff + py_compile pass.
+
+**Runtime status (unchanged from §(l)):** ruff, all guards, and `bundle validate -t dev` pass. The gated
++ CHARG-exact code is **deployed**, but the silver tables are **not re-materialised** — a cold full
+silver_fast rerun is dominated by the heavy **ungated** `process_order` backfill (the user cancelled the
+rerun for this reason). §E1/§E1b and the post-gate counts will refresh on the next full run; the §E1
+resolution is evidenced directly on bronze MCHB above. Gold + WH360 remain blocked by the separate
+pre-existing defects; Warehouse360 stays 0/7; no contract promoted.

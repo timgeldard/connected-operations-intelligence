@@ -28,6 +28,15 @@ materialised (transfer_order 13.5M, transfer_requirement 15.9M, goods_movement 1
 alias invariant, open_quantity bounds, reference_type consistency, base_uom coverage all clean; one
 §E1 follow-up — 2,016 batch_stock key collisions / 4,039 rows / 0.035% from strip_zeros, pre-existing).
 
+**Pre-merge review fixes (2026-06-07).** **CHARG is now preserved exactly** (exact SAP batch identifier —
+no strip/trim/normalise) across all silver transforms; `batch_number == batch_number_raw == CHARG`. The
+**§E1 collisions are RESOLVED**: re-keying on the exact SAP key (`client` + `material_code_raw` + plant +
+storage-loc + `batch_number_raw`) gives **0 colliding groups** on bronze MCHB (the collisions were caused
+specifically by stripping CHARG). Validation SQL + the CHARG/invalid-field CI guard hardened; six
+LTBP `open_quantity` tests added. Re-materialisation of the silver tables is deferred (the cold rerun is
+dominated by the ungated `process_order` backfill); §E1 is evidenced directly on bronze. This does not
+change the 0/7 status — Gold remains blocked separately.
+
 **Warehouse360 still 0/7 — Gold not built.** `gold_pipeline` (first-ever run) fails at graph
 construction on a **pre-existing duplicate-table defect** (`gold_storage_type_role_coverage_status`
 defined in both `readiness_validation.py` and `warehouse_flow_gold.py`) — unrelated to this work; a

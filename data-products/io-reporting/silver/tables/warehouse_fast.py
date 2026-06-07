@@ -80,7 +80,9 @@ def stg_goods_movement():
             # ── Material & batch
             strip_zeros("s.MATNR").alias("material_code"),
             F.col("s.MATNR").alias("material_code_raw"),
-            strip_zeros("s.CHARG").alias("batch_number"),
+            # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+            # See source-contracts/site_stage_gate_contract.md + silver_fast_field_reconciliation.md.
+            F.col("s.CHARG").alias("batch_number"),
             F.col("s.CHARG").alias("batch_number_raw"),
 
             # ── Movement
@@ -197,11 +199,16 @@ def batch_stock():
             "left",
         )
         .select(
+            # client (MANDT) — part of the exact SAP natural key (material/plant/storage-loc/batch
+            # are unique only within a client). DEV is single-client; exposed for the multi-client key.
+            F.col("s.MANDT").alias("client"),
             strip_zeros("s.MATNR").alias("material_code"),
             F.col("s.MATNR").alias("material_code_raw"),
             F.col("s.WERKS").alias("plant_code"),
             F.col("s.LGORT").alias("storage_location_code"),
-            strip_zeros("s.CHARG").alias("batch_number"),
+            # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+            # See source-contracts/site_stage_gate_contract.md + silver_fast_field_reconciliation.md.
+            F.col("s.CHARG").alias("batch_number"),
             F.col("s.CHARG").alias("batch_number_raw"),
 
             F.col("s.CLABS").alias("unrestricted_quantity"),
@@ -278,7 +285,8 @@ def stg_warehouse_transfer_order():
             # ── Material & batch
             strip_zeros("i.MATNR").alias("material_code"),
             F.col("i.MATNR").alias("material_code_raw"),
-            strip_zeros("i.CHARG").alias("batch_number"),
+            # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+            F.col("i.CHARG").alias("batch_number"),
             F.col("i.CHARG").alias("batch_number_raw"),
             F.col("i.MEINS").alias("base_uom"),
             F.col("i.BESTQ").alias("stock_category_code"),
@@ -448,7 +456,8 @@ def stg_warehouse_transfer_requirement():
             # ── Material & batch
             strip_zeros("i.MATNR").alias("material_code"),
             F.col("i.MATNR").alias("material_code_raw"),
-            strip_zeros("i.CHARG").alias("batch_number"),
+            # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+            F.col("i.CHARG").alias("batch_number"),
             F.col("i.CHARG").alias("batch_number_raw"),
             F.col("i.MEINS").alias("base_uom"),
 

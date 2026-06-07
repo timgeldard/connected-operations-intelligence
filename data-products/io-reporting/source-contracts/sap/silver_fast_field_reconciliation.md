@@ -112,6 +112,28 @@ These were the open questions before sign-off; each now has a recorded decision.
    failed to start (hard blocked, not degraded/quarantinable). The approved mappings resolve the
    unresolved columns; remaining behaviour is governed by the `@dlt.expect` rules on each flow.
 
+## CHARG is an exact SAP identifier (batch number) — preserve exactly
+
+**Decision (pre-merge review):** `CHARG` (batch number) is an **exact** SAP character identifier. It
+must be preserved **exactly as replicated** for keys, joins, and Warehouse360 contracts — **no**
+leading-zero stripping, **no** trimming, **no** display canonicalisation. Both `batch_number` and
+`batch_number_raw` are a direct `F.col("…CHARG").alias(…)` (identical). This contrasts with `MATNR`,
+which remains display-normalised (`material_code` stripped, `material_code_raw` exact) — the two are
+deliberately kept separate.
+
+Applied repo-wide across the silver transforms (warehouse_fast, warehouse_flow, warehouse_reference,
+inbound, quality). Enforced by `scripts/ci/check_silver_fast_field_mappings.py` (bans `strip_zeros`/
+`trim`/normalisation on `CHARG`; requires `batch_number`/`_raw` to be a direct CHARG column).
+
+**§E1 batch_stock key — RESOLVED.** The earlier finding (2,016 colliding key groups / 4,039 rows) was
+caused by `strip_zeros` on `CHARG` (leading-zero/blank collapse) plus the key omitting `MANDT`. Fix:
+preserve `CHARG` exactly **and** expose `client` (`MCHB.MANDT`), then key on the exact SAP key
+(`client, material_code_raw, plant_code, storage_location_code, batch_number_raw`). Measured directly
+on bronze MCHB (2026-06-07): **0 colliding groups** on the raw key **and 0** on the display key once
+CHARG is exact (11,499,051 rows). The collisions were caused specifically by stripping CHARG; they are
+resolved. (Silver re-measure pending the next full re-materialisation — `silver_fast_mapping_validation.sql`
+§E1/§E1b.)
+
 ## Decisions summary
 
 - **Approved mappings implemented** in `silver/tables/warehouse_fast.py` (LTAP `VSOLM`/`VISTA`,
