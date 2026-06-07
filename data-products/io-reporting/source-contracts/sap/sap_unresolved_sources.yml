@@ -156,3 +156,25 @@ unresolved_sources:
     affects_uat: true
     follow_up: "Key-design decision (separate change): key on raw identifiers (material_code_raw/batch_number_raw), and/or add MANDT, and/or dedup the snapshot. Re-validate §E1 in UAT business validation."
     status: RECORDED_FOLLOW_UP_NOT_FIXED   # out of scope of the PP/PI unblock PR; PR #23 batch_stock concern
+
+  - id: quality_inspection_qals_field_contract_and_cdc_gap
+    model: stg_quality_inspection_lot / quality_inspection_lot (silver/tables/quality.py)
+    file: silver/tables/quality.py
+    summary: "quality_inspection_lot cannot materialise: replicated inspection_qals lacks CDC sequencing metadata AND the transform's field contract mismatches the replicated schema. Source-guarded off (silver_quality now COMPLETES). NOT a recurring-cost flow (it never ran). NOT a Warehouse360 feeder; no gold reads it."
+    # Live DEV information_schema 2026-06-07 (inspection_qals = 266 cols). Two distinct gaps:
+    cdc_metadata_gap:
+      table: inspection_qals
+      present: [AEDATTM]
+      missing: [AERUNID, AERECNO, RecordActivity]
+      effect: "No deterministic SCD1 sequencing (same gap class as AFVV/zmanpex/zpexpm_dwnt / MCHB). Needs CDC-enabled replication OR an approved snapshot/current-state design (functional sign-off, like MCHB) — NOT decided here."
+    field_contract_gap:
+      client: "inspection_qals uses MANDANT (NOT MANDT) — already fixed in PR #27. qualitymessage_qmih uses MANDT."
+      plant: "inspection_qals uses WERK (NOT WERKS) — transform still references WERKS."
+      renamed_candidates: {LOTORIGIN: HERKUNFT, MENGE: LOSMENGE, MEINH: MENGENEINH}   # plausible, NOT confirmed — verify via DD03L, do NOT guess-remap
+      not_on_qals: "VCODE / VENDAT (usage decision) are NOT QALS fields — they live on QAVE (usage-decision). The transform's QM model is wrong against this source, not merely mis-named."
+      absent: [ENSTDE, EENDDE, KZLOESCH]
+    warehouse360_dependency: false   # quality_inspection_lot feeds no gold module / none of the 7 governed objects
+    affects_uat: true
+    handling: "Source-guarded: the whole flow is wrapped in `if bronze_columns_exist('inspection_qals', ['AERUNID','AERECNO'])` — absent CDC metadata -> flow not defined -> silver_quality COMPLETES (was failing analysis on MANDT->WERK->...). NO plant gate applied yet and NO field remap done (deliberate — a gate/WERK fix while the contract is broken yields no runtime benefit; advisor-confirmed). NO fabricated fields."
+    follow_up: "QM reconciliation (functional + DD03L): confirm the renamed fields, source usage-decision from QAVE, decide CDC-vs-snapshot for inspection_qals. THEN fix the contract, add apply_plant_gate(quality), reclassify ENFORCED. Characterisation query: validation/quality_qm_field_contract_check.sql."
+    status: SOURCE_GUARDED_PENDING_QM_RECONCILIATION

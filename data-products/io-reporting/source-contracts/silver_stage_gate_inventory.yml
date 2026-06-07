@@ -20,9 +20,12 @@ meta:
   helper: silver/_plant_gate.py
   phase: 1
   enforced_count: 4
+  source_guarded_count: 1      # quality_inspection_lot — CDC + field-contract gap (see entry)
   exempt_count: 16
-  needs_mapping_count: 20
+  needs_mapping_count: 19
   blocked_count: 0
+  # NOTE: this branch is off main; the unmerged process-order PR also edits these counts + adds 3 more
+  # SOURCE_GUARDED + 1 ENFORCED. The meta block will need a trivial merge-resolution when both land.
 
 silver_outputs:
   # ── ENFORCED (Phase 1 — WM/MM reference set) ──────────────────────────────
@@ -74,13 +77,24 @@ silver_outputs:
   - table_name: quality_inspection_lot
     file: silver/tables/quality.py
     source_tables: [inspection_qals, qualitymessage_qmih]
-    gating_category: A
+    gating_category: DIRECT_PLANT   # plant is WERK on inspection_qals (NOT WERKS) — direct, once the contract is reconciled
     gate_field: plant_code
-    gate_join_path: "QALS.WERKS (direct)"
+    gate_join_path: "inspection_qals.WERK (direct)"
     gate_config_table: site_config_plant
     product_area: quality
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply apply_plant_gate(quality). NOTE: silver_quality also blocked separately on inspection_qals.MANDT absent (sap_unresolved_sources.yml)."
+    current_status: SOURCE_GUARDED
+    owner_action_required: >-
+      Source-guarded off (inspection_qals lacks AERUNID/AERECNO CDC metadata → no deterministic SCD1; only
+      AEDATTM present). Does NOT materialise, so it is NOT a recurring-cost flow. A plant gate is NOT yet
+      applied (deliberate): the transform's field contract mismatches the replicated inspection_qals, so a
+      gate/WERK fix in isolation gives no runtime benefit. FULL QM RECONCILIATION required before enabling:
+      (1) CDC metadata on inspection_qals (AERUNID/AERECNO) OR an approved snapshot/current-state design;
+      (2) field contract — plant WERK (not WERKS); LOTORIGIN/MENGE/MEINH appear renamed (HERKUNFT/LOSMENGE/
+      MENGENEINH — confirm via DD03L); VCODE/VENDAT (usage decision) are NOT on QALS (QAVE); ENSTDE/EENDDE/
+      KZLOESCH absent. MANDANT/client already fixed (#27). See sap_unresolved_sources.yml
+      (quality_inspection_qals_field_contract_and_cdc_gap) + validation/quality_qm_field_contract_check.sql.
+      Then add apply_plant_gate(quality) and reclassify ENFORCED. NOT a Warehouse360 feeder; no gold reads it.
+    validation_query_reference: validation/quality_qm_field_contract_check.sql
 
   - table_name: reservation_requirement
     file: silver/tables/warehouse_flow.py
