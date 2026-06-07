@@ -30,7 +30,10 @@ from silver.helpers import BRONZE, bronze_columns_exist, get_spark, sap_date, sa
 # the quality plant gate is verified in — implementing the corrected model must also add
 # apply_plant_gate(plant_code, "quality") so the lot table can never materialise all-plants. NOT a
 # Warehouse360 feeder; no gold module reads quality_inspection_lot.
-if bronze_columns_exist("inspection_qals", ["AERUNID", "AERECNO"]):
+# Guard BOTH source tables: the imported flow also reads qualitymessage_qmih and selects AERUNID/AERECNO
+# from it, so qmih lacking CDC metadata would fail analysis too. (The corrected model in
+# docs/quality_qm_functional_model.md §5 drops the qmih join entirely — this qmih clause goes away with it.)
+if bronze_columns_exist("inspection_qals", ["AERUNID", "AERECNO"]) and bronze_columns_exist("qualitymessage_qmih", ["AERUNID", "AERECNO"]):
     @dlt.view(name="stg_quality_inspection_lot")
     @dlt.expect_all_or_drop({
         "inspection_lot_number present": "inspection_lot_number IS NOT NULL",

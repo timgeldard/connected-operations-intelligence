@@ -1,12 +1,15 @@
 # Silver stage-gate inventory — every Bronze -> Silver output classified.
 # Contract: source-contracts/site_stage_gate_contract.md. Guard: scripts/ci/check_silver_stage_gate_coverage.py.
 #
-# gating_category:
+# gating_category (DOCUMENTARY ONLY — not validated by the CI guard):
 #   A = plant-gated by DIRECT plant field (WERKS on the main source)
 #   B = plant-gated by WAREHOUSE mapping (LGNUM -> WERKS via site_config_warehouse)
 #   C = plant-gated by DERIVED order/material/header context
 #   D = global reference/config EXEMPTION (no plant dimension)
 #   E = BLOCKED — no approved plant derivation
+#   Descriptive aliases used by the stage-gate (Silver Fast) entries are equivalent to the letters above:
+#     DIRECT_PLANT == A (direct plant field, e.g. AUFK/AFVC.WERKS, inspection_qals.WERK).
+#   (The WM/MM reference entries predate the aliases and keep the A/B letters.)
 # current_status: ENFORCED | EXEMPT | BLOCKED | NEEDS_MAPPING
 #   ENFORCED      = gate helper applied in code (Phase 1 reference set).
 #   EXEMPT        = global reference/config; requires exempt_reason.
