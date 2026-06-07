@@ -36,9 +36,10 @@ Do not manually modify the SQL scripts before execution.
    Deploy: `data-products/io-reporting/resources/sql/gold_serving_views_dev.sql`
 3. **Deploy Consumption Views**:
    Deploy: `data-products/io-reporting/resources/sql/warehouse360_consumption_views_dev.sql`
-4. **Run Generated Validation SQL**:
-   Execute the read-only generated contract validation script:
-   `data-products/io-reporting/validation/generated/warehouse360_contract_validation_dev.sql`
+4. **Run Validation SQL**:
+   Execute the read-only contract validation script:
+   * **Generated (Recommended)**: `data-products/io-reporting/validation/generated/warehouse360_contract_validation_dev.sql`
+   * **Legacy / Static Reference**: `data-products/io-reporting/validation/warehouse360_dev_contract_validation.sql` (Use if the validation generator PR is not yet merged/active)
 
 ---
 

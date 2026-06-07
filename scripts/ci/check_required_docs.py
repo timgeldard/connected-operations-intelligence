@@ -18,10 +18,15 @@ REQUIRED_DOCS = [
 
 FORBIDDEN_CLAIMS = [
     "governed_contracts is ready",
+    "governed-contracts is ready",
     "warehouse360 governed path is live",
+    "warehouse360 governed-path is live",
     "uat validated",
+    "uat-validated",
     "production ready",
+    "production-ready",
     "rls proven",
+    "rls-proven",
 ]
 
 NEGATIVE_CONTEXTS = [

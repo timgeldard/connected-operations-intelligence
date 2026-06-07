@@ -7,7 +7,7 @@
 3. [Contract status](contracts/warehouse360-contract-status.md)
 4. [Route-to-contract map](contracts/warehouse360-route-to-contract-map.md)
 5. [DEV validation runbook](runbooks/warehouse360-dev-consumption-view-validation.md)
-6. [Generated validation SQL](../data-products/io-reporting/validation/generated/)
+6. [Generated validation SQL](../data-products/io-reporting/validation/)
 
 ## Important warning
 

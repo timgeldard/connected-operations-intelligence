@@ -53,3 +53,10 @@ def test_check_docs_unqualified_claims(tmp_path):
     with patch("check_required_docs.REPO_ROOT", str(tmp_path)):
         errors = check_docs()
         assert len(errors) == 0
+
+    # Write hyphenated forbidden claim
+    bad_file.write_text("We are now production-ready!", encoding="utf-8")
+    with patch("check_required_docs.REPO_ROOT", str(tmp_path)):
+        errors = check_docs()
+        assert len(errors) == 1
+        assert "production-ready" in errors[0]
