@@ -59,3 +59,17 @@ During and after the execution of step 4, record the following evidence:
 * **Do NOT** promote contracts or claim lifecycle upgrades based on DEV outcomes.
 * **Do NOT** claim UAT or PROD readiness from DEV validation.
 * **Do NOT** manually edit Databricks objects or views outside the approved SQL sequence list.
+
+---
+
+## 5. Expected Result Format
+
+Capture validation outcomes in the following table format:
+
+| View | Created? | Row count | Null plant_id | Duplicate PK rows | Freshness max | Issues |
+|---|---:|---:|---:|---:|---|---|
+| vw_consumption_warehouse360_overview | TBD | TBD | TBD | TBD | TBD | TBD |
+| vw_consumption_warehouse360_inbound_backlog | TBD | TBD | TBD | TBD | n/a | TBD |
+| vw_consumption_warehouse360_outbound_backlog | TBD | TBD | TBD | TBD | n/a | TBD |
+| vw_consumption_warehouse360_staging_workload | TBD | TBD | TBD | TBD | n/a | TBD |
+| vw_consumption_warehouse360_im_wm_reconciliation | TBD | TBD | TBD | TBD | n/a | TBD |
