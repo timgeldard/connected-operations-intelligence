@@ -15,6 +15,7 @@ from check_forbidden_data_access import (  # noqa: E402
     should_ignore,
 )
 
+
 # --- Known-bad: must be caught -------------------------------------------------
 
 def test_catches_schema_qualified_gold():

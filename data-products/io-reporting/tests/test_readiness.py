@@ -43,7 +43,7 @@ def _save_gold(spark: SparkSession, rows, table_name: str):
     create_df(spark, rows).write.mode("overwrite").saveAsTable(f"gold.{table_name}")
 
 def test_storage_type_role_coverage_status(spark: SparkSession):
-    from gold.warehouse_flow_gold import gold_storage_type_role_coverage_status
+    from gold.readiness_validation import gold_storage_type_role_coverage_status
 
     # 1. Test 100% Match -> READY
     _save(spark, [
@@ -52,13 +52,14 @@ def test_storage_type_role_coverage_status(spark: SparkSession):
     ], "storage_bin")
 
     _save(spark, [
-        Row(plant_code="C061", warehouse_number="208", storage_type="100", role="LINESIDE"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="200", role="STAGING"),
-    ], "storage_type_role_mapping")
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", storage_role="LINESIDE", role_confidence="CONFIRMED"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="200", storage_role="STAGING", role_confidence="CONFIRMED"),
+    ], "site_config_storage_type_role")
 
     res = all_rows(gold_storage_type_role_coverage_status())
     assert len(res) == 1
-    assert res[0]["coverage_status"] == "VALIDATED"
+    assert res[0]["validation_status"] == "READY"
+    assert res[0]["severity"] == "INFO"
 
     # 2. Test Partial Match (66.7%) -> PILOT_ONLY
     _save(spark, [
@@ -68,13 +69,15 @@ def test_storage_type_role_coverage_status(spark: SparkSession):
     ], "storage_bin")
 
     _save(spark, [
-        Row(plant_code="C061", warehouse_number="208", storage_type="100", role="LINESIDE"),
-        Row(plant_code="C061", warehouse_number="208", storage_type="200", role="STAGING"),
-    ], "storage_type_role_mapping")
+        Row(plant_code="C061", warehouse_number="208", storage_type="100", storage_role="LINESIDE", role_confidence="CONFIRMED"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="200", storage_role="STAGING", role_confidence="CONFIRMED"),
+        Row(plant_code="C061", warehouse_number="208", storage_type="300", storage_role="FALLBACK", role_confidence="FALLBACK"),
+    ], "site_config_storage_type_role")
 
     res = all_rows(gold_storage_type_role_coverage_status())
     assert len(res) == 1
-    assert res[0]["coverage_status"] == "PARTIAL"
+    assert res[0]["validation_status"] == "PILOT_ONLY"
+    assert res[0]["severity"] == "MEDIUM"
 
 def test_movement_type_classification_coverage(spark: SparkSession):
     from gold.readiness_validation import gold_movement_type_classification_coverage
@@ -107,11 +110,11 @@ def test_movement_type_classification_coverage(spark: SparkSession):
     assert res[0]["severity"] == "CRITICAL"
 
 def test_process_order_staging_validation(spark: SparkSession):
-    from gold.warehouse_flow_gold import gold_process_order_staging_validation
+    from gold.readiness_validation import gold_process_order_staging_validation
 
     # 1. 100% Staging Matches -> READY
     _save(spark, [
-        Row(plant_code="C061", warehouse_number="208", transfer_order_number="TO1", source_reference_type="F", source_reference_number="ORD1", created_datetime=date.today()),
+        Row(plant_code="C061", warehouse_number="208", source_reference_type="F", source_reference_number="ORD1"),
     ], "warehouse_transfer_order")
 
     _save(spark, [
@@ -120,18 +123,18 @@ def test_process_order_staging_validation(spark: SparkSession):
 
     res = all_rows(gold_process_order_staging_validation())
     assert len(res) == 1
-    assert res[0]["validation_status"] == "VALIDATED"
+    assert res[0]["validation_status"] == "READY"
 
     # 2. Under 70% Match -> BLOCKED
     _save(spark, [
-        Row(plant_code="C061", warehouse_number="208", transfer_order_number="TO1", source_reference_type="F", source_reference_number="ORD1", created_datetime=date.today()),
-        Row(plant_code="C061", warehouse_number="208", transfer_order_number="TO2", source_reference_type="F", source_reference_number="ORD2", created_datetime=date.today()),
-        Row(plant_code="C061", warehouse_number="208", transfer_order_number="TO3", source_reference_type="F", source_reference_number="ORD3", created_datetime=date.today()),
+        Row(plant_code="C061", warehouse_number="208", source_reference_type="F", source_reference_number="ORD1"),
+        Row(plant_code="C061", warehouse_number="208", source_reference_type="F", source_reference_number="ORD2"),
+        Row(plant_code="C061", warehouse_number="208", source_reference_type="F", source_reference_number="ORD3"),
     ], "warehouse_transfer_order")
 
     res = all_rows(gold_process_order_staging_validation())
     assert len(res) == 1
-    assert res[0]["validation_status"] == "NOT_VALIDATED"
+    assert res[0]["validation_status"] == "BLOCKED"
 
 def test_recipe_line_enrichment_coverage(spark: SparkSession):
     from gold.readiness_validation import gold_recipe_line_enrichment_coverage
@@ -184,7 +187,7 @@ def test_stock_reconciliation_readiness(spark: SparkSession):
 
     # Setup roles coverage mock
     _save_gold(spark, [
-        Row(plant_code="C061", warehouse_number="208", coverage_pct=100.0, unmapped_storage_types=0)
+        Row(plant_code="C061", validation_status="READY")
     ], "gold_storage_type_role_coverage_status")
 
     _save(spark, [

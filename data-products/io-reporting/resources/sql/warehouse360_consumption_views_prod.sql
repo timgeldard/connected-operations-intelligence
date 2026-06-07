@@ -34,7 +34,7 @@ FROM connected_plant_prod.gold_io_reporting.gold_warehouse_kpi_snapshot_secured;
 -- Grain: 1 row per plant_id + po_id + po_item
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_inbound_backlog AS
 SELECT
-  plant_code AS plant_id,
+  plant_id,
   po_id,
   po_item,
   doc_type,
@@ -63,7 +63,7 @@ FROM connected_plant_prod.gold_io_reporting.gold_inbound_po_backlog_enhanced_liv
 -- Grain: 1 row per plant_id + delivery_id
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_outbound_backlog AS
 SELECT
-  plant_code AS plant_id,
+  plant_id,
   delivery_id,
   delivery_type,
   customer_id,
@@ -88,7 +88,7 @@ FROM connected_plant_prod.gold_io_reporting.gold_delivery_pick_status_live;
 -- Grain: 1 row per plant_id + order_id + reservation_no + batch_id (order-component level)
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_staging_workload AS
 SELECT
-  plant_code AS plant_id,
+  plant_id,
   order_id,
   material_id,
   order_qty,
@@ -115,7 +115,7 @@ FROM connected_plant_prod.gold_io_reporting.gold_process_order_staging_live;
 -- Grain: 1 row per plant_id + material_id + batch_id + storage_location_id + exception_type
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_stock_exceptions AS
 SELECT
-  plant_code AS plant_id,
+  plant_id,
   material_id,
   batch_id,
   storage_location_id AS storage_loc,
@@ -134,7 +134,7 @@ FROM connected_plant_prod.gold_io_reporting.gold_stock_expiry_risk_live;
 -- Grain: 1 row per plant_id + material_id
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_shortfalls AS
 SELECT
-  plant_code AS plant_id,
+  plant_id,
   material_id,
   open_tr_qty AS shortfall_qty,
   open_tr_items AS open_items_count,
@@ -150,7 +150,7 @@ FROM connected_plant_prod.gold_io_reporting.gold_transfer_requirement_backlog;
 -- Grain: 1 row per plant_id + material_id + batch_id + storage_location_id + bin_id + exception_type
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_im_wm_reconciliation AS
 SELECT
-  plant_code AS plant_id,
+  plant_id,
   material_id,
   batch_id,
   storage_location_id AS storage_loc,
