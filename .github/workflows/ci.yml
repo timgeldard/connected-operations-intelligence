@@ -161,6 +161,22 @@ jobs:
       - name: Run app migration registry guard
         run: python3 scripts/ci/check_app_migration_registry_guard.py
 
+  silver-fast-mapping-check:
+    name: Silver Fast Approved-Mapping Guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Run silver_fast approved-mapping guard
+        run: python3 scripts/ci/check_silver_fast_field_mappings.py
+
   validate-bundle:
     name: Validate Databricks Bundle
     runs-on: ubuntu-latest

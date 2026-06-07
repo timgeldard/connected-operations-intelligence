@@ -17,21 +17,31 @@ source objects depend on HU. No contract is promoted; a green DEV shakedown does
 not imply UAT readiness. See ADR
 `docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`.
 
-## Status 2026-06-07 — still BLOCKED upstream (0/7), contracts remain candidate
+## Status 2026-06-07 — WM/MM mappings implemented & resolving; silver_fast still blocked (0/7 unchanged)
 
-`silver_slow` completes (silver tables materialised), but `silver_fast` is **blocked** on a
-fast-tier SAP field-contract gap: 4 WH360-critical staging flows reference core columns absent from
-the replicated tables — `transferorderobjects_ltap.{ANFME,ENMNG,ISPOS}`,
-`transferrequirementobjects_ltbp.ENQTY`, `inventorymovement_mseg.VBELN`,
-`batchstock_mchb.{AERECNO,AERUNID,MEINS}` (identical in dev + uat). These are core
-transactional/structural fields → not nullable, and the flows are WH360-critical → not
-source-guardable; they need a data-team/functional reconciliation (not invented/remapped here).
-Consequently Gold is not built; `warehouse360_dev_source_object_validation.sql` reruns to **0/7**;
-consumption views were **not** deployed and the validation pack was **not** run. **All contracts
-remain candidate/pending — none are `ready_for_dev_app_shakedown`.** Detail:
-`ioreporting-dev-deployment-profile.md` §(f)/§(g), `source-contracts/sap/sap_unresolved_sources.yml`,
-and the full reconciliation (evidence + candidates + decisions; **no remap proven** — DDIC DD03L
-unavailable) in `source-contracts/sap/silver_fast_field_reconciliation.md`.
+**Progress:** the approved SAP WM/MM field mappings are now implemented in `warehouse_fast.py`
+(functional sign-off): LTAP `requested/confirmed/picked` ← `VSOLM`/`VISTA` (picked aliases confirmed);
+LTBP `open_quantity` ← `greatest(MENGE-TAMEN,0)`; MSEG `delivery_number/item` ← `VBELN_IM`/`VBELP_IM`
+(+ `reference_type`); MCHB `base_uom` ← `MARA.MEINS` and modelled as a snapshot/current-state
+materialized view (no CDC). Field existence and the MARA 1:1 fan-out guard were verified live
+(2026-06-07). In pipeline update `5abc0952` the **4 WH360-critical flows now RESOLVE at analysis** —
+the update fails only on *"`stg_process_order_operation` and 2 other flows"*, vs all 7 (incl. the 4
+critical) before.
+
+**Still blocked (0/7 unchanged):** DLT graph analysis is all-or-nothing, so the update aborts on the
+remaining 3 flows and **nothing materialises**. The 3 out-of-scope PP/PI flows in `process_order.py`
+(`stg_process_order_operation`, `stg_pi_sheet_execution`, `stg_downtime_event`) fail `UNRESOLVED_COLUMN`
+on `AERUNID`/`AERECNO`/`RecordActivity` (CDC metadata absent from `processorderobject_afvc` /
+`downtime_zpexpm_dwnt` / the PI-sheet source) — the same gap class as MCHB, a different domain, and
+explicitly out of scope of the WM/MM mapping change. Consequently the mappings are **resolved but not
+yet DATA-validated** (output checks §B–E in `validation/silver_fast_mapping_validation.sql` could not
+run); Gold is **not built**; `warehouse360_dev_source_object_validation.sql` still **0/7**; consumption
+views **not** deployed; the validation pack **not** run. **All contracts remain candidate/pending —
+none are `ready_for_dev_app_shakedown`.** **Next step (separate change):** apply the MCHB-style
+snapshot/current-state pattern (or source-guard) to the 3 process_order flows so silver_fast completes,
+then run §B–E + Gold + the WH360 pack. Detail: `ioreporting-dev-deployment-profile.md`,
+`source-contracts/sap/sap_unresolved_sources.yml`, and
+`source-contracts/sap/silver_fast_field_reconciliation.md` (§ "Run result").
 
 ## Next validation attempt prerequisites (added 2026-06-06)
 

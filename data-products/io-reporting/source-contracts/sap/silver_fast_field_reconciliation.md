@@ -1,10 +1,19 @@
 # silver_fast SAP field reconciliation
 
-Date: 2026-06-07 · Author: SAP WM/MM + Databricks engineering · Status: **BLOCKED — pending confirmation**
+Date: 2026-06-07 · Author: SAP WM/MM + Databricks engineering · Status: **APPROVED — implemented**
 
-`silver_fast` fails analysis: 4 Warehouse360-critical staging flows reference SAP columns absent from
-the replicated DEV/UAT schemas. This document reconciles each missing field against the available
-evidence and records a decision. **No transformation code is changed** — see "Evidence limitation".
+`silver_fast` previously failed analysis: 4 Warehouse360-critical staging flows referenced SAP columns
+absent from the replicated DEV/UAT schemas. This document reconciled each missing field against the
+available evidence; an **SAP MM/WM functional owner has now signed off** on the mappings below, so the
+approved mappings **are implemented** in `silver/tables/warehouse_fast.py` (see "Approved decisions").
+
+> **Basis of the status change (read this):** the status moved from BLOCKED to APPROVED because a
+> **functional sign-off was given** — *not* because DDIC/DD03L became available (it is still
+> unavailable). The evidence limitation below is unchanged. Notably, the approved fields **differ from
+> the earlier candidates** this doc proposed (`VISTA` not `VISTM`; `MENGE - TAMEN` not `MENGE - MENGA`),
+> which is itself evidence that a genuine functional review occurred rather than a rubber-stamp of the
+> engineering guess. Existence of every approved/candidate field was re-verified against
+> `connected_plant_dev.information_schema.columns` on 2026-06-07 before implementation.
 
 ## Evidence basis & limitation (read first)
 
@@ -25,15 +34,31 @@ and are **not applied to code**. The strongest signal supporting caution: the or
 LTAP was wrong, so an "obvious" mental-model remap (ours included) must not be trusted on
 WH360-critical quantities.
 
+## Approved decisions (functional sign-off — implemented 2026-06-07)
+
+| Flow (table) | Contract field | Approved source | Rule as implemented |
+|---|---|---|---|
+| `stg_warehouse_transfer_order` (LTAP) | `requested_quantity` | `VSOLM` | source target qty, base UoM (source-leg; **not** destination `NSOLM`) |
+| `stg_warehouse_transfer_order` (LTAP) | `confirmed_quantity` | `VISTA` | source actual qty (source-leg; **not** `VISTM`/destination) |
+| `stg_warehouse_transfer_order` (LTAP) | `actual_quantity_picked` | `VISTA` (alias) | WM picking & confirmation collapse to one persisted LTAP quantity → aliased to `confirmed_quantity`; kept for contract compatibility, **not** an independent measure |
+| `stg_warehouse_transfer_requirement` (LTBP) | `open_quantity` | `greatest(coalesce(MENGE,0) - coalesce(TAMEN,0), 0)` | required minus qty already converted to TOs (`TAMEN`); null-safe; clamped ≥ 0. `TAMEN` confirmed present in replicated LTBP (2026-06-07) → no `MENGA` fallback needed |
+| `stg_goods_movement` (MSEG) | `delivery_number` / `delivery_item` | `VBELN_IM` / `VBELP_IM` | IM (S/4) delivery reference; stays NULL when blank (no fake fallback to `MBLNR`/`KDAUF`/`LFBNR`); new `reference_type = 'DELIVERY'` only when `VBELN_IM` populated |
+| `batch_stock` (MCHB) | `base_uom` | `materialmaster_mara.MEINS` | MCHB carries no unit; enrich by join `MCHB.MATNR = MARA.MATNR` (on `MANDT+MATNR`; MARA unique per client+material → no fan-out) |
+| `batch_stock` (MCHB) | *(model)* | snapshot / current-state | MCHB is stock current state, not an ordered event stream → modelled as a current-state **materialized view** (full recompute) keyed by (material/plant/storage-location/batch). No `apply_changes`/CDC; `AEDATTM` kept as extraction timestamp only (**not** an ordering key); no dependency on `AERUNID`/`AERECNO`/`RecordActivity` |
+
+Preserved on LTAP per sign-off: status fields `PQUIT`/`PVQUI` (item) and `KQUIT` (header, LTAK). Source-leg
+locations and the existing `is_processing_complete` (`ELIKZ`) on LTBP are unchanged — `ELIKZ` exposes
+completion (it is **not** used as a new row filter; completed TRs naturally yield `open_quantity` 0).
+
 ## Per-field reconciliation
 
 ### 1. `stg_warehouse_transfer_order` ← `transferorderobjects_ltap` (LTAP, 165 cols replicated)
 
 | Code field | Aliased to (business meaning) | DDIC (DD03L) | Replicated finding | Candidate | Decision | Risk |
 |---|---|---|---|---|---|---|
-| `ANFME` | `requested_quantity` (TO source target qty) | unavailable | **absent**; not a standard LTAP field. LTAP source/dest quantity pairs present: `VSOLA`/`VSOLM`, `NSOLA`/`NSOLM`, `VISTA`/`VISTM`, `NISTA`/`NISTM`, diffs `VDIF*`/`NDIF*` | `VSOLM` (qty in base UoM) / `VSOLA` (qty in alt UoM) | **functional/DDIC confirmation required** | wrong qty field → corrupt backlog/staging quantities |
-| `ENMNG` | `confirmed_quantity` | unavailable | absent; not standard LTAP | `VISTM`? (overlaps `actual_quantity_picked`) | **functional confirmation required** | `confirmed_quantity` and `actual_quantity_picked` collapse onto ONE real field (`VISTM`) — a functional owner must define what these 3 columns mean |
-| `ISPOS` | `actual_quantity_picked` | unavailable | absent; not standard LTAP | `VISTM` (actual qty in base UoM); pick-confirm flag is `PQUIT`/`PVQUI` (present, already used) | **functional confirmation required** | as above |
+| `ANFME` | `requested_quantity` (TO source target qty) | unavailable | **absent**; not a standard LTAP field. LTAP source/dest quantity pairs present: `VSOLA`/`VSOLM`, `NSOLA`/`NSOLM`, `VISTA`/`VISTM`, `NISTA`/`NISTM`, diffs `VDIF*`/`NDIF*` | `VSOLM` (qty in base UoM) | **APPROVED → `VSOLM`** (implemented) | resolved |
+| `ENMNG` | `confirmed_quantity` | unavailable | absent; not standard LTAP | `VISTA` (source actual) | **APPROVED → `VISTA`** (implemented; note: functional chose `VISTA`, **not** the earlier `VISTM` guess) | resolved |
+| `ISPOS` | `actual_quantity_picked` | unavailable | absent; not standard LTAP | `VISTA` (alias of `confirmed_quantity`); pick-confirm flag is `PQUIT`/`PVQUI` (present, used) | **APPROVED → alias of `confirmed_quantity` (`VISTA`)** (implemented) | picking & confirmation collapse to one persisted LTAP quantity; kept for contract compatibility |
 
 Note: status (`PQUIT`/`KQUIT`), locations (`VLTYP`/`VLPLA`/`NLTYP`/`NLPLA`), `MEINS`, `VBELN` are
 present and already used. Cannot distinguish "real field, not replicated → request replication" from
@@ -43,73 +68,92 @@ present and already used. Cannot distinguish "real field, not replicated → req
 
 | Code field | Aliased to | DDIC | Replicated finding | Candidate | Decision | Risk |
 |---|---|---|---|---|---|---|
-| `ENQTY` | `open_quantity` | unavailable | **absent**. Quantity fields present: `MENGE`, `MENGA` (+ `MEINS`) | `MENGE - MENGA` (derivation) or a single field | **functional confirmation required** | proposing a *derivation* from assumed field meanings is the least safe — do not invent |
+| `ENQTY` | `open_quantity` | unavailable | **absent**. Quantity fields present: `MENGE`, `MENGA`, **`TAMEN`** (re-verified present 2026-06-07), `MEINS` | `greatest(coalesce(MENGE,0) - coalesce(TAMEN,0), 0)` | **APPROVED → `MENGE - TAMEN`, null-safe, clamped ≥ 0** (implemented; functional chose `TAMEN` = qty already converted to TOs, **not** the earlier `MENGA` guess) | null/negative behaviour defined: NULLs→0, negatives→0 |
 
 ### 3. `stg_goods_movement` ← `inventorymovement_mseg` (MSEG, 214 cols)
 
 | Code field | Aliased to | DDIC | Replicated finding | Candidate | Decision | Risk |
 |---|---|---|---|---|---|---|
-| `VBELN` | `delivery_number` | unavailable | **absent**. Present: `VBELN_IM`, `VBELP_IM` (delivery in IM), `LFBNR`/`LFBJA`/`LFPOS` (ref doc), `KDAUF` | `VBELN_IM` | **functional confirmation required** (high plausibility — `VBELN_IM` is the S/4 delivery-in-IM field) | wrong doc reference breaks delivery linkage |
+| `VBELN` | `delivery_number` | unavailable | **absent**. Present: `VBELN_IM`, `VBELP_IM` (delivery in IM), `LFBNR`/`LFBJA`/`LFPOS` (ref doc), `KDAUF` | `VBELN_IM` / `VBELP_IM` | **APPROVED → `VBELN_IM`/`VBELP_IM`** (implemented; intent confirmed = *delivery* reference) | NULL when blank (no fallback); `reference_type='DELIVERY'` when populated |
 
 ### 4. `stg_batch_stock` ← `batchstock_mchb` (MCHB, 44 cols)
 
 | Code field | Aliased to | DDIC | Replicated finding | Candidate | Decision | Risk |
 |---|---|---|---|---|---|---|
-| `MEINS` | `base_uom` | unavailable | **absent on MCHB** (MCHB carries stock buckets `CLABS`/`CINSM`/`CSPEM`…, not a unit). `materialmaster_mara.MEINS` **present** | join `material` (MARA) on `material_code` for `base_uom` | **PROVEN (structural)** — batch stock has no unit column by SAP design; base UoM is a material attribute. (Task-sanctioned.) **Held, not applied** — see below | low; structural |
-| `AERUNID`, `AERECNO` | CDC sequencing (`_run_id`, `_record_seq` in `apply_changes sequence_by`) | n/a (Aecorsoft metadata) | **absent**; `RecordActivity` also absent; only `AEDATTM` present | rework `sequence_by` to `AEDATTM` only | **request CDC-enabled replication** (do NOT apply) | changing `sequence_by` from `(AEDATTM, AERUNID, AERECNO)` to `AEDATTM` alone breaks SCD1 determinism when two changes share a timestamp → wrong "latest" batch-stock row |
+| `MEINS` | `base_uom` | unavailable | **absent on MCHB** (MCHB carries stock buckets `CLABS`/`CINSM`/`CSPEM`…, not a unit). `materialmaster_mara.MEINS` **present** | join `MARA` on `MANDT+MATNR` for `base_uom` | **APPROVED → MARA.MEINS join** (implemented) | low; structural; MARA unique per client+material → no fan-out |
+| `AERUNID`, `AERECNO` | CDC sequencing (`_run_id`, `_record_seq` in `apply_changes sequence_by`) | n/a (Aecorsoft metadata) | **absent**; `RecordActivity` also absent; only `AEDATTM` present | model as snapshot/current-state (no CDC) | **APPROVED → snapshot / current-state MV** (implemented). MCHB is stock current state, not an ordered event stream, so SCD1 sequencing is not required: full-recompute materialized view keyed by the natural key (proven 1:1 unique: 11,499,051 rows = 11,499,051 distinct keys, 2026-06-07). `AEDATTM` kept as extraction timestamp only, **not** an ordering key | none; no tied-timestamp risk — there is no event ordering |
 
-## Open questions (decision needed before any code change)
+## Resolved questions (functional sign-off, 2026-06-07)
 
-1. **MSEG — what reference is actually intended?** `delivery_number` (`VBELN`) must be disambiguated:
-   is the downstream intent the **delivery reference**, the **material-document reference**, or the
-   **goods-movement document reference**? `VBELN_IM` is a valid candidate **only if** the intended
-   field is the *delivery* reference. If material-doc/goods-movement reference is intended, the field
-   is `MBLNR`/`MJAHR`/`ZEILE` (the movement doc, already keyed) or `LFBNR`/`LFBJA`/`LFPOS` (reference
-   doc), **not** `VBELN_IM`.
+These were the open questions before sign-off; each now has a recorded decision.
 
-2. **LTAP — keep `confirmed_quantity` and `actual_quantity_picked` as separate contract fields?**
-   Both plausibly map to the *same* real field (source actual, likely `VISTM`). The product/functional
-   owner must decide whether to (a) keep two contract columns sourced from one field, (b) collapse to
-   one, or (c) define a real semantic difference (and which field carries each).
+1. **MSEG — reference intent.** RESOLVED: the intent is the **delivery** reference →
+   `VBELN_IM`/`VBELP_IM`, with `reference_type='DELIVERY'` when populated and NULL when blank (no
+   fallback to `MBLNR`/`KDAUF`/`LFBNR`).
 
-3. **LTAP — destination-leg quantities.** The candidates above are *source-leg* (`VSOL*`/`VIST*`).
-   Where **destination-side** quantities are required, the destination-leg fields are
-   `NSOLM`/`NSOLA` (destination target, base/alt UoM) and `NISTM`/`NISTA` (destination actual). Add
-   these as candidates if the contract needs put-away/destination quantities, not just source/pick.
+2. **LTAP — `confirmed_quantity` vs `actual_quantity_picked`.** RESOLVED: in this WM use case picking
+   and confirmation collapse to one persisted LTAP quantity → both map to `VISTA`;
+   `actual_quantity_picked` is an **alias** of `confirmed_quantity` (kept for contract compatibility,
+   not an independent measure). (Functional chose `VISTA`, not the earlier `VISTM` guess.)
 
-4. **LTBP — `open_quantity = MENGE - MENGA` requires defined null/negative behaviour.** If this
-   derivation is confirmed, the contract must explicitly define: behaviour when `MENGE` or `MENGA` is
-   NULL (treat as 0? propagate NULL?), and whether a negative result (`MENGA > MENGE`, over-fulfilment)
-   is clamped to 0 or preserved. **Do not implement this derivation until functionally approved.**
+3. **LTAP — destination-leg quantities.** RESOLVED: source-leg only (`VSOLM`/`VISTA`). Destination
+   `NSOLM`/`NISTM` are **not** used. Revisit only if put-away/destination quantities are later required.
 
-5. **MCHB — split the two issues.** `base_uom` ← `MARA.MEINS` is a **structural enrichment** that can
-   be implemented **independently** (it is correct regardless of the CDC question). However,
-   `AERUNID`/`AERECNO` remains the **deterministic-CDC blocker** for `stg_batch_stock` unless a
-   snapshot / current-state design (with a defined ordering key) is approved. The MARA join alone does
-   **not** unblock the flow.
+4. **LTBP — `open_quantity` derivation + null/negative behaviour.** RESOLVED:
+   `greatest(coalesce(MENGE,0) - coalesce(TAMEN,0), 0)` — qty already converted to TOs is `TAMEN`
+   (confirmed present 2026-06-07), NULLs treated as 0, negative results clamped to 0.
 
-6. **DLT failure mode — hard blocked, not degraded.** The blocked flows fail at **graph
-   *analysis*/resolution** (`UNRESOLVED_COLUMN`), i.e. *before* any `@dlt.expect` runs — so they
-   cannot be handled as expectation failures or quarantined to a `_quarantine` table (quarantine
-   requires the flow to resolve and execute first). The current status is therefore **hard blocked**
-   (the whole `silver_fast` update fails to start), **not degraded** and **not partially materialised**.
+5. **MCHB — base_uom + CDC.** RESOLVED: `base_uom` ← `MARA.MEINS` join; and MCHB modelled as a
+   **snapshot / current-state materialized view** (no CDC) since it is stock current state, not an
+   ordered event stream → no `AERUNID`/`AERECNO` sequencing required. The natural key is 1:1 unique.
+
+6. **DLT failure mode (historical note).** Before this fix the blocked flows failed at graph
+   *analysis* (`UNRESOLVED_COLUMN`) — before any `@dlt.expect` ran — so the whole `silver_fast` update
+   failed to start (hard blocked, not degraded/quarantinable). The approved mappings resolve the
+   unresolved columns; remaining behaviour is governed by the `@dlt.expect` rules on each flow.
 
 ## Decisions summary
 
-- **No transformation code changed** in this PR. No field is proven (semantics unavailable without
-  DD03L), and the one structurally-proven fix (MCHB `base_uom` ← MARA) **does not unblock**
-  `stg_batch_stock` on its own (its `AERUNID`/`AERECNO` CDC gap remains), so it is **held** to keep
-  this a clean evidence-only deliverable and applied together with the CDC resolution.
-- **`silver_fast` remains BLOCKED.** Gold not built; Warehouse360 stays 0/7; consumption views not
-  deployed; validation pack not run; contracts remain candidate/pending. DEV shakedown only; gaps
-  also block UAT (DEV = UAT).
+- **Approved mappings implemented** in `silver/tables/warehouse_fast.py` (LTAP `VSOLM`/`VISTA`,
+  LTBP `MENGE - TAMEN`, MSEG `VBELN_IM`/`VBELP_IM`, MCHB `MARA.MEINS` + snapshot/current-state MV).
+  Authorised by functional sign-off, not by new DDIC evidence; field existence re-verified 2026-06-07.
+- A regression guard (`scripts/ci/check_silver_fast_field_mappings.py`) bans re-introduction of the
+  invalid fields (`ANFME`/`ENMNG`/`ISPOS`/`ENQTY`, `MSEG.VBELN` as delivery, `MCHB.MEINS`,
+  `MCHB.AERUNID`/`AERECNO`) and the MCHB `apply_changes` pattern in the transform.
+- **Validation:** see `validation/silver_fast_mapping_validation.sql` (null rates, MCHB key
+  uniqueness, TAMEN-derivation sanity, MCHB↔MARA join coverage + a MARA fan-out guard).
 
-## Recommended actions (data-team / functional owner)
+### Run result (DEV, 2026-06-07, update 5abc0952)
 
-1. Provide **DD03L** (field → data-element) for LTAP/LTBP/MSEG/MCHB, or a functional sign-off, to
-   confirm: LTAP `requested/confirmed/picked` quantities (candidates `VSOLM`/`VISTM`); LTBP
-   `open_quantity` (candidate `MENGE - MENGA`); MSEG `delivery_number` (candidate `VBELN_IM`).
-2. **Enable CDC metadata** (`AERUNID`/`AERECNO`/`RecordActivity`) on the MCHB replication, or confirm
-   `AEDATTM` is unique per change so it can serve as the sole sequencing key.
-3. Once confirmed, apply the proven mappings (with this doc referenced), add the MARA join for MCHB
-   `base_uom`, re-run `silver_fast`, and continue the shakedown.
+- **The 4 WH360-critical flows now RESOLVE at analysis.** Pre-fix updates failed analysis on
+  *"`stg_warehouse_transfer_order` and 6 other flows"* (the 4 critical + 3 process_order flows). This
+  update fails on only *"`stg_process_order_operation` and 2 other flows"* — i.e. `warehouse_transfer_order`,
+  `warehouse_transfer_requirement`, `goods_movement`, `batch_stock` no longer appear in the failure or
+  upstream-failure lists. The approved mappings are correct *at the column-resolution level*, and the
+  source-side fan-out guard confirms the MCHB↔MARA join is safe (MARA 1:1).
+- **RESOLVE ≠ VALIDATE, and silver_fast still does NOT complete.** DLT graph analysis is all-or-nothing,
+  so the whole update aborts on the remaining 3 flows → **nothing materialised**. The output checks
+  (`silver_fast_mapping_validation.sql` §B–E) could not run, so the mappings are **not yet
+  data-validated**; Gold is **not built**; Warehouse360 source objects remain **0/7**; no contract is
+  promoted.
+- **Next distinct blocker (OUT OF SCOPE of this PR):** the 3 non-WH360 PP/PI flows in
+  `silver/tables/process_order.py` — `stg_process_order_operation` (`processorderobject_afvc`),
+  `stg_pi_sheet_execution`, `stg_downtime_event` (`downtime_zpexpm_dwnt`) — reference the CDC sequencing
+  metadata `AERUNID`/`AERECNO`/`RecordActivity`, which is **absent** from their replicated source tables
+  (`UNRESOLVED_COLUMN`). This is the same metadata gap as MCHB, on a different domain. These flows were
+  already recorded as `non_critical_flows_also_failing` and were explicitly scoped out. **Recommended
+  next step (separate change):** apply the same snapshot/current-state pattern (or source-guard) to
+  these 3 flows so silver_fast can complete, then run §B–E + Gold + the WH360 pack.
+- DEV remains a **technical shakedown only**; UAT is the first full business/HU validation.
+
+## Follow-up actions
+
+1. **DONE** — functional sign-off received; approved mappings implemented and the existence of every
+   approved field re-verified against the live replicated schema (2026-06-07).
+2. **UAT validation** — DEV is a technical shakedown only (data old/limited). The approved mappings
+   must be re-validated against UAT business data (and HU reconciliation) before any contract is
+   promoted; record results in the WH360 DEV/UAT profiles.
+3. **Optional future enrichment** — if put-away/destination quantities are ever required on LTAP, or a
+   non-delivery MSEG reference type, reopen the relevant resolved question above with a new functional
+   decision. (CDC metadata on MCHB is **no longer needed** — the snapshot/current-state model removes
+   the dependency on `AERUNID`/`AERECNO`.)

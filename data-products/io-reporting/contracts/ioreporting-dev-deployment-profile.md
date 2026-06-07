@@ -331,3 +331,35 @@ Per-field decisions (full detail: `source-contracts/sap/silver_fast_field_reconc
 views not deployed; validation pack not run; contracts remain **candidate/pending**. Gaps also block
 UAT. Next: data-team supplies DD03L / functional sign-off + CDC-enabled MCHB replication, then apply
 the confirmed mappings and re-run.
+
+## Update 2026-06-07 (h) — approved WM/MM mappings IMPLEMENTED; 4 critical flows resolve; silver_fast still blocked on process_order
+
+**Functional sign-off received** (supersedes (g)'s "confirmation required"). Implemented the approved
+mappings in `silver/tables/warehouse_fast.py` and re-verified every source field exists live
+(`information_schema.columns`, 2026-06-07):
+
+| Flow | Approved mapping (implemented) |
+|---|---|
+| `stg_warehouse_transfer_order` (LTAP) | `requested_quantity`←`VSOLM`; `confirmed_quantity`←`VISTA`; `actual_quantity_picked`←`VISTA` (alias of confirmed — WM picking & confirmation collapse to one persisted qty). Note: functional chose `VISTA`, **not** the earlier `VISTM` guess. `PQUIT`/`PVQUI`/`KQUIT` preserved. |
+| `stg_warehouse_transfer_requirement` (LTBP) | `open_quantity`←`greatest(coalesce(MENGE,0)-coalesce(TAMEN,0),0)` (null-safe, clamped ≥0). `TAMEN` confirmed present; functional chose `TAMEN`, **not** `MENGA`. |
+| `stg_goods_movement` (MSEG) | `delivery_number`←`VBELN_IM`, `delivery_item`←`VBELP_IM`; NULL when blank (no fallback); new `reference_type='DELIVERY'` when populated. |
+| `batch_stock` (MCHB) | `base_uom`←`MARA.MEINS` (join `MCHB.MATNR=MARA.MATNR` on `MANDT+MATNR`); modelled as a **snapshot/current-state materialized view** (no `apply_changes`/CDC; `AEDATTM` kept as extraction timestamp only). MARA verified 1:1 (973,314 rows = 973,314 keys → no join fan-out). |
+
+Regression guard added: `scripts/ci/check_silver_fast_field_mappings.py` (bans the invalid fields +
+the MCHB CDC pattern). Validation SQL added: `validation/silver_fast_mapping_validation.sql`
+(pre-run existence/fan-out gate §A + post-run output checks §B–E). Bundle validates; pre-run gate §A
+GREEN (0 missing fields, 0 MARA fan-out).
+
+**Run result (update `5abc0952`):** the **4 WH360-critical flows now RESOLVE** — the update fails on
+only *"`stg_process_order_operation` and 2 other flows"*, vs *"`stg_warehouse_transfer_order` and 6
+other flows"* before. **But silver_fast still does NOT complete:** DLT analysis is all-or-nothing, so
+the 3 remaining flows abort the whole update → nothing materialises. The 3 are the out-of-scope PP/PI
+flows in `process_order.py` — `stg_process_order_operation` (`processorderobject_afvc`),
+`stg_pi_sheet_execution`, `stg_downtime_event` (`downtime_zpexpm_dwnt`) — failing `UNRESOLVED_COLUMN`
+on `AERUNID`/`AERECNO`/`RecordActivity` (CDC metadata absent; same gap class as MCHB, different domain).
+
+**Consequences unchanged:** mappings resolved but **not yet DATA-validated** (§B–E couldn't run); Gold
+**not built**; Warehouse360 **0/7**; consumption views not deployed; validation pack not run; contracts
+remain **candidate/pending**; DEV = technical shakedown only. **Next step (separate change, out of this
+PR's scope):** apply the MCHB-style snapshot/current-state pattern (or source-guard) to the 3
+process_order flows so silver_fast completes, then run §B–E + Gold + the WH360 source-object pack.

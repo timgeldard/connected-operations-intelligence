@@ -31,7 +31,7 @@ unresolved_sources:
   - id: silver_fast_core_field_contract_mismatch
     models: [stg_warehouse_transfer_order, stg_warehouse_transfer_requirement, stg_goods_movement, stg_batch_stock, stg_process_order_operation, stg_downtime_event, stg_pi_sheet_execution]
     file: silver/tables/warehouse_fast.py (+ warehouse_flow / process_order / quality)
-    summary: "7 silver_fast staging flows fail analysis — they reference SAP columns absent from the replicated source tables, which are otherwise richly replicated."
+    summary: "RESOLVED (2026-06-07): 4 WH360-critical silver_fast staging flows previously failed analysis on SAP columns absent from the replicated tables. Functional sign-off provided the correct mappings; implemented in warehouse_fast.py. (3 non-critical process_order flows below are out of scope of this fix.)"
     # COMPLETE missing-field inventory (static audit of warehouse_fast.py vs live replicated schema,
     # 2026-06-07; identical in dev and uat). Tables are richly replicated but miss these specific cols.
     confirmed_missing_wh360_critical:
@@ -40,12 +40,12 @@ unresolved_sources:
       - {table: inventorymovement_mseg, total_cols: 214, missing: [VBELN], model: stg_goods_movement, note: "delivery/sales-doc reference"}
       - {table: batchstock_mchb, total_cols: 44, missing: [AERECNO, AERUNID, MEINS], model: stg_batch_stock, note: "AERECNO/AERUNID are CDC sequencing metadata (other tables have them); MEINS base UoM"}
     fully_present_tables: [transferorderobjects_ltak, transferrequirementobjects_ltbk, materialdocument_mkpf]
-    non_critical_flows_also_failing: [stg_process_order_operation, stg_downtime_event, stg_pi_sheet_execution]  # process_order.py; NOT WH360-source feeders (per gold dependency trace); columns not audited
+    non_critical_flows_also_failing: [stg_process_order_operation, stg_downtime_event, stg_pi_sheet_execution]  # process_order.py; NOT WH360-source feeders (per gold dependency trace). CONFIRMED next distinct blocker (update 5abc0952, 2026-06-07): all 3 fail UNRESOLVED_COLUMN on AERUNID/AERECNO/RecordActivity (CDC metadata absent from processorderobject_afvc / downtime_zpexpm_dwnt / pi-sheet source) — same gap class as MCHB, different domain. OUT OF SCOPE of the silver_fast WM/MM mapping PR. Because DLT analysis is all-or-nothing, these 3 still abort the whole silver_fast update, so the 4 (now-resolving) WH360-critical flows do NOT materialise. Recommended separate change: apply MCHB-style snapshot/current-state (or source-guard) to these 3.
     evidence: "Live information_schema.columns 2026-06-07 (dev + uat identical). warehouse360_dev_source_object_validation.sql confirms 0/7 gold source objects (gold layer absent)."
-    nature: "Core TRANSACTIONAL/structural fields (TO/TR quantities, item position, delivery ref, CDC sequencing) — NOT optional/nullable. Likely incorrect field names in the silver code (e.g. LTAP source-target quantities are VSOLA/VSOLM/NSOLA, not ANFME) OR fields excluded from the curated replication. Requires functional/data-team reconciliation; NOT remapped or nulled here (do not invent fields)."
+    nature: "Core TRANSACTIONAL/structural fields (TO/TR quantities, delivery ref, base UoM, CDC sequencing). RESOLVED: the original silver code used incorrect/absent field names (LTAP ANFME/ENMNG/ISPOS, LTBP ENQTY, MSEG VBELN-as-delivery, MCHB MEINS/AERUNID/AERECNO). Functional sign-off supplied the correct source-leg fields (VSOLM/VISTA, MENGE-TAMEN, VBELN_IM/VBELP_IM, MARA.MEINS) and the MCHB snapshot/current-state model. Implemented in warehouse_fast.py — not invented/nulled."
     warehouse360_dependency: true   # warehouse_transfer_order is read by ALL 5 WH360-source gold modules; transfer_requirement/goods_movement/batch_stock feed transfer_requirement_backlog/stock_expiry_risk/exceptions
     affects_uat: true
-    cannot_source_guard: "These 4 flows are WH360-critical — source-guarding them would delete WH360 source objects. Cannot typed-null core quantities (would fabricate business data)."
+    cannot_source_guard: "RESOLVED differently — these 4 flows are WH360-critical so they were NEITHER source-guarded NOR typed-null; the real fields were mapped from functional sign-off (no fabricated data, no deleted source objects)."
     # Reconciliation (2026-06-07): full evidence + per-field decisions + open questions in
     # source-contracts/sap/silver_fast_field_reconciliation.md. DDIC DD03L (field->data element) is
     # UNAVAILABLE; scratch.gold_sap_table_metadata (table-level) and gold_sap_data_element_metadata
@@ -53,46 +53,53 @@ unresolved_sources:
     # not MEANING -> no remap is "proven" -> NO code changed (mapping from SAP training knowledge is
     # barred as "public docs"). status enum: PENDING_FUNCTIONAL_CONFIRMATION | PENDING_DATA_MODEL_DECISION
     # | PENDING_INFRASTRUCTURE | PROVEN_STRUCTURAL_HELD | APPROVED_FOR_IMPLEMENTATION | BLOCKED.
+    # status enum (updated): APPROVED_FOR_IMPLEMENTATION | APPROVED_ALIAS | APPROVED_SNAPSHOT_CURRENT_STATE
+    # | NOT_USED | (legacy) PENDING_* | PROVEN_STRUCTURAL_HELD | BLOCKED.
+    # All silver_fast candidates resolved by functional sign-off 2026-06-07 and IMPLEMENTED in
+    # silver/tables/warehouse_fast.py; field existence re-verified against live information_schema.columns.
     reconciliation_candidates:
       - field: "LTAP.ANFME (requested_quantity)"
-        candidate: "VSOLM (source target qty, base UoM) / VSOLA (qty in alt UoM)"
-        status: PENDING_FUNCTIONAL_CONFIRMATION
-        unblocked_by: "DD03L or functional sign-off confirming source target qty = VSOLM (base) / VSOLA (alt)"
+        candidate: "VSOLM (source target qty, base UoM)"
+        status: APPROVED_FOR_IMPLEMENTATION
+        note: "implemented: requested_quantity = VSOLM (source-leg base UoM)"
+        unblocked_by: "functional sign-off 2026-06-07"
       - field: "LTAP.ENMNG (confirmed_quantity)"
-        candidate: "VISTM (source actual qty)"
-        status: PENDING_DATA_MODEL_DECISION
-        note: "collapses onto same real field as actual_quantity_picked"
-        unblocked_by: "data-model decision: keep confirmed_quantity + actual_quantity_picked as 2 contract fields from 1 source field, collapse to 1, or define a real semantic difference"
+        candidate: "VISTA (source actual qty)"
+        status: APPROVED_FOR_IMPLEMENTATION
+        note: "implemented: confirmed_quantity = VISTA. Functional chose VISTA, NOT the earlier VISTM guess."
+        unblocked_by: "functional sign-off 2026-06-07"
       - field: "LTAP.ISPOS (actual_quantity_picked)"
-        candidate: "VISTM (source actual qty)"
-        status: PENDING_DATA_MODEL_DECISION
-        unblocked_by: "same data-model decision as LTAP.ENMNG"
+        candidate: "VISTA (alias of confirmed_quantity)"
+        status: APPROVED_ALIAS
+        note: "implemented: actual_quantity_picked aliases confirmed_quantity (VISTA) — picking & confirmation collapse to one persisted LTAP qty; kept for contract compatibility, not an independent measure"
+        unblocked_by: "functional sign-off 2026-06-07"
       - field: "LTAP destination-leg quantities (if required)"
         candidate: "NSOLM/NSOLA (destination target) + NISTM/NISTA (destination actual)"
-        status: PENDING_DATA_MODEL_DECISION
-        unblocked_by: "decision on whether the contract needs put-away/destination quantities (not only source/pick)"
+        status: NOT_USED
+        note: "decision: source-leg only; destination quantities NOT used. Reopen only if put-away/destination qty required."
+        unblocked_by: "n/a — resolved (not used)"
       - field: "LTBP.ENQTY (open_quantity)"
-        candidate: "MENGE - MENGA (derivation)"
-        status: PENDING_FUNCTIONAL_CONFIRMATION
-        note: "inventing a derivation - least safe; null/negative behaviour must be defined"
-        unblocked_by: "functional confirmation of the derivation AND defined null/negative-result handling"
+        candidate: "greatest(coalesce(MENGE,0) - coalesce(TAMEN,0), 0)"
+        status: APPROVED_FOR_IMPLEMENTATION
+        note: "implemented: TAMEN = qty already converted to TOs (confirmed PRESENT in replicated LTBP 2026-06-07); null-safe; clamped >= 0. Functional chose TAMEN, NOT the earlier MENGA guess."
+        unblocked_by: "functional sign-off 2026-06-07"
       - field: "MSEG.VBELN (delivery_number)"
-        candidate: "VBELN_IM (present) IF intent is delivery reference"
-        status: PENDING_DATA_MODEL_DECISION
-        note: "VBELN_IM valid only if delivery reference is intended; material-doc=MBLNR/MJAHR/ZEILE, ref-doc=LFBNR/LFBJA/LFPOS"
-        unblocked_by: "confirm intended reference type (delivery vs material-document vs goods-movement)"
+        candidate: "VBELN_IM / VBELP_IM (IM delivery reference)"
+        status: APPROVED_FOR_IMPLEMENTATION
+        note: "implemented: delivery_number=VBELN_IM, delivery_item=VBELP_IM; NULL when blank (no fallback); new reference_type='DELIVERY' when populated. Intent confirmed = delivery reference."
+        unblocked_by: "functional sign-off 2026-06-07"
       - field: "MCHB.MEINS (base_uom)"
         candidate: "join materialmaster_mara.MEINS (MCHB has no unit by design)"
         status: APPROVED_FOR_IMPLEMENTATION
-        note: "structural enrichment, implementable INDEPENDENTLY; does NOT unblock stg_batch_stock alone; deferred to the silver_fast unblock PR (this PR is evidence-only)"
-        unblocked_by: "nothing — ready; apply alongside the MCHB CDC fix"
+        note: "implemented: base_uom from MARA.MEINS, join MCHB.MATNR=MARA.MATNR on MANDT+MATNR (MARA unique per client+material -> no fan-out)"
+        unblocked_by: "functional sign-off 2026-06-07"
       - field: "MCHB.AERUNID/AERECNO (CDC sequencing for SCD1)"
-        candidate: "request CDC-enabled MCHB replication (RecordActivity also absent; only AEDATTM present)"
-        status: PENDING_INFRASTRUCTURE
-        note: "AEDATTM-only sequence_by breaks SCD1 determinism on tied timestamps - do NOT apply"
-        unblocked_by: "CDC-enabled MCHB replication (AERUNID/AERECNO/RecordActivity) OR approved snapshot/current-state design with a defined deterministic ordering key"
+        candidate: "model MCHB as snapshot / current-state MV (no CDC)"
+        status: APPROVED_SNAPSHOT_CURRENT_STATE
+        note: "implemented: MCHB is stock current state, not an ordered event stream -> full-recompute materialized view keyed by the natural key (proven 1:1 unique, 11,499,051 rows = 11,499,051 distinct keys 2026-06-07). No apply_changes/CDC; AEDATTM kept as extraction timestamp only, NOT an ordering key. CDC-enabled MCHB replication is no longer needed."
+        unblocked_by: "approved snapshot/current-state design (functional sign-off 2026-06-07)"
     decision_doc: data-products/io-reporting/source-contracts/sap/silver_fast_field_reconciliation.md
-    status: BLOCKED   # silver_fast hard-fails at analysis; WH360 gold cannot materialise in DEV until the field contract is reconciled. No transformation code changed (no mapping proven).
+    status: MAPPINGS_IMPLEMENTED_FLOWS_RESOLVE   # functional sign-off 2026-06-07; approved mappings implemented in warehouse_fast.py + regression guard scripts/ci/check_silver_fast_field_mappings.py. The 4 WH360-critical flows now RESOLVE at analysis (update 5abc0952 fails only on the 3 process_order flows, vs all 7 before). BUT silver_fast still does NOT complete (aborts on the out-of-scope process_order AERUNID blocker above) → nothing materialised → mappings not yet DATA-validated, gold not built, WH360 0/7 unchanged. DEV = technical shakedown only; UAT = first full business/HU validation.
 
   - id: storagebin_lagp_attribute_columns
     model: stg_storage_bin / storage_bin (silver/tables/warehouse_reference.py)
