@@ -120,6 +120,9 @@ These were the open questions before sign-off; each now has a recorded decision.
 - A regression guard (`scripts/ci/check_silver_fast_field_mappings.py`) bans re-introduction of the
   invalid fields (`ANFME`/`ENMNG`/`ISPOS`/`ENQTY`, `MSEG.VBELN` as delivery, `MCHB.MEINS`,
   `MCHB.AERUNID`/`AERECNO`) and the MCHB `apply_changes` pattern in the transform.
+- The unit-test mirrors in `tests/test_warehouse_ops.py` (LTAP/LTBP) were updated to the approved
+  fields so they no longer encode the old mappings (a false-green trap). pytest requires Java and was
+  **not run locally** (env limitation) — CI verifies; `py_compile` + `ruff` pass.
 - **Validation:** see `validation/silver_fast_mapping_validation.sql` (null rates, MCHB key
   uniqueness, TAMEN-derivation sanity, MCHB↔MARA join coverage + a MARA fan-out guard).
 

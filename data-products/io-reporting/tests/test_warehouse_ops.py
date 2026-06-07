@@ -22,7 +22,7 @@ from tests.conftest import all_rows, first_row
 
 _LTAP_SCHEMA = (
     "LGNUM STRING, TANUM STRING, TAPOS STRING, MANDT STRING, WERKS STRING, "
-    "MATNR STRING, CHARG STRING, ANFME DOUBLE, ENMNG DOUBLE, PQUIT STRING"
+    "MATNR STRING, CHARG STRING, VSOLM DOUBLE, VISTA DOUBLE, PQUIT STRING"
 )
 _LTAK_SCHEMA = (
     "LGNUM STRING, TANUM STRING, MANDT STRING, KQUIT STRING, "
@@ -31,7 +31,7 @@ _LTAK_SCHEMA = (
 )
 _LTBP_SCHEMA = (
     "LGNUM STRING, TBNUM STRING, TBPOS STRING, MANDT STRING, WERKS STRING, "
-    "MATNR STRING, MENGE DOUBLE, ENQTY DOUBLE, ELIKZ STRING"
+    "MATNR STRING, MENGE DOUBLE, TAMEN DOUBLE, ELIKZ STRING"
 )
 _LTBK_SCHEMA = (
     "LGNUM STRING, TBNUM STRING, MANDT STRING, ZZ_CAMPAIGN STRING, "
@@ -170,8 +170,9 @@ def apply_transfer_order_transform(
             F.col("i.WERKS").alias("plant_code"),
             strip_zeros("i.MATNR").alias("material_code"),
             strip_zeros("i.CHARG").alias("batch_number"),
-            F.col("i.ANFME").alias("requested_quantity"),
-            F.col("i.ENMNG").alias("confirmed_quantity"),
+            F.col("i.VSOLM").alias("requested_quantity"),
+            F.col("i.VISTA").alias("confirmed_quantity"),
+            F.col("i.VISTA").alias("actual_quantity_picked"),
             F.when(F.col("i.PQUIT") == "B", "Fully Confirmed")
              .when(F.col("i.PQUIT") == "A", "Partially Confirmed")
              .otherwise("Open").alias("item_status"),
@@ -195,14 +196,14 @@ def make_ltap(
     WERKS="1000",
     MATNR="000000000000012345",
     CHARG="0000001234",
-    ANFME=100.0,
-    ENMNG=100.0,
+    VSOLM=100.0,
+    VISTA=100.0,
     PQUIT="",
 ):
     return Row(
         LGNUM=LGNUM, TANUM=TANUM, TAPOS=TAPOS, MANDT=MANDT,
         WERKS=WERKS, MATNR=MATNR, CHARG=CHARG,
-        ANFME=ANFME, ENMNG=ENMNG, PQUIT=PQUIT,
+        VSOLM=VSOLM, VISTA=VISTA, PQUIT=PQUIT,
     )
 
 
@@ -248,7 +249,10 @@ def apply_transfer_requirement_transform(
             F.col("i.WERKS").alias("plant_code"),
             strip_zeros("i.MATNR").alias("material_code"),
             F.col("i.MENGE").alias("required_quantity"),
-            F.col("i.ENQTY").alias("open_quantity"),
+            F.greatest(
+                F.coalesce(F.col("i.MENGE"), F.lit(0)) - F.coalesce(F.col("i.TAMEN"), F.lit(0)),
+                F.lit(0),
+            ).alias("open_quantity"),
             sap_flag("i.ELIKZ").alias("is_processing_complete"),
             F.col("h.ZZ_CAMPAIGN").alias("campaign_reference"),
             F.col("h.ZZ_PICK_STAT_M").alias("manual_pick_status"),
@@ -268,12 +272,12 @@ def make_ltbp(
     WERKS="1000",
     MATNR="000000000000012345",
     MENGE=50.0,
-    ENQTY=50.0,
+    TAMEN=0.0,
     ELIKZ="",
 ):
     return Row(
         LGNUM=LGNUM, TBNUM=TBNUM, TBPOS=TBPOS, MANDT=MANDT,
-        WERKS=WERKS, MATNR=MATNR, MENGE=MENGE, ENQTY=ENQTY, ELIKZ=ELIKZ,
+        WERKS=WERKS, MATNR=MATNR, MENGE=MENGE, TAMEN=TAMEN, ELIKZ=ELIKZ,
     )
 
 
