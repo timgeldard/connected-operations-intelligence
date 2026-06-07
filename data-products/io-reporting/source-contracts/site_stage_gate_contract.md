@@ -119,11 +119,33 @@ Gating must not normalise SAP identifiers. Preserve raw fields for keys/joins (`
 sole key (see the §E1 batch_stock follow-up in `sap_unresolved_sources.yml` — the natural key should move to
 the raw batch). The CI guard enforces "raw CHARG preserved" rather than banning normalisation outright.
 
+## Streaming SCD1 vs snapshot MV — gating does NOT retro-purge
+
+The gate filters the flow's input/output, but its effect on an ALREADY-MATERIALISED target differs by table type:
+
+- **Snapshot materialized views** (full recompute each run, e.g. `batch_stock`): the gate fully applies every
+  run — the target self-corrects to onboarded plants immediately.
+- **Streaming SCD1 tables** (`apply_changes`, e.g. `process_order`, `warehouse_transfer_order`,
+  `warehouse_transfer_requirement`, `goods_movement`): the gate filters go-forward changes only.
+  `apply_changes` upserts changed keys and **never deletes keys that simply stop appearing** in the
+  now-filtered stream. So if a table was already materialised all-plant BEFORE the gate, deploying the gate
+  alone does NOT shrink it — a one-time **full refresh** of that table is required to purge pre-gate rows and
+  realise the cost saving. New/never-materialised tables (or freshly full-refreshed ones) are clean.
+
+Operational rule: when enabling a gate on a streaming SCD1 table in an environment that already has all-plant
+state, schedule a one-time full refresh of that table as part of the rollout.
+
 ## Phase plan
 
-- **Phase 1 (this change):** contract + full 40-table inventory + central helper + **enforcement on the
+- **Phase 1:** contract + full 40-table inventory + central helper + **enforcement on the
   runnable WM/MM reference set** (goods_movement, batch_stock = direct plant gate; warehouse_transfer_order,
   warehouse_transfer_requirement = warehouse gate) + validation SQL + inventory-driven CI guard + docs.
-- **Phase 2+ (tracked in the inventory):** enforce on the slow/quality/inbound operational flows; resolve
+- **Phase 2 (process order):** plant gate on the process-order flows — `process_order` ENFORCED (early AUFK
+  prune + output gate; runtime-verified 96.7% row reduction, C061 only); operation/pi_sheet/downtime
+  gate-ready but SOURCE_GUARDED (CDC absent). See `validation/silver_process_order_stage_gate_validation.sql`.
+- **Phase 3+ (tracked in the inventory):** enforce on the slow/quality/inbound operational flows; resolve
   `BLOCKED` / `NEEDS_MAPPING` tables; promote `technical_validated` / `business_validated` to first-class
-  config columns; move the batch natural key to raw CHARG.
+  config columns; move the batch natural key to raw CHARG. **WM/MM follow-up:** the warehouse-gated streaming
+  SCD1 tables (transfer_order/requirement) show pre-gate all-plant rows on their materialised target — run a
+  targeted full refresh to discriminate SCD1-staleness vs an `apply_warehouse_gate` runtime issue (see
+  deployment-profile §(o)); `apply_warehouse_gate` has not yet been runtime-verified on materialised output.

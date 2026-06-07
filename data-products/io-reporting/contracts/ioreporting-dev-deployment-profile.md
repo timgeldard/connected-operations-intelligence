@@ -566,3 +566,46 @@ exactly) while `MATNR`=`MATN1` / `VBELN_VL`=`ALPHA` are display-ALPHA (zero-stri
 `client`. No DD03T/DD04T text tables exist, so field *descriptions* (meaning) still come from functional
 sign-off. The check is **parameterised across environments** via a leading `DECLARE` block (DEV defaults;
 swap the `published_*` / `connected_plant_*` identifiers for UAT/PROD).
+
+## Update 2026-06-07 (o) — process-order Silver stage-gating (Phase 2): runtime-verified cost reduction
+
+Brought plant/site stage-gating forward to the process-order Bronze→Silver flows (ahead of the Gold
+duplicate-table fix) because ungated process_order was a RECURRING cost (it processed all plants every
+run — the long-pole flow), whereas the Gold duplicate is a one-time graph blocker.
+
+**Implemented** (silver/tables/process_order.py, helper silver/_plant_gate.py, product_area="process_order"):
+- `process_order` (header, AUFK.WERKS) — ENFORCED. Gate applied EARLY on the AUFK static read (before the
+  AFKO/recipe joins + SCD1) for cost, plus an output gate for null-plant delete rows.
+- `process_order_operation` / `pi_sheet_execution` / `downtime_event` — gate applied on the output
+  (gate-ready) but SOURCE_GUARDED (AFVV/zmanpex/zpexpm lack AERUNID/AERECNO CDC) so they don't materialise;
+  become ENFORCED automatically when CDC is replicated. Confirmed absent in silver_io_reporting.
+
+**Runtime-verified (update fa185516, 2026-06-07):** `process_order` now COMPLETES fast (≈2 min) — no longer
+the all-plant long pole.
+- Bronze AUFK PP/PI (AUTYP=40), all plants: **606,032** → Silver process_order: **20,202** = **3.33%
+  retained (~96.7% reduction)**.
+- The 20,202 EXACTLY equals `COUNT(*) FROM sap.ordermaster_aufk WHERE AUTYP='40' AND WERKS='C061'` — the
+  gate kept the CORRECT rows (all C061 PP/PI, only those), not merely "few rows".
+- by-plant = C061 only; null plant_code = 0; leak check = 0.
+- WM/MM batch_stock still C061 (646,702) — no regression to the snapshot path.
+
+**IMPORTANT CAVEAT (cost claim is environment-dependent):** gating a STREAMING SCD1 table filters
+go-forward changes but does NOT shrink an already-materialised all-plant target (apply_changes never
+deletes keys that simply stop appearing in the now-filtered stream). `process_order` is clean here ONLY
+because it had no prior complete all-plant materialisation. In UAT/PROD where process_order is already
+materialised all-plant, deploying this gate alone will NOT reduce it — a one-time **full refresh** of the
+gated streaming table is required to realise the saving. (Snapshot MVs like batch_stock self-correct each
+run; streaming SCD1 tables do not.)
+
+**UNRESOLVED WM/MM finding (separate scope — NOT this PR):** `warehouse_transfer_order` materialised as
+**13,485,287 rows / 115 warehouses / plant_id all-NULL** — its `apply_warehouse_gate` output does NOT look
+gated. WM/MM warehouse-gating was never runtime-verified on materialised output (re-materialisation was
+deferred every prior round). Two live hypotheses, NOT yet distinguished:
+  1. SCD1 staleness — pre-gate rows persist; gate code is fine; a full refresh would fix it.
+  2. `apply_warehouse_gate` runtime no-op/bug — a full refresh would still show all-plant / null plant_id.
+**Discriminator (top WM/MM follow-up):** run a TARGETED full refresh of `warehouse_transfer_order` only — if
+it returns ~393,612 / wh 208 / plant_id=C061 → staleness (gate works); if still all-plant / null → bug. Do
+NOT run it here (WM/MM scope; heavy reprocessing). `batch_stock` being correctly C061 validates
+`apply_plant_gate` only, not `apply_warehouse_gate`.
+
+Gold duplicate-table fix intentionally deferred. Warehouse360 readiness NOT claimed (still 0/7).
