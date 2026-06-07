@@ -150,7 +150,10 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install pyyaml pytest
+
+      - name: Run Warehouse360 static migration check tests
+        run: python3 -m pytest scripts/ci/test_check_warehouse360_migration_static.py -q
 
       - name: Run Warehouse360 static migration check
         run: python3 scripts/ci/check_warehouse360_migration_static.py

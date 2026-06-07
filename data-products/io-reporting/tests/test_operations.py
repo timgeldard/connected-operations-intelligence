@@ -610,7 +610,7 @@ class TestQualityInspectionLot:
         receive the qmih row from client 200, even if PRUEFLOS values collide."""
         df = apply_quality_lot_transform(
             spark,
-            [make_qals(PRUEFLOS="000000000001", MANDT="100")],
+            [make_qals(PRUEFLOS="000000000001", MANDANT="100")],
             [make_qmih(PRUEFLOS="000000000001", MANDT="200", AUFNR="000000099999")],
         )
         row = first_row(df)

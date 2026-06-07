@@ -1,5 +1,6 @@
 """QuerySpec/QueryExecutor infrastructure — ADR-024 §3, ADR-025."""
 from .cache_policy import CacheTier
+from .contract_resolver import resolve_contract_object, resolve_contract_view
 from .databricks_client import (
     DatabricksQueryClient,
     NotImplementedDatabricksClient,
@@ -17,7 +18,6 @@ from .errors import (
 )
 from .identity import UserIdentity, extract_user_identity
 from .object_resolver import qualify_object, quote_identifier, resolve_domain_object
-from .contract_resolver import resolve_contract_object, resolve_contract_view
 from .query_executor import QueryExecutor
 from .query_spec import QuerySpec
 
