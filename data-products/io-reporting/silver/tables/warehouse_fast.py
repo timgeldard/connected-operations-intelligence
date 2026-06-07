@@ -272,7 +272,13 @@ def stg_warehouse_transfer_order():
 
     transfer_order_out = (
         order_items_to_refresh.alias("i")
-        .join(ltak.alias("h"), ["LGNUM", "TANUM", "MANDT"], "left")
+        # Force sort-merge for THIS join only. order_items_to_refresh carries the wide LTAP row (i.*,
+        # 165 var-len cols); Photon under-estimated it and built a BroadcastHashedRelation that ran the
+        # executor out of memory (SparkOutOfMemoryError, var-len data) once this flow became
+        # runtime-reachable. The merge hint forces SMJ (spills instead of OOM) for this stream-static
+        # join, WITHOUT a pipeline-wide auto-broadcast disable — small dimension/config joins elsewhere
+        # still broadcast cheaply. Replaces the global spark.sql.autoBroadcastJoinThreshold=-1.
+        .join(ltak.alias("h").hint("merge"), ["LGNUM", "TANUM", "MANDT"], "left")
         .select(
             # ── Natural key
             F.coalesce(F.col("i.LGNUM"), F.col("i._change_lgnum")).alias("warehouse_number"),
