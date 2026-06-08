@@ -10,7 +10,10 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 from check_forbidden_data_access import (  # noqa: E402
+    MIGRATION_PENDING_DOMAINS,
+    classify_resolver_calls,
     is_test_path,
+    scan_resolver_calls,
     scan_text,
     should_ignore,
 )
@@ -99,3 +102,56 @@ def test_generated_folder_is_ignored():
 
 def test_regular_source_file_is_not_ignored():
     assert not should_ignore("apps/api/adapters/trace2/customer_adapter.py")
+
+
+# --- Migration-progress gate (resolver pass) ----------------------------------
+
+def test_allowlisted_domain_direct_gold_is_pending_not_violation():
+    # trace2 is mid-migration: a direct gold object is informational, not a failure.
+    src = 'v = resolve_domain_object("trace2", "gold_batch_lineage")'
+    pending, violations = classify_resolver_calls(src)
+    assert violations == []
+    assert pending == [("trace2", "gold_batch_lineage", 1)]
+
+
+def test_non_allowlisted_domain_direct_gold_is_violation():
+    # A domain NOT in the allowlist resolving to a non-consumption object must fail.
+    src = 'v = resolve_domain_object("warehouse360", "gold_warehouse_exceptions")'
+    pending, violations = classify_resolver_calls(src)
+    assert pending == []
+    assert violations == [("warehouse360", "gold_warehouse_exceptions", 1)]
+
+
+def test_consumption_view_target_is_never_flagged():
+    # vw_consumption_* / vw_genie_* targets are migrated — neither pending nor violation,
+    # even for a non-allowlisted domain.
+    for obj in ("vw_consumption_warehouse360_overview", "vw_genie_stock_health"):
+        src = f'v = resolve_domain_object("warehouse360", "{obj}")'
+        pending, violations = classify_resolver_calls(src)
+        assert pending == [] and violations == []
+
+
+def test_module_level_constant_object_arg_is_resolved():
+    # _SPC_MV = "..." then resolve_domain_object("spc", _SPC_MV) must classify by the constant value.
+    src = (
+        '_SPC_MV = "spc_quality_metric_subgroup_mv"\n'
+        'mv = resolve_domain_object("spc", _SPC_MV)\n'
+    )
+    pending, violations = classify_resolver_calls(src)
+    assert violations == []
+    assert pending == [("spc", "spc_quality_metric_subgroup_mv", 2)]
+
+
+def test_dynamic_domain_is_not_a_violation():
+    # The resolver wrapper passes a variable domain; it cannot be classified and must not fail.
+    src = "def wrap(domain, obj):\n    return resolve_domain_object(domain, obj)\n"
+    pending, violations = classify_resolver_calls(src)
+    assert pending == [] and violations == []
+
+
+def test_allowlist_cannot_lie_removing_pending_domain_fails():
+    # If trace2 were removed from the allowlist while it still resolves to gold, its access fails CI.
+    src = 'v = resolve_domain_object("trace2", "gold_batch_lineage")'
+    finding = scan_resolver_calls(src)
+    assert finding == [("trace2", "gold_batch_lineage", True, 1)]
+    assert "trace2" in MIGRATION_PENDING_DOMAINS  # currently allowlisted -> pending; remove -> violation
