@@ -37,9 +37,8 @@ jobs:
           fi
 
   python-checks:
-    name: Python Checks (Non-blocking)
+    name: Python Checks
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -66,9 +65,8 @@ jobs:
         run: pytest
 
   frontend-checks:
-    name: Frontend Checks (Non-blocking)
+    name: Frontend Checks
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -257,9 +255,14 @@ jobs:
         run: |
           if [ -n "$DATABRICKS_HOST" ] && [ -n "$DATABRICKS_TOKEN" ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
+            # Forked PRs cannot access repo secrets — skip rather than fail (out of the contributor's control).
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Bundle validation skipped::DATABRICKS_HOST/DATABRICKS_TOKEN secrets are not set; skipping databricks bundle validate. Configure them in Settings → Secrets → Actions to enable validation."
+            echo "::warning title=Bundle validation skipped (fork)::Secrets are unavailable to forked PRs; skipping databricks bundle validate."
+          else
+            # Protected branch / same-repo PR with no secrets configured: fail rather than silently skip.
+            echo "::error title=Bundle validation cannot run::DATABRICKS_HOST/DATABRICKS_TOKEN secrets are not set on this repository. Configure them in Settings → Secrets → Actions to enable bundle validation."
+            exit 1
           fi
 
       - name: Validate dev_uat_source bundle

@@ -127,6 +127,10 @@ targets:
     mode: production
     workspace:
       profile: uat
+      # TODO(deploy-decoupling): tie this to a deploy SERVICE PRINCIPAL rather than the deploying user,
+      # e.g. root_path: /Workspace/Users/<service-principal-app-id>/.bundle/${bundle.name}/${bundle.target}.
+      # NOT /Workspace/Shared (writable by all workspace users — a security downgrade for UAT/PROD).
+      # Left user-scoped until the deploy service-principal identity is provided.
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: connected_plant_uat
@@ -145,6 +149,10 @@ targets:
     mode: production
     workspace:
       profile: prod
+      # TODO(deploy-decoupling): tie this to a deploy SERVICE PRINCIPAL rather than the deploying user,
+      # e.g. root_path: /Workspace/Users/<service-principal-app-id>/.bundle/${bundle.name}/${bundle.target}.
+      # NOT /Workspace/Shared (writable by all workspace users — a security downgrade for UAT/PROD).
+      # Left user-scoped until the deploy service-principal identity is provided.
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: connected_plant_prod
