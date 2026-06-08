@@ -268,7 +268,9 @@ def gold_inbound_po_line_backlog():
             F.col("po.storage_location_code").alias("storage_loc"),
             F.col("po.material_code").alias("material_id"),
             F.col("m.material_description").alias("material_name"),
-            F.coalesce(F.col("po.ordered_quantity"), F.lit(0.0)).alias("ordered_qty"),
+            F.coalesce(F.col("po.ordered_quantity"), F.lit(0))
+            .cast("decimal(18,4)")
+            .alias("ordered_qty"),
             F.col("po.base_uom").alias("uom"),
             F.col("po.purchase_order_date").alias("po_date"),
         )
