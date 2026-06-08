@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (Updated with review revisions)
+Accepted/Implemented
 
 ## Context
 

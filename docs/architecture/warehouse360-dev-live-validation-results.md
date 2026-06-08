@@ -159,16 +159,16 @@ source-mode change; no UAT/PROD; no app cutover. DEV technical only.
 
 ---
 
-## Update 2026-06-08 — missing-column & grain analysis (design decisions in ADR-0004)
+## Update 2026-06-08 — missing-column & grain analysis (design decisions in ADR-0011)
 
 Classified every remaining blocker against the live Silver/Gold schemas (read-only). Decisions and the
-per-field rationale are in `docs/decisions/ADR-0004-warehouse360-backlog-grain-and-missing-columns.md`;
+per-field rationale are in `docs/adr/0011-warehouse360-backlog-grain-and-missing-columns.md`;
 machine-readable classes are in
 `data-products/io-reporting/contracts/warehouse360_consumption_column_contract.yml`. Follow-up Gold
 implementation has started for the order-/delivery-grain fields that are available upstream; grain
 redesign items remain scoped separately.
 
-| View | Blocker(s) | Class | Resolution (ADR-0004) |
+| View | Blocker(s) | Class | Resolution (ADR-0011) |
 |---|---|---|---|
 | inbound_backlog | po_id … qa_status | grain-redesign | D1: build `gold_inbound_po_line_backlog` from `silver.purchase_order` |
 | shortfalls | material_id, open_tr_* | grain-redesign | D2: build `gold_transfer_requirement_material_backlog` from `silver.warehouse_transfer_requirement` (has material_code) |
