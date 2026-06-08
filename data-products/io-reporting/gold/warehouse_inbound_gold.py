@@ -244,7 +244,7 @@ def gold_inbound_po_line_backlog():
     material = (
         spark.read.table(f"{silver_schema}.material")
         .select("plant_code", "material_code", "material_description")
-        .distinct()
+        .dropDuplicates(["plant_code", "material_code"])
     )
 
     open_items = purchase_orders.filter(

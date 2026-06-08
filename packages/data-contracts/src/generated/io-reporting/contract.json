@@ -113,11 +113,11 @@
     },
     {
       "id": "warehouse360.inbound_backlog",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "domain": "warehouse",
       "owner": "warehouse-operations",
       "lifecycle": "draft",
-      "description": "Inbound purchase orders backlog workload and risk profile. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.\n",
+      "description": "Inbound purchase-order backlog at PO-LINE grain (first wave \u2014 ADR-0004 D1; sourced from gold_inbound_po_line_backlog / silver.purchase_order EKKO/EKPO). Core fields + material name; gr_qty/open_qty (goods-receipt aggregation), delivery_date (EKET), qa_status, and vendor_name are deferred future enrichment. Candidate contract pending DEV profiling.\n",
       "source_view": "vw_consumption_warehouse360_inbound_backlog",
       "grain": "one row per plant_id, purchase order ID, and PO item",
       "primary_key": [
@@ -166,12 +166,6 @@
           "description": "Vendor identifier"
         },
         {
-          "name": "vendor_name",
-          "type": "string",
-          "required": false,
-          "description": "Vendor name"
-        },
-        {
           "name": "storage_loc",
           "type": "string",
           "required": false,
@@ -196,40 +190,16 @@
           "description": "Total ordered quantity"
         },
         {
-          "name": "gr_qty",
-          "type": "decimal",
-          "required": true,
-          "description": "Goods receipt received quantity"
-        },
-        {
           "name": "uom",
           "type": "string",
           "required": false,
           "description": "Base unit of measure"
         },
         {
-          "name": "delivery_date",
-          "type": "string",
-          "required": false,
-          "description": "Planned delivery date (SAP string representation)"
-        },
-        {
           "name": "po_date",
-          "type": "string",
+          "type": "date",
           "required": false,
-          "description": "Purchase order creation date (SAP string representation)"
-        },
-        {
-          "name": "open_qty",
-          "type": "decimal",
-          "required": false,
-          "description": "Remaining open quantity to receive"
-        },
-        {
-          "name": "qa_status",
-          "type": "string",
-          "required": true,
-          "description": "QA lot inspection status"
+          "description": "Purchase order creation date (EKKO BEDAT, cast to DATE in silver)"
         },
         {
           "name": "oldest_po_age_days",
@@ -350,18 +320,16 @@
     },
     {
       "id": "warehouse360.staging_workload",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "domain": "warehouse",
       "owner": "warehouse-operations",
       "lifecycle": "draft",
-      "description": "Production order component staging workload and readiness. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.\n",
+      "description": "Process-order staging workload and readiness at ORDER grain (first wave \u2014 ADR-0004 D3). Component-grain detail (reservation_no, batch_id) and the SAP order number (sap_order) are deferred to a future staging_components contract. Candidate contract pending DEV profiling.\n",
       "source_view": "vw_consumption_warehouse360_staging_workload",
-      "grain": "one row per plant_id, process order, reservation number, and batch ID",
+      "grain": "one row per plant_id and process order",
       "primary_key": [
         "plant_id",
-        "order_id",
-        "reservation_no",
-        "batch_id"
+        "order_id"
       ],
       "freshness": {
         "expected_minutes": 15,
@@ -449,25 +417,7 @@
           "name": "risk",
           "type": "string",
           "required": true,
-          "description": "Computed component staging risk band (red/amber/green/grey/unvalidated)"
-        },
-        {
-          "name": "reservation_no",
-          "type": "string",
-          "required": false,
-          "description": "Material reservation document number"
-        },
-        {
-          "name": "batch_id",
-          "type": "string",
-          "required": false,
-          "description": "Target component batch number"
-        },
-        {
-          "name": "sap_order",
-          "type": "string",
-          "required": true,
-          "description": "Fully qualified SAP process order number"
+          "description": "Computed staging risk band (red/amber/green/grey/unvalidated)"
         }
       ]
     },

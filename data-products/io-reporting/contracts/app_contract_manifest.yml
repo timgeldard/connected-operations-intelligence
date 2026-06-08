@@ -148,9 +148,9 @@ contracts:
         required: false
         description: Base unit of measure
       - name: po_date
-        type: string
+        type: date
         required: false
-        description: Purchase order creation date (SAP string representation)
+        description: Purchase order creation date (EKKO BEDAT, cast to DATE in silver)
       - name: oldest_po_age_days
         type: long
         required: false

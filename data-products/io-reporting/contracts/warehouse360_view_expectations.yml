@@ -129,7 +129,7 @@ views:
       - name: uom
         type: string
       - name: po_date
-        type: string
+        type: date
       - name: oldest_po_age_days
         type: integer
       - name: inbound_backlog_risk_band

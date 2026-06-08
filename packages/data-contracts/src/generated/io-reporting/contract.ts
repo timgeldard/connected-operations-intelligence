@@ -59,10 +59,10 @@ export const Warehouse360OverviewContract = {
 } as const;
 
 /**
- * Inbound purchase orders backlog workload and risk profile. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
+ * Inbound purchase-order backlog at PO-LINE grain (first wave — ADR-0004 D1; sourced from gold_inbound_po_line_backlog / silver.purchase_order EKKO/EKPO). Core fields + material name; gr_qty/open_qty (goods-receipt aggregation), delivery_date (EKET), qa_status, and vendor_name are deferred future enrichment. Candidate contract pending DEV profiling.
 
  * Source View: vw_consumption_warehouse360_inbound_backlog
- * Version: 0.1.0
+ * Version: 0.2.0
  */
 export interface Warehouse360InboundBacklog {
   /** SAP plant ID */
@@ -75,8 +75,6 @@ export interface Warehouse360InboundBacklog {
   doc_type?: string;
   /** Vendor identifier */
   vendor_id?: string;
-  /** Vendor name */
-  vendor_name?: string;
   /** Target storage location ID */
   storage_loc?: string;
   /** Material code */
@@ -85,18 +83,10 @@ export interface Warehouse360InboundBacklog {
   material_name?: string;
   /** Total ordered quantity */
   ordered_qty?: number;
-  /** Goods receipt received quantity */
-  gr_qty: number;
   /** Base unit of measure */
   uom?: string;
-  /** Planned delivery date (SAP string representation) */
-  delivery_date?: string;
-  /** Purchase order creation date (SAP string representation) */
+  /** Purchase order creation date (EKKO BEDAT, cast to DATE in silver) */
   po_date?: string;
-  /** Remaining open quantity to receive */
-  open_qty?: number;
-  /** QA lot inspection status */
-  qa_status: string;
   /** Age of the oldest open PO line in days */
   oldest_po_age_days?: number;
   /** Backlog risk band (green/amber/red) */
@@ -105,7 +95,7 @@ export interface Warehouse360InboundBacklog {
 
 export const Warehouse360InboundBacklogContract = {
   id: "warehouse360.inbound_backlog",
-  version: "0.1.0",
+  version: "0.2.0",
   domain: "warehouse",
   owner: "warehouse-operations",
   lifecycle: "draft",
@@ -179,10 +169,10 @@ export const Warehouse360OutboundBacklogContract = {
 } as const;
 
 /**
- * Production order component staging workload and readiness. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
+ * Process-order staging workload and readiness at ORDER grain (first wave — ADR-0004 D3). Component-grain detail (reservation_no, batch_id) and the SAP order number (sap_order) are deferred to a future staging_components contract. Candidate contract pending DEV profiling.
 
  * Source View: vw_consumption_warehouse360_staging_workload
- * Version: 0.1.0
+ * Version: 0.2.0
  */
 export interface Warehouse360StagingWorkload {
   /** SAP plant ID */
@@ -209,25 +199,19 @@ export interface Warehouse360StagingWorkload {
   to_items_done: number;
   /** Time remaining until scheduled production start in minutes */
   mins_to_start?: number;
-  /** Computed component staging risk band (red/amber/green/grey/unvalidated) */
+  /** Computed staging risk band (red/amber/green/grey/unvalidated) */
   risk: string;
-  /** Material reservation document number */
-  reservation_no?: string;
-  /** Target component batch number */
-  batch_id?: string;
-  /** Fully qualified SAP process order number */
-  sap_order: string;
 }
 
 export const Warehouse360StagingWorkloadContract = {
   id: "warehouse360.staging_workload",
-  version: "0.1.0",
+  version: "0.2.0",
   domain: "warehouse",
   owner: "warehouse-operations",
   lifecycle: "draft",
   sourceView: "vw_consumption_warehouse360_staging_workload",
-  grain: "one row per plant_id, process order, reservation number, and batch ID",
-  primaryKey: ["plant_id", "order_id", "reservation_no", "batch_id"],
+  grain: "one row per plant_id and process order",
+  primaryKey: ["plant_id", "order_id"],
   freshness: {
     expectedMinutes: 15,
     warningMinutes: 30,
