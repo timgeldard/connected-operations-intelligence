@@ -167,8 +167,9 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 ### 13. `gold.gold_delivery_pick_status`
 * **Status**: Pilot-grade
 * **Grain**: 1 row per outbound delivery (× plant × warehouse)
-* **Source Silver Tables**: `silver.outbound_delivery`
-* **Purpose**: pick progress using base-UoM delivery and picked quantities, plus pick risk.
+* **Source Silver Tables**: `silver.outbound_delivery`, `silver.customer`
+* **Purpose**: pick progress using base-UoM delivery and picked quantities, plus pick risk and SD delivery customer/weight context.
+* **Columns**: includes `customer_id` / `customer_name` as ship-to aliases (`ship_to_customer`, LIKP `KUNNR`), plus separate `sold_to_customer` / `sold_to_customer_name` (LIKP `KUNAG`). `gross_weight` uses the delivery-header value (`delivery_gross_weight`, LIKP `BTGEW`), not item `gross_weight` (LIPS `BRGEW`).
 * **Known Caveats**: delivery-quantity based, not TO-level picking. `pick_fraction` is null when a delivery mixes base UoMs because the delivery-level quantity ratio would be invalid. The MV is deterministic; `days_to_goods_issue` and `risk_band` are served at query time by the **`gold_delivery_pick_status_live`** view. Also, a known orphan risk exists: header-only deletes (null item number) cannot be matched by the compound keys, leaving orphaned delivery items in silver.outbound_delivery. Additionally, the `is_shipped` flag is derived as a heuristic (`MAX(actual_goods_issue_date IS NOT NULL)`), meaning a delivery is flagged as shipped if any line has a goods-issue date, which assumes no partial/split goods issue postings occur.
 
 ### 14. `gold.gold_stock_reconciliation`
@@ -252,8 +253,9 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 ### 15. `gold.gold_process_order_staging`
 * **Status**: Pilot-grade (assumption validated — see `gold_process_order_staging_validation`)
 * **Grain**: 1 row per process order
-* **Source Silver Tables**: `silver.warehouse_transfer_order` + `silver.process_order`
+* **Source Silver Tables**: `silver.warehouse_transfer_order`, `silver.process_order`, `silver.material`
 * **Purpose**: component staging completion (confirmed staging TOs vs total) and start risk.
+* **Columns**: includes order-grain `uom` from `process_order.order_quantity_uom` and `material_name` from `silver.material` joined on plant × material.
 * **Known Caveats**: Scoped to LTAK BETYP='F' TOs; BENUM↔AUFNR match validated at 100% across all UAT warehouses (2026-06-02). Plants with no BETYP='F' TOs show `to_items_total=0` and `staging_fraction=NULL` (classified NOT_APPLICABLE in the validation table). The MV is deterministic; `days_to_start` and `risk_band` are served at query time by the **`gold_process_order_staging_live`** view.
 
 ### 15a. `gold.gold_process_order_staging_validation`

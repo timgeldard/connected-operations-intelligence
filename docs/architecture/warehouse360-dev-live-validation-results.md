@@ -164,20 +164,21 @@ source-mode change; no UAT/PROD; no app cutover. DEV technical only.
 Classified every remaining blocker against the live Silver/Gold schemas (read-only). Decisions and the
 per-field rationale are in `docs/decisions/ADR-0004-warehouse360-backlog-grain-and-missing-columns.md`;
 machine-readable classes are in
-`data-products/io-reporting/contracts/warehouse360_consumption_column_contract.yml`. **No runtime change**
-in this analysis — implementation follows as scoped Gold PRs.
+`data-products/io-reporting/contracts/warehouse360_consumption_column_contract.yml`. Follow-up Gold
+implementation has started for the order-/delivery-grain fields that are available upstream; grain
+redesign items remain scoped separately.
 
 | View | Blocker(s) | Class | Resolution (ADR-0004) |
 |---|---|---|---|
 | inbound_backlog | po_id … qa_status | grain-redesign | D1: build `gold_inbound_po_line_backlog` from `silver.purchase_order` |
 | shortfalls | material_id, open_tr_* | grain-redesign | D2: build `gold_transfer_requirement_material_backlog` from `silver.warehouse_transfer_requirement` (has material_code) |
 | staging_workload | reservation_no, batch_id | grain-redesign | D3: reduce contract to order grain (or build component grain) |
-| staging_workload | uom | available-upstream | D3: `process_order.order_quantity_uom` |
-| staging_workload | material_name | dimension-join | D3: join `silver.material` on plant×material |
+| staging_workload | uom | implemented | D3: `process_order.order_quantity_uom` |
+| staging_workload | material_name | implemented | D3: join `silver.material` on plant×material |
 | staging_workload | sap_order | semantic-decision | D3: likely `order_number` (confirm) |
-| outbound_backlog | actual_goods_issue_date, delivery_date, gross_weight | available-upstream | D4: dates plus LIKP header `delivery_gross_weight` are present in `silver.outbound_delivery` |
-| outbound_backlog | customer_name | dimension-join | D4: join `silver.customer` on the ratified customer role |
-| outbound_backlog | customer_id | semantic-decision | D4: ratify ship-to vs sold-to before implementation |
+| outbound_backlog | actual_goods_issue_date, delivery_date, gross_weight | implemented | D4: dates plus LIKP header `delivery_gross_weight` are present in `silver.outbound_delivery` |
+| outbound_backlog | customer_name | implemented | D4: join `silver.customer` on ship-to |
+| outbound_backlog | customer_id | implemented | D4: `customer_id` remains ship-to; sold-to is retained separately in Gold |
 | outbound_backlog | carrier | no-source | D4: not replicated → contract optional/remove |
 | stock_exceptions | storage_location_id | grain-redesign | D5: IM axis on a WM model → drop or re-grain |
 | im_wm_reconciliation | storage_location_id, bin_id | grain-redesign | D6: finer than plant×material → drop or bin-level model |
