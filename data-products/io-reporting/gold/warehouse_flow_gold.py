@@ -142,20 +142,11 @@ def gold_delivery_pick_status():
         "outbound_delivery_header_delete",
         ["delivery_number"],
     )
-    customers = spark.read.table(f"{silver_schema}.customer").select("customer_code", "customer_name")
-    ship_to_customers = customers.select(
-        F.col("customer_code").alias("ship_to_customer"),
-        F.col("customer_name").alias("ship_to_customer_name"),
-    )
-    sold_to_customers = customers.select(
-        F.col("customer_code").alias("sold_to_customer"),
-        F.col("customer_name").alias("sold_to_customer_name"),
-    )
 
     picks = (
         deliveries.groupBy(
             "delivery_number", "plant_code", "warehouse_number",
-            "delivery_type", "ship_to_customer", "sold_to_customer", "planned_goods_issue_date",
+            "delivery_type", "sold_to_customer", "planned_goods_issue_date",
         )
         .agg(
             F.count(F.lit(1)).alias("line_count"),
@@ -168,14 +159,10 @@ def gold_delivery_pick_status():
             F.max(F.when(F.col("actual_goods_issue_date").isNotNull(), F.lit(1)).otherwise(F.lit(0))).alias(
                 "_is_shipped"
             ),
-            F.max("actual_goods_issue_date").alias("actual_goods_issue_date"),
-            F.max("delivery_date").alias("delivery_date"),
-            F.first("delivery_gross_weight", ignorenulls=True).alias("gross_weight"),
         )
         .select(
             "delivery_number", "plant_code", "warehouse_number", "delivery_type",
-            "ship_to_customer", "sold_to_customer", "planned_goods_issue_date",
-            "actual_goods_issue_date", "delivery_date", "gross_weight", "line_count",
+            "sold_to_customer", "planned_goods_issue_date", "line_count",
             "delivery_qty", "picked_qty", "base_uom_count", "null_delivery_base_count",
             (F.col("base_uom_count") > 1).alias("has_mixed_base_uom"),
             (F.col("null_delivery_base_count") > 0).alias("has_unconverted_delivery_qty"),
@@ -193,33 +180,7 @@ def gold_delivery_pick_status():
 
     # Deterministic base only; `days_to_goods_issue` / `risk_band` are served live by the
     # gold_delivery_pick_status_live view (current_date() kept out of the MV). See hardening plan.
-    return (
-        picks
-        .join(F.broadcast(ship_to_customers), "ship_to_customer", "left")
-        .join(F.broadcast(sold_to_customers), "sold_to_customer", "left")
-        .select(
-            "delivery_number", "plant_code", "warehouse_number", "delivery_type",
-            F.col("ship_to_customer").alias("customer_id"),
-            F.col("ship_to_customer_name").alias("customer_name"),
-            "ship_to_customer",
-            "ship_to_customer_name",
-            "sold_to_customer",
-            "sold_to_customer_name",
-            "planned_goods_issue_date",
-            "actual_goods_issue_date",
-            "delivery_date",
-            "gross_weight",
-            "line_count",
-            "delivery_qty",
-            "picked_qty",
-            "base_uom_count",
-            "null_delivery_base_count",
-            "has_mixed_base_uom",
-            "has_unconverted_delivery_qty",
-            "pick_fraction",
-            "is_shipped",
-        )
-    )
+    return picks
 
 
 
@@ -391,11 +352,6 @@ def gold_process_order_staging():
         ["warehouse_number", "transfer_order_number"],
     )
     orders = spark.read.table(f"{silver_schema}.process_order")
-    materials = spark.read.table(f"{silver_schema}.material").select(
-        "plant_code",
-        "material_code",
-        "material_description",
-    )
 
     # Transfer orders that stage to a PRODUCTION ORDER are those with reference type LTAK-BETYP='F'
     # (STAGING_REFERENCE_TYPE).  Only then does BENUM hold the process-order AUFNR.  Verified live
@@ -442,14 +398,11 @@ def gold_process_order_staging():
     staged = (
         active_orders.join(staging_tos, "order_number", "left")
         .join(plant_trust, "plant_code", "left")
-        .join(F.broadcast(materials), ["plant_code", "material_code"], "left")
         .select(
             "order_number",
             "plant_code",
             "material_code",
-            F.col("material_description").alias("material_name"),
             "order_quantity",
-            F.col("order_quantity_uom").alias("uom"),
             "scheduled_start_date",
             "scheduled_finish_date",
             F.coalesce(F.col("to_items_total"), F.lit(0)).alias("to_items_total"),
@@ -1220,14 +1173,14 @@ def gold_stock_reconciliation_exceptions_v2():
     recon = dlt.read("gold_stock_reconciliation_v2")
     mat_desc = (
         spark.read.table(f"{ss}.material")
-        .select("plant_code", "material_code", "material_description")
+        .select("material_code", "material_description")
         .distinct()
     )
 
     return (
         recon
         .filter(~F.col("is_reconciled"))
-        .join(F.broadcast(mat_desc), ["plant_code", "material_code"], "left")
+        .join(F.broadcast(mat_desc), "material_code", "left")
         .select(
             "plant_code", "warehouse_number",
             "material_code", "material_description",

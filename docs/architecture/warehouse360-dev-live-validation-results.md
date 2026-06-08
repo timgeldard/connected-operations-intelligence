@@ -73,7 +73,7 @@ Note this is the **same class of defect** the `plant_code → plant_id` rename (
 contract columns have **no Gold source at all** (genuinely missing, not renamable), and two views need a
 **finer Gold grain** than exists.
 
-## Recommended repo fixes (for the Gold + contract owner)
+## Recommended repo fixes (for the Gold + contract owner — not applied here)
 
 1. **Naming reconciliation** (mechanical, like #34): in `warehouse360_consumption_views_dev.sql` (+uat/prod),
    alias `material_code AS material_id`, `batch_number AS batch_id`, `delivery_number AS delivery_id`,
@@ -163,9 +163,8 @@ source-mode change; no UAT/PROD; no app cutover. DEV technical only.
 
 Classified every remaining blocker against the live Silver/Gold schemas (read-only). Decisions and the
 per-field rationale are in `docs/decisions/ADR-0004-warehouse360-backlog-grain-and-missing-columns.md`;
-machine-readable classes are in `contracts/warehouse360_consumption_column_contract.yml`. This update also
-implements the same-grain D3/D4 Gold fields (staging UoM/material name; outbound ship-to/sold-to,
-delivery dates, and header gross weight). New detail-grain Gold models still follow as scoped Gold PRs.
+machine-readable classes are in `contracts/warehouse360_consumption_column_contract.yml`. **No runtime
+change** in this analysis — implementation follows as scoped Gold PRs.
 
 | View | Blocker(s) | Class | Resolution (ADR-0004) |
 |---|---|---|---|
@@ -176,8 +175,8 @@ delivery dates, and header gross weight). New detail-grain Gold models still fol
 | staging_workload | material_name | dimension-join | D3: join `silver.material` on plant×material |
 | staging_workload | sap_order | semantic-decision | D3: likely `order_number` (confirm) |
 | outbound_backlog | actual_goods_issue_date, delivery_date, gross_weight | available-upstream | D4: dates plus LIKP header `delivery_gross_weight` are present in `silver.outbound_delivery` |
-| outbound_backlog | customer_name | dimension-join | D4: current contract name follows ship-to; join `silver.customer` on `ship_to_customer` |
-| outbound_backlog | customer_id | available-upstream | D4: map `ship_to_customer` to contract `customer_id`; carry `sold_to_customer` separately in Gold |
+| outbound_backlog | customer_name | dimension-join | D4: join `silver.customer` on the ratified customer role |
+| outbound_backlog | customer_id | semantic-decision | D4: ratify ship-to vs sold-to before implementation |
 | outbound_backlog | carrier | no-source | D4: not replicated → contract optional/remove |
 | stock_exceptions | storage_location_id | grain-redesign | D5: IM axis on a WM model → drop or re-grain |
 | im_wm_reconciliation | storage_location_id, bin_id | grain-redesign | D6: finer than plant×material → drop or bin-level model |
@@ -188,6 +187,5 @@ date, **2 rows with NULL `plant_code`**, which alone produce the 1 duplicate `(p
 (NULL plants collapse on the composite key). Fix = filter `plant_code IS NOT NULL` + investigate the
 null-plant source (likely a SHARED/unmapped bucket). `snapshot_ts` granularity is not the cause.
 
-Net: most blockers are resolvable from replicated Silver. Same-grain D3/D4 fields are implemented here;
-the remaining blockers require **new detail-grain models + contract optional/remove decisions** in
-follow-up Gold/contract PRs.
+Net: most blockers are resolvable from replicated Silver, but via **Gold-model additions / new
+detail-grain models + grain decisions** — design first (this ADR), implement in follow-up Gold PRs.

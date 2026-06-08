@@ -12,8 +12,8 @@
 | Validation SQL/runbook | Merged | PR #35 | Done |
 | DLT duplicate-name guard | Merged | PR #36 | Done |
 | Secured/live ownership CI guard | Merged | PR #36 | Done |
-| DEV consumption view live validation | Blocked — 1/7 views create; naming reconciled (PR #40); D3/D4 same-grain Gold fields implemented; remaining = carrier/grain/data-quality; not yet live revalidated | [DEV live-validation results](warehouse360-dev-live-validation-results.md) | implement remaining ADR-0004 Gold/contract PRs |
-| Missing-column / grain decisions | Decided (proposed) + partially implemented | [ADR-0004](../decisions/ADR-0004-warehouse360-backlog-grain-and-missing-columns.md) | ratify + implement remaining Gold PRs |
+| DEV consumption view live validation | Blocked — 1/7 views create; naming reconciled (PR #40); remaining = missing-column/grain/data-quality; not yet validated | [DEV live-validation results](warehouse360-dev-live-validation-results.md) | implement ADR-0004 in scoped Gold PRs |
+| Missing-column / grain decisions | Decided (proposed) | [ADR-0004](../decisions/ADR-0004-warehouse360-backlog-grain-and-missing-columns.md) | ratify + implement scoped Gold PRs |
 | UAT validation | Not done | Requires Databricks | After DEV |
 | Entitlement/RLS proof | Not done | Requires Databricks | After view validation |
 | App governed-mode cutover | Not started | Requires validation | Later |
@@ -46,7 +46,7 @@
 ### If no Databricks access
 1. Merge/complete offline documentation and CI guardrail PRs.
 2. Keep generated validation SQL current.
-3. Do not switch source mode or claim governed readiness without live DEV/UAT validation.
+3. Do not make runtime changes.
 
 ### If Databricks access is available
 1. Run the DEV validation runbook.
