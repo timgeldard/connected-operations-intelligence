@@ -6,7 +6,6 @@
  * Phase 5: SPC Monitoring workspace (pilot) — full monitoring, signals, capability, alarm history.
  */
 
-export { spcWorkspaceRegistration } from './registration.js'
 
 // Phase 2: SPC signals (consumed by quality-batch-release)
 export { SPCSignalsAdapter, spcSignalsAdapter, toAdapterError } from './adapters/spc-signals-adapter.js'

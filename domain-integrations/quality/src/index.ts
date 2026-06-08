@@ -5,7 +5,6 @@
  * Phase 2: Quality Batch Release workspace, adapters, panels, views, and actions.
  */
 
-export { qualityWorkspaceRegistration } from './registration.js'
 
 export { QualityReleaseAdapter, qualityReleaseAdapter, toAdapterError } from './adapters/quality-release-adapter.js'
 export type { QualityReleaseAdapterRequest, QualityReleaseAdapterOptions } from './adapters/quality-release-adapter.js'
