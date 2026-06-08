@@ -1,18 +1,15 @@
--- Unity Catalog Access Grants for Readiness Tables (UAT).
--- Run as a UC admin after the first DLT pipeline deploy registers the tables in gold.
--- Sets up visibility for data owners, platform teams, and dashboard consumers.
-
--- 1. Grant SELECT on Readiness rollup tables for dashboard/Power BI consumption
-GRANT SELECT ON TABLE connected_plant_uat.gold.gold_plant_readiness_status TO `users`;
-GRANT SELECT ON TABLE connected_plant_uat.gold.gold_data_product_safety_status TO `users`;
-GRANT SELECT ON TABLE connected_plant_uat.gold.gold_readiness_dashboard_source TO `users`;
-
--- 2. Grant SELECT on detailed validation tables to allow deep-dive failure analysis
-GRANT SELECT ON TABLE connected_plant_uat.gold.gold_storage_type_role_coverage_status TO `users`;
-GRANT SELECT ON TABLE connected_plant_uat.gold.gold_movement_type_classification_coverage TO `users`;
-GRANT SELECT ON TABLE connected_plant_uat.gold.gold_process_order_staging_validation TO `users`;
-GRANT SELECT ON TABLE connected_plant_uat.gold.gold_recipe_line_enrichment_coverage TO `users`;
-GRANT SELECT ON TABLE connected_plant_uat.gold.gold_delivery_pick_status_validation TO `users`;
-GRANT SELECT ON TABLE connected_plant_uat.gold.gold_stock_reconciliation_readiness TO `users`;
-GRANT SELECT ON TABLE connected_plant_uat.gold.gold_plant_freshness_readiness TO `users`;
-GRANT SELECT ON TABLE connected_plant_uat.gold.gold_validation_failure_detail TO `users`;
+-- Unity Catalog Access Grants (UAT).
+--
+-- Intentionally NO base-Gold grants. Per SECURITY.md, raw/Bronze/Silver/Gold base tables must never be
+-- granted to the `users` consumer group: consumer access flows only through the governed
+-- gold_io_reporting `*_secured` views (gold_security_uat.sql) and `vw_consumption_*` / `vw_genie_*` views.
+--
+-- Removed 2026-06-08 (SECURITY.md reconciliation): the prior
+-- `GRANT SELECT ON TABLE connected_plant_uat.gold.gold_*readiness*/validation* TO `users`` statements.
+-- They were both wrong and policy-violating:
+--   (a) they targeted the `gold` schema, but the io-reporting readiness/validation tables are deployed to
+--       `gold_io_reporting` (verified) — so the grants were dead (a GRANT on a non-existent table errors); and
+--   (b) granting base Gold tables to `users` directly contradicts SECURITY.md.
+-- Readiness/validation tables are NOT consumer-granted in the first wave. If a dashboard genuinely needs
+-- one, add a `gold_io_reporting` `*_secured` view via scripts/generate_gold_security_sql.py and grant the
+-- `*_secured` view — never the base table. Enforced by scripts/ci/check_gold_grants_policy.py.
