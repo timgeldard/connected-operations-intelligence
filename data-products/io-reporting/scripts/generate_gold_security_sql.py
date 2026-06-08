@@ -64,6 +64,7 @@ GOLD_TABLES = [
     "gold_bin_occupancy",
     "gold_stock_availability",
     "gold_transfer_requirement_backlog",
+    "gold_transfer_requirement_material_backlog",
     "gold_stock_expiry_risk",
     # dlt_gold_pipeline.py
     "gold_shift_output_summary",

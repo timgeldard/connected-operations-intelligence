@@ -137,7 +137,15 @@ hide them in the consumption view without agreeing it as contract behaviour.
     PO-line GR aggregation), `delivery_date` (EKET), `qa_status` (QM), and `vendor_name` (vendor dim) are
     **deferred future enrichment**, removed from the contract (not null-filled). Contract v0.2.0. DEV
     pipeline run materialised the model; `inbound_backlog` creates with 1,112,080 rows, 0 dup PK. **6/7.**
-- D2 introduces a new Gold table (D1 done above), so follow-up implementation PRs must obey the active hardening-sprint
+  - **D2 `shortfalls` — done (PR D)**: built `gold_transfer_requirement_material_backlog` (plant × material
+    aggregate of open TRs from `silver.warehouse_transfer_requirement`) with a `_secured` view (no `_live` —
+    no date-relative columns). Repointed `shortfalls` to the secured view (also closing a pre-existing RLS
+    gap — it previously read the un-secured base table). Contract v0.2.0; no governed adapter (contract/
+    dashboard only). DEV: `shortfalls` creates with 1,788 rows, 0 null material, 0 dup PK. **7/7 create** —
+    all first-wave Warehouse360 governed views now create in DEV (overview + outbound + im_wm + inbound +
+    shortfalls with data; staging + stock_exceptions created-empty in the shakedown). DEV technical only —
+    RLS/entitlement unproven; not UAT/cutover-ready.
+- D1/D2 are now done; the hardening-sprint
   rule: do not add a new Gold table unless (1) its Silver dependency already exists, (2) its grain is
   documented in `data-products/io-reporting/gold/design_spec.md`, (3) unit tests are added, (4)
   `docs/data_contracts.md` is updated, and (5) freshness impact is assessed.

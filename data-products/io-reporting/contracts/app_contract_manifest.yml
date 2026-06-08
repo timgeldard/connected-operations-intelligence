@@ -364,14 +364,14 @@ contracts:
         description: True if remaining shelf life is below minimum limits
 
   - id: warehouse360.shortfalls
-    version: 0.1.0
+    version: 0.2.0
     domain: warehouse
     owner: warehouse-operations
     lifecycle: draft
     description: >
-      Material shortfalls and staging transfer requirement backlogs.
-      Candidate contract pending DEV profiling of grain, primary key uniqueness,
-      plant_id nullability, data types, and freshness.
+      Material shortfalls — open transfer-requirement backlog aggregated to plant x material
+      (ADR-0004 D2; sourced from gold_transfer_requirement_material_backlog /
+      silver.warehouse_transfer_requirement). Candidate contract pending DEV profiling.
     source_view: vw_consumption_warehouse360_shortfalls
     grain: one row per plant_id and material_id
     primary_key:

@@ -14,6 +14,7 @@ from gold.warehouse_kpis import (
     gold_stock_expiry_risk,
     gold_transfer_order_performance,
     gold_transfer_requirement_backlog,
+    gold_transfer_requirement_material_backlog,
 )
 from scripts.generate_gold_serving_views_sql import serving_select_sql
 from silver.movement_types import build_movement_type_classification_records
@@ -392,6 +393,38 @@ def test_transfer_requirement_backlog_filters_completed_and_closed_items(spark: 
     assert abs(row["open_quantity_rate"] - (10.0 / 15.0)) < 0.0001
     assert row["oldest_created_datetime"] == datetime(2026, 5, 30, 7, 0, 0)
     assert row["oldest_planned_execution_datetime"] == datetime(2026, 5, 30, 9, 0, 0)
+
+
+def test_transfer_requirement_material_backlog_aggregates_open_by_material(spark: SparkSession):
+    data = [
+        # M1: two open lines across different warehouses -> one plant x material row (aggregated)
+        Row(plant_code="1000", warehouse_number="001", material_code="M1", is_processing_complete=False,
+            open_quantity=7.0, created_datetime=datetime(2026, 5, 30, 7, 0, 0)),
+        Row(plant_code="1000", warehouse_number="002", material_code="M1", is_processing_complete=False,
+            open_quantity=3.0, created_datetime=datetime(2026, 5, 29, 8, 0, 0)),
+        # M2: one open line
+        Row(plant_code="1000", warehouse_number="001", material_code="M2", is_processing_complete=False,
+            open_quantity=4.0, created_datetime=datetime(2026, 5, 31, 9, 0, 0)),
+        # excluded: processing complete
+        Row(plant_code="1000", warehouse_number="001", material_code="M1", is_processing_complete=True,
+            open_quantity=9.0, created_datetime=datetime(2026, 5, 1, 6, 0, 0)),
+        # excluded: open_quantity <= 0
+        Row(plant_code="1000", warehouse_number="001", material_code="M2", is_processing_complete=False,
+            open_quantity=0.0, created_datetime=datetime(2026, 5, 1, 6, 0, 0)),
+    ]
+    spark.createDataFrame(data).write.mode("overwrite").saveAsTable(
+        "silver.warehouse_transfer_requirement"
+    )
+
+    rows = {r["material_id"]: r for r in all_rows(gold_transfer_requirement_material_backlog())}
+    # One row per (plant, material) — unique PK; warehouses aggregated away.
+    assert set(rows) == {"M1", "M2"}
+    assert rows["M1"]["plant_code"] == "1000"
+    assert rows["M1"]["open_tr_qty"] == 10.0          # 7 + 3 across warehouses
+    assert rows["M1"]["open_tr_items"] == 2
+    assert rows["M1"]["oldest_tr_creation_date"] == date(2026, 5, 29)  # MIN(created), to date
+    assert rows["M2"]["open_tr_qty"] == 4.0
+    assert rows["M2"]["open_tr_items"] == 1
 
 
 def test_stock_expiry_risk_buckets_and_minimum_shelf_life(spark: SparkSession):
