@@ -443,3 +443,23 @@ DEV re-validation: `staging_workload` now **creates** — **created-empty** (gol
 rows in this DEV shakedown; 0 null plant/order, 0 dup PK at the order grain). **4/7 → 5/7 create**
 (overview, outbound, stock_exceptions[empty], im_wm[aggregate], staging[empty]). Remaining: inbound_backlog
 (D1 — new PO-line Gold model), shortfalls (D2 — new material-grain Gold model).
+
+---
+
+## Update 2026-06-08 (later) — PR C: gold_inbound_po_line_backlog built (ADR-0004 D1) → 6/7
+
+> DEV technical validation only. New Gold model materialised via a DEV Gold-pipeline run; no source-mode
+> change; no GRANTs; no UAT/PROD; no app cutover.
+
+Built a new PO-line-grain Gold model **`gold_inbound_po_line_backlog`** (one row per plant × PO × item,
+items not delivery-complete and not deleted) from `silver.purchase_order` (EKKO/EKPO, 6.6M rows) + a
+`silver.material` name join, with a `_secured` view (generator) and a `_live` view adding per-line
+`oldest_po_age_days`/`inbound_backlog_risk_band`. `inbound_backlog` consumption view repointed to it with
+**CORE fields only**; `gr_qty`/`open_qty` (need a GR aggregation), `delivery_date` (EKET), `qa_status`,
+and `vendor_name` are **deferred future enrichment** (removed from the contract, not null-filled) — per
+the "core now" decision. Contract bumped v0.1.0→0.2.0. (First DEV pipeline attempt failed on a `cluster_by`
+referencing the pre-alias `vendor_code`; fixed to `vendor_id` and re-ran to COMPLETED.)
+
+DEV re-validation: `inbound_backlog` now **creates** — **1,112,080 rows, 0 NULL plant/po/item, 0 duplicate
+`(plant_id, po_id, po_item)` PK**. **5/7 → 6/7 create.** Remaining: shortfalls (D2 — new material-grain
+Gold model, PR D).

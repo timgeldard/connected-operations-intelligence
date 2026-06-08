@@ -133,6 +133,10 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_inbound_po_bac
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_inbound_po_backlog_enhanced;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_inbound_po_backlog_enhanced_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_inbound_po_line_backlog_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_inbound_po_line_backlog;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_inbound_po_line_backlog_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_warehouse_exceptions_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_warehouse_exceptions;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_warehouse_exceptions_secured TO `users`;

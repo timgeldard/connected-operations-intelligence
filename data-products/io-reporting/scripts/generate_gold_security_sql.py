@@ -93,6 +93,7 @@ GOLD_TABLES = [
     # warehouse_inbound_gold.py
     "gold_inbound_po_backlog",
     "gold_inbound_po_backlog_enhanced",
+    "gold_inbound_po_line_backlog",
     "gold_handling_unit_summary",
     # warehouse_exceptions.py
     "gold_warehouse_exceptions",

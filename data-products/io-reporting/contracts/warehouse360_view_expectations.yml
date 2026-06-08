@@ -118,8 +118,6 @@ views:
         type: string
       - name: vendor_id
         type: string
-      - name: vendor_name
-        type: string
       - name: storage_loc
         type: string
       - name: material_id
@@ -128,18 +126,10 @@ views:
         type: string
       - name: ordered_qty
         type: decimal
-      - name: gr_qty
-        type: decimal
       - name: uom
         type: string
-      - name: delivery_date
-        type: string
       - name: po_date
-        type: string
-      - name: open_qty
-        type: decimal
-      - name: qa_status
-        type: string
+        type: date
       - name: oldest_po_age_days
         type: integer
       - name: inbound_backlog_risk_band

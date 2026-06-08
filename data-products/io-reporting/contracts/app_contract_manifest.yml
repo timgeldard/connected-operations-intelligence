@@ -84,14 +84,15 @@ contracts:
         description: Bin occupancy utilization rate percentage
 
   - id: warehouse360.inbound_backlog
-    version: 0.1.0
+    version: 0.2.0
     domain: warehouse
     owner: warehouse-operations
     lifecycle: draft
     description: >
-      Inbound purchase orders backlog workload and risk profile.
-      Candidate contract pending DEV profiling of grain, primary key uniqueness,
-      plant_id nullability, data types, and freshness.
+      Inbound purchase-order backlog at PO-LINE grain (first wave — ADR-0004 D1; sourced from
+      gold_inbound_po_line_backlog / silver.purchase_order EKKO/EKPO). Core fields + material name;
+      gr_qty/open_qty (goods-receipt aggregation), delivery_date (EKET), qa_status, and vendor_name are
+      deferred future enrichment. Candidate contract pending DEV profiling.
     source_view: vw_consumption_warehouse360_inbound_backlog
     grain: one row per plant_id, purchase order ID, and PO item
     primary_key:
@@ -126,10 +127,6 @@ contracts:
         type: string
         required: false
         description: Vendor identifier
-      - name: vendor_name
-        type: string
-        required: false
-        description: Vendor name
       - name: storage_loc
         type: string
         required: false
@@ -146,30 +143,14 @@ contracts:
         type: decimal
         required: false
         description: Total ordered quantity
-      - name: gr_qty
-        type: decimal
-        required: true
-        description: Goods receipt received quantity
       - name: uom
         type: string
         required: false
         description: Base unit of measure
-      - name: delivery_date
-        type: string
-        required: false
-        description: Planned delivery date (SAP string representation)
       - name: po_date
-        type: string
+        type: date
         required: false
-        description: Purchase order creation date (SAP string representation)
-      - name: open_qty
-        type: decimal
-        required: false
-        description: Remaining open quantity to receive
-      - name: qa_status
-        type: string
-        required: true
-        description: QA lot inspection status
+        description: Purchase order creation date (EKKO BEDAT, cast to DATE in silver)
       - name: oldest_po_age_days
         type: long
         required: false

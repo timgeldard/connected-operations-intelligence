@@ -34,6 +34,7 @@ _DAYS_TO_GI = "datediff(b.planned_goods_issue_date, current_date())"
 _DAYS_TO_START = "datediff(b.scheduled_start_date, current_date())"
 _DAYS_TO_EXPIRY = "datediff(b.minimum_expiry_date, current_date())"
 _DAYS_SINCE_PO = "datediff(current_date(), b.earliest_po_date)"
+_DAYS_SINCE_PO_LINE = "datediff(current_date(), b.po_date)"
 
 # table -> [(output_column, sql_expression_over_base_alias_b)]. Mirrors the pre-Phase-2 test-mode
 # logic exactly so behaviour is unchanged — only the location moves (MV -> serving view).
@@ -103,6 +104,19 @@ SERVING_VIEWS = {
          f"WHEN {_DAYS_SINCE_PO} IS NULL THEN 'grey' "
          f"WHEN {_DAYS_SINCE_PO} >= 30 THEN 'red' "
          f"WHEN {_DAYS_SINCE_PO} >= 14 THEN 'amber' "
+         "ELSE 'green' END"),
+    ],
+    # PO-line backlog: age + risk band are per-line (date-relative on the line's PO date), so they live
+    # in the _live serving view (base MV stays deterministic). No remaining_open_qty yet (GR qty is
+    # future enrichment), so the band is age-only.
+    "gold_inbound_po_line_backlog": [
+        ("oldest_po_age_days",
+         f"CASE WHEN b.po_date IS NOT NULL THEN {_DAYS_SINCE_PO_LINE} END"),
+        ("inbound_backlog_risk_band",
+         "CASE "
+         f"WHEN {_DAYS_SINCE_PO_LINE} IS NULL THEN 'grey' "
+         f"WHEN {_DAYS_SINCE_PO_LINE} >= 30 THEN 'red' "
+         f"WHEN {_DAYS_SINCE_PO_LINE} >= 14 THEN 'amber' "
          "ELSE 'green' END"),
     ],
 }

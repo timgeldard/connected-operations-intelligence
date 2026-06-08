@@ -15,6 +15,7 @@
 gold_source_columns:
   gold_warehouse_kpi_snapshot_secured: [active_order_count, bin_utilisation_pct, blocked_bin_count, occupied_bin_count, open_delivery_count, open_inbound_item_count, open_to_item_count, open_tr_item_count, plant_code, snapshot_date, total_bin_count]
   gold_inbound_po_backlog_enhanced_live: [confirmed_putaway_to_count, earliest_po_date, fully_gr_item_count, inbound_backlog_risk_band, item_without_gr_count, latest_gr_posting_date, latest_putaway_to_confirmed_date, oldest_po_age_days, oldest_putaway_to_created_datetime, open_item_count, open_po_count, partial_gr_item_count, plant_code, purchasing_org, putaway_to_count, qa_inspection_item_count, remaining_open_qty, total_gr_qty, total_open_value, total_ordered_qty, vendor_code]
+  gold_inbound_po_line_backlog_live: [doc_type, inbound_backlog_risk_band, material_id, material_name, oldest_po_age_days, ordered_qty, plant_code, po_date, po_id, po_item, storage_loc, uom, vendor_id]
   gold_delivery_pick_status_live: [actual_goods_issue_date, base_uom_count, customer_id, customer_name, days_to_goods_issue, delivery_date, delivery_number, delivery_qty, delivery_type, gross_weight, gross_weight_unit, has_mixed_base_uom, has_unconverted_delivery_qty, is_shipped, line_count, null_delivery_base_count, pick_fraction, picked_qty, planned_goods_issue_date, plant_code, risk_band, ship_to_customer, ship_to_customer_name, sold_to_customer, sold_to_customer_name, warehouse_number]
   gold_process_order_staging_live: [days_to_start, is_operationally_trusted, material_code, material_name, order_number, order_quantity, plant_code, risk_band, scheduled_finish_date, scheduled_start_date, staging_fraction, to_items_done, to_items_total, uom]
   gold_stock_expiry_risk_live: [base_uom, batch_number, earliest_goods_receipt_date, expired_qty, expiry_ok_qty, expiry_risk_30_90d_qty, expiry_risk_7_30d_qty, expiry_risk_lt_7d_qty, has_minimum_shelf_life_breach, highest_expiry_risk_bucket, material_code, material_description, minimum_days_to_expiry, minimum_expiry_date, minimum_remaining_shelf_life_days, minimum_shelf_life_breach_qty, plant_code, shelf_life_days, total_stock_qty]
@@ -40,22 +41,7 @@ approved_aliases:
 #          missing-no-source | contract-semantic-decision.
 approved_exceptions:
   vw_consumption_warehouse360_overview: {}   # creates; data-quality only (null plant_code) — ADR-0004 D7.
-  vw_consumption_warehouse360_inbound_backlog:   # ADR-0004 D1: build gold_inbound_po_line_backlog (silver.purchase_order EKKO/EKPO). gold_inbound_po_backlog(_enhanced) are both aggregated.
-    po_id: grain-redesign-required
-    po_item: grain-redesign-required
-    doc_type: grain-redesign-required
-    vendor_id: grain-redesign-required
-    vendor_name: grain-redesign-required
-    storage_loc: grain-redesign-required
-    material_id: grain-redesign-required
-    material_name: grain-redesign-required
-    ordered_qty: grain-redesign-required
-    gr_qty: grain-redesign-required
-    uom: grain-redesign-required
-    delivery_date: grain-redesign-required
-    po_date: grain-redesign-required
-    open_qty: grain-redesign-required
-    qa_status: grain-redesign-required
+  vw_consumption_warehouse360_inbound_backlog: {}   # ADR-0004 D1: now reads gold_inbound_po_line_backlog (PO-line grain from silver.purchase_order). Core fields resolve; gr_qty/open_qty/delivery_date/qa_status/vendor_name deferred (future enrichment, removed from the view). View now live-validatable.
   vw_consumption_warehouse360_outbound_backlog: {}   # ADR-0004 D4: carrier removed from first-wave consumption SQL + contract (no replicated source — shipment/VBPA not replicated). Future-enrichment candidate; view now live-validatable.
   vw_consumption_warehouse360_staging_workload: {}   # ADR-0004 D3: first wave reduced to ORDER grain (plant x order). Component fields reservation_no/batch_id + semantic-duplicate sap_order deferred to a future staging_components contract. View now live-validatable.
   vw_consumption_warehouse360_stock_exceptions: {}   # ADR-0004 D5: storage_location_id removed from first wave (IM/LGORT axis absent from the WM-bin x material x batch expiry-risk gold source). Future-enrichment candidate; view now live-validatable.

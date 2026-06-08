@@ -131,7 +131,13 @@ hide them in the consumption view without agreeing it as contract behaviour.
     `overview` consumption view (dev/uat/prod) — documented contract behaviour (overview is per *mapped*
     plant; a plant-less row cannot be RLS-scoped). DEV: 543 rows, 0 null plant_id, 0 dup PK. Done in the
     consumption view rather than upstream (no Gold rerun); revisit upstream if the null-plant source recurs.
-- D1/D2 introduce new Gold tables, so follow-up implementation PRs must obey the active hardening-sprint
+  - **D1 `inbound_backlog` — done (PR C)**: built `gold_inbound_po_line_backlog` (PO-line grain from
+    `silver.purchase_order` EKKO/EKPO + `silver.material` name join) with `_secured` + `_live` views;
+    repointed the consumption view to it. First-wave **core fields** only — `gr_qty`/`open_qty` (need a
+    PO-line GR aggregation), `delivery_date` (EKET), `qa_status` (QM), and `vendor_name` (vendor dim) are
+    **deferred future enrichment**, removed from the contract (not null-filled). Contract v0.2.0. DEV
+    pipeline run materialised the model; `inbound_backlog` creates with 1,112,080 rows, 0 dup PK. **6/7.**
+- D2 introduces a new Gold table (D1 done above), so follow-up implementation PRs must obey the active hardening-sprint
   rule: do not add a new Gold table unless (1) its Silver dependency already exists, (2) its grain is
   documented in `data-products/io-reporting/gold/design_spec.md`, (3) unit tests are added, (4)
   `docs/data_contracts.md` is updated, and (5) freshness impact is assessed.
