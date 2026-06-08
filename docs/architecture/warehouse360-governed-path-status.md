@@ -12,7 +12,7 @@
 | Validation SQL/runbook | Merged | PR #35 | Done |
 | DLT duplicate-name guard | Merged | PR #36 | Done |
 | Secured/live ownership CI guard | Merged | PR #36 | Done |
-| DEV consumption view live validation | Not done | Requires Databricks | Run DEV runbook |
+| DEV consumption view live validation | Blocked — 1/7 views create; 6 fail (gold-contract mismatch); not yet validated | [DEV live-validation results](warehouse360-dev-live-validation-results.md) | fix(warehouse360) consumption-vs-gold mismatch |
 | UAT validation | Not done | Requires Databricks | After DEV |
 | Entitlement/RLS proof | Not done | Requires Databricks | After view validation |
 | App governed-mode cutover | Not started | Requires validation | Later |
