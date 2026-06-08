@@ -344,7 +344,7 @@ contracts:
         description: Fully qualified SAP process order number
 
   - id: warehouse360.stock_exceptions
-    version: 0.1.0
+    version: 0.2.0
     domain: warehouse
     owner: warehouse-operations
     lifecycle: draft
@@ -353,12 +353,11 @@ contracts:
       Candidate contract pending DEV profiling of grain, primary key uniqueness,
       plant_id nullability, data types, and freshness.
     source_view: vw_consumption_warehouse360_stock_exceptions
-    grain: one row per plant_id, material_id, batch_id, storage location, and exception type
+    grain: one row per plant_id, material_id, batch_id, and exception type
     primary_key:
       - plant_id
       - material_id
       - batch_id
-      - storage_loc
       - exception_type
     freshness:
       expected_minutes: 30
@@ -380,10 +379,6 @@ contracts:
         type: string
         required: true
         description: Batch number
-      - name: storage_loc
-        type: string
-        required: true
-        description: Storage location ID
       - name: exception_type
         type: string
         required: true
@@ -445,22 +440,23 @@ contracts:
         description: Creation date of the oldest open transfer requirement
 
   - id: warehouse360.im_wm_reconciliation
-    version: 0.1.0
+    version: 0.2.0
     domain: warehouse
     owner: warehouse-operations
     lifecycle: draft
     description: >
-      Discrepancies between Inventory Management (IM) and Warehouse Management (WM) stock.
-      Candidate contract pending DEV profiling of grain, primary key uniqueness,
-      plant_id nullability, data types, and freshness.
+      IM/WM stock discrepancies summarised per material and exception type (first-wave AGGREGATE
+      contract — ADR-0004 D6). gold_warehouse_exceptions carries no stable per-exception variance key
+      (storage_location_id/bin_id absent; reference_id ~99% null), so detail rows are rolled up to
+      plant x material x batch x exception_type with count/quantity/severity/age/date measures. A
+      detail-grain reconciliation contract is future work, only once a stable variance key exists upstream.
+      Candidate contract pending DEV profiling of primary key uniqueness, plant_id nullability, and freshness.
     source_view: vw_consumption_warehouse360_im_wm_reconciliation
-    grain: one row per plant_id, material_id, batch_id, storage location, bin, and exception type
+    grain: one row per plant_id, material_id, batch_id, and exception type (aggregate exception summary)
     primary_key:
       - plant_id
       - material_id
       - batch_id
-      - storage_loc
-      - bin_id
       - exception_type
     freshness:
       expected_minutes: 30
@@ -476,44 +472,44 @@ contracts:
         description: SAP plant ID
       - name: material_id
         type: string
-        required: false
+        required: true
         description: Material code
       - name: batch_id
         type: string
         required: false
-        description: Batch number
-      - name: storage_loc
-        type: string
-        required: false
-        description: Storage location ID
+        description: Batch number (null for non-batch-managed exceptions)
       - name: exception_type
         type: string
         required: true
-        description: Type of discrepancy (e.g. IM-WM mismatch, interim storage block)
-      - name: severity
-        type: integer
+        description: Type of discrepancy (e.g. IM_WM_TRUE_VARIANCE, NEGATIVE_WM_QUANT)
+      - name: exception_count
+        type: long
         required: true
-        description: Exception severity rating (higher is more critical)
-      - name: sla_hours
-        type: integer
-        required: true
-        description: Resolution SLA window in hours
+        description: Number of source exception rows aggregated into this summary row
       - name: qty
         type: decimal
         required: false
-        description: Discrepant stock quantity
-      - name: bin_id
-        type: string
+        description: Total discrepant stock quantity across the aggregated exceptions
+      - name: severity
+        type: integer
         required: false
-        description: Warehouse storage bin number
+        description: Maximum exception severity rating across the aggregated exceptions
+      - name: max_age_days
+        type: integer
+        required: false
+        description: Maximum exception age in days across the aggregated exceptions
+      - name: oldest_detected_date
+        type: date
+        required: false
+        description: Earliest detection date across the aggregated exceptions
+      - name: latest_detected_date
+        type: date
+        required: false
+        description: Most recent detection date across the aggregated exceptions
       - name: detail_text
         type: string
         required: false
-        description: Context detail description of the discrepancy
-      - name: detected_date
-        type: date
-        required: true
-        description: Date the exception was first detected
+        description: Representative context detail from the aggregated exceptions
 
   - id: warehouse360.dispensary_queue
     version: 0.1.0

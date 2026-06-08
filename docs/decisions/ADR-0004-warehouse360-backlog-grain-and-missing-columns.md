@@ -103,10 +103,21 @@ hide them in the consumption view without agreeing it as contract behaviour.
     generated app API contract, so no app-contract migration was needed. DEV revalidation: `outbound_backlog`
     now creates (**2/7** — overview + outbound; 2,162,748 rows, 0 null plant_id, 0 dup PK). Not a NULL
     placeholder; `carrier` stays a future-enrichment candidate (needs replicated shipment/VBPA).
-  - **D5/D6 `storage_location_id`/`bin_id` — NOT a docs-only change**: `storage_location_id` is a **required**
-    field on the generated `WarehouseReconciliationException` API model (`packages/data-contracts`), so removing
-    it from the first-wave governed path is a breaking app-contract change requiring schema-source edit +
-    regeneration + version bump + the app-migration registry. Re-scoped to a dedicated app-contract migration PR.
+  - **D5 `stock_exceptions` — done (re-grain PR)**: removed `storage_location_id` (IM/LGORT axis absent from
+    the WM-bin×material×batch expiry-risk source). Grain → plant×material×batch×exception_type. Creates in DEV
+    (empty — source has no rows yet). Contract bumped v0.1.0→0.2.0.
+  - **D6 `im_wm_reconciliation` — done (re-grain PR), re-grained to a first-wave AGGREGATE exception summary**
+    (owner directive): `GROUP BY plant×material×batch×exception_type` with measures `exception_count`, `qty`
+    (SUM), `severity` (MAX), `max_age_days` (MAX), `oldest_/latest_detected_date` (MIN/MAX), representative
+    `detail_text`. `storage_location_id`/`bin_id` removed. Chosen over field-dropping / `reference_id` because
+    `gold_warehouse_exceptions` has no stable per-exception variance key (reference_id ~99% null; 474/139
+    residual dups otherwise); the GROUP BY makes the PK unique by construction (DEV: 198,860 rows, 0 dup PK).
+    Contract bumped v0.1.0→0.2.0. **Correction:** an earlier note framed this as a breaking app-contract
+    migration because `storage_location_id` is required on `WarehouseReconciliationException` — but that model
+    is **dead code bound to no route**; the live `/warehouse360/exceptions` route returns
+    `Warehouse360ExceptionItem` (`storageLocation` optional, no `binId`), so **no Zod/`generated.py` edit and no
+    API version bump were needed**. Detail-grain reconciliation remains a future contract, only if a stable
+    upstream variance key is built. DEV revalidation after D5/D6: **4/7 create**.
 - D1/D2 introduce new Gold tables, so follow-up implementation PRs must obey the active hardening-sprint
   rule: do not add a new Gold table unless (1) its Silver dependency already exists, (2) its grain is
   documented in `data-products/io-reporting/gold/design_spec.md`, (3) unit tests are added, (4)

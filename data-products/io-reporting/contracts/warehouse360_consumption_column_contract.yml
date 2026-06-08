@@ -61,13 +61,10 @@ approved_exceptions:
     sap_order: contract-semantic-decision                     # likely process_order.order_number — confirm intent
     reservation_no: grain-redesign-required                   # component grain (gold is order grain)
     batch_id: grain-redesign-required                         # component grain
-  vw_consumption_warehouse360_stock_exceptions:  # ADR-0004 D5: storage_location is IM(LGORT) axis; gold_stock_expiry_risk is WM-bin x material x batch.
-    storage_location_id: grain-redesign-required              # drop from contract OR build storage-location expiry from silver.batch_stock
+  vw_consumption_warehouse360_stock_exceptions: {}   # ADR-0004 D5: storage_location_id removed from first wave (IM/LGORT axis absent from the WM-bin x material x batch expiry-risk gold source). Future-enrichment candidate; view now live-validatable.
   vw_consumption_warehouse360_shortfalls:        # ADR-0004 D2: build gold_transfer_requirement_material_backlog (silver.warehouse_transfer_requirement has material_code).
     material_id: grain-redesign-required
     open_tr_qty: grain-redesign-required
     open_tr_items: grain-redesign-required
     oldest_tr_creation_date: grain-redesign-required
-  vw_consumption_warehouse360_im_wm_reconciliation:  # ADR-0004 D6: reconciliation is plant x material; storage_location/bin are finer. Drop from contract or build bin-level model.
-    storage_location_id: grain-redesign-required
-    bin_id: grain-redesign-required
+  vw_consumption_warehouse360_im_wm_reconciliation: {}   # ADR-0004 D6: first wave re-grained to an AGGREGATE exception summary (plant x material x batch x exception_type) — storage_location_id/bin_id removed (no stable per-exception variance key upstream; reference_id ~99% null). View now live-validatable; detail-grain is future work.

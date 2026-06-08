@@ -1019,3 +1019,7 @@ class TestWarehouseGovernedSpecs:
         assert "vw_consumption_warehouse360_im_wm_reconciliation" in spec.sql
         assert "material_name" not in spec.sql
         assert "storage_loc_name" not in spec.sql
+        # First-wave aggregate re-grain (ADR-0004 D6): storage_loc/bin_id removed from the governed
+        # SELECT; pin the reduction so a future edit cannot silently re-add them.
+        assert "storage_loc" not in spec.sql
+        assert "bin_id" not in spec.sql

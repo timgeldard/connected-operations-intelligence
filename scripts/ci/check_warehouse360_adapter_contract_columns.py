@@ -88,15 +88,11 @@ ACTIVE_ROUTE_COLUMNS: dict[str, set[str]] = {
     "warehouse360.im_wm_reconciliation": {
         "exception_type",
         "severity",
-        "sla_hours",
         "material_id",
         "plant_id",
-        "storage_loc",
         "qty",
         "batch_id",
-        "bin_id",
         "detail_text",
-        "detected_date",
     },
 }
 

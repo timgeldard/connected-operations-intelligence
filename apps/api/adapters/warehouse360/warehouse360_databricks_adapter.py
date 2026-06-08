@@ -839,32 +839,36 @@ def get_warehouse_exceptions_spec(request: WarehouseExceptionRequest) -> QuerySp
     where_clauses: list[str] = []
     params: dict[str, object] = {}
 
+    # The governed view is a first-wave AGGREGATE exception summary (ADR-0004 D6): it exposes
+    # oldest_/latest_detected_date rather than a per-row detected_date, so the date window filters on
+    # latest_detected_date. The legacy imwm_exceptions_v keeps its single detected_date column.
+    date_col = "latest_detected_date" if source_mode == "governed_contracts" else "detected_date"
+
     if request.plant_id:
         where_clauses.append("plant_id = :plant_id")
         params["plant_id"] = request.plant_id
     if request.date_from:
-        where_clauses.append("detected_date >= :date_from")
+        where_clauses.append(f"{date_col} >= :date_from")
         params["date_from"] = request.date_from
     if request.date_to:
-        where_clauses.append("detected_date <= :date_to")
+        where_clauses.append(f"{date_col} <= :date_to")
         params["date_to"] = request.date_to
 
     where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
     if source_mode == "governed_contracts":
+        # Aggregate summary grain: storage_loc/bin_id/sla_hours/detected_date are not on the governed
+        # view. severity = MAX(severity), qty = SUM(quantity), detail_text = representative detail.
+        # The mapper emits storageLocation=None (row.get is null-safe) for governed rows.
         sql = f"""
         SELECT
             exception_type,
             severity,
-            sla_hours,
             material_id,
             plant_id,
-            storage_loc,
             qty,
             batch_id,
-            bin_id,
-            detail_text,
-            detected_date
+            detail_text
         FROM {view}
         {where_str}
         LIMIT {request.limit}

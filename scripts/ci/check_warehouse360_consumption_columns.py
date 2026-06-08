@@ -36,7 +36,9 @@ _NON_COLUMN = {
 
 _VIEW_RE = re.compile(
     r"CREATE\s+OR\s+REPLACE\s+VIEW\s+(?:[\w.]*\.)?(?P<view>vw_consumption_warehouse360_\w+)\s+AS\s+"
-    r"SELECT\s+(?P<select>.*?)\s+FROM\s+(?:[\w.]*\.)?(?P<src>\w+)\s*;",
+    # Source columns are only checked in the SELECT list; any trailing clause after `FROM <src>`
+    # (e.g. a GROUP BY on an aggregate consumption view) is consumed up to the statement terminator.
+    r"SELECT\s+(?P<select>.*?)\s+FROM\s+(?:[\w.]*\.)?(?P<src>\w+)\b[\s\S]*?;",
     re.IGNORECASE | re.DOTALL,
 )
 
