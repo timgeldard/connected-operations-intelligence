@@ -48,6 +48,28 @@ def test_comments_are_ignored():
     assert parse_grants(sql) == []
 
 
+def test_multiple_comma_separated_principals_are_all_parsed():
+    # A violation must not be able to hide behind another grantee in the same GRANT statement.
+    sql = "GRANT SELECT ON TABLE connected_plant_prod.gold.gold_x TO admin, `users`;"
+    parsed = parse_grants(sql)
+    principals = {p for _, _, p in parsed}
+    assert principals == {"admin", "users"}
+    assert all(name == "gold_x" for _, name, _ in parsed)
+
+
+def test_with_grant_option_clause_is_stripped():
+    sql = "GRANT SELECT ON VIEW c.gold_io_reporting.gold_x_secured TO `users` WITH GRANT OPTION;"
+    fqn, name, principal = parse_grants(sql)[0]
+    assert principal == "users" and name == "gold_x_secured"
+
+
+def test_base_grant_to_users_as_second_principal_still_caught():
+    # `users` listed second on a base table must still parse as a (base, users) pair the guard flags.
+    sql = "GRANT SELECT ON TABLE connected_plant_prod.gold.gold_x TO admin, `users`;"
+    assert ("connected_plant_prod.gold.gold_x", "gold_x", "users") in parse_grants(sql)
+    assert is_governed_target("gold_x") is False  # -> a real violation for the consumer group
+
+
 def test_repo_grants_are_policy_compliant():
     # Smoke: with the dead readiness grants removed, the repo's grant files must pass the guard.
     errors, n_files = check()

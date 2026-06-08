@@ -37,11 +37,16 @@ _GOVERNED_PREFIXES = ("vw_consumption_", "vw_genie_")
 # Map object_name -> rationale.
 DOCUMENTED_EXCEPTIONS: dict[str, str] = {}
 
-# GRANT <privs> ON [TABLE|VIEW] <obj> TO <principal>
+# GRANT <privs> ON [TABLE|VIEW] <obj> TO <principals>
+# `principals` captures EVERYTHING after TO (the statement is already split on ';'), so a
+# comma-separated grantee list (GRANT ... TO admin, `users`) is fully captured and each principal is
+# checked — a base-table grant cannot hide behind another principal in the same statement.
 _GRANT_RE = re.compile(
-    r"\bGRANT\b\s+.+?\s+\bON\b\s+(?:TABLE|VIEW)?\s*(?P<obj>[`\w.]+)\s+\bTO\b\s+(?P<principal>[`\w]+)",
+    r"\bGRANT\b\s+.+?\s+\bON\b\s+(?:TABLE|VIEW)?\s*(?P<obj>[`\w.]+)\s+\bTO\b\s+(?P<principals>.+)",
     re.IGNORECASE | re.DOTALL,
 )
+# Strips a trailing "WITH GRANT OPTION" clause from the last principal in the list.
+_WITH_GRANT_OPTION_RE = re.compile(r"\s+WITH\s+GRANT\s+OPTION\s*$", re.IGNORECASE)
 
 
 def _strip_comments(sql):
@@ -57,7 +62,11 @@ def _unquote(ident):
 
 
 def parse_grants(sql):
-    """Return [(object_fqn, object_name, principal), ...] for GRANT statements in sql."""
+    """Return [(object_fqn, object_name, principal), ...] — one entry PER principal.
+
+    Handles comma-separated grantee lists (GRANT ... TO a, b) and a trailing WITH GRANT OPTION, so
+    every principal in a statement is checked (a violation cannot hide behind another grantee).
+    """
     grants = []
     for stmt in _strip_comments(sql).split(";"):
         if not stmt.strip():
@@ -67,8 +76,11 @@ def parse_grants(sql):
             continue
         obj_fqn = _unquote(m.group("obj"))
         obj_name = obj_fqn.split(".")[-1]
-        principal = _unquote(m.group("principal"))
-        grants.append((obj_fqn, obj_name, principal))
+        principals = _WITH_GRANT_OPTION_RE.sub("", m.group("principals"))
+        for raw in principals.split(","):
+            principal = _unquote(raw).strip()
+            if principal:
+                grants.append((obj_fqn, obj_name, principal))
     return grants
 
 
