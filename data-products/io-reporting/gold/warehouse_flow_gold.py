@@ -144,7 +144,7 @@ def gold_delivery_pick_status():
     )
     customers = spark.read.table(f"{silver_schema}.customer").select(
         "customer_code", "customer_name"
-    )
+    ).distinct()
 
     picks = (
         deliveries.groupBy(
@@ -378,7 +378,7 @@ def gold_process_order_staging():
     orders = spark.read.table(f"{silver_schema}.process_order")
     material = spark.read.table(f"{silver_schema}.material").select(
         "plant_code", "material_code", "material_description"
-    )
+    ).distinct()
 
     # Transfer orders that stage to a PRODUCTION ORDER are those with reference type LTAK-BETYP='F'
     # (STAGING_REFERENCE_TYPE).  Only then does BENUM hold the process-order AUFNR.  Verified live
