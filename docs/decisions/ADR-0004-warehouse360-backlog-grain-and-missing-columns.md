@@ -118,6 +118,12 @@ hide them in the consumption view without agreeing it as contract behaviour.
     `Warehouse360ExceptionItem` (`storageLocation` optional, no `binId`), so **no Zod/`generated.py` edit and no
     API version bump were needed**. Detail-grain reconciliation remains a future contract, only if a stable
     upstream variance key is built. DEV revalidation after D5/D6: **4/7 create**.
+  - **D7 `overview` — done (PR A)**: the only data-quality defect was 2 rows with NULL `plant_code` in
+    `gold_warehouse_kpi_snapshot_secured` (the sole offending group `(NULL, snapshot_ts)` → the 1 duplicate
+    PK; every real plant has exactly 1 row). Fixed by filtering `WHERE plant_code IS NOT NULL` in the
+    `overview` consumption view (dev/uat/prod) — documented contract behaviour (overview is per *mapped*
+    plant; a plant-less row cannot be RLS-scoped). DEV: 543 rows, 0 null plant_id, 0 dup PK. Done in the
+    consumption view rather than upstream (no Gold rerun); revisit upstream if the null-plant source recurs.
 - D1/D2 introduce new Gold tables, so follow-up implementation PRs must obey the active hardening-sprint
   rule: do not add a new Gold table unless (1) its Silver dependency already exists, (2) its grain is
   documented in `data-products/io-reporting/gold/design_spec.md`, (3) unit tests are added, (4)

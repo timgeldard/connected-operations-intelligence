@@ -403,3 +403,23 @@ is empty (DEV has no expiry-risk source rows) — shape-valid, not data-validate
 
 **Next recommended PR:** **D7** overview null-plant fix (gold-side, no app coupling) or **D1/D2** detail-grain
 Gold models (`gold_inbound_po_line_backlog`, `gold_transfer_requirement_material_backlog`). Not UAT, not app cutover.
+
+---
+
+## Update 2026-06-08 (later) — PR A: overview null-plant / duplicate PK fixed (ADR-0004 D7)
+
+> DEV technical validation only. No Gold rerun (consumption-SQL filter only); no source-mode change; no
+> GRANTs; no UAT/PROD; no app cutover.
+
+Root cause (DEV, read-only): `gold_warehouse_kpi_snapshot_secured` = 545 rows, single snapshot date, 543
+distinct plants, and **exactly 2 rows with NULL `plant_code`** — the *only* offending group is
+`(NULL, 2026-06-08)` with 2 rows; every real plant has exactly 1 row. Those 2 null-plant rows alone
+produce the 1 duplicate `(plant_id, snapshot_ts)` PK.
+
+Fix: added `WHERE plant_code IS NOT NULL` to the `overview` consumption view (dev/uat/prod). A plant-less
+KPI-snapshot row cannot be plant-scoped/RLS'd and breaks the plant-grain PK, so excluding it is documented
+contract behaviour (overview is per *mapped* plant). No NULL placeholders; no Gold change.
+
+DEV re-validation: `overview` now **543 rows, 0 NULL `plant_id`, 0 duplicate PK** — contract-valid shape.
+Still **4/7 create** (overview now valid-shape). Remaining: staging_workload (D3), inbound_backlog (D1),
+shortfalls (D2).

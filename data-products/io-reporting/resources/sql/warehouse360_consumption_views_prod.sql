@@ -7,7 +7,9 @@ CREATE SCHEMA IF NOT EXISTS gold_io_reporting;
 USE SCHEMA gold_io_reporting;
 
 -- 1. Overview
--- Grain: 1 row per plant_id + snapshot_ts
+-- Grain: 1 row per plant_id + snapshot_ts. Rows with NULL plant_code are excluded (ADR-0004 D7):
+-- a plant-less KPI-snapshot row cannot be plant-scoped/RLS'd and collapses to a duplicate (NULL,
+-- snapshot_ts) PK. Excluding them is documented contract behaviour (overview is per mapped plant).
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_overview AS
 SELECT
   plant_code AS plant_id,
@@ -23,7 +25,8 @@ SELECT
   blocked_bin_count AS bins_blocked,
   total_bin_count AS bins_total,
   CAST(bin_utilisation_pct AS DECIMAL(5,2)) AS bin_util_pct
-FROM connected_plant_prod.gold_io_reporting.gold_warehouse_kpi_snapshot_secured;
+FROM connected_plant_prod.gold_io_reporting.gold_warehouse_kpi_snapshot_secured
+WHERE plant_code IS NOT NULL;
 
 -- TODO_SECURITY: replace with approved group.
 -- GRANT SELECT ON VIEW vw_consumption_warehouse360_overview TO `warehouse360_app_users`;
