@@ -161,6 +161,18 @@ jobs:
       - name: Run Warehouse360 validation SQL drift check
         run: python3 scripts/contracts/generate_warehouse360_validation_sql.py --check
 
+      - name: Run DLT duplicate dataset name tests
+        run: python3 -m pytest scripts/ci/test_check_dlt_dataset_names_unique.py -q
+
+      - name: Run DLT duplicate dataset name check
+        run: python3 scripts/ci/check_dlt_dataset_names_unique.py
+
+      - name: Run Gold serving SQL ownership tests
+        run: python3 -m pytest scripts/ci/test_check_gold_serving_sql_ownership.py -q
+
+      - name: Run Gold serving SQL ownership check
+        run: python3 scripts/ci/check_gold_serving_sql_ownership.py
+
       - name: Run documentation check tests
         run: PYTHONPATH=scripts/ci python3 -m pytest scripts/ci/test_check_required_docs.py -q
 
