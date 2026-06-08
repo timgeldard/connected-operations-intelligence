@@ -174,8 +174,6 @@ views:
         type: string
       - name: customer_name
         type: string
-      - name: carrier
-        type: string
       - name: planned_gi_date
         type: date
       - name: actual_gi_date

@@ -297,3 +297,57 @@ alternative ADR-0004 left open under D5/D6 — present it as the recommended bra
 The larger remaining wave is **D1/D2** (new detail-grain Gold models for inbound_backlog + shortfalls) and
 **D3** (staging `sap_order` semantic + component-grain decision); **D7** (overview null-plant filter)
 remains a separate focused fix.
+
+---
+
+## Update 2026-06-08 (later) — first-wave `carrier` reduction (ADR-0004 D4) → 2/7
+
+> **This is DEV technical validation only. It does not prove UAT readiness, production readiness, app
+> cutover readiness, or RLS/entitlement correctness.** No Gold rerun was needed (this is a consumption-SQL
+> reduction, not a Gold change); no source-mode change; no GRANTs; no UAT/PROD; no legacy `wh360` removal;
+> no contract promotion.
+
+**Scope note — why only `carrier`, not the full D4/D5/D6 set.** The prior "next PR" recommendation above
+was to drop `carrier` + `storage_location_id` + `bin_id` together. On contact with the repo, only `carrier`
+is removable as a first-wave reduction without an app-contract migration: `carrier` is **absent from the
+generated app API contract** (`apps/api/contracts/generated.py`), so removing it breaks no response model.
+By contrast `storage_location_id` is a **required** field on the `WarehouseReconciliationException` API
+model (generated from `packages/data-contracts`), so dropping `storage_location_id`/`bin_id` is a breaking
+app-contract change requiring a schema-source edit + regeneration + version bump + the app-migration
+registry — out of scope here, deferred to a dedicated app-contract migration PR (D5/D6).
+
+**Change made:** removed `carrier` from the governed first-wave outbound contract, consistently across:
+`warehouse360_consumption_views_{dev,uat,prod}.sql`; `app_contract_manifest.yml` /
+`warehouse360_view_expectations.yml` / `warehouse360_consumption_column_contract.yml` (the `carrier`
+approved-exception removed → outbound now has an empty exception list); the **governed** SELECT branch of
+`apps/api/adapters/warehouse360/warehouse360_databricks_adapter.py` (the legacy `wh360_deliveries_v` branch
+keeps `carrier` — legacy untouched); and the `ACTIVE_ROUTE_COLUMNS` set in
+`scripts/ci/check_warehouse360_adapter_contract_columns.py`. **No `NULL AS carrier` placeholder.** `carrier`
+remains a future-enrichment candidate (needs a replicated shipment/VBPA source).
+
+**DEV re-validation (2026-06-08, profile TG, warehouse `8fae28f1808dbf75`, no Gold rerun):** re-ran
+`warehouse360_consumption_views_dev.sql`. Result **2 of 7 create**:
+
+| View | Created? | Rows | Null plant_id | Dup PK | First unresolved column | Status |
+|---|---|---:|---:|---:|---|---|
+| `…_overview` | ✅ | 545 | 2 | 1 | — | created-with-data-quality-issue |
+| `…_outbound_backlog` | ✅ | 2,162,748 | 0 | 0 | — | **created** (clean PK; carrier removed) |
+| `…_inbound_backlog` | ❌ | — | — | — | `po_id` | failed-create (D1 grain) |
+| `…_staging_workload` | ❌ | — | — | — | `reservation_no` | failed-create (D3) |
+| `…_stock_exceptions` | ❌ | — | — | — | `storage_location_id` | failed-create (D5) |
+| `…_shortfalls` | ❌ | — | — | — | `material_id` | failed-create (D2 grain) |
+| `…_im_wm_reconciliation` | ❌ | — | — | — | `storage_location_id` | failed-create (D6) |
+
+`outbound_backlog` now creates and queries: **2,162,748 rows, 0 NULL `plant_id`, 0 duplicate
+`(plant_id, delivery_id)`, 451 distinct plants** (unscoped, pre-RLS — expected in DEV). `DESCRIBE` confirms
+`carrier` is no longer a column. PK uniqueness and plant-nullability look clean at this grain, but
+type-compatibility and **RLS/entitlement remain unproven** — this is create+shape evidence, not full
+live-validation.
+
+**Remaining blockers (unchanged):** inbound_backlog (D1), shortfalls (D2), staging_workload (D3),
+stock_exceptions (D5), im_wm_reconciliation (D6), overview data-quality (D7).
+
+**Next recommended PR:** the `storage_location_id`/`bin_id` removal (D5/D6) as a **scoped app-contract
+migration** (schema source + regen + version bump + registry), or a self-contained data-product step —
+**D7** overview null-plant data-quality fix (gold-side, no app coupling), or **D1/D2** detail-grain Gold
+models. Not UAT, not app cutover.

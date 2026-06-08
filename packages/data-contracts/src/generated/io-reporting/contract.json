@@ -299,12 +299,6 @@
           "description": "Customer name"
         },
         {
-          "name": "carrier",
-          "type": "string",
-          "required": false,
-          "description": "Carrier code or name"
-        },
-        {
           "name": "planned_gi_date",
           "type": "date",
           "required": false,

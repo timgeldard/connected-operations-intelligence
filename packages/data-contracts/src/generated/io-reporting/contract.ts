@@ -140,8 +140,6 @@ export interface Warehouse360OutboundBacklog {
   customer_id?: string;
   /** Customer name */
   customer_name?: string;
-  /** Carrier code or name */
-  carrier?: string;
   /** Planned goods issue date */
   planned_gi_date?: string;
   /** Actual goods issue date */

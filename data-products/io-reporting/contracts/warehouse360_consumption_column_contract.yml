@@ -56,8 +56,7 @@ approved_exceptions:
     po_date: grain-redesign-required
     open_qty: grain-redesign-required
     qa_status: grain-redesign-required
-  vw_consumption_warehouse360_outbound_backlog:  # ADR-0004 D4.
-    carrier: missing-no-source                                # not replicated (shipment/VBPA); mark contract optional/remove
+  vw_consumption_warehouse360_outbound_backlog: {}   # ADR-0004 D4: carrier removed from first-wave consumption SQL + contract (no replicated source — shipment/VBPA not replicated). Future-enrichment candidate; view now live-validatable.
   vw_consumption_warehouse360_staging_workload:  # ADR-0004 D3 (grain decision: reduce to order grain or build component grain).
     sap_order: contract-semantic-decision                     # likely process_order.order_number — confirm intent
     reservation_no: grain-redesign-required                   # component grain (gold is order grain)

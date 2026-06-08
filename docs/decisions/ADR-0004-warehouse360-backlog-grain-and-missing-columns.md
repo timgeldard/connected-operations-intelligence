@@ -95,6 +95,18 @@ hide them in the consumption view without agreeing it as contract behaviour.
   2. `feat(gold): inbound PO-line-detail + material-grain shortfall models` (D1, D2).
   3. `fix(gold): overview null-plant filter` (D7).
   4. `docs(contracts): mark carrier / storage_location_id / bin_id optional-or-removed` (D4/D5/D6).
+- **Implementation status (2026-06-08):**
+  - Item 1 — **done (PR #43)**: outbound (ship-to/sold-to, dates, gross_weight) + staging (uom, material_name).
+    DEV revalidation confirmed the frontier moved (1/7, outbound then blocked only on `carrier`).
+  - **D4 `carrier` — done (this PR, first-wave reduction)**: removed from the governed consumption SQL,
+    contracts, the governed adapter SELECT, and the adapter-column guard. `carrier` is **not** in the
+    generated app API contract, so no app-contract migration was needed. DEV revalidation: `outbound_backlog`
+    now creates (**2/7** — overview + outbound; 2,162,748 rows, 0 null plant_id, 0 dup PK). Not a NULL
+    placeholder; `carrier` stays a future-enrichment candidate (needs replicated shipment/VBPA).
+  - **D5/D6 `storage_location_id`/`bin_id` — NOT a docs-only change**: `storage_location_id` is a **required**
+    field on the generated `WarehouseReconciliationException` API model (`packages/data-contracts`), so removing
+    it from the first-wave governed path is a breaking app-contract change requiring schema-source edit +
+    regeneration + version bump + the app-migration registry. Re-scoped to a dedicated app-contract migration PR.
 - D1/D2 introduce new Gold tables, so follow-up implementation PRs must obey the active hardening-sprint
   rule: do not add a new Gold table unless (1) its Silver dependency already exists, (2) its grain is
   documented in `data-products/io-reporting/gold/design_spec.md`, (3) unit tests are added, (4)
