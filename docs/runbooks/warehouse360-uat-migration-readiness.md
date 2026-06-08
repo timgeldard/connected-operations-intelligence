@@ -72,6 +72,60 @@ WH360_SCHEMA=gold_io_reporting
 
 Do not reintroduce legacy `wh360` views as governed dependencies. Legacy mode is only a backward-compatibility mode for explicitly configured non-governed paths.
 
+## Validation security gates (A / B / C)
+
+UAT validation is split into three gates so data-shape validation can proceed even when the corporate
+`published_uat.security.model` is unavailable to the validating user — **without** ever bypassing the
+`*_secured` boundary or claiming RLS that was not proven. The secured-view predicate is chosen by
+`generate_gold_security_sql.py --security-mode` (strict | validation-open | validation-fixture); prod is
+locked to `strict` by `scripts/ci/check_security_mode_policy.py`.
+
+### Gate A — UAT data-shape validation (`validation_open`)
+
+Use when `published_uat.security.model` is unavailable. The `*_secured` views are pass-throughs, but the
+harden step still revokes base Gold from `users`. Run in order:
+
+```text
+resources/sql/gold_security_uat_validation_open.sql
+resources/sql/gold_security_harden_uat.sql
+resources/sql/gold_serving_views_uat.sql
+resources/sql/warehouse360_consumption_views_uat.sql
+validation/generated/warehouse360_contract_validation_uat.sql
+```
+
+Proves: Gold objects materialise; secured-view names exist; consumption views create; schema/types match
+contracts; row counts / PK / null checks; data-bearing status understood.
+Does **NOT** prove: plant filtering, user entitlement, OAuth identity, or cutover readiness.
+
+### Gate B — UAT fixture RLS validation (`validation_fixture`)
+
+Use when test identities are available but the corporate model is not. Run after the fixture exists:
+
+```text
+resources/sql/security_model_fixture_uat.sql           -- seed placeholder/real test identities
+resources/sql/gold_security_uat_validation_fixture.sql
+resources/sql/gold_security_harden_uat.sql
+resources/sql/gold_serving_views_uat.sql
+resources/sql/warehouse360_consumption_views_uat.sql
+-- then identity-specific test queries (current_user(), plant_id row counts)
+```
+
+Proves: the secured-view predicate logic works; full-view user sees all permitted plants; single-/multi-plant
+users see only their plants; no-access user sees nothing.
+Does **NOT** prove real corporate-model integration unless the fixture uses representative real identities
+accepted by governance.
+
+### Gate C — strict UAT security validation (`strict`)
+
+Run only when `published_uat.security.model` is accessible (read **and** the validating identities are
+entitled in it). Run `gold_security_uat.sql` + `gold_security_harden_uat.sql` + the Gold RLS verify job
+(`resources/gold_security_job.job.yml`) + representative-identity tests. Proves real UAT entitlement.
+
+> App cutover requires **Gate C** (or accepted Gate-B fixture evidence with real identities) — never
+> Gate A alone. The first UAT attempt (2026-06-08) could not reach Gate C: the validating user has read
+> but **no write** access to `published_uat.security.model` and owns the deployed Gold objects. See
+> [UAT validation results](../architecture/warehouse360-uat-validation-results.md).
+
 ## Readiness Decision
 
 Use one of these decisions:

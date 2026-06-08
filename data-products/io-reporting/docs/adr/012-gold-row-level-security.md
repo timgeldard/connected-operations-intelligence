@@ -3,6 +3,15 @@
 ## Status
 Accepted (supersedes earlier `plant_access_filter` approach; refines ADR 005)
 
+> **Addendum (2026-06-08) — UAT validation security modes.** `generate_gold_security_sql.py` supports
+> `--security-mode strict|validation-open|validation-fixture`. `strict` (the model below) is the only mode
+> allowed for prod and is enforced by `scripts/ci/check_security_mode_policy.py`. `validation-open`
+> (UAT/DEV) creates the same `*_secured` view names as pass-throughs so UAT data-shape validation can run
+> when `published_uat.security.model` is unavailable — it preserves the secured boundary + harden revokes
+> but proves NO RLS. `validation-fixture` (UAT/DEV) filters on a local `security_model_fixture` table for
+> representative entitlement testing. See `docs/runbooks/warehouse360-uat-migration-readiness.md` (Gates
+> A/B/C). The secured-view boundary is never bypassed and consumption views are never repointed to base Gold.
+
 ## Context
 ADR 005 made the Gold layer a **trusted aggregate**: attaching a UC row filter directly to a
 materialized view forces **full MV refreshes** (cost + latency), so Gold MVs stay unfiltered.

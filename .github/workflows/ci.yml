@@ -195,6 +195,12 @@ jobs:
       - name: Run Warehouse360 consumption-view column guard
         run: python3 scripts/ci/check_warehouse360_consumption_columns.py
 
+      - name: Run security-mode policy guard tests
+        run: PYTHONPATH=scripts/ci python3 -m pytest scripts/ci/test_check_security_mode_policy.py -q
+
+      - name: Run security-mode policy guard
+        run: python3 scripts/ci/check_security_mode_policy.py
+
       - name: Run app migration registry guard
         run: python3 scripts/ci/check_app_migration_registry_guard.py
 
