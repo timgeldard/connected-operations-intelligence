@@ -58,7 +58,6 @@ ACTIVE_ROUTE_COLUMNS: dict[str, set[str]] = {
         "plant_id",
         "customer_id",
         "customer_name",
-        "carrier",
         "planned_gi_date",
         "actual_gi_date",
         "delivery_date",

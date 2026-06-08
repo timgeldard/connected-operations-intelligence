@@ -67,7 +67,6 @@ SELECT
   delivery_type,
   customer_id,
   customer_name,
-  carrier,
   planned_goods_issue_date AS planned_gi_date,
   actual_goods_issue_date AS actual_gi_date,
   delivery_date,

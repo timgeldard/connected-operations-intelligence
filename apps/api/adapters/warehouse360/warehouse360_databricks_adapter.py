@@ -492,7 +492,6 @@ def get_warehouse_outbound_spec(request: WarehouseOutboundRequest) -> QuerySpec:
             plant_id,
             customer_id,
             customer_name,
-            carrier,
             planned_gi_date,
             actual_gi_date,
             delivery_date,
