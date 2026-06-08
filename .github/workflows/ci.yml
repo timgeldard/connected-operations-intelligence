@@ -173,6 +173,12 @@ jobs:
       - name: Run Gold serving SQL ownership check
         run: python3 scripts/ci/check_gold_serving_sql_ownership.py
 
+      - name: Run documentation check tests
+        run: PYTHONPATH=scripts/ci python3 -m pytest scripts/ci/test_check_required_docs.py -q
+
+      - name: Run documentation check
+        run: python3 scripts/ci/check_required_docs.py
+
       - name: Run Warehouse360 static migration check
         run: python3 scripts/ci/check_warehouse360_migration_static.py
 
