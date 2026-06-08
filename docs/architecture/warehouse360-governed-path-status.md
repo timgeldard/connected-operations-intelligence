@@ -12,8 +12,8 @@
 | Validation SQL/runbook | Merged | PR #35 | Done |
 | DLT duplicate-name guard | Merged | PR #36 | Done |
 | Secured/live ownership CI guard | Merged | PR #36 | Done |
-| DEV consumption view live validation | Blocked — 1/7 views create; naming reconciled (PR #40); remaining = missing-column/grain/data-quality; not yet validated | [DEV live-validation results](warehouse360-dev-live-validation-results.md) | implement ADR-0004 in scoped Gold PRs |
-| Missing-column / grain decisions | Decided (proposed) | [ADR-0004](../decisions/ADR-0004-warehouse360-backlog-grain-and-missing-columns.md) | ratify + implement scoped Gold PRs |
+| DEV consumption view live validation | Blocked — **1/7 create (revalidated 2026-06-08 after PR #43, Gold update `b99f58d4`)**; PR #43 resolved outbound `customer_id`/`customer_name`/dates/`gross_weight` + staging `uom`/`material_name` (frontier moved); remaining = no-source (`carrier`), grain (`po_id`/`material_id`/`reservation_no`/`storage_location_id`/`bin_id`), and overview data-quality | [DEV live-validation results](warehouse360-dev-live-validation-results.md) | implement remaining ADR-0004 decisions in scoped PRs (next: D4/D5/D6 contract reduction) |
+| Missing-column / grain decisions | Decided (proposed) — D3/D4 available-upstream columns implemented (PR #43) | [ADR-0004](../decisions/ADR-0004-warehouse360-backlog-grain-and-missing-columns.md) | ratify + implement remaining scoped PRs (D1/D2 Gold models, D4/D5/D6 contract reduction, D7 overview DQ) |
 | UAT validation | Not done | Requires Databricks | After DEV |
 | Entitlement/RLS proof | Not done | Requires Databricks | After view validation |
 | App governed-mode cutover | Not started | Requires validation | Later |

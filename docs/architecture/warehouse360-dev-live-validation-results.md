@@ -191,3 +191,109 @@ null-plant source (likely a SHARED/unmapped bucket). `snapshot_ts` granularity i
 
 Net: most blockers are resolvable from replicated Silver, but via **Gold-model additions / new
 detail-grain models + grain decisions** — design first (this ADR), implement in follow-up Gold PRs.
+
+---
+
+## Update 2026-06-08 — DEV revalidation after PR #43 Gold enrichment
+
+> **This is DEV technical validation only. It does not prove UAT readiness, production readiness, app
+> cutover readiness, or RLS/entitlement correctness.** The app remains on the legacy
+> `connected_plant_uat.wh360` runtime; `WAREHOUSE360_SOURCE_MODE` was **not** changed; no GRANTs applied
+> (the `GRANT … TO \`users\`` statements in each script were skipped — entitlement is a separate, gated
+> step); no legacy `wh360` removal; no contract promotion; no UAT/PROD action.
+
+**Question:** *After the PR #43 outbound/staging Gold enrichment, which Warehouse360 governed consumption
+views now create in DEV, and which blockers remain?*
+**Answer: still 1 of 7 create — but the blocker frontier moved exactly as ADR-0004 predicted.** PR #43's
+available-upstream columns now resolve; the remaining failures are the genuinely no-source / finer-grain
+columns, isolating the next decisions.
+
+### Environment
+
+| Field | Value |
+|---|---|
+| Date/time | 2026-06-08 (~10:35 UTC) |
+| Workspace | DEV (`adb-3548637138127338.18.azuredatabricks.net`), profile `TG` |
+| Catalog / schema | `connected_plant_dev` / `gold_io_reporting` |
+| SQL warehouse | `8fae28f1808dbf75` (`connected_plant_dev`) |
+| Gold pipeline | `[dev tim_geldard] [dev] Connected Plant — Gold` (`a84268e5-9cdd-48a2-8512-e1c3c73e5ba8`) |
+| **Gold update (PR #43 code)** | **`b99f58d4-3369-48c4-bab6-a71f1381de98` — COMPLETED** (created 2026-06-08; replaces the pre-#43 `707a9eb5…` of 2026-06-07) |
+| Repo state | `main` after #43 merged (`gold_delivery_pick_status` + `gold_process_order_staging` enriched); all 6 static checks green |
+
+PR #43 Gold code was deployed to DEV (`databricks bundle deploy -t dev --profile TG`) and a fresh pipeline
+update (`b99f58d4…`) was run to **COMPLETED** before the SQL sequence, so the consumption CREATEs read the
+enriched MVs.
+
+### SQL sequence run (CREATE/DESCRIBE/SELECT only; GRANTs skipped — not edited, just not sent)
+
+| Step | Script | Result |
+|---|---|---|
+| 1 | `gold_security_dev.sql` | ✅ 32 `_secured` views recreated (pass-throughs; pick up new MV columns) |
+| 2 | `gold_serving_views_dev.sql` | ✅ 5 `_live` views recreated (`b.*` → expose new MV columns) |
+| 3 | `warehouse360_consumption_views_dev.sql` | ⚠️ 1 of 7 created (overview); 6 failed-create |
+| 4 | `validation/generated/…_validation_dev.sql` | only `overview` exists to describe/query (metrics below) |
+
+### Per-view classification
+
+| View | Created? | Rows | Null plant_id | Dup PK | First unresolved column | Status |
+|---|---|---:|---:|---:|---|---|
+| `…_overview` | ✅ | 545 | 2 | 1 | — | **created-with-data-quality-issue** |
+| `…_inbound_backlog` | ❌ | — | — | — | `po_id` | **failed-create** (grain) |
+| `…_outbound_backlog` | ❌ | — | — | — | `carrier` | **failed-create** (no-source) |
+| `…_staging_workload` | ❌ | — | — | — | `reservation_no` | **failed-create** (component grain + `sap_order` semantic) |
+| `…_stock_exceptions` | ❌ | — | — | — | `storage_location_id` | **failed-create** (IM axis / grain) |
+| `…_shortfalls` | ❌ | — | — | — | `material_id` | **failed-create** (grain) |
+| `…_im_wm_reconciliation` | ❌ | — | — | — | `storage_location_id` | **failed-create** (finer grain) |
+
+`overview` metrics (unchanged from PR #39 — PR #43 did not touch `gold_warehouse_kpi_snapshot`): 545 rows,
+**2 NULL `plant_id`**, **1 duplicate `(plant_id, snapshot_ts)`**, 543 distinct plants (unscoped, pre-RLS,
+expected), freshness `MAX(snapshot_ts) = 2026-06-08` (today, from the fresh Gold run). The D7 data-quality
+issue persists.
+
+### Blockers PR #43 resolved (frontier moved) — proven by DESCRIBE of the `_live` sources
+
+| View | Now resolves (was a blocker pre-#43) | Verified via |
+|---|---|---|
+| outbound_backlog | `customer_id`, `customer_name`, `actual_goods_issue_date`, `delivery_date`, `gross_weight` (+ `gross_weight_unit`, ship-to/sold-to names) | `DESCRIBE gold_delivery_pick_status_live` — all present; **only `carrier` absent** |
+| staging_workload | `uom`, `material_name` | `DESCRIBE gold_process_order_staging_live` — both present; `reservation_no`/`batch_id`/`sap_order` absent |
+
+The CREATE error for `outbound_backlog` now names `carrier` (its `customer_id` etc. resolve), and for
+`staging_workload` now names `reservation_no` (its `uom`/`material_name` resolve) — confirming the only
+remaining outbound blocker is the no-source `carrier`, and staging's are the component-grain
+`reservation_no`/`batch_id` plus the `sap_order` semantic.
+
+### Blockers that remain (unchanged by PR #43)
+
+- **inbound_backlog** — `po_id` (and the full PO-line set): `gold_inbound_po_backlog_enhanced` is still
+  aggregated per plant×vendor×purchasing_org. **ADR-0004 D1**: build `gold_inbound_po_line_backlog`.
+- **shortfalls** — `material_id`: `gold_transfer_requirement_backlog` is aggregated per
+  warehouse×storage_type×queue×priority. **ADR-0004 D2**: build a material-grain TR backlog model.
+- **outbound_backlog** — `carrier`: no replicated source (shipment/VBPA). **ADR-0004 D4**: mark optional / remove.
+- **staging_workload** — `reservation_no`/`batch_id` (component grain) + `sap_order` (semantic).
+  **ADR-0004 D3**: reduce to order grain (drop/optional) or build a component-grain model; resolve `sap_order` intent.
+- **stock_exceptions** — `storage_location_id`: IM (LGORT) axis on a WM model. **ADR-0004 D5**: drop or re-grain.
+- **im_wm_reconciliation** — `storage_location_id`/`bin_id`: finer than the plant×material reconciliation
+  grain. **ADR-0004 D6**: drop or build a bin-level model.
+
+### Contract YAML check
+
+`data-products/io-reporting/contracts/warehouse360_consumption_column_contract.yml` was **verified against
+this live evidence and left unchanged**: its `gold_source_columns` snapshot for
+`gold_delivery_pick_status_live` / `gold_process_order_staging_live` matches the live `DESCRIBE` output
+(the PR #43 columns are present), and its `approved_exceptions` (`carrier`; `reservation_no`/`batch_id`/
+`sap_order`; `storage_location_id`/`bin_id`; the inbound/shortfall grain sets) match exactly the columns
+the live CREATEs still cannot resolve. No blocker was added or removed by this run, so no YAML edit was
+needed.
+
+### Next recommended PR
+
+**`docs(contracts): mark no-source / over-grain fields optional or remove from first-wave Warehouse360
+contracts`** — the recommended branch of **ADR-0004 D4/D5/D6**: drop `carrier` (outbound),
+`storage_location_id` (stock_exceptions), and `storage_location_id`/`bin_id` (im_wm_reconciliation) from
+the consumption SQL + contract. Combined with the now-deployed PR #43 Gold, this is expected to take DEV
+from **1/7 → ~4/7** (overview + outbound_backlog + stock_exceptions + im_wm_reconciliation create), with
+no new Gold modelling. (Dropping `storage_location_id`/`bin_id` forecloses the finer-grain-model
+alternative ADR-0004 left open under D5/D6 — present it as the recommended branch, not the only option.)
+The larger remaining wave is **D1/D2** (new detail-grain Gold models for inbound_backlog + shortfalls) and
+**D3** (staging `sap_order` semantic + component-grain decision); **D7** (overview null-plant filter)
+remains a separate focused fix.
