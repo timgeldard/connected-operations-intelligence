@@ -151,7 +151,8 @@ def test_delivery_pick_fraction(spark):
             picked_quantity=30.0, gross_weight=60.0, weight_unit="KG"),
         Row(delivery_number="80001", item_number="20", plant_code="C061", warehouse_number="208",
             delivery_type="LF", ship_to_customer="SHIP1", sold_to_customer="SOLD1",
-            planned_goods_issue_date=None, actual_goods_issue_date=None, delivery_date=None,
+            planned_goods_issue_date=None, actual_goods_issue_date=datetime.date(2026, 6, 1),
+            delivery_date=None,
             delivery_gross_weight=123.4, delivery_weight_unit="KG",
             delivery_quantity=4.0, sales_uom="CS", base_uom="KG",
             delivery_quantity_base=40.0, actual_delivered_base_quantity=40.0,
@@ -197,7 +198,8 @@ def test_delivery_pick_fraction(spark):
     assert r["has_mixed_base_uom"] is False
     assert r["has_unconverted_delivery_qty"] is False
     assert r["pick_fraction"] == 0.7
-    assert r["is_shipped"] is False
+    assert r["is_shipped"] is True
+    assert r["actual_goods_issue_date"] == datetime.date(2026, 6, 1)
     assert r["customer_id"] == "SHIP1"
     assert r["customer_name"] == "Ship-To Customer"
     assert r["ship_to_customer"] == "SHIP1"
@@ -213,6 +215,8 @@ def test_delivery_pick_fraction(spark):
     assert mixed["has_mixed_base_uom"] is True
     assert mixed["has_unconverted_delivery_qty"] is False
     assert mixed["pick_fraction"] is None
+    assert mixed["gross_weight"] is None
+    assert mixed["gross_weight_unit"] == "KG"
 
     unconverted = rows["80003"]
     assert unconverted["base_uom_count"] == 1

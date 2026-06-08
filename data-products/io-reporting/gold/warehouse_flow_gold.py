@@ -150,13 +150,16 @@ def gold_delivery_pick_status():
         deliveries.groupBy(
             "delivery_number", "plant_code", "warehouse_number",
             "delivery_type", "ship_to_customer", "sold_to_customer",
-            "planned_goods_issue_date", "actual_goods_issue_date", "delivery_date",
-            "delivery_gross_weight", "delivery_weight_unit",
         )
         .agg(
             F.count(F.lit(1)).alias("line_count"),
             F.coalesce(F.sum("delivery_quantity_base"), F.lit(0.0)).alias("delivery_qty"),
             F.coalesce(F.sum("actual_delivered_base_quantity"), F.lit(0.0)).alias("picked_qty"),
+            F.max("planned_goods_issue_date").alias("planned_goods_issue_date"),
+            F.max("actual_goods_issue_date").alias("actual_goods_issue_date"),
+            F.max("delivery_date").alias("delivery_date"),
+            F.first("delivery_gross_weight", ignorenulls=True).alias("delivery_gross_weight"),
+            F.first("delivery_weight_unit", ignorenulls=True).alias("delivery_weight_unit"),
             F.count_distinct("base_uom").alias("base_uom_count"),
             F.sum(F.when(F.col("delivery_quantity_base").isNull(), F.lit(1)).otherwise(F.lit(0))).alias(
                 "null_delivery_base_count"
