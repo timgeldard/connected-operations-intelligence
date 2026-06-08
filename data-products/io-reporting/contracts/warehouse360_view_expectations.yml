@@ -201,18 +201,14 @@ views:
 
   - name: vw_consumption_warehouse360_staging_workload
     contract_id: warehouse360.staging_workload
-    expected_grain: one row per plant_id, process order, reservation number, and batch ID
+    expected_grain: one row per plant_id and process order (order grain — first wave)
     primary_key:
       - plant_id
       - order_id
-      - reservation_no
-      - batch_id
     row_level_key: plant_id
     must_not_be_null:
       - plant_id
       - order_id
-      - reservation_no
-      - batch_id
     expected_columns:
       - name: plant_id
         type: string
@@ -239,12 +235,6 @@ views:
       - name: mins_to_start
         type: double
       - name: risk
-        type: string
-      - name: reservation_no
-        type: string
-      - name: batch_id
-        type: string
-      - name: sap_order
         type: string
     freshness_column: null
     runtime_route_exists: true

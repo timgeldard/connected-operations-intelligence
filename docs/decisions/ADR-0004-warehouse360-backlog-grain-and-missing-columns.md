@@ -98,6 +98,13 @@ hide them in the consumption view without agreeing it as contract behaviour.
 - **Implementation status (2026-06-08):**
   - Item 1 — **done (PR #43)**: outbound (ship-to/sold-to, dates, gross_weight) + staging (uom, material_name).
     DEV revalidation confirmed the frontier moved (1/7, outbound then blocked only on `carrier`).
+  - **D3 `staging_workload` — done (PR B), reduced to ORDER grain**: the recommended option. First-wave
+    contract is `plant_id + order_id`; `reservation_no`/`batch_id` (component grain) and `sap_order` (a
+    semantic duplicate of `order_id`) are removed and deferred to a future `staging_components` contract.
+    Removed across consumption SQL, manifest (v0.2.0), expectations, the consumption-column exceptions, the
+    governed adapter SELECT, and the adapter-column guard. Not a breaking API change (Warehouse360StagingItem
+    fields are optional; no `sap_order` field). DEV: `staging_workload` now creates — **created-empty**
+    (gold_process_order_staging is 0 rows in this shakedown). **5/7 create.**
   - **D4 `carrier` — done (this PR, first-wave reduction)**: removed from the governed consumption SQL,
     contracts, the governed adapter SELECT, and the adapter-column guard. `carrier` is **not** in the
     generated app API contract, so no app-contract migration was needed. DEV revalidation: `outbound_backlog`

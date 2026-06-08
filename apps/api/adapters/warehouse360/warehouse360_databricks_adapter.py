@@ -645,14 +645,13 @@ def get_warehouse_staging_spec(request: WarehouseStagingRequest) -> QuerySpec:
     where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
     if source_mode == "governed_contracts":
+        # First-wave staging_workload is ORDER-grain (ADR-0004 D3): the component-grain fields
+        # sap_order/reservation_no/batch_id are deferred to a future staging_components contract.
         sql = f"""
         SELECT
             order_id,
-            sap_order,
-            reservation_no,
             material_id,
             material_name,
-            batch_id,
             plant_id,
             uom,
             order_qty,
