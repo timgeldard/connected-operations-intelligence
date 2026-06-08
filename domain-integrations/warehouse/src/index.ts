@@ -6,7 +6,6 @@
  * Phase 4: Production Staging workspace.
  */
 
-export { warehouseWorkspaceRegistration } from './registration.js'
 
 export { WarehouseEvidenceAdapter, warehouseEvidenceAdapter, toAdapterError } from './adapters/warehouse-evidence-adapter.js'
 export type { WarehouseEvidenceAdapterRequest, WarehouseEvidenceAdapterOptions } from './adapters/warehouse-evidence-adapter.js'

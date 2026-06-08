@@ -76,6 +76,15 @@ def test_prod_forbids_validation_modes(tmp_path, mode):
     with pytest.raises(SystemExit) as exc:
         gen.generate_sql(env_filter="prod", security_mode=mode)
     assert "forbidden for prod" in str(exc.value)
+    assert not (tmp_path / "resources").exists()
+
+
+@pytest.mark.parametrize("mode", ["validation-open", "validation-fixture"])
+def test_validation_mode_requires_explicit_env(tmp_path, mode):
+    with pytest.raises(SystemExit) as exc:
+        gen.generate_sql(env_filter=None, security_mode=mode)
+    assert "explicit --env is required" in str(exc.value)
+    assert not (tmp_path / "resources").exists()
 
 
 def test_prod_strict_allowed(tmp_path):

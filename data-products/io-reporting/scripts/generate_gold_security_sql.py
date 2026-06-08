@@ -219,20 +219,27 @@ def _mode_header_note(security_mode: str) -> str:
 
 
 def generate_sql(env_filter: str | None = None, security_mode: str = "strict"):
-    os.makedirs("resources/sql", exist_ok=True)
-
     if security_mode not in SECURITY_MODES:
         raise SystemExit(f"Unknown --security-mode '{security_mode}' (allowed: {', '.join(SECURITY_MODES)}).")
 
     if env_filter and env_filter not in ENVIRONMENTS:
         raise SystemExit(f"Unknown --env '{env_filter}' (allowed: {', '.join(ENVIRONMENTS)}).")
 
+    if security_mode in VALIDATION_MODES and not env_filter:
+        raise SystemExit(
+            f"An explicit --env is required when using validation security modes "
+            f"(allowed: {', '.join(e for e in ENVIRONMENTS if e != 'prod')})."
+        )
+
     envs = {env_filter: ENVIRONMENTS[env_filter]} if env_filter else ENVIRONMENTS
 
+    # GUARDRAIL: prod must use the real corporate security model — never a pass-through or fixture.
+    if security_mode in VALIDATION_MODES and "prod" in envs:
+        raise SystemExit("validation security modes are forbidden for prod")
+
+    os.makedirs("resources/sql", exist_ok=True)
+
     for env, cfg in envs.items():
-        # GUARDRAIL: prod must use the real corporate security model — never a pass-through or fixture.
-        if env == "prod" and security_mode in VALIDATION_MODES:
-            raise SystemExit("validation security modes are forbidden for prod")
 
         catalog = cfg["catalog"]
         gold = f"{catalog}.{cfg['gold_schema']}"

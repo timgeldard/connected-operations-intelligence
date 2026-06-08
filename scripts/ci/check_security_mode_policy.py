@@ -52,7 +52,8 @@ def scan(sql_dir: str) -> list:
     if not os.path.exists(prod_path):
         errors.append(f"[{PROD_STRICT}] missing — prod strict security SQL must exist.")
     else:
-        prod = open(prod_path, encoding="utf-8").read()
+        with open(prod_path, encoding="utf-8") as f:
+            prod = f.read()
         for token in REQUIRED_IN_PROD:
             if token not in prod:
                 errors.append(f"[{PROD_STRICT}] must contain '{token}' (real corporate-model RLS).")

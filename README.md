@@ -45,7 +45,7 @@ The repository is organized as a monorepo using `pnpm` workspaces for frontend/N
 │   ├── architecture/               # Technical designs, security models, ingestion flows
 │   ├── data-contracts/             # Existing data contract mappings and freshness contracts
 │   ├── deployment/                 # Deployment guides, hardening plan, reconciliation controls
-│   ├── product/                    # Product roadmap, business rules, user stories, index
+│   ├── app/                        # Application roadmap, business rules, user stories, index
 │   └── runbooks/                   # Runbooks for operations and onboarding
 ├── domain-integrations/            # Domain integrations / adapters
 │   ├── operations/

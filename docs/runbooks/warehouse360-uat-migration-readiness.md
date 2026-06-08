@@ -19,7 +19,7 @@ DEV is a **technical shakedown only** (`dev_shakedown`, `enable_hu_reconciliatio
 **UAT runs in `full_validation` mode** (`enable_hu_reconciliation=true`) and is the
 first environment where HU reconciliation and business validation occur.
 
-Before the gates below, run **`validation/ioreporting_uat_full_validation_preflight.sql`**:
+Before the gates below, run **`data-products/io-reporting/validation/ioreporting_uat_full_validation_preflight.sql`**:
 it **requires** the full `published_uat.central_services` set, including
 `handlingunit_vekp` and `handlingunit_vepo` — UAT must not proceed if either HU
 table is missing. A green DEV shakedown alone does **not** satisfy any UAT gate.
@@ -86,11 +86,11 @@ Use when `published_uat.security.model` is unavailable. The `*_secured` views ar
 harden step still revokes base Gold from `users`. Run in order:
 
 ```text
-resources/sql/gold_security_uat_validation_open.sql
-resources/sql/gold_security_harden_uat.sql
-resources/sql/gold_serving_views_uat.sql
-resources/sql/warehouse360_consumption_views_uat.sql
-validation/generated/warehouse360_contract_validation_uat.sql
+data-products/io-reporting/resources/sql/gold_security_uat_validation_open.sql
+data-products/io-reporting/resources/sql/gold_security_harden_uat.sql
+data-products/io-reporting/resources/sql/gold_serving_views_uat.sql
+data-products/io-reporting/resources/sql/warehouse360_consumption_views_uat.sql
+data-products/io-reporting/validation/generated/warehouse360_contract_validation_uat.sql
 ```
 
 Proves: Gold objects materialise; secured-view names exist; consumption views create; schema/types match
@@ -102,11 +102,11 @@ Does **NOT** prove: plant filtering, user entitlement, OAuth identity, or cutove
 Use when test identities are available but the corporate model is not. Run after the fixture exists:
 
 ```text
-resources/sql/security_model_fixture_uat.sql           -- seed placeholder/real test identities
-resources/sql/gold_security_uat_validation_fixture.sql
-resources/sql/gold_security_harden_uat.sql
-resources/sql/gold_serving_views_uat.sql
-resources/sql/warehouse360_consumption_views_uat.sql
+data-products/io-reporting/resources/sql/security_model_fixture_uat.sql           -- seed placeholder/real test identities
+data-products/io-reporting/resources/sql/gold_security_uat_validation_fixture.sql
+data-products/io-reporting/resources/sql/gold_security_harden_uat.sql
+data-products/io-reporting/resources/sql/gold_serving_views_uat.sql
+data-products/io-reporting/resources/sql/warehouse360_consumption_views_uat.sql
 -- then identity-specific test queries (current_user(), plant_id row counts)
 ```
 
@@ -118,8 +118,8 @@ accepted by governance.
 ### Gate C — strict UAT security validation (`strict`)
 
 Run only when `published_uat.security.model` is accessible (read **and** the validating identities are
-entitled in it). Run `gold_security_uat.sql` + `gold_security_harden_uat.sql` + the Gold RLS verify job
-(`resources/gold_security_job.job.yml`) + representative-identity tests. Proves real UAT entitlement.
+entitled in it). Run `data-products/io-reporting/resources/sql/gold_security_uat.sql` + `data-products/io-reporting/resources/sql/gold_security_harden_uat.sql` + the Gold RLS verify job
+(`data-products/io-reporting/resources/gold_security_job.job.yml`) + representative-identity tests. Proves real UAT entitlement.
 
 > App cutover requires **Gate C** (or accepted Gate-B fixture evidence with real identities) — never
 > Gate A alone. The first UAT attempt (2026-06-08) could not reach Gate C: the validating user has read

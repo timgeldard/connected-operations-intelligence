@@ -5,4 +5,3 @@
  * Phase 0 stub — registration only.
  */
 
-export { analyticsWorkspaceRegistration } from './registration.js'

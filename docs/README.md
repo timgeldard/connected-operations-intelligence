@@ -1,15 +1,6 @@
-# Connected Operations Intelligence Documentation
+# Connected Operations Intelligence - Documentation Index
 
-## Start here
-
-1. [Current Warehouse360 governed-path status](architecture/warehouse360-governed-path-status.md)
-2. [Architecture decisions](decisions/)
-3. [Contract status](contracts/warehouse360-contract-status.md)
-4. [Route-to-contract map](contracts/warehouse360-route-to-contract-map.md)
-5. [DEV validation runbook](runbooks/warehouse360-dev-consumption-view-validation.md)
-6. [Generated validation SQL](../data-products/io-reporting/validation/)
-
-## Important warning
+Welcome to the Connected Operations monorepo documentation. The codebase is divided into a strictly governed data pipeline layer (Databricks DLT) and a React/FastAPI application layer.
 
 > [!WARNING]
 > Warehouse360 is in transition from legacy `wh360` runtime views to governed contract-backed `vw_consumption_warehouse360_*` views.
@@ -18,14 +9,36 @@
 >
 > **Do not switch `WAREHOUSE360_SOURCE_MODE=governed_contracts` until DEV and UAT validation have passed.**
 
-## Documentation map
+---
 
-| Need | Read this |
-|---|---|
-| Current Warehouse360 migration status | [docs/architecture/warehouse360-governed-path-status.md](architecture/warehouse360-governed-path-status.md) |
-| Which contracts exist and their status | [docs/contracts/warehouse360-contract-status.md](contracts/warehouse360-contract-status.md) |
-| Which API routes map to which contracts | [docs/contracts/warehouse360-route-to-contract-map.md](contracts/warehouse360-route-to-contract-map.md) |
-| Why apps must use consumption views | [docs/decisions/ADR-0001-apps-use-consumption-views-only.md](decisions/ADR-0001-apps-use-consumption-views-only.md) |
-| Why secured/live/consumption views are separated | [docs/decisions/ADR-0002-secured-live-consumption-view-boundaries.md](decisions/ADR-0002-secured-live-consumption-view-boundaries.md) |
-| Why DEV validation comes before UAT | [docs/decisions/ADR-0003-dev-before-uat-validation.md](decisions/ADR-0003-dev-before-uat-validation.md) |
-| How to run DEV validation | [docs/runbooks/warehouse360-dev-consumption-view-validation.md](runbooks/warehouse360-dev-consumption-view-validation.md) |
+## 1. Platform & Repository Level (`docs/`)
+
+Platform-wide architecture, global standards, validation state, and cross-cutting repository decisions.
+
+* **Architectural Decisions**:
+  * [Platform ADRs](adr/) — Conformed architectural decision records (ADRs 0001–0011).
+* **Warehouse360 In-Flight Migration & Status**:
+  * [Governed Path Status](architecture/warehouse360-governed-path-status.md) — Active status of Warehouse360 migration.
+  * [Contract Status](contracts/warehouse360-contract-status.md) — Warehouse360 contracts.
+  * [Route-to-Contract Map](contracts/warehouse360-route-to-contract-map.md) — Mapping between app endpoints and contracts.
+* **Validation & Runbooks**:
+  * [DEV Validation Runbook](runbooks/warehouse360-dev-consumption-view-validation.md) — Running offline schema validation.
+  * [UAT Migration Readiness Runbook](runbooks/warehouse360-uat-migration-readiness.md) — Quality checklist for migration progression.
+
+---
+
+## 2. Application Layer (`docs/app/`)
+
+ConnectIO V2 React frontend and FastAPI runtime application architecture, user experience models, and design standards.
+
+* [Application Architecture Overview](app/README.md) — Frontend/backend app structure, environment configuration, and workspace panels.
+* [Application ADRs](app/adr/) — UI design, state caching, role awareness, and local data access decisions.
+
+---
+
+## 3. Data Pipeline Layer (`data-products/io-reporting/docs/`)
+
+Databricks Delta Live Tables (DLT) batch and streaming pipelines, SAP ECC ingestion, and reporting aggregation models.
+
+* [Pipeline Architecture & Design Spec](../data-products/io-reporting/silver/design_spec.md) — Silver layer architecture and table catalogue.
+* [Pipeline ADRs](../data-products/io-reporting/docs/adr/) — DAB deployment, continuous/triggered modes, and row-level security view policies.
