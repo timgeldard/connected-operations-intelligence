@@ -243,7 +243,7 @@ export const Warehouse360StagingWorkloadContract = {
  * Warehouse stock exceptions including expiry, shelf life breach, and status blocks. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
 
  * Source View: vw_consumption_warehouse360_stock_exceptions
- * Version: 0.1.0
+ * Version: 0.2.0
  */
 export interface Warehouse360StockExceptions {
   /** SAP plant ID */
@@ -252,8 +252,6 @@ export interface Warehouse360StockExceptions {
   material_id: string;
   /** Batch number */
   batch_id: string;
-  /** Storage location ID */
-  storage_loc: string;
   /** Computed exception bucket (EXPIRED/LT_7_DAYS/DAYS_7_30/DAYS_30_90) */
   exception_type: string;
   /** Exceptional stock quantity */
@@ -266,13 +264,13 @@ export interface Warehouse360StockExceptions {
 
 export const Warehouse360StockExceptionsContract = {
   id: "warehouse360.stock_exceptions",
-  version: "0.1.0",
+  version: "0.2.0",
   domain: "warehouse",
   owner: "warehouse-operations",
   lifecycle: "draft",
   sourceView: "vw_consumption_warehouse360_stock_exceptions",
-  grain: "one row per plant_id, material_id, batch_id, storage location, and exception type",
-  primaryKey: ["plant_id", "material_id", "batch_id", "storage_loc", "exception_type"],
+  grain: "one row per plant_id, material_id, batch_id, and exception type",
+  primaryKey: ["plant_id", "material_id", "batch_id", "exception_type"],
   freshness: {
     expectedMinutes: 30,
     warningMinutes: 60,
@@ -324,45 +322,45 @@ export const Warehouse360ShortfallsContract = {
 } as const;
 
 /**
- * Discrepancies between Inventory Management (IM) and Warehouse Management (WM) stock. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
+ * IM/WM stock discrepancies summarised per material and exception type (first-wave AGGREGATE contract — ADR-0004 D6). gold_warehouse_exceptions carries no stable per-exception variance key (storage_location_id/bin_id absent; reference_id ~99% null), so detail rows are rolled up to plant x material x batch x exception_type with count/quantity/severity/age/date measures. A detail-grain reconciliation contract is future work, only once a stable variance key exists upstream. Candidate contract pending DEV profiling of primary key uniqueness, plant_id nullability, and freshness.
 
  * Source View: vw_consumption_warehouse360_im_wm_reconciliation
- * Version: 0.1.0
+ * Version: 0.2.0
  */
 export interface Warehouse360ImWmReconciliation {
   /** SAP plant ID */
   plant_id: string;
   /** Material code */
-  material_id?: string;
-  /** Batch number */
+  material_id: string;
+  /** Batch number (null for non-batch-managed exceptions) */
   batch_id?: string;
-  /** Storage location ID */
-  storage_loc?: string;
-  /** Type of discrepancy (e.g. IM-WM mismatch, interim storage block) */
+  /** Type of discrepancy (e.g. IM_WM_TRUE_VARIANCE, NEGATIVE_WM_QUANT) */
   exception_type: string;
-  /** Exception severity rating (higher is more critical) */
-  severity: number;
-  /** Resolution SLA window in hours */
-  sla_hours: number;
-  /** Discrepant stock quantity */
+  /** Number of source exception rows aggregated into this summary row */
+  exception_count: number;
+  /** Total discrepant stock quantity across the aggregated exceptions */
   qty?: number;
-  /** Warehouse storage bin number */
-  bin_id?: string;
-  /** Context detail description of the discrepancy */
+  /** Maximum exception severity rating across the aggregated exceptions */
+  severity?: number;
+  /** Maximum exception age in days across the aggregated exceptions */
+  max_age_days?: number;
+  /** Earliest detection date across the aggregated exceptions */
+  oldest_detected_date?: string;
+  /** Most recent detection date across the aggregated exceptions */
+  latest_detected_date?: string;
+  /** Representative context detail from the aggregated exceptions */
   detail_text?: string;
-  /** Date the exception was first detected */
-  detected_date: string;
 }
 
 export const Warehouse360ImWmReconciliationContract = {
   id: "warehouse360.im_wm_reconciliation",
-  version: "0.1.0",
+  version: "0.2.0",
   domain: "warehouse",
   owner: "warehouse-operations",
   lifecycle: "draft",
   sourceView: "vw_consumption_warehouse360_im_wm_reconciliation",
-  grain: "one row per plant_id, material_id, batch_id, storage location, bin, and exception type",
-  primaryKey: ["plant_id", "material_id", "batch_id", "storage_loc", "bin_id", "exception_type"],
+  grain: "one row per plant_id, material_id, batch_id, and exception type (aggregate exception summary)",
+  primaryKey: ["plant_id", "material_id", "batch_id", "exception_type"],
   freshness: {
     expectedMinutes: 30,
     warningMinutes: 60,

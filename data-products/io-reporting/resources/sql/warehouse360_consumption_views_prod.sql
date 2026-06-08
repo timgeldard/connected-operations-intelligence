@@ -111,13 +111,14 @@ FROM connected_plant_prod.gold_io_reporting.gold_process_order_staging_live;
 
 
 -- 5. Stock Exceptions
--- Grain: 1 row per plant_id + material_id + batch_id + storage_location_id + exception_type
+-- Grain: 1 row per plant_id + material_id + batch_id + exception_type
+-- storage_location_id removed from first wave (ADR-0004 D5): gold_stock_expiry_risk is WM-bin x material x
+-- batch and carries no IM (LGORT) storage location. Future-enrichment candidate.
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_stock_exceptions AS
 SELECT
   plant_code AS plant_id,
   material_code AS material_id,
   batch_number AS batch_id,
-  storage_location_id AS storage_loc,
   highest_expiry_risk_bucket AS exception_type,
   total_stock_qty AS qty,
   minimum_days_to_expiry,
@@ -145,22 +146,27 @@ FROM connected_plant_prod.gold_io_reporting.gold_transfer_requirement_backlog;
 -- GRANT SELECT ON VIEW vw_consumption_warehouse360_shortfalls TO `warehouse360_dashboard_users`;
 
 
--- 7. IM/WM Reconciliation
--- Grain: 1 row per plant_id + material_id + batch_id + storage_location_id + bin_id + exception_type
+-- 7. IM/WM Reconciliation (aggregate exception summary)
+-- Grain: 1 row per plant_id + material_id + batch_id + exception_type
+-- First-wave is an AGGREGATE summary (ADR-0004 D6): gold_warehouse_exceptions has no stable per-exception
+-- row key (storage_location_id/bin_id absent; reference_id ~99% null), so detail rows are rolled up to
+-- material x exception grain with measures. storage_location_id/bin_id removed from first wave. A
+-- detail-grain reconciliation contract is future work, only once a stable variance key exists upstream.
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_im_wm_reconciliation AS
 SELECT
   plant_code AS plant_id,
   material_code AS material_id,
   batch_number AS batch_id,
-  storage_location_id AS storage_loc,
   exception_type,
-  severity,
-  sla_hours,
-  quantity AS qty,
-  bin_id,
-  detail AS detail_text,
-  detected_date
-FROM connected_plant_prod.gold_io_reporting.gold_warehouse_exceptions;
+  COUNT(*) AS exception_count,
+  COALESCE(SUM(quantity), 0.0) AS qty,
+  MAX(severity) AS severity,
+  MAX(age_days) AS max_age_days,
+  MIN(detected_date) AS oldest_detected_date,
+  MAX(detected_date) AS latest_detected_date,
+  MAX(detail) AS detail_text
+FROM connected_plant_prod.gold_io_reporting.gold_warehouse_exceptions
+GROUP BY plant_code, material_code, batch_number, exception_type;
 
 -- TODO_SECURITY: replace with approved group.
 -- GRANT SELECT ON VIEW vw_consumption_warehouse360_im_wm_reconciliation TO `warehouse360_app_users`;

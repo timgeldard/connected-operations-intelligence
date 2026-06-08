@@ -351,3 +351,55 @@ stock_exceptions (D5), im_wm_reconciliation (D6), overview data-quality (D7).
 migration** (schema source + regen + version bump + registry), or a self-contained data-product step —
 **D7** overview null-plant data-quality fix (gold-side, no app coupling), or **D1/D2** detail-grain Gold
 models. Not UAT, not app cutover.
+
+---
+
+## Update 2026-06-08 (later) — D5/D6: stock_exceptions field-drop + im_wm aggregate re-grain → 4/7
+
+> **DEV technical validation only.** Does not prove UAT/production/app-cutover readiness or RLS/entitlement.
+> No Gold rerun (consumption-SQL changes only); no source-mode change; no GRANTs; no UAT/PROD; no legacy
+> `wh360` removal; no contract promotion.
+
+**Scope correction vs the earlier "breaking app-contract migration" note above.** Investigation showed the
+live `/warehouse360/exceptions` route returns `Warehouse360ExceptionItem` (whose `storageLocation` is
+**optional** and which has **no `binId`**); the required-`storageLocationId` model
+`WarehouseReconciliationException` is **dead code bound to no route**. So D5/D6 needed **no Zod/`generated.py`
+edit and no API version bump** — same shape as the D4 carrier change (manifest + expectations +
+consumption SQL + adapter governed branch + adapter-column guard + regenerated `src/generated` +
+regenerated validation SQL). The earlier "required API field → breaking migration" framing was based on the
+unused model and is retracted.
+
+**D5 — `stock_exceptions`:** removed `storage_location_id` (IM/LGORT axis absent from the WM-bin×material×
+batch expiry-risk source). Grain → plant×material×batch×exception_type. Field-drop only.
+
+**D6 — `im_wm_reconciliation`: re-grained to a first-wave AGGREGATE exception summary** (per owner
+directive — *not* a uniqueness hack via field-dropping/`reference_id`). `gold_warehouse_exceptions` has no
+stable per-exception variance key (storage_location_id/bin_id absent; `reference_id` ~99% null; 474 dups at
+plant×material×exception_type, 139 with batch), so the view now `GROUP BY plant×material×batch×exception_type`
+with measures: `exception_count`, `qty` (SUM), `severity` (MAX), `max_age_days` (MAX), `oldest_/latest_detected_date`
+(MIN/MAX), `detail_text` (representative). `storage_location_id`/`bin_id` removed. The GROUP BY makes the PK
+unique by construction. Detail-grain reconciliation is deferred to a future contract, only if a stable
+variance key is built upstream.
+
+**DEV re-validation (2026-06-08, profile TG, warehouse `8fae28f1808dbf75`, no Gold rerun): 4 of 7 create.**
+
+| View | Created? | Rows | Null plant_id | Dup PK | Status |
+|---|---|---:|---:|---:|---|
+| `…_overview` | ✅ | 545 | 2 | 1 | created-with-data-quality-issue |
+| `…_outbound_backlog` | ✅ | 2,162,748 | 0 | 0 | created (D4) |
+| `…_stock_exceptions` | ✅ | 0 | — | — | **created-empty** (source has no expiry-risk rows in DEV) |
+| `…_im_wm_reconciliation` | ✅ | 198,860 | 0 | **0** | **created** (aggregate; PK unique by construction) |
+| `…_inbound_backlog` | ❌ | — | — | — | failed-create — `po_id` (D1 grain) |
+| `…_staging_workload` | ❌ | — | — | — | failed-create — `reservation_no` (D3) |
+| `…_shortfalls` | ❌ | — | — | — | failed-create — `material_id` (D2 grain) |
+
+`im_wm` aggregate: 198,860 rows, **0 duplicate `(plant_id, material_id, batch_id, exception_type)`**, 0 null
+plant/material/exception_type, `exception_count` up to 27, `qty` summed, `severity`=max. Two source
+exception types collapse cleanly (`IM_WM_TRUE_VARIANCE`, `NEGATIVE_WM_QUANT`). `stock_exceptions` creates but
+is empty (DEV has no expiry-risk source rows) — shape-valid, not data-validated. RLS/entitlement still unproven.
+
+**Remaining blockers:** inbound_backlog (D1), shortfalls (D2), staging_workload (D3 — `reservation_no`/
+`batch_id` component grain + `sap_order` semantic), overview data-quality (D7).
+
+**Next recommended PR:** **D7** overview null-plant fix (gold-side, no app coupling) or **D1/D2** detail-grain
+Gold models (`gold_inbound_po_line_backlog`, `gold_transfer_requirement_material_backlog`). Not UAT, not app cutover.

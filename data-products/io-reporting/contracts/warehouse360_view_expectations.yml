@@ -257,19 +257,17 @@ views:
 
   - name: vw_consumption_warehouse360_stock_exceptions
     contract_id: warehouse360.stock_exceptions
-    expected_grain: one row per plant_id, material_id, batch_id, storage location, and exception type
+    expected_grain: one row per plant_id, material_id, batch_id, and exception type
     primary_key:
       - plant_id
       - material_id
       - batch_id
-      - storage_loc
       - exception_type
     row_level_key: plant_id
     must_not_be_null:
       - plant_id
       - material_id
       - batch_id
-      - storage_loc
       - exception_type
     expected_columns:
       - name: plant_id
@@ -277,8 +275,6 @@ views:
       - name: material_id
         type: string
       - name: batch_id
-        type: string
-      - name: storage_loc
         type: string
       - name: exception_type
         type: string
@@ -329,21 +325,16 @@ views:
 
   - name: vw_consumption_warehouse360_im_wm_reconciliation
     contract_id: warehouse360.im_wm_reconciliation
-    expected_grain: one row per plant_id, material_id, batch_id, storage location, bin, and exception type
+    expected_grain: one row per plant_id, material_id, batch_id, and exception type (aggregate exception summary)
     primary_key:
       - plant_id
       - material_id
       - batch_id
-      - storage_loc
-      - bin_id
       - exception_type
     row_level_key: plant_id
     must_not_be_null:
       - plant_id
       - material_id
-      - batch_id
-      - storage_loc
-      - bin_id
       - exception_type
     expected_columns:
       - name: plant_id
@@ -352,22 +343,22 @@ views:
         type: string
       - name: batch_id
         type: string
-      - name: storage_loc
-        type: string
       - name: exception_type
         type: string
-      - name: severity
-        type: string
-      - name: sla_hours
-        type: integer
+      - name: exception_count
+        type: long
       - name: qty
         type: decimal
-      - name: bin_id
-        type: string
+      - name: severity
+        type: integer
+      - name: max_age_days
+        type: integer
+      - name: oldest_detected_date
+        type: date
+      - name: latest_detected_date
+        type: date
       - name: detail_text
         type: string
-      - name: detected_date
-        type: date
     freshness_column: null
     runtime_route_exists: true
     dashboard_consumption_expected: true
