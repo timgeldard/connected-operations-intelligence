@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""CI check to verify required migration documents exist and do not make overclaims."""
+"""CI check to verify required migration documents exist and do not make overclaims.
+
+NOTE: the overclaim detection is a deliberately COARSE guard, not a semantic/NLP check. It flags a
+fixed set of forbidden phrases unless a negative-context keyword appears within a 60-char window. It is
+a cheap tripwire against accidental "governed path is ready / UAT validated / production-ready" claims —
+NOT a guarantee of correctness. Known limitations: it is substring/window based, so it can be fooled by
+awkward phrasing (e.g. "No, governed_contracts is ready is not yet true" passes because "not yet" is in
+the window) and it only knows the phrases in FORBIDDEN_CLAIMS. Treat a pass as "no obvious overclaim",
+not "claims verified". Tighten FORBIDDEN_CLAIMS / NEGATIVE_CONTEXTS as new overclaim patterns appear.
+"""
 
 import os
 import sys
@@ -16,6 +25,8 @@ REQUIRED_DOCS = [
     "docs/decisions/ADR-0003-dev-before-uat-validation.md",
 ]
 
+# COARSE overclaim heuristic (see module docstring): exact-phrase match, suppressed only when a
+# NEGATIVE_CONTEXTS keyword appears within ~60 chars. Not semantic — a cheap tripwire, not proof.
 FORBIDDEN_CLAIMS = [
     "governed_contracts is ready",
     "governed-contracts is ready",

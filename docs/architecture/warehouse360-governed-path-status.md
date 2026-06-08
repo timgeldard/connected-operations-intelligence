@@ -9,9 +9,9 @@
 | DEV Gold pipeline | Built and ran | PR #32 | Done |
 | Secured/live boundary | Fixed | PR #33 | Done |
 | Consumption SQL static alignment | Fixed | PR #34 | Done |
-| Validation SQL/runbook | Open / pending merge | PR #35 | Merge |
-| DLT duplicate-name guard | Open / pending merge | PR #36 | Fix/merge |
-| Secured/live ownership CI guard | Open / pending merge | PR #36 | Fix/merge |
+| Validation SQL/runbook | Merged | PR #35 | Done |
+| DLT duplicate-name guard | Merged | PR #36 | Done |
+| Secured/live ownership CI guard | Merged | PR #36 | Done |
 | DEV consumption view live validation | Not done | Requires Databricks | Run DEV runbook |
 | UAT validation | Not done | Requires Databricks | After DEV |
 | Entitlement/RLS proof | Not done | Requires Databricks | After view validation |
