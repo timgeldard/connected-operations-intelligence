@@ -47,6 +47,17 @@ def setup_silver(spark: SparkSession):
             conversion_factor_to_base=1.0, is_valid_conversion=True),
     ], "material_uom_conversion")
 
+    _save(spark, [
+        Row(plant_code="C061", material_code="M1", material_description="Material One"),
+        Row(plant_code="C061", material_code="M2", material_description="Material Two"),
+    ], "material")
+
+    _save(spark, [
+        Row(customer_code="SHIP1", customer_name="Ship-To Customer"),
+        Row(customer_code="SOLD1", customer_name="Sold-To Customer"),
+        Row(customer_code="C1", customer_name="Legacy Customer"),
+    ], "customer")
+
     # Seed staging reference mapping: C061 is trusted (validated warehouse); P001 absent = untrusted
     _save(spark, [
         Row(plant_code="C061", warehouse_number="208",
@@ -132,35 +143,47 @@ def test_delivery_pick_fraction(spark):
 
     _save(spark, [
         Row(delivery_number="80001", item_number="10", plant_code="C061", warehouse_number="208",
-            delivery_type="LF", sold_to_customer="C1", planned_goods_issue_date=None,
+            delivery_type="LF", ship_to_customer="SHIP1", sold_to_customer="SOLD1",
+            planned_goods_issue_date=None, actual_goods_issue_date=None, delivery_date=None,
+            delivery_gross_weight=123.4, delivery_weight_unit="KG",
             delivery_quantity=6.0, sales_uom="CS", base_uom="KG",
             delivery_quantity_base=60.0, actual_delivered_base_quantity=30.0,
-            picked_quantity=30.0, actual_goods_issue_date=None),
+            picked_quantity=30.0, gross_weight=60.0, weight_unit="KG"),
         Row(delivery_number="80001", item_number="20", plant_code="C061", warehouse_number="208",
-            delivery_type="LF", sold_to_customer="C1", planned_goods_issue_date=None,
+            delivery_type="LF", ship_to_customer="SHIP1", sold_to_customer="SOLD1",
+            planned_goods_issue_date=None, actual_goods_issue_date=None, delivery_date=None,
+            delivery_gross_weight=123.4, delivery_weight_unit="KG",
             delivery_quantity=4.0, sales_uom="CS", base_uom="KG",
             delivery_quantity_base=40.0, actual_delivered_base_quantity=40.0,
-            picked_quantity=40.0, actual_goods_issue_date=None),
+            picked_quantity=40.0, gross_weight=40.0, weight_unit="KG"),
         Row(delivery_number="80002", item_number="10", plant_code="C061", warehouse_number="208",
-            delivery_type="LF", sold_to_customer="C1", planned_goods_issue_date=None,
+            delivery_type="LF", ship_to_customer="SHIP1", sold_to_customer="SOLD1",
+            planned_goods_issue_date=None, actual_goods_issue_date=None, delivery_date=None,
+            delivery_gross_weight=None, delivery_weight_unit="KG",
             delivery_quantity=1.0, sales_uom="PAL", base_uom="KG",
             delivery_quantity_base=100.0, actual_delivered_base_quantity=50.0,
-            picked_quantity=50.0, actual_goods_issue_date=None),
+            picked_quantity=50.0, gross_weight=10.0, weight_unit="KG"),
         Row(delivery_number="80002", item_number="20", plant_code="C061", warehouse_number="208",
-            delivery_type="LF", sold_to_customer="C1", planned_goods_issue_date=None,
+            delivery_type="LF", ship_to_customer="SHIP1", sold_to_customer="SOLD1",
+            planned_goods_issue_date=None, actual_goods_issue_date=None, delivery_date=None,
+            delivery_gross_weight=None, delivery_weight_unit="KG",
             delivery_quantity=1.0, sales_uom="EA", base_uom="EA",
             delivery_quantity_base=1.0, actual_delivered_base_quantity=1.0,
-            picked_quantity=1.0, actual_goods_issue_date=None),
+            picked_quantity=1.0, gross_weight=1.0, weight_unit="KG"),
         Row(delivery_number="80003", item_number="10", plant_code="C061", warehouse_number="208",
-            delivery_type="LF", sold_to_customer="C1", planned_goods_issue_date=None,
+            delivery_type="LF", ship_to_customer="SHIP1", sold_to_customer="SOLD1",
+            planned_goods_issue_date=None, actual_goods_issue_date=None, delivery_date=None,
+            delivery_gross_weight=80.0, delivery_weight_unit="KG",
             delivery_quantity=2.0, sales_uom="CS", base_uom="KG",
             delivery_quantity_base=None, actual_delivered_base_quantity=20.0,
-            picked_quantity=20.0, actual_goods_issue_date=None),
+            picked_quantity=20.0, gross_weight=20.0, weight_unit="KG"),
         Row(delivery_number="80003", item_number="20", plant_code="C061", warehouse_number="208",
-            delivery_type="LF", sold_to_customer="C1", planned_goods_issue_date=None,
+            delivery_type="LF", ship_to_customer="SHIP1", sold_to_customer="SOLD1",
+            planned_goods_issue_date=None, actual_goods_issue_date=None, delivery_date=None,
+            delivery_gross_weight=80.0, delivery_weight_unit="KG",
             delivery_quantity=4.0, sales_uom="CS", base_uom="KG",
             delivery_quantity_base=40.0, actual_delivered_base_quantity=20.0,
-            picked_quantity=20.0, actual_goods_issue_date=None),
+            picked_quantity=20.0, gross_weight=40.0, weight_unit="KG"),
     ], "outbound_delivery")
 
     rows = {r["delivery_number"]: r for r in all_rows(gold_delivery_pick_status())}
@@ -175,6 +198,14 @@ def test_delivery_pick_fraction(spark):
     assert r["has_unconverted_delivery_qty"] is False
     assert r["pick_fraction"] == 0.7
     assert r["is_shipped"] is False
+    assert r["customer_id"] == "SHIP1"
+    assert r["customer_name"] == "Ship-To Customer"
+    assert r["ship_to_customer"] == "SHIP1"
+    assert r["ship_to_customer_name"] == "Ship-To Customer"
+    assert r["sold_to_customer"] == "SOLD1"
+    assert r["sold_to_customer_name"] == "Sold-To Customer"
+    assert r["gross_weight"] == 123.4
+    assert r["gross_weight_unit"] == "KG"
 
     mixed = rows["80002"]
     assert mixed["base_uom_count"] == 2
@@ -327,7 +358,7 @@ def test_staging_trusted_for_configured_plant(spark):
 
     _save(spark, [
         Row(order_number="1001", plant_code="C061", material_code="M1", order_quantity=100.0,
-            scheduled_start_date=None, scheduled_finish_date=None,
+            order_quantity_uom="KG", scheduled_start_date=None, scheduled_finish_date=None,
             is_released=True, is_closed=False),
     ], "process_order")
     _save(spark, [
@@ -338,6 +369,8 @@ def test_staging_trusted_for_configured_plant(spark):
 
     rows = {r["order_number"]: r for r in all_rows(gold_process_order_staging())}
     assert rows["1001"]["is_operationally_trusted"] is True
+    assert rows["1001"]["material_name"] == "Material One"
+    assert rows["1001"]["uom"] == "KG"
 
 
 def test_staging_untrusted_for_unconfigured_plant(spark):
@@ -346,7 +379,7 @@ def test_staging_untrusted_for_unconfigured_plant(spark):
 
     _save(spark, [
         Row(order_number="2001", plant_code="UNKNOWN", material_code="M1", order_quantity=50.0,
-            scheduled_start_date=None, scheduled_finish_date=None,
+            order_quantity_uom="KG", scheduled_start_date=None, scheduled_finish_date=None,
             is_released=True, is_closed=False),
     ], "process_order")
     # warehouse_transfer_order intentionally not re-seeded: trust derives from the config table,
@@ -362,7 +395,7 @@ def test_staging_untrusted_when_config_table_absent(spark):
 
     _save(spark, [
         Row(order_number="3001", plant_code="C061", material_code="M1", order_quantity=50.0,
-            scheduled_start_date=None, scheduled_finish_date=None,
+            order_quantity_uom="KG", scheduled_start_date=None, scheduled_finish_date=None,
             is_released=True, is_closed=False),
     ], "process_order")
     _save(spark, [

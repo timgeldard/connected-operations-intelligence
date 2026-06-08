@@ -142,11 +142,16 @@ def gold_delivery_pick_status():
         "outbound_delivery_header_delete",
         ["delivery_number"],
     )
+    customers = spark.read.table(f"{silver_schema}.customer").select(
+        "customer_code", "customer_name"
+    )
 
     picks = (
         deliveries.groupBy(
             "delivery_number", "plant_code", "warehouse_number",
-            "delivery_type", "sold_to_customer", "planned_goods_issue_date",
+            "delivery_type", "ship_to_customer", "sold_to_customer",
+            "planned_goods_issue_date", "actual_goods_issue_date", "delivery_date",
+            "delivery_gross_weight", "delivery_weight_unit",
         )
         .agg(
             F.count(F.lit(1)).alias("line_count"),
@@ -160,9 +165,28 @@ def gold_delivery_pick_status():
                 "_is_shipped"
             ),
         )
+        .join(
+            F.broadcast(customers).alias("ship_to"),
+            F.col("ship_to_customer") == F.col("ship_to.customer_code"),
+            "left",
+        )
+        .join(
+            F.broadcast(customers).alias("sold_to"),
+            F.col("sold_to_customer") == F.col("sold_to.customer_code"),
+            "left",
+        )
         .select(
             "delivery_number", "plant_code", "warehouse_number", "delivery_type",
-            "sold_to_customer", "planned_goods_issue_date", "line_count",
+            F.col("ship_to_customer").alias("customer_id"),
+            F.col("ship_to.customer_name").alias("customer_name"),
+            "ship_to_customer",
+            F.col("ship_to.customer_name").alias("ship_to_customer_name"),
+            "sold_to_customer",
+            F.col("sold_to.customer_name").alias("sold_to_customer_name"),
+            "planned_goods_issue_date", "actual_goods_issue_date", "delivery_date",
+            F.col("delivery_gross_weight").alias("gross_weight"),
+            F.col("delivery_weight_unit").alias("gross_weight_unit"),
+            "line_count",
             "delivery_qty", "picked_qty", "base_uom_count", "null_delivery_base_count",
             (F.col("base_uom_count") > 1).alias("has_mixed_base_uom"),
             (F.col("null_delivery_base_count") > 0).alias("has_unconverted_delivery_qty"),
@@ -352,6 +376,9 @@ def gold_process_order_staging():
         ["warehouse_number", "transfer_order_number"],
     )
     orders = spark.read.table(f"{silver_schema}.process_order")
+    material = spark.read.table(f"{silver_schema}.material").select(
+        "plant_code", "material_code", "material_description"
+    )
 
     # Transfer orders that stage to a PRODUCTION ORDER are those with reference type LTAK-BETYP='F'
     # (STAGING_REFERENCE_TYPE).  Only then does BENUM hold the process-order AUFNR.  Verified live
@@ -398,11 +425,14 @@ def gold_process_order_staging():
     staged = (
         active_orders.join(staging_tos, "order_number", "left")
         .join(plant_trust, "plant_code", "left")
+        .join(F.broadcast(material), ["plant_code", "material_code"], "left")
         .select(
             "order_number",
             "plant_code",
             "material_code",
+            F.col("material_description").alias("material_name"),
             "order_quantity",
+            F.col("order_quantity_uom").alias("uom"),
             "scheduled_start_date",
             "scheduled_finish_date",
             F.coalesce(F.col("to_items_total"), F.lit(0)).alias("to_items_total"),

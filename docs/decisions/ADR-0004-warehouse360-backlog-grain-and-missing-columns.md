@@ -59,12 +59,10 @@ The contract grain is **component-level** (`order_id + reservation_no + batch_id
 `silver.outbound_delivery` (same delivery grain) HAS `actual_goods_issue_date`, `delivery_date`,
 and header `delivery_gross_weight` (LIKP `BTGEW`) → **add to `gold_delivery_pick_status`**
 (`missing-but-available-upstream`). Item `gross_weight` (LIPS `BRGEW`) is item-grain; do not surface it
-at delivery grain without an explicit aggregation rule. SD customer roles must be ratified before
-implementation: the current Warehouse360 app contract describes `customer_id` as **ship-to customer
-number**, while current Gold only carries `sold_to_customer`. Do not assume `sold_to_customer AS
-customer_id`; choose ship-to versus sold-to explicitly, and consider carrying both roles in Gold if the
-app needs both. `customer_name` should join `silver.customer` on the ratified customer role. `carrier` →
-**no replicated source**
+at delivery grain without an explicit aggregation rule. SD customer roles are explicit: the Warehouse360
+app contract's `customer_id` remains **ship-to customer number** (`ship_to_customer`, LIKP `KUNNR`), while
+Gold also carries `sold_to_customer` (LIKP `KUNAG`) separately. `customer_name` joins `silver.customer` on
+ship-to; `sold_to_customer_name` joins the same dimension on sold-to. `carrier` → **no replicated source**
 (LIKP has no carrier; it lives on shipment/VBPA, not replicated) → **mark the contract field optional or
 remove it.**
 
@@ -93,7 +91,7 @@ hide them in the consumption view without agreeing it as contract behaviour.
 ## Consequences
 - Implementation proceeds as **scoped follow-up PRs**, each tracing field → Silver source → join key →
   grain → contract (per the prompt's Phase 7), with a Gold rerun + DEV re-validation:
-  1. `fix(gold): outbound + staging available-upstream columns + dimension joins once customer semantics are ratified` (D3 order-grain part, D4 adds/joins).
+  1. `fix(gold): outbound + staging available-upstream columns + dimension joins` (D3 order-grain part, D4 adds/joins).
   2. `feat(gold): inbound PO-line-detail + material-grain shortfall models` (D1, D2).
   3. `fix(gold): overview null-plant filter` (D7).
   4. `docs(contracts): mark carrier / storage_location_id / bin_id optional-or-removed` (D4/D5/D6).

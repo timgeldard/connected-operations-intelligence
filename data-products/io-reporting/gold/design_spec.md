@@ -176,7 +176,7 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 | `gold_stock_expiry_risk` | plant × material × batch × UOM | expiry buckets (expired/<7/7-30/30-90/OK) | bin stock joined to shelf-life |
 | `gold_dispensary_backlog` | plant × supply area × wh | open task/order count, open/required qty, urgency dates | RESB rows where `is_production_consumption`, not deleted, open_qty>0 |
 | `gold_lineside_stock` | plant × wh × storage_type × material × batch × UOM | total/available qty, min days-to-expiry | occupied bins in line-side STs (`_LINESIDE_PREDICATE`) |
-| `gold_delivery_pick_status` | delivery | pick_fraction, line_count, is_shipped, `risk_band` | LIPS base-UoM pick % (not TO-level; null for mixed-base-UoM deliveries); RAG: shipped→green, null GI→grey |
+| `gold_delivery_pick_status` | delivery | pick_fraction, line_count, is_shipped, `risk_band`, ship-to/sold-to, header gross weight | LIPS base-UoM pick % (not TO-level; null for mixed-base-UoM deliveries); SD roles use LIKP KUNNR/KUNAG; gross_weight uses LIKP BTGEW; RAG: shipped→green, null GI→grey |
 | `gold_stock_reconciliation` **[PILOT]** | plant × material | im/wm totals, delta, inventory_value, mismatch_class, abc_class | IM(MARD) vs WM(bins); coarse grain — directional only; tolerance = max(0.1, 1% IM); abc 'U' = unpriced |
 | `gold_stock_reconciliation_v2` | plant × wh × material × batch × stock category × UOM | im/wm qty, delta %, tolerance rule, delta value, reason, audit JSON | production-candidate IM↔WM control; WM sloc remains unresolved because LQUA lacks LGORT |
 | `gold_stock_value_reconciliation` | plant × wh × reason × severity | net/abs delta value, breached tolerance count, status | finance-facing value rollup backed by reconciliation v2 |
@@ -186,7 +186,7 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 | `gold_physical_inventory_recon` | PI doc × year × item | book qty, count qty, delta, posted/recount status | IKPF/ISEG count-vs-book and adjustment evidence |
 | `gold_reconciliation_alerts` | alert instance | priority, type, reason, quantity/value deltas, context JSON | alert-ready severe reconciliation exceptions |
 | `gold_stock_reconciliation_summary` | plant × wh × reason × severity | row/exception counts, abs delta qty/value, reconciliation_status | canonical summary backed by reconciliation v2 |
-| `gold_process_order_staging` **[PILOT]** | process order | staging_fraction, to_items done/total, `risk_band` | BETYP='F' TOs; BENUM↔AUFNR validated 100% across UAT warehouses (2026-06-02) |
+| `gold_process_order_staging` **[PILOT]** | process order | staging_fraction, to_items done/total, material_name, uom, `risk_band` | BETYP='F' TOs; BENUM↔AUFNR validated 100% across UAT warehouses (2026-06-02); material joined on plant × material |
 | `gold_process_order_staging_validation` | plant × warehouse | total_to_headers, f_type_to_headers, benum_match_pct, validation_status | persistent VALIDATED/NOT_VALIDATED/NOT_APPLICABLE per plant/warehouse |
 | `gold_inbound_po_backlog` **[PILOT]** | plant × vendor × purchasing org | open item/PO count, ordered qty, open value | open PO items (PO backlog, **not** GR history) |
 | `gold_inbound_po_backlog_enhanced` | plant × vendor × purchasing org | open/GR/remaining qty, putaway TO counts, age anchors | PO-linked 103/104 GR and best-effort TO linkage |
