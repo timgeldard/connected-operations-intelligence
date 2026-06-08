@@ -12,7 +12,8 @@
 | Validation SQL/runbook | Merged | PR #35 | Done |
 | DLT duplicate-name guard | Merged | PR #36 | Done |
 | Secured/live ownership CI guard | Merged | PR #36 | Done |
-| DEV consumption view live validation | Blocked — 1/7 views create; 6 fail (gold-contract mismatch); not yet validated | [DEV live-validation results](warehouse360-dev-live-validation-results.md) | fix(warehouse360) consumption-vs-gold mismatch |
+| DEV consumption view live validation | Blocked — 1/7 views create; naming reconciled (PR #40); remaining = missing-column/grain/data-quality; not yet validated | [DEV live-validation results](warehouse360-dev-live-validation-results.md) | implement ADR-0004 (Gold PRs) |
+| Missing-column / grain decisions | Decided (proposed) | [ADR-0004](../decisions/ADR-0004-warehouse360-backlog-grain-and-missing-columns.md) | ratify + implement Gold PRs |
 | UAT validation | Not done | Requires Databricks | After DEV |
 | Entitlement/RLS proof | Not done | Requires Databricks | After view validation |
 | App governed-mode cutover | Not started | Requires validation | Later |

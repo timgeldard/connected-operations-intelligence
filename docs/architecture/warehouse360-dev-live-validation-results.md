@@ -155,3 +155,36 @@ scope for this naming PR.
 
 **Still NOT done:** missing columns not manufactured (no NULLs); grain not solved; no GRANTs; no
 source-mode change; no UAT/PROD; no app cutover. DEV technical only.
+
+---
+
+## Update 2026-06-08 — missing-column & grain analysis (design decisions in ADR-0004)
+
+Classified every remaining blocker against the live Silver/Gold schemas (read-only). Decisions and the
+per-field rationale are in `docs/decisions/ADR-0004-warehouse360-backlog-grain-and-missing-columns.md`;
+machine-readable classes are in `contracts/warehouse360_consumption_column_contract.yml`. **No runtime
+change** in this analysis — implementation follows as scoped Gold PRs.
+
+| View | Blocker(s) | Class | Resolution (ADR-0004) |
+|---|---|---|---|
+| inbound_backlog | po_id … qa_status | grain-redesign | D1: build `gold_inbound_po_line_backlog` from `silver.purchase_order` |
+| shortfalls | material_id, open_tr_* | grain-redesign | D2: build `gold_transfer_requirement_material_backlog` from `silver.warehouse_transfer_requirement` (has material_code) |
+| staging_workload | reservation_no, batch_id | grain-redesign | D3: reduce contract to order grain (or build component grain) |
+| staging_workload | uom | available-upstream | D3: `process_order.order_quantity_uom` |
+| staging_workload | material_name | dimension-join | D3: join `silver.material` |
+| staging_workload | sap_order | semantic-decision | D3: likely `order_number` (confirm) |
+| outbound_backlog | actual_goods_issue_date, delivery_date, gross_weight | available-upstream | D4: present in `silver.outbound_delivery` (delivery grain) |
+| outbound_backlog | customer_name | dimension-join | D4: join `silver.customer` on `sold_to_customer` |
+| outbound_backlog | customer_id | semantic-decision | D4: map sold-to only if ratified |
+| outbound_backlog | carrier | no-source | D4: not replicated → contract optional/remove |
+| stock_exceptions | storage_location_id | grain-redesign | D5: IM axis on a WM model → drop or re-grain |
+| im_wm_reconciliation | storage_location_id, bin_id | grain-redesign | D6: finer than plant×material → drop or bin-level model |
+| overview | null plant_id / dup PK | data-quality | D7: filter null `plant_code` + RCA |
+
+**overview RCA (DEV, read-only):** base `gold_warehouse_kpi_snapshot` = 545 rows, **single** snapshot
+date, **2 rows with NULL `plant_code`**, which alone produce the 1 duplicate `(plant_id, snapshot_ts)`
+(NULL plants collapse on the composite key). Fix = filter `plant_code IS NOT NULL` + investigate the
+null-plant source (likely a SHARED/unmapped bucket). `snapshot_ts` granularity is not the cause.
+
+Net: most blockers are resolvable from replicated Silver, but via **Gold-model additions / new
+detail-grain models + grain decisions** — design first (this ADR), implement in follow-up Gold PRs.
