@@ -123,6 +123,50 @@ def test_inbound_po_backlog_enhanced_gr_putaway_and_aging_anchors(spark):
     assert row["oldest_putaway_to_created_datetime"] == datetime(2026, 5, 6, 8, 0)
 
 
+def test_inbound_po_line_backlog_excludes_complete_deleted_and_joins_material(spark):
+    from gold.warehouse_inbound_gold import gold_inbound_po_line_backlog
+
+    _save(spark, [
+        Row(purchase_order_number="450001", item_number="10", plant_code="C061", vendor_code="V1",
+            purchase_order_type="NB", storage_location_code="0001", material_code="M1",
+            ordered_quantity=100.0, base_uom="EA", purchase_order_date=date(2026, 5, 1),
+            is_delivery_complete=False, is_item_deleted=False),
+        Row(purchase_order_number="450001", item_number="20", plant_code="C061", vendor_code="V1",
+            purchase_order_type="NB", storage_location_code="0002", material_code="M2",
+            ordered_quantity=50.0, base_uom="KG", purchase_order_date=date(2026, 5, 2),
+            is_delivery_complete=False, is_item_deleted=False),
+        # excluded: delivery complete
+        Row(purchase_order_number="450002", item_number="10", plant_code="C061", vendor_code="V1",
+            purchase_order_type="NB", storage_location_code="0001", material_code="M1",
+            ordered_quantity=10.0, base_uom="EA", purchase_order_date=date(2026, 5, 3),
+            is_delivery_complete=True, is_item_deleted=False),
+        # excluded: item deleted
+        Row(purchase_order_number="450003", item_number="10", plant_code="C061", vendor_code="V1",
+            purchase_order_type="NB", storage_location_code="0001", material_code="M1",
+            ordered_quantity=10.0, base_uom="EA", purchase_order_date=date(2026, 5, 4),
+            is_delivery_complete=False, is_item_deleted=True),
+    ], "purchase_order")
+    _save(spark, [
+        Row(plant_code="C061", material_code="M1", material_description="Widget"),
+        Row(plant_code="C061", material_code="M2", material_description="Gadget"),
+    ], "material")
+
+    rows = all_rows(gold_inbound_po_line_backlog())
+    # One row per OPEN PO line; delivery-complete + deleted excluded.
+    keys = {(r["plant_code"], r["po_id"], r["po_item"]) for r in rows}
+    assert keys == {("C061", "450001", "10"), ("C061", "450001", "20")}
+    assert len(rows) == len(keys)  # PK unique (no fan-out from the material join)
+    by_item = {r["po_item"]: r for r in rows}
+    assert by_item["10"]["material_id"] == "M1"
+    assert by_item["10"]["material_name"] == "Widget"
+    assert by_item["10"]["doc_type"] == "NB"
+    assert by_item["10"]["vendor_id"] == "V1"
+    assert by_item["10"]["storage_loc"] == "0001"
+    assert by_item["10"]["ordered_qty"] == 100.0
+    assert by_item["10"]["uom"] == "EA"
+    assert by_item["10"]["po_date"] == date(2026, 5, 1)
+
+
 def test_handling_unit_summary_counts(spark):
     from gold.warehouse_inbound_gold import gold_handling_unit_summary
 

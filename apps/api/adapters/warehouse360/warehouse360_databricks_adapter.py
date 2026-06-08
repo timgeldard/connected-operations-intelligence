@@ -255,37 +255,38 @@ def get_warehouse_inbound_spec(request: WarehouseInboundRequest) -> QuerySpec:
     where_clauses: list[str] = []
     params: dict[str, object] = {}
 
+    # Governed first-wave inbound is PO-line backlog without a delivery (EKET) date yet, so the
+    # governed date window filters on po_date; the legacy wh360_inbound_v keeps delivery_date.
+    date_col = "po_date" if source_mode == "governed_contracts" else "delivery_date"
+
     if request.plant_id:
         where_clauses.append("plant_id = :plant_id")
         params["plant_id"] = request.plant_id
     if request.date_from:
-        where_clauses.append("delivery_date >= :date_from")
+        where_clauses.append(f"{date_col} >= :date_from")
         params["date_from"] = request.date_from
     if request.date_to:
-        where_clauses.append("delivery_date <= :date_to")
+        where_clauses.append(f"{date_col} <= :date_to")
         params["date_to"] = request.date_to
 
     where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
     if source_mode == "governed_contracts":
+        # First-wave PO-line CORE fields (ADR-0004 D1). vendor_name / gr_qty / open_qty / delivery_date /
+        # qa_status are deferred future enrichment and are not selected (mapper emits None for them).
         sql = f"""
         SELECT
             po_id,
             po_item,
             doc_type,
             vendor_id,
-            vendor_name,
             plant_id,
             storage_loc,
             material_id,
             material_name,
             ordered_qty,
-            gr_qty,
-            open_qty,
             uom,
-            delivery_date,
             po_date,
-            qa_status,
             oldest_po_age_days,
             inbound_backlog_risk_band
         FROM {view}

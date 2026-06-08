@@ -217,6 +217,64 @@ def gold_inbound_po_backlog_enhanced():
     )
 
 
+# ── 1c. INBOUND PO-LINE BACKLOG (PO-line grain) ───────────────────────────────
+# PO-LINE detail backlog: one row per plant x purchase order x item, for items not yet flagged
+# delivery-complete and not deleted. First-wave CORE fields only, sourced directly from EKKO/EKPO
+# (silver.purchase_order) + a material-name dimension join. Goods-receipt quantity / open quantity,
+# delivery (EKET schedule) date, QA status, and vendor name are FUTURE ENRICHMENT (not yet sourced at
+# this grain) — see gold/design_spec.md. Feeds vw_consumption_warehouse360_inbound_backlog.
+
+@dlt.table(**gold_table_args(
+    comment="Open inbound purchase-order backlog at PO-LINE grain (one row per plant x PO x item; items "
+            "not delivery-complete and not deleted). First-wave core EKKO/EKPO fields + material name; "
+            "GR/open quantity, delivery date, QA status, vendor name are future enrichment (design_spec).",
+    cluster_by=["plant_code", "vendor_id"],
+))
+@dlt.expect("ordered quantity non-negative", "ordered_qty >= 0.0")
+def gold_inbound_po_line_backlog():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+
+    purchase_orders = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.purchase_order"),
+        silver_schema,
+        "purchase_order_header_delete",
+        ["purchase_order_number"],
+    )
+    material = (
+        spark.read.table(f"{silver_schema}.material")
+        .select("plant_code", "material_code", "material_description")
+        .distinct()
+    )
+
+    open_items = purchase_orders.filter(
+        (~F.coalesce(F.col("is_delivery_complete"), F.lit(False)))
+        & (~F.coalesce(F.col("is_item_deleted"), F.lit(False)))
+    ).alias("po")
+
+    return (
+        open_items.join(
+            F.broadcast(material).alias("m"),
+            (F.col("po.plant_code") == F.col("m.plant_code"))
+            & (F.col("po.material_code") == F.col("m.material_code")),
+            "left",
+        )
+        .select(
+            F.col("po.plant_code").alias("plant_code"),
+            F.col("po.purchase_order_number").alias("po_id"),
+            F.col("po.item_number").alias("po_item"),
+            F.col("po.purchase_order_type").alias("doc_type"),
+            F.col("po.vendor_code").alias("vendor_id"),
+            F.col("po.storage_location_code").alias("storage_loc"),
+            F.col("po.material_code").alias("material_id"),
+            F.col("m.material_description").alias("material_name"),
+            F.coalesce(F.col("po.ordered_quantity"), F.lit(0.0)).alias("ordered_qty"),
+            F.col("po.base_uom").alias("uom"),
+            F.col("po.purchase_order_date").alias("po_date"),
+        )
+    )
+
+
 # ── 2. HANDLING UNIT SUMMARY ──────────────────────────────────────────────────
 # Only materialised in full_validation: depends on the silver handling_unit table, which is
 # absent in dev_shakedown (central_services lacks handlingunit_vekp/vepo).

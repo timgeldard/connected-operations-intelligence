@@ -33,5 +33,6 @@ REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_stock_reconcil
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_stock_reconciliation_summary FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_inbound_po_backlog FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_inbound_po_backlog_enhanced FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_inbound_po_line_backlog FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_warehouse_exceptions FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_warehouse_kpi_snapshot FROM `users`;

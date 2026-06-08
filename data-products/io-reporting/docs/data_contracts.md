@@ -281,6 +281,14 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Aging**: base MV carries deterministic age anchors (`earliest_po_date`, `latest_gr_posting_date`, `oldest_putaway_to_created_datetime`); date-relative `oldest_po_age_days` and `inbound_backlog_risk_band` are served by `gold_inbound_po_backlog_enhanced_live`.
 * **Known Caveats**: GR linkage requires `silver.goods_movement.purchase_order_number` and `purchase_order_item`. Putaway TO linkage is best-effort via `plant_code` plus `warehouse_transfer_order.source_reference_number = purchase_order_number` because LTAP/LTAK do not provide a normalized PO item key in the current Silver model.
 
+### 16b. `gold.gold_inbound_po_line_backlog`
+* **Status**: Production-candidate (first-wave core)
+* **Grain**: 1 row per plant × purchase order × item (PO-line)
+* **Source Silver Tables**: `silver.purchase_order` (EKKO/EKPO); `silver.material` (material-name dimension join on plant × material, deduped — no fan-out)
+* **Purpose**: open inbound PO **line** backlog for the Warehouse360 `inbound_backlog` governed view (ADR-0004 D1). Open = item not delivery-complete and not deleted.
+* **Aging**: base MV carries `po_date`; date-relative `oldest_po_age_days` (per line) and `inbound_backlog_risk_band` are served by `gold_inbound_po_line_backlog_live`.
+* **Deferred (future enrichment, not invented)**: `gr_qty`/`open_qty` (need a PO-line goods-receipt aggregation as in the enhanced model), `delivery_date` (EKET schedule lines, not in current Silver), `qa_status` (QM inspection), `vendor_name` (vendor dimension). Omitted from the first-wave contract rather than null-filled.
+
 ### 17. `gold.gold_handling_unit_summary`
 * **Status**: Pilot-grade
 * **Grain**: 1 row per plant × warehouse × HU status × reference-document category

@@ -190,6 +190,7 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 | `gold_process_order_staging_validation` | plant × warehouse | total_to_headers, f_type_to_headers, benum_match_pct, validation_status | persistent VALIDATED/NOT_VALIDATED/NOT_APPLICABLE per plant/warehouse |
 | `gold_inbound_po_backlog` **[PILOT]** | plant × vendor × purchasing org | open item/PO count, ordered qty, open value | open PO items (PO backlog, **not** GR history) |
 | `gold_inbound_po_backlog_enhanced` | plant × vendor × purchasing org | open/GR/remaining qty, putaway TO counts, age anchors | PO-linked 103/104 GR and best-effort TO linkage |
+| `gold_inbound_po_line_backlog` | plant × PO × item | po_id, po_item, doc_type, vendor_id, storage_loc, material_id/name, ordered_qty, uom, po_date | open PO **lines** (EKKO/EKPO; first-wave core fields). gr_qty/open_qty + delivery_date + qa_status + vendor_name deferred. Feeds Warehouse360 inbound_backlog (ADR-0004 D1) |
 | `gold_handling_unit_summary` | plant × wh × HU status × ref-doc category | HU/SSCC/delivery/material counts, gross weight (per-HU) | EXIDV = SSCC |
 | `gold_warehouse_exceptions` | exception instance | severity (1-4), sla_hours, quantity, age | UNION of 7 integrity/aging checks |
 | `gold_warehouse_kpi_snapshot` | plant | open orders/TRs/TOs/deliveries/inbound, bin counts, util % | per-plant scorecard (mixed-grain counts) |

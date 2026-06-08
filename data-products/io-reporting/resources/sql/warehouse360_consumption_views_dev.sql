@@ -32,7 +32,9 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_overview TO `users`;
 
 
 -- 2. Inbound Backlog
--- Grain: 1 row per plant_id + po_id + po_item
+-- Grain: 1 row per plant_id + po_id + po_item (PO-line — ADR-0004 D1, gold_inbound_po_line_backlog).
+-- First-wave CORE fields only; gr_qty/open_qty (need GR aggregation), delivery_date (EKET schedule),
+-- qa_status, and vendor_name are future enrichment (deferred — not yet sourced at PO-line grain).
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_inbound_backlog AS
 SELECT
   plant_code AS plant_id,
@@ -40,20 +42,15 @@ SELECT
   po_item,
   doc_type,
   vendor_id,
-  vendor_name,
   storage_loc,
   material_id,
   material_name,
   ordered_qty,
-  gr_qty,
   uom,
-  delivery_date,
   po_date,
-  open_qty,
-  qa_status,
   oldest_po_age_days,
   inbound_backlog_risk_band
-FROM connected_plant_dev.gold_io_reporting.gold_inbound_po_backlog_enhanced_live;
+FROM connected_plant_dev.gold_io_reporting.gold_inbound_po_line_backlog_live;
 
 GRANT SELECT ON VIEW vw_consumption_warehouse360_inbound_backlog TO `users`;
 
