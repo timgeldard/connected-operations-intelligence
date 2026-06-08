@@ -22,10 +22,10 @@ meta:
   canonical_gate_warehouse: site_config_warehouse
   helper: silver/_plant_gate.py
   phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; + quality source-guarded
-  enforced_count: 5            # 4 WM/MM + process_order (header)
+  enforced_count: 10           # 4 WM/MM + process_order + inbound (purchase_order/physical_inventory/handling_unit) + warehouse_flow (outbound_delivery/reservation_requirement)
   source_guarded_count: 4      # process_order_operation / pi_sheet_execution / downtime_event + quality_inspection_lot — gate-ready/CDC-blocked
-  exempt_count: 16
-  needs_mapping_count: 15
+  exempt_count: 17
+  needs_mapping_count: 10
   blocked_count: 0
 
 silver_outputs:
@@ -105,8 +105,8 @@ silver_outputs:
     gate_join_path: "RESB.WERKS (direct)"
     gate_config_table: site_config_plant
     product_area: ioreporting
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply apply_plant_gate (slow tier)."
+    current_status: ENFORCED
+    owner_action_required: none
 
   - table_name: outbound_delivery
     file: silver/tables/warehouse_flow.py
@@ -116,8 +116,8 @@ silver_outputs:
     gate_join_path: "LIPS.WERKS (direct, item-level)"
     gate_config_table: site_config_plant
     product_area: ioreporting
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply apply_plant_gate on item plant; header may span plants."
+    current_status: ENFORCED
+    owner_action_required: none
 
   - table_name: purchase_order
     file: silver/tables/inbound.py
@@ -127,8 +127,8 @@ silver_outputs:
     gate_join_path: "EKPO.WERKS (direct, item-level)"
     gate_config_table: site_config_plant
     product_area: ioreporting
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply apply_plant_gate on item plant."
+    current_status: ENFORCED
+    owner_action_required: none
 
   - table_name: handling_unit
     file: silver/tables/inbound.py
@@ -138,8 +138,8 @@ silver_outputs:
     gate_join_path: "VEKP/VEPO.WERKS (direct)"
     gate_config_table: site_config_plant
     product_area: warehouse360
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply apply_plant_gate. Already HU-gated off in dev_shakedown (enable_hu_reconciliation)."
+    current_status: ENFORCED
+    owner_action_required: "none (plant gate applied; HU output still gated off in dev_shakedown via enable_hu_reconciliation)."
 
   - table_name: physical_inventory_document
     file: silver/tables/inbound.py
@@ -149,8 +149,8 @@ silver_outputs:
     gate_join_path: "ISEG.WERKS (direct)"
     gate_config_table: site_config_plant
     product_area: stock
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply apply_plant_gate."
+    current_status: ENFORCED
+    owner_action_required: none
 
   - table_name: stock_at_location
     file: silver/tables/reference.py
@@ -324,6 +324,13 @@ silver_outputs:
     gating_category: D
     current_status: EXEMPT
     exempt_reason: "Plant master dimension (the plant axis itself); global reference. Could be narrowed to active plants in future if required."
+
+  - table_name: warehouse_master
+    file: silver/tables/reference.py
+    source_tables: [warehousemaster_t300]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Warehouse-number master (T300); global WM reference, no plant dimension. Companion to warehouse_storage_location_mapping (T320), which carries the plant↔warehouse link."
 
   - table_name: customer
     file: silver/tables/reference.py

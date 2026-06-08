@@ -1,12 +1,17 @@
 plant_code,warehouse_number,storage_type,storage_type_description,storage_role,role_confidence,is_wm_managed,include_in_lineside_stock,include_in_staging,include_in_reconciliation,valid_from,valid_to,validated_by,validated_at
-C061,208,100,Production Supply,LINESIDE,CONFIRMED,true,true,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-03
-C061,208,801,Palletising (for Prodc.),LINESIDE,CONFIRMED,true,true,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-03
-C061,208,802,Palletising (for Dispn.),LINESIDE,CONFIRMED,true,true,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-03
-C061,208,803,,LINESIDE,CONFIRMED,true,true,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-03
-C061,208,804,,LINESIDE,CONFIRMED,true,true,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-03
-C061,208,805,,LINESIDE,CONFIRMED,true,true,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-03
-C061,208,901,GR Area for Production,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-03
-C061,208,902,GR Area External Rcpts,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-03
-C061,208,911,,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-03
-C061,208,922,Posting Change Area,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-03
-C061,208,999,Differences,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-03
+C061,104,100,Production Supply,LINESIDE,CONFIRMED,true,true,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+C061,104,801,Palletising (for Prodc.),LINESIDE,CONFIRMED,true,true,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+C061,104,802,Palletising (for Dispn.),LINESIDE,CONFIRMED,true,true,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+C061,104,901,GR Area for Production,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+C061,104,902,GR Area External Rcpts,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+C061,104,911,GI Area for Cost Center,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+C061,104,922,Posting Change Area,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+C061,104,999,Differences,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+P817,208,100,Production Supply,LINESIDE,CONFIRMED,true,true,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+P817,208,801,Palletising (for Prodc.),LINESIDE,CONFIRMED,true,true,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+P817,208,802,Palletising (for Dispn.),LINESIDE,CONFIRMED,true,true,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+P817,208,901,GR Area for Production,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+P817,208,902,GR Area External Rcpts,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+P817,208,911,GI Area for Cost Center,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+P817,208,922,Posting Change Area,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08
+P817,208,999,Differences,INTERIM,CONFIRMED,true,false,false,true,2026-01-01,9999-12-31,wm-config-owner,2026-06-08

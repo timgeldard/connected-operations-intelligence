@@ -14,6 +14,7 @@ Tables:
 import dlt
 from pyspark.sql import functions as F
 
+from silver._plant_gate import apply_plant_gate
 from silver.helpers import (
     bronze_published,
     get_spark,
@@ -59,7 +60,7 @@ def stg_purchase_order():
         )
     )
 
-    return (
+    gated = (
         items_to_refresh.alias("i")
         .join(ekko.alias("h"), ["EBELN", "MANDT"], "left")
         .select(
@@ -103,6 +104,11 @@ def stg_purchase_order():
             ),
         )
     )
+    # Stage gate: scope to onboarded plants before SCD1 (stream-static broadcast join on plant_code).
+    # Slow-tier: site_config_plant is built by reference.py in THIS pipeline; DLT orders the
+    # spark.read.table dependency. Header-only deletes with a purged item carry null plant_code and are
+    # dropped — consistent with the documented "header-only delete can't cascade" limitation below.
+    return apply_plant_gate(gated, "plant_code", "ioreporting", spark=spark)
 
 dlt.create_streaming_table(
     name="purchase_order",
@@ -175,7 +181,7 @@ if hu_reconciliation_enabled():
         vekp = spark.read.table(f"{published}.handlingunit_vekp")
         vepo = spark.read.table(f"{published}.handlingunit_vepo")
 
-        return (
+        gated = (
             vepo.alias("i")
             .join(vekp.alias("h"), ["VENUM", "MANDT"], "left")
             .select(
@@ -212,6 +218,8 @@ if hu_reconciliation_enabled():
                 F.col("i.AEDATTM").alias("_replicated_at"),
             )
         )
+        # Stage gate: scope handling units to onboarded plants (warehouse product area).
+        return apply_plant_gate(gated, "plant_code", "warehouse", spark=spark)
 
 
 # ── 3. PHYSICAL INVENTORY DOCUMENT ────────────────────────────────────────────
@@ -233,7 +241,7 @@ def physical_inventory_document():
     ikpf = spark.read.table(f"{published}.header_physical_inventory_doc_ikpf")
     iseg = spark.read.table(f"{published}.physical_inventory_doc_items_iseg")
 
-    return (
+    gated = (
         iseg.alias("i")
         .join(ikpf.alias("h"), ["MANDT", "IBLNR", "GJAHR"], "left")
         .select(
@@ -290,3 +298,5 @@ def physical_inventory_document():
             F.coalesce(F.col("i.AEDATTM"), F.col("h.AEDATTM")).alias("_replicated_at"),
         )
     )
+    # Stage gate: scope physical-inventory counts to onboarded plants (batch/stock product area).
+    return apply_plant_gate(gated, "plant_code", "stock", spark=spark)

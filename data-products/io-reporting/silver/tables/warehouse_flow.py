@@ -11,6 +11,7 @@ Tables:
 import dlt
 from pyspark.sql import functions as F
 
+from silver._plant_gate import apply_plant_gate
 from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
 
 # ── 1. RESERVATION REQUIREMENT ────────────────────────────────────────────────
@@ -26,7 +27,7 @@ from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, 
 def stg_reservation_requirement():
     spark = get_spark()
     src = spark.readStream.table(f"{BRONZE}.reservationrequirement_resb")
-    return src.select(
+    gated = src.select(
         # ── Natural key
         F.col("RSNUM").alias("reservation_number"),
         F.col("RSPOS").alias("reservation_item"),
@@ -66,6 +67,9 @@ def stg_reservation_requirement():
         F.col("AERUNID").alias("_run_id"),
         F.col("AERECNO").alias("_record_seq"),
     )
+    # Stage gate: scope to onboarded plants before SCD1 (stream-static broadcast join on plant_code).
+    # Delete records ('D') carry WERKS from RESB, so C061/P817 deletes pass the gate.
+    return apply_plant_gate(gated, "plant_code", "ioreporting", spark=spark)
 
 dlt.create_streaming_table(
     name="reservation_requirement",
@@ -125,7 +129,7 @@ def stg_outbound_delivery():
         )
     )
 
-    return (
+    gated = (
         delivery_items_to_refresh.alias("i")
         .join(likp.alias("h"), ["VBELN", "MANDT"], "left")
         .select(
@@ -201,6 +205,10 @@ def stg_outbound_delivery():
             ),
         )
     )
+    # Stage gate: scope to onboarded plants before SCD1 (stream-static broadcast join on plant_code).
+    # Header-only deletes with a purged item carry a null plant_code and are dropped — consistent with
+    # the documented "header-only delete can't cascade" limitation below.
+    return apply_plant_gate(gated, "plant_code", "ioreporting", spark=spark)
 
 dlt.create_streaming_table(
     name="outbound_delivery",
