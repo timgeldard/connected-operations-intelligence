@@ -10,7 +10,7 @@ variables:
   schema:
     default: silver_dev
   gold_schema:
-    default: gold_dev
+    default: gold_io_reporting
   source_catalog:
     default: connected_plant_dev
   source_schema:
@@ -19,19 +19,69 @@ variables:
     default: published_uat
   published_schema:
     default: central_services
+  # Deployment/validation distinction (ADR adr-ioreporting-dev-shakedown-vs-uat-validation):
+  #   dev_shakedown   = technical shakedown only; tolerates externally-owned central_services
+  #                     gaps (HU tables) by NOT materialising HU-dependent models.
+  #   full_validation = UAT/PROD; requires the full central_services set incl. HU tables.
+  # Passed to pipelines as Spark conf; read by silver/helpers.py + gold/_shared.py.
+  deployment_mode:
+    default: dev_shakedown
+  enable_hu_reconciliation:
+    default: "false"
   notification_email:
     description: Required notification distribution list for pipeline and job failures.
 
 targets:
-  dev_uat_source:
+  # DEV-native target: deploys into the DEV workspace (profile TG) reading the real
+  # connected_plant_dev.sap source (131 SAP tables, structurally matching UAT). This is
+  # the only dev target whose source is actually visible from the DEV workspace —
+  # connected_plant_uat is NOT bound there (see dev_uat_source) and sap_sample does not
+  # exist (see dev_sample). Governed serving layer lands in gold_io_reporting (matching
+  # UAT/PROD and the Warehouse360 consumption views). See
+  # docs/architecture/adr-ioreporting-dev-deployment-baseline.md and
+  # docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md.
+  #
+  # DEV runs in dev_shakedown mode: reference data comes from published_dev.central_services,
+  # which is externally owned and missing the HU tables (handlingunit_vekp/vepo). HU-dependent
+  # models are therefore NOT materialised in DEV (enable_hu_reconciliation=false); full HU
+  # validation happens in UAT. DEV is a TECHNICAL shakedown only — its transactional data is
+  # old/limited and not business-representative.
+  dev:
     default: true
     mode: development
     workspace:
       profile: TG
     variables:
       catalog: connected_plant_dev
+      schema: silver_io_reporting
+      gold_schema: gold_io_reporting
+      source_catalog: connected_plant_dev
+      source_schema: sap
+      published_catalog: published_dev
+      published_schema: central_services
+      deployment_mode: dev_shakedown
+      enable_hu_reconciliation: "false"
+    resources:
+      pipelines:
+        silver_fast_pipeline:
+          development: true
+        silver_slow_pipeline:
+          development: true
+        silver_quality_pipeline:
+          development: true
+        gold_pipeline:
+          development: true
+
+  # dev_uat_source: dev compute against the LIVE UAT source. Only usable from a workspace
+  # where connected_plant_uat is bound (it is NOT bound in the DEV workspace adb-3548…18).
+  dev_uat_source:
+    mode: development
+    workspace:
+      profile: TG
+    variables:
+      catalog: connected_plant_dev
       schema: silver_dev
-      gold_schema: gold_dev
+      gold_schema: gold_io_reporting
       source_catalog: connected_plant_uat
       source_schema: sap
       published_catalog: published_uat
@@ -54,7 +104,7 @@ targets:
     variables:
       catalog: connected_plant_dev
       schema: silver_dev
-      gold_schema: gold_dev
+      gold_schema: gold_io_reporting
       source_catalog: connected_plant_dev
       source_schema: sap_sample
       # Fully isolated sample environment: published_* points at a sampled central_services in the
@@ -86,6 +136,10 @@ targets:
       source_schema: sap
       published_catalog: published_uat
       published_schema: central_services
+      # UAT is the first environment for full HU/business validation: requires the complete
+      # published_uat.central_services set incl. handlingunit_vekp/vepo.
+      deployment_mode: full_validation
+      enable_hu_reconciliation: "true"
 
   prod:
     mode: production
@@ -100,3 +154,5 @@ targets:
       source_schema: sap
       published_catalog: published_prod
       published_schema: central_services
+      deployment_mode: full_validation
+      enable_hu_reconciliation: "true"

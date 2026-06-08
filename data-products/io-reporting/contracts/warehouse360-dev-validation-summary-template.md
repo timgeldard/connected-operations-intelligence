@@ -1,45 +1,154 @@
 # Warehouse360 DEV Validation Summary
 
-This template is for evidence returned by a Databricks-connected executor. It is not evidence that validation has been run.
+Evidence returned by a Databricks-connected execution of the Warehouse360 DEV
+validation pack. Full detail and pasted query output: see
+[`warehouse360-dev-profile.md`](./warehouse360-dev-profile.md).
+
+## DEV shakedown vs UAT full validation (added 2026-06-06)
+
+`central_services` is externally owned; `published_dev` lacks the HU tables
+(`handlingunit_vekp`/`vepo`). DEV therefore runs in **`dev_shakedown`** mode
+(`enable_hu_reconciliation=false`): it can validate **deployment mechanics and
+non-HU contract structure** only — **not** business validation (DEV data is
+old/limited). HU-dependent outputs are not materialised in DEV and remain **not
+business-validated until UAT**. **UAT (`full_validation`, HU required) is the
+first environment for full validation.** None of the 7 Warehouse360 governed
+source objects depend on HU. No contract is promoted; a green DEV shakedown does
+not imply UAT readiness. See ADR
+`docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`.
+
+## Status 2026-06-07 (latest) — silver_fast COMPLETES & WM/MM mappings DATA-validated; Gold blocked on a pre-existing duplicate-table defect (0/7 stands)
+
+**silver_fast now COMPLETES.** The 3 PP/PI flows that blocked it were source-guarded out (their
+sources — AFVV / zmanpex / zpexpm_dwnt — lack AERUNID/AERECNO CDC metadata; confirmed NOT Warehouse360
+feeders by dependency trace), and a latent Photon broadcast-join OOM on `warehouse_transfer_order` was
+fixed (`spark.sql.autoBroadcastJoinThreshold=-1` → sort-merge). The 4 WM/MM-critical silver tables
+materialised (transfer_order 13.5M, transfer_requirement 15.9M, goods_movement 10.8M, batch_stock
+11.5M), and PR #23's mappings are now **DATA-validated** (silver_fast_mapping_validation.sql §B–E:
+alias invariant, open_quantity bounds, reference_type consistency, base_uom coverage all clean; one
+§E1 follow-up — 2,016 batch_stock key collisions / 4,039 rows / 0.035% from strip_zeros, pre-existing).
+
+**Pre-merge review fixes (2026-06-07).** **CHARG is now preserved exactly** (exact SAP batch identifier —
+no strip/trim/normalise) across all silver transforms; `batch_number == batch_number_raw == CHARG`. The
+**§E1 collisions are RESOLVED**: re-keying on the exact SAP key (`client` + `material_code_raw` + plant +
+storage-loc + `batch_number_raw`) gives **0 colliding groups** on bronze MCHB (the collisions were caused
+specifically by stripping CHARG). Validation SQL + the CHARG/invalid-field CI guard hardened; six
+LTBP `open_quantity` tests added. Re-materialisation of the silver tables is deferred (the cold rerun is
+dominated by the ungated `process_order` backfill); §E1 is evidenced directly on bronze. This does not
+change the 0/7 status — Gold remains blocked separately.
+
+**Warehouse360 still 0/7 — Gold not built.** `gold_pipeline` (first-ever run) fails at graph
+construction on a **pre-existing duplicate-table defect** (`gold_storage_type_role_coverage_status`
+defined in both `readiness_validation.py` and `warehouse_flow_gold.py`) — unrelated to this work; a
+gold-architecture decision for the gold owner. `silver_quality` has a separate QM-domain blocker
+(`inspection_qals.MANDT` absent) that does NOT gate Warehouse360 (no Gold module reads its output).
+**No contract promoted; readiness NOT claimed** (Task 10). See `ioreporting-dev-deployment-profile.md`
+§(i)/(j)/(k) for the full chain and the ordered outstanding blockers.
+
+## (Earlier) Status 2026-06-07 — WM/MM mappings implemented & resolving; silver_fast still blocked (0/7 unchanged)
+
+**Progress:** the approved SAP WM/MM field mappings are now implemented in `warehouse_fast.py`
+(functional sign-off): LTAP `requested/confirmed/picked` ← `VSOLM`/`VISTA` (picked aliases confirmed);
+LTBP `open_quantity` ← `greatest(MENGE-TAMEN,0)`; MSEG `delivery_number/item` ← `VBELN_IM`/`VBELP_IM`
+(+ `reference_type`); MCHB `base_uom` ← `MARA.MEINS` and modelled as a snapshot/current-state
+materialized view (no CDC). Field existence and the MARA 1:1 fan-out guard were verified live
+(2026-06-07). In pipeline update `5abc0952` the **4 WH360-critical flows now RESOLVE at analysis** —
+the update fails only on *"`stg_process_order_operation` and 2 other flows"*, vs all 7 (incl. the 4
+critical) before.
+
+**Still blocked (0/7 unchanged):** DLT graph analysis is all-or-nothing, so the update aborts on the
+remaining 3 flows and **nothing materialises**. The 3 out-of-scope PP/PI flows in `process_order.py`
+(`stg_process_order_operation`, `stg_pi_sheet_execution`, `stg_downtime_event`) fail `UNRESOLVED_COLUMN`
+on `AERUNID`/`AERECNO`/`RecordActivity` (CDC metadata absent from `processorderobject_afvc` /
+`downtime_zpexpm_dwnt` / the PI-sheet source) — the same gap class as MCHB, a different domain, and
+explicitly out of scope of the WM/MM mapping change. Consequently the mappings are **resolved but not
+yet DATA-validated** (output checks §B–E in `validation/silver_fast_mapping_validation.sql` could not
+run); Gold is **not built**; `warehouse360_dev_source_object_validation.sql` still **0/7**; consumption
+views **not** deployed; the validation pack **not** run. **All contracts remain candidate/pending —
+none are `ready_for_dev_app_shakedown`.** **Next step (separate change):** apply the MCHB-style
+snapshot/current-state pattern (or source-guard) to the 3 process_order flows so silver_fast completes,
+then run §B–E + Gold + the WH360 pack. Detail: `ioreporting-dev-deployment-profile.md`,
+`source-contracts/sap/sap_unresolved_sources.yml`, and
+`source-contracts/sap/silver_fast_field_reconciliation.md` (§ "Run result").
+
+## Next validation attempt prerequisites (added 2026-06-06)
+
+This pack has **not** been rerun since the original BLOCKED result below. Before
+it can be, the IOReporting governed source layer must exist in
+`connected_plant_dev.gold_io_reporting`. Status: a first DEV deployment baseline
+is in place (bundle validated + deployed — see
+[`ioreporting-dev-deployment-profile.md`](./ioreporting-dev-deployment-profile.md)
+and ADR `docs/architecture/adr-ioreporting-dev-deployment-baseline.md`), but the
+Silver → Gold pipeline **runs** remain blocked on DEV `central_services`
+reference-data sourcing. Sequence to unblock: resolve central_services → run
+Silver/Gold per the runbook → confirm 7/7 via
+`validation/warehouse360_dev_source_layer_preflight.sql` → then rerun this pack.
 
 ## Execution Details
 
 | Field | Value |
 |---|---|
-| Executed by |  |
-| Execution date/time |  |
-| Databricks workspace |  |
+| Executed by | tim.geldard@kerry.com |
+| Execution date/time | 2026-06-06 18:46 UTC |
+| Databricks workspace | `https://adb-3548637138127338.18.azuredatabricks.net` (DEV) |
+| SQL warehouse | `connected_plant_dev` — serverless PRO, id `8fae28f1808dbf75` |
+| CLI profile | `TG` |
 | Catalog | `connected_plant_dev` |
-| Schema | `gold_io_reporting` |
-| Git branch |  |
-| Git commit SHA |  |
+| Schema | `gold_io_reporting` (target — not present in DEV) |
+| Git branch | `fix/imported-code-review` |
+| Git commit SHA | `8cba60e3a51b6df1e3ba7fc9de8e5be00d4570c1` |
 
 ## Overall Result
 
+**BLOCKED at the source-object gate.** The governed DEV gold source layer is not
+deployed; consumption views were therefore not deployed (per the runbook gate),
+and all downstream checks are blocked rather than failed.
+
 | Area | Status | Notes |
 |---|---|---|
-| Source object validation | Not run / Pass / Fail |  |
-| Source column validation | Not run / Pass / Fail |  |
-| Consumption view deployment | Not run / Pass / Fail |  |
-| Schema validation | Not run / Pass / Fail |  |
-| Primary key validation | Not run / Pass / Fail |  |
-| Data quality validation | Not run / Pass / Fail |  |
-| Contract compatibility validation | Not run / Pass / Fail |  |
+| Source object validation | **Fail** | 0 / 7 source objects FOUND — all MISSING |
+| Source column validation | **Fail** | All 82 expected columns MISSING (sources absent) |
+| Consumption view deployment | **Not run (gated)** | Stopped per "missing sources → do not deploy" rule |
+| Schema validation | **Not run (blocked)** | No views exist to introspect |
+| Primary key validation | **Not run (blocked)** | Key uniqueness unprovable |
+| Data quality validation | **Not run (blocked)** | `plant_id` / freshness unprovable |
+| Contract compatibility validation | **Not run (blocked)** | Field presence/types unprovable |
 
 ## Blocking Issues
 
 | Issue | Severity | Owner | Resolution required |
 |---|---|---|---|
-|  |  |  |  |
+| `connected_plant_dev.gold_io_reporting` (and `gold_dev`) schema not present; 0/7 governed source objects exist anywhere in the catalog. | Blocking | Data platform / IO-reporting gold team | Deploy DEV gold layer (gold pipeline + `gold_serving_views_dev.sql` + `gold_security_dev.sql`). |
+| Source-schema mismatch: DEV gold build + bundle config target `gold_dev`; `warehouse360_consumption_views_dev.sql` reads `gold_io_reporting`. | Blocking | Architecture / product owner | Decide DEV standard (`gold_io_reporting` vs `gold_dev`) before re-run. |
 
 ## Contract Decisions Required
 
 | Contract | Decision needed | Owner |
 |---|---|---|
-|  |  |  |
+| All 7 active Warehouse360 contracts | Confirm DEV source schema (`gold_io_reporting` vs `gold_dev`); grain/PK decisions deferred until views can be profiled. | Tim / product owner |
+| `warehouse360.dispensary_queue` | Confirm real governed source + grain before any Wave 1 inclusion (remains `not_runtime_ready`). | Tim / product owner |
+
+## Answers to Required Questions
+
+- **Which contracts are ready for DEV app testing?** None. All 7 remain
+  candidate/blocked; `dispensary_queue` stays `not_runtime_ready`.
+- **Which contracts remain blocked?** All 7 active contracts (+ dispensary_queue).
+- **Is `plant_id` safe for row-level filtering?** Unproven — no data exists to
+  test null counts; treated as blocking until re-run.
+- **Are primary keys valid?** Unproven — no rows to test for duplicates.
+- **Is freshness sufficient?** Unproven — no `snapshot_ts` data exists.
+- **Product-owner grain decisions required?** Yes, but deferred — they cannot be
+  assessed until the source layer is built and views are profiled.
 
 ## Recommendation
 
 ```text
-Do not promote / Ready for DEV app test / Ready for UAT planning
+Do not promote.
+
+Next actions (in order):
+1. Deploy the DEV governed gold source layer (gold pipeline + gold_serving_views_dev.sql
+   + gold_security_dev.sql) so the 7 governed sources materialise.
+2. Resolve the DEV source-schema decision (gold_io_reporting vs gold_dev).
+3. Re-run the full validation pack via the TG profile (warehouse 8fae28f1808dbf75).
+4. Re-assess per-contract readiness against the decision rules.
 ```

@@ -14,7 +14,14 @@ Tables:
 import dlt
 from pyspark.sql import functions as F
 
-from silver.helpers import bronze_published, get_spark, sap_date, sap_flag, strip_zeros
+from silver.helpers import (
+    bronze_published,
+    get_spark,
+    hu_reconciliation_enabled,
+    sap_date,
+    sap_flag,
+    strip_zeros,
+)
 
 # ── 1. PURCHASE ORDER ─────────────────────────────────────────────────────────
 
@@ -147,57 +154,64 @@ def purchase_order_header_delete():
 # VEKP (header) + VEPO (item). Batch (VEKP/VEPO carry only AEDATTM). EXIDV is the
 # SSCC barcode; VBTYP = 'J' on the item links to an outbound delivery.
 
-@dlt.table(
-    comment="Handling units (VEKP/VEPO) — SSCC packing units with material, batch and delivery link",
-    table_properties={"delta.enableChangeDataFeed": "true"},
-    cluster_by=["plant_code", "warehouse_number"],
-)
-@dlt.expect_all_or_drop({
-    "handling_unit_number present": "handling_unit_number IS NOT NULL",
-    "item_number present": "item_number IS NOT NULL",
-})
-def handling_unit():
-    spark = get_spark()
-    published = bronze_published()
-    vekp = spark.read.table(f"{published}.handlingunit_vekp")
-    vepo = spark.read.table(f"{published}.handlingunit_vepo")
+# HU silver table is only defined when handling-unit reconciliation is enabled
+# (full_validation). In dev_shakedown the externally-owned published_dev.central_services
+# lacks handlingunit_vekp/vepo, so registering this @dlt.table would fail the run; instead
+# it is simply not part of the pipeline graph. See databricks.yml / hu_reconciliation_enabled.
+if hu_reconciliation_enabled():
 
-    return (
-        vepo.alias("i")
-        .join(vekp.alias("h"), ["VENUM", "MANDT"], "left")
-        .select(
-            # ── Natural key
-            F.col("i.VENUM").alias("handling_unit_number"),
-            F.col("i.VEPOS").alias("item_number"),
-
-            # ── Header
-            F.col("h.EXIDV").alias("sscc"),
-            F.col("h.VHART").alias("handling_unit_type"),
-            F.col("h.STATUS").alias("handling_unit_status"),
-            F.col("h.WMSTA").alias("wm_status_code"),
-            F.col("h.WERKS").alias("plant_code"),
-            F.col("h.LGNUM").alias("warehouse_number"),
-            F.col("h.BRGEW").alias("gross_weight"),
-            F.col("h.NTGEW").alias("net_weight"),
-            F.col("h.GEWEI").alias("weight_unit"),
-
-            # ── Item
-            F.col("i.VBTYP").alias("reference_document_category"),
-            strip_zeros("i.VBELN").alias("delivery_number"),
-            F.col("i.VBELN").alias("delivery_number_raw"),
-            F.col("i.POSNR").alias("delivery_item_number"),
-            strip_zeros("i.MATNR").alias("material_code"),
-            F.col("i.MATNR").alias("material_code_raw"),
-            strip_zeros("i.CHARG").alias("batch_number"),
-            F.col("i.CHARG").alias("batch_number_raw"),
-            F.col("i.VEMNG").alias("packed_quantity"),
-            F.col("i.VEMEH").alias("packed_uom"),
-            sap_date("i.WDATU").alias("goods_receipt_date"),
-            sap_date("i.VFDAT").alias("expiry_date"),
-
-            F.col("i.AEDATTM").alias("_replicated_at"),
-        )
+    @dlt.table(
+        comment="Handling units (VEKP/VEPO) — SSCC packing units with material, batch and delivery link",
+        table_properties={"delta.enableChangeDataFeed": "true"},
+        cluster_by=["plant_code", "warehouse_number"],
     )
+    @dlt.expect_all_or_drop({
+        "handling_unit_number present": "handling_unit_number IS NOT NULL",
+        "item_number present": "item_number IS NOT NULL",
+    })
+    def handling_unit():
+        spark = get_spark()
+        published = bronze_published()
+        vekp = spark.read.table(f"{published}.handlingunit_vekp")
+        vepo = spark.read.table(f"{published}.handlingunit_vepo")
+
+        return (
+            vepo.alias("i")
+            .join(vekp.alias("h"), ["VENUM", "MANDT"], "left")
+            .select(
+                # ── Natural key
+                F.col("i.VENUM").alias("handling_unit_number"),
+                F.col("i.VEPOS").alias("item_number"),
+
+                # ── Header
+                F.col("h.EXIDV").alias("sscc"),
+                F.col("h.VHART").alias("handling_unit_type"),
+                F.col("h.STATUS").alias("handling_unit_status"),
+                F.col("h.WMSTA").alias("wm_status_code"),
+                F.col("h.WERKS").alias("plant_code"),
+                F.col("h.LGNUM").alias("warehouse_number"),
+                F.col("h.BRGEW").alias("gross_weight"),
+                F.col("h.NTGEW").alias("net_weight"),
+                F.col("h.GEWEI").alias("weight_unit"),
+
+                # ── Item
+                F.col("i.VBTYP").alias("reference_document_category"),
+                strip_zeros("i.VBELN").alias("delivery_number"),
+                F.col("i.VBELN").alias("delivery_number_raw"),
+                F.col("i.POSNR").alias("delivery_item_number"),
+                strip_zeros("i.MATNR").alias("material_code"),
+                F.col("i.MATNR").alias("material_code_raw"),
+                # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+                F.col("i.CHARG").alias("batch_number"),
+                F.col("i.CHARG").alias("batch_number_raw"),
+                F.col("i.VEMNG").alias("packed_quantity"),
+                F.col("i.VEMEH").alias("packed_uom"),
+                sap_date("i.WDATU").alias("goods_receipt_date"),
+                sap_date("i.VFDAT").alias("expiry_date"),
+
+                F.col("i.AEDATTM").alias("_replicated_at"),
+            )
+        )
 
 
 # ── 3. PHYSICAL INVENTORY DOCUMENT ────────────────────────────────────────────
@@ -230,7 +244,8 @@ def physical_inventory_document():
             F.col("i.LGORT").alias("storage_location_code"),
             strip_zeros("i.MATNR").alias("material_code"),
             F.col("i.MATNR").alias("material_code_raw"),
-            strip_zeros("i.CHARG").alias("batch_number"),
+            # CHARG is an exact SAP identifier — preserve as replicated (no strip/trim/normalise).
+            F.col("i.CHARG").alias("batch_number"),
             F.col("i.CHARG").alias("batch_number_raw"),
             F.col("i.BSTAR").alias("stock_type_code"),
             F.col("h.VGART").alias("transaction_event_type"),

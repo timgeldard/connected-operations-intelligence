@@ -24,9 +24,12 @@ APPLICATION_KEY = "io_reporting"
 ENVIRONMENTS = {
     "dev": {
         "catalog": "connected_plant_dev",
-        "gold_schema": "gold_dev",
+        "gold_schema": "gold_io_reporting",
         "consumer_group": "users",
         "security_model": None,  # dev: no filter — return all rows (no published_<env>.security available)
+        # dev_shakedown: HU-dependent Gold tables are not materialised (central_services lacks
+        # handlingunit_vekp/vepo), so their secured views are skipped — see databricks.yml.
+        "enable_hu_reconciliation": False,
         "filename": "resources/sql/gold_security_dev.sql",
     },
     "uat": {
@@ -34,6 +37,7 @@ ENVIRONMENTS = {
         "gold_schema": "gold_io_reporting",
         "consumer_group": "users",
         "security_model": "published_uat.security.model",
+        "enable_hu_reconciliation": True,
         "filename": "resources/sql/gold_security_uat.sql",
     },
     "prod": {
@@ -41,9 +45,15 @@ ENVIRONMENTS = {
         "gold_schema": "gold_io_reporting",
         "consumer_group": "users",
         "security_model": "published_prod.security.model",
+        "enable_hu_reconciliation": True,
         "filename": "resources/sql/gold_security_prod.sql",
     },
 }
+
+# Gold tables that depend on the handling-unit (HU) silver source. Not materialised when
+# enable_hu_reconciliation is false (dev_shakedown), so their secured views/REVOKEs are skipped.
+# Keep in sync with the hu_reconciliation_enabled() gating in gold/*.py and silver/tables/inbound.py.
+HU_DEPENDENT_GOLD_TABLES = {"gold_hu_reconciliation", "gold_handling_unit_summary"}
 
 # Every plant-scoped Gold materialized view (all carry a plant_code column). Keep in sync
 # with the gold/*.py table definitions.
@@ -111,102 +121,13 @@ REVOKE_NOTE = """
 """
 
 
-CUSTOM_SELECTS = {
-    "gold_stock_expiry_risk": """  SELECT
-    plant_code,
-    material_code,
-    material_description,
-    batch_number,
-    base_uom,
-    minimum_expiry_date,
-    earliest_goods_receipt_date,
-    datediff(minimum_expiry_date, current_date()) AS minimum_days_to_expiry,
-    shelf_life_days,
-    minimum_remaining_shelf_life_days,
-    total_stock_qty,
-    coalesce(
-      CASE WHEN datediff(minimum_expiry_date, current_date()) < 0 THEN total_stock_qty END,
-      0.0
-    ) AS expired_qty,
-    coalesce(
-      CASE WHEN datediff(minimum_expiry_date, current_date()) >= 0 AND datediff(minimum_expiry_date, current_date()) < 7 THEN total_stock_qty END,
-      0.0
-    ) AS expiry_risk_lt_7d_qty,
-    coalesce(
-      CASE WHEN datediff(minimum_expiry_date, current_date()) >= 7 AND datediff(minimum_expiry_date, current_date()) < 30 THEN total_stock_qty END,
-      0.0
-    ) AS expiry_risk_7_30d_qty,
-    coalesce(
-      CASE WHEN datediff(minimum_expiry_date, current_date()) >= 30 AND datediff(minimum_expiry_date, current_date()) < 90 THEN total_stock_qty END,
-      0.0
-    ) AS expiry_risk_30_90d_qty,
-    coalesce(
-      CASE WHEN datediff(minimum_expiry_date, current_date()) >= 90 THEN total_stock_qty END,
-      0.0
-    ) AS expiry_ok_qty,
-    coalesce(
-      CASE WHEN datediff(minimum_expiry_date, current_date()) < coalesce(minimum_remaining_shelf_life_days, 0) THEN total_stock_qty END,
-      0.0
-    ) AS minimum_shelf_life_breach_qty,
-    CASE
-      WHEN datediff(minimum_expiry_date, current_date()) < 0 THEN 'EXPIRED'
-      WHEN datediff(minimum_expiry_date, current_date()) < 7 THEN 'LT_7_DAYS'
-      WHEN datediff(minimum_expiry_date, current_date()) < 30 THEN 'DAYS_7_30'
-      WHEN datediff(minimum_expiry_date, current_date()) < 90 THEN 'DAYS_30_90'
-      ELSE 'OK'
-    END AS highest_expiry_risk_bucket,
-    coalesce(datediff(minimum_expiry_date, current_date()) < coalesce(minimum_remaining_shelf_life_days, 0), false) AS has_minimum_shelf_life_breach
-  FROM {base}""",
-
-    "gold_lineside_stock": """  SELECT
-    *,
-    CASE WHEN earliest_expiry_date IS NOT NULL THEN datediff(earliest_expiry_date, current_date()) END AS min_days_to_expiry
-  FROM {base}""",
-
-    "gold_delivery_pick_status": """  SELECT
-    delivery_number,
-    plant_code,
-    warehouse_number,
-    delivery_type,
-    sold_to_customer,
-    planned_goods_issue_date,
-    line_count,
-    delivery_qty,
-    picked_qty,
-    pick_fraction,
-    is_shipped,
-    datediff(planned_goods_issue_date, current_date()) AS days_to_goods_issue,
-    CASE
-      WHEN is_shipped THEN 'green'
-      WHEN planned_goods_issue_date IS NULL THEN 'grey'
-      WHEN coalesce(pick_fraction, 0.0) < 0.5 AND datediff(planned_goods_issue_date, current_date()) <= 0 THEN 'red'
-      WHEN coalesce(pick_fraction, 0.0) < 0.8 AND datediff(planned_goods_issue_date, current_date()) <= 1 THEN 'amber'
-      ELSE 'green'
-    END AS risk_band
-  FROM {base}""",
-
-    "gold_process_order_staging": """  SELECT
-    order_number,
-    plant_code,
-    material_code,
-    order_quantity,
-    scheduled_start_date,
-    scheduled_finish_date,
-    to_items_total,
-    to_items_done,
-    staging_fraction,
-    is_operationally_trusted,
-    datediff(scheduled_start_date, current_date()) AS days_to_start,
-    CASE
-      WHEN NOT coalesce(is_operationally_trusted, false) THEN 'unvalidated'
-      WHEN to_items_total = 0 THEN 'grey'
-      WHEN scheduled_start_date IS NULL THEN 'grey'
-      WHEN coalesce(staging_fraction, 0.0) < 0.3 AND datediff(scheduled_start_date, current_date()) <= 0 THEN 'red'
-      WHEN coalesce(staging_fraction, 0.0) < 0.7 AND datediff(scheduled_start_date, current_date()) <= 1 THEN 'amber'
-      ELSE 'green'
-    END AS risk_band
-  FROM {base}"""
-}
+CUSTOM_SELECTS: dict[str, str] = {}
+# ADR 012: date-relative (current_date()) columns live ONLY in the _live serving views
+# (gold_serving_views_<env>.sql), so base MVs stay deterministic. The _secured views are pure
+# RLS pass-throughs (SELECT * FROM base + plant filter). Previously this dict hard-coded
+# date-relative columns into 4 secured views, which (a) collided with the same columns the
+# _live views add (COLUMN_ALREADY_EXISTS) and (b) carried stale projections that dropped
+# columns the consumption views need. Emptied — all secured views now use the default body.
 
 
 def _security_filter(security_model: str) -> str:
@@ -238,13 +159,24 @@ def generate_sql():
         group = cfg["consumer_group"]
         where = _security_filter(cfg["security_model"])
 
+        # In dev_shakedown, HU-dependent Gold tables are not built, so skip their secured views.
+        env_tables = [
+            t for t in GOLD_TABLES
+            if cfg["enable_hu_reconciliation"] or t not in HU_DEPENDENT_GOLD_TABLES
+        ]
+
         sql = TEMPLATE.format(
             env_upper=env.upper(), env_lower=env,
             catalog=catalog, gold_schema=cfg["gold_schema"],
         )
+        if not cfg["enable_hu_reconciliation"]:
+            sql += (
+                "\n-- NOTE: enable_hu_reconciliation=false — HU-dependent secured views "
+                f"({', '.join(sorted(HU_DEPENDENT_GOLD_TABLES))}) are intentionally omitted.\n"
+            )
 
         sql += "\n-- ── Secured views + consumer grants ──\n"
-        for table in GOLD_TABLES:
+        for table in env_tables:
             view = f"{gold}.{table}_secured"
             base = f"{gold}.{table}"
             if table in CUSTOM_SELECTS:
@@ -272,7 +204,7 @@ def generate_sql():
             "-- Revokes direct SELECT on the un-trimmed base Gold tables from the consumer group, so\n"
             "-- plant-scoped users can only read the row-filtered *_secured views (ADR 012).\n\n"
         )
-        for table in GOLD_TABLES:
+        for table in env_tables:
             harden += f"REVOKE SELECT ON TABLE {gold}.{table} FROM `{group}`;\n"
         harden_fn = os.path.join(os.path.dirname(cfg["filename"]), f"gold_security_harden_{env}.sql")
         with open(harden_fn, "w", encoding="utf-8", newline="\n") as f:

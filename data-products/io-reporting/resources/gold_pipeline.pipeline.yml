@@ -19,13 +19,50 @@ resources:
       configuration:
         silver_catalog: ${var.catalog}
         silver_schema: ${var.schema}
+        # Shakedown vs full-validation. When enable_hu_reconciliation=false the HU-dependent
+        # Gold models (gold_hu_reconciliation, gold_handling_unit_summary, and the HU branch of
+        # gold_reconciliation_alerts) are NOT materialised — the upstream silver handling_unit
+        # table is absent in dev_shakedown. None of the 7 Warehouse360 source objects depend on HU.
+        deployment_mode: ${var.deployment_mode}
+        enable_hu_reconciliation: ${var.enable_hu_reconciliation}
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting
 
+      # Explicit per-file libraries (mirrors the silver pipelines' convention). Databricks
+      # pipeline settings reject a single-'*' glob ('../gold/*.py'), and a recursive
+      # '../gold/**' would also pull in non-source files (design_spec.md) and the two
+      # standalone JOB entrypoints under gold/recon and gold/snapshots. Listing the
+      # top-level Gold DLT modules explicitly preserves the original '*.py' semantics
+      # exactly. Add new top-level gold/*.py modules here.
       libraries:
-        - glob:
-            include: ../gold/*.py
+        - file:
+            path: ../gold/dlt_gold_pipeline.py
+        - file:
+            path: ../gold/_shared.py
+        - file:
+            path: ../gold/freshness.py
+        - file:
+            path: ../gold/readiness_validation.py
+        - file:
+            path: ../gold/servicenow.py
+        - file:
+            path: ../gold/warehouse_exceptions.py
+        - file:
+            path: ../gold/warehouse_flow_gold.py
+        - file:
+            path: ../gold/warehouse_inbound_gold.py
+        - file:
+            path: ../gold/warehouse_kpi_snapshot.py
+        - file:
+            path: ../gold/warehouse_kpis.py
+
+      # Editable-install the synced bundle root so the `gold` package is importable at DLT runtime
+      # (each gold module does `from gold._shared import ...`). Without this: ModuleNotFoundError.
+      # ${workspace.file_path} is the deployed bundle files root (contains pyproject.toml).
+      environment:
+        dependencies:
+          - --editable ${workspace.file_path}
 
       # Triggered pipeline, no restart_window needed as it runs to completion
 

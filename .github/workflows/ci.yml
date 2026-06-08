@@ -150,7 +150,34 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install pyyaml pytest
+
+      - name: Run Warehouse360 static migration check tests
+        run: python3 -m pytest scripts/ci/test_check_warehouse360_migration_static.py -q
+
+      - name: Run Warehouse360 validation SQL generator tests
+        run: PYTHONPATH=scripts/contracts python3 -m pytest scripts/contracts/test_generate_warehouse360_validation_sql.py -q
+
+      - name: Run Warehouse360 validation SQL drift check
+        run: python3 scripts/contracts/generate_warehouse360_validation_sql.py --check
+
+      - name: Run DLT duplicate dataset name tests
+        run: python3 -m pytest scripts/ci/test_check_dlt_dataset_names_unique.py -q
+
+      - name: Run DLT duplicate dataset name check
+        run: python3 scripts/ci/check_dlt_dataset_names_unique.py
+
+      - name: Run Gold serving SQL ownership tests
+        run: python3 -m pytest scripts/ci/test_check_gold_serving_sql_ownership.py -q
+
+      - name: Run Gold serving SQL ownership check
+        run: python3 scripts/ci/check_gold_serving_sql_ownership.py
+
+      - name: Run documentation check tests
+        run: PYTHONPATH=scripts/ci python3 -m pytest scripts/ci/test_check_required_docs.py -q
+
+      - name: Run documentation check
+        run: python3 scripts/ci/check_required_docs.py
 
       - name: Run Warehouse360 static migration check
         run: python3 scripts/ci/check_warehouse360_migration_static.py
@@ -158,8 +185,57 @@ jobs:
       - name: Run Warehouse360 adapter contract-column check
         run: python3 scripts/ci/check_warehouse360_adapter_contract_columns.py
 
+      - name: Run Warehouse360 consumption-view column tests
+        run: PYTHONPATH=scripts/ci python3 -m pytest scripts/ci/test_check_warehouse360_consumption_columns.py -q
+
+      - name: Run Warehouse360 consumption-view column guard
+        run: python3 scripts/ci/check_warehouse360_consumption_columns.py
+
       - name: Run app migration registry guard
         run: python3 scripts/ci/check_app_migration_registry_guard.py
+
+  silver-fast-mapping-check:
+    name: Silver Fast Approved-Mapping Guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # least-privilege: read-only static guard, no write to repo
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # guard job does not push; do not leave the token on disk
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Run silver_fast approved-mapping guard
+        run: python3 scripts/ci/check_silver_fast_field_mappings.py
+
+  silver-stage-gate-coverage:
+    name: Silver Stage-Gate Coverage Guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # least-privilege: read-only static guard, no write to repo
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # guard job does not push; do not leave the token on disk
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Run silver stage-gate coverage guard
+        run: python3 scripts/ci/check_silver_stage_gate_coverage.py
 
   validate-bundle:
     name: Validate Databricks Bundle

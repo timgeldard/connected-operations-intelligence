@@ -40,7 +40,8 @@ _DOWNTIME_SCHEMA = (
     "ZAUSBS STRING, ZAUZTB STRING, ZEAUSZT DOUBLE, ZDEL STRING, AEDATTM STRING"
 )
 _QALS_SCHEMA = (
-    "PRUEFLOS STRING, MANDT STRING, WERKS STRING, MATNR STRING, CHARG STRING, "
+    # inspection_qals client field is MANDANT (replicated QM convention), NOT MANDT — mirrors production.
+    "PRUEFLOS STRING, MANDANT STRING, WERKS STRING, MATNR STRING, CHARG STRING, "
     "MENGE DOUBLE, ENSTDE STRING, EENDDE STRING, VCODE STRING, "
     "KZLOESCH STRING, AEDATTM STRING"
 )
@@ -242,12 +243,13 @@ def apply_quality_lot_transform(
 
     return (
         qals.alias("l")
-        .join(qmih.alias("m"), (F.col("l.PRUEFLOS") == F.col("m.PRUEFLOS")) & (F.col("l.MANDT") == F.col("m.MANDT")), "left")
+        .join(qmih.alias("m"), (F.col("l.PRUEFLOS") == F.col("m.PRUEFLOS")) & (F.col("l.MANDANT") == F.col("m.MANDT")), "left")
         .select(
+            F.col("l.MANDANT").alias("client"),
             F.col("l.PRUEFLOS").alias("inspection_lot_number"),
             F.col("l.WERKS").alias("plant_code"),
             strip_zeros("l.MATNR").alias("material_code"),
-            strip_zeros("l.CHARG").alias("batch_number"),
+            F.col("l.CHARG").alias("batch_number"),  # CHARG exact — no strip
             strip_zeros("m.AUFNR").alias("order_number"),
             F.col("m.QMNUM").alias("quality_notification_number"),
             F.col("l.MENGE").alias("inspection_lot_quantity"),
@@ -266,7 +268,7 @@ def apply_quality_lot_transform(
 
 def make_qals(
     PRUEFLOS="000000000001",
-    MANDT="100",
+    MANDANT="100",
     WERKS="1000",
     MATNR="000000000000012345",
     CHARG="0000001234",
@@ -278,7 +280,7 @@ def make_qals(
     AEDATTM="2024-12-01T10:00:00",
 ):
     return Row(
-        PRUEFLOS=PRUEFLOS, MANDT=MANDT, WERKS=WERKS, MATNR=MATNR, CHARG=CHARG,
+        PRUEFLOS=PRUEFLOS, MANDANT=MANDANT, WERKS=WERKS, MATNR=MATNR, CHARG=CHARG,
         MENGE=MENGE, ENSTDE=ENSTDE, EENDDE=EENDDE, VCODE=VCODE,
         KZLOESCH=KZLOESCH, AEDATTM=AEDATTM,
     )
@@ -578,7 +580,8 @@ class TestQualityInspectionLot:
         assert rows[0]["inspection_lot_number"] == "000000000099"
         assert rows[0]["order_number"] is None
 
-    def test_material_and_batch_stripped(self, spark):
+    def test_material_stripped_batch_preserved_exactly(self, spark):
+        # MATNR is display-normalised (stripped); CHARG is an exact identifier (preserved).
         df = apply_quality_lot_transform(
             spark,
             [make_qals(MATNR="000000000000099999", CHARG="0000099999")],
@@ -586,7 +589,7 @@ class TestQualityInspectionLot:
         )
         row = first_row(df)
         assert row["material_code"] == "99999"
-        assert row["batch_number"] == "99999"
+        assert row["batch_number"] == "0000099999"
 
     def test_order_number_stripped_via_qmih(self, spark):
         df = apply_quality_lot_transform(
@@ -607,7 +610,7 @@ class TestQualityInspectionLot:
         receive the qmih row from client 200, even if PRUEFLOS values collide."""
         df = apply_quality_lot_transform(
             spark,
-            [make_qals(PRUEFLOS="000000000001", MANDT="100")],
+            [make_qals(PRUEFLOS="000000000001", MANDANT="100")],
             [make_qmih(PRUEFLOS="000000000001", MANDT="200", AUFNR="000000099999")],
         )
         row = first_row(df)

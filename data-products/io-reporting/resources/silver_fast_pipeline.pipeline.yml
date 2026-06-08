@@ -28,6 +28,17 @@ resources:
         # once (to create recipe_process_line) BEFORE first starting this continuous fast pipeline,
         # otherwise it fails loud at startup with table-not-found.
         recipe_process_line_table: ${var.catalog}.${var.schema}.recipe_process_line
+        # Plant/site stage-gate config (silver/_plant_gate.py). Same governed tables the slow tier
+        # builds; the fast operational flows read them to scope rows to onboarded plants/warehouses.
+        # DEPLOY ORDER: the slow pipeline must build site_config_plant/site_config_warehouse before
+        # this continuous pipeline starts (same dependency as recipe_process_line). Read fail-loud.
+        site_config_plant_table: ${var.catalog}.${var.schema}.site_config_plant
+        site_config_warehouse_table: ${var.catalog}.${var.schema}.site_config_warehouse
+        # NOTE: the stg_warehouse_transfer_order broadcast-join OOM is now handled by a TARGETED
+        # .hint("merge") on that specific LTAP/LTAK join (silver/tables/warehouse_fast.py), NOT by a
+        # pipeline-wide auto-broadcast disable. This keeps efficient broadcast joins for small
+        # dimension/config lookups across the rest of the pipeline (prod throughput). The previous
+        # global `spark.sql.autoBroadcastJoinThreshold: "-1"` was removed.
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting
@@ -35,6 +46,14 @@ resources:
       libraries:
         - file:
             path: ../silver/dlt_silver_fast.py
+
+      # Editable-install the synced bundle root so the `silver`/`gold` packages are importable
+      # at DLT runtime (the entrypoint does `import silver.tables.*`). Without this the bundle
+      # root is not on sys.path and the run fails with ModuleNotFoundError: No module named 'silver'.
+      # ${workspace.file_path} is the deployed bundle files root (contains pyproject.toml).
+      environment:
+        dependencies:
+          - --editable ${workspace.file_path}
 
       # Daily restart window — low-traffic period (UTC)
       restart_window:

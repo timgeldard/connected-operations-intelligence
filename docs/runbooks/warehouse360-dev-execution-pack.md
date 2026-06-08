@@ -10,6 +10,26 @@ Validate that Warehouse360 Wave 1 app and dashboard consumption views can be dep
 connected_plant_dev.gold_io_reporting
 ```
 
+## DEV is a technical shakedown only
+
+DEV runs in **`dev_shakedown`** mode (`enable_hu_reconciliation=false`):
+`central_services` is externally owned and `published_dev` lacks the HU tables, so
+HU-dependent models are not materialised. This pack validates **deployment
+mechanics and non-HU contract structure only** — it is **not** business
+validation (DEV data is old/limited), and HU-dependent outputs stay **not
+business-validated** until UAT. None of the 7 governed source objects depend on
+HU. No contract is promoted; a green shakedown does not imply UAT readiness. See
+ADR `docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`.
+
+DEV shakedown sequence (full deploy detail in
+`docs/runbooks/ioreporting-first-dev-deployment.md`):
+
+1. `validation/ioreporting_dev_shakedown_preflight.sql` (non-HU reference tables present; HU may be absent).
+2. Run Silver (slow → fast → quality), then the Gold pipeline + `warehouse_snapshot`.
+3. Apply `gold_security_dev.sql` then `gold_serving_views_dev.sql` (HU secured views are intentionally absent in DEV).
+4. Run the Warehouse360 validation pack (below).
+5. Classify all outputs as **technical shakedown only**.
+
 ## What This Validates
 
 - Governed source objects exist before consumption views are deployed.

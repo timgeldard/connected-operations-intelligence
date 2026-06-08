@@ -12,6 +12,23 @@ This monorepo contains:
 
 ---
 
+## 📈 Current Warehouse360 Migration Status
+
+Warehouse360 is in transition from legacy `wh360` runtime views to governed contract-backed `vw_consumption_warehouse360_*` views.
+
+> [!WARNING]
+> **The governed path is prepared for DEV live validation but has not yet been live-validated.**
+>
+> **Do not switch `WAREHOUSE360_SOURCE_MODE=governed_contracts` until DEV and UAT validation have passed.**
+
+For complete status, maps, and guides, see:
+* [Warehouse360 Governed Path Status](docs/architecture/warehouse360-governed-path-status.md)
+* [Warehouse360 Contract Status](docs/contracts/warehouse360-contract-status.md)
+* [Warehouse360 Route-to-Contract Map](docs/contracts/warehouse360-route-to-contract-map.md)
+* [DEV Validation Runbook](docs/runbooks/warehouse360-dev-consumption-view-validation.md)
+
+---
+
 ## 🏗️ Repository Layout
 
 The repository is organized as a monorepo using `pnpm` workspaces for frontend/Node.js packages and standard paths for Python:

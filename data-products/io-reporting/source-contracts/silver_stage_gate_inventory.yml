@@ -1,0 +1,424 @@
+# Silver stage-gate inventory — every Bronze -> Silver output classified.
+# Contract: source-contracts/site_stage_gate_contract.md. Guard: scripts/ci/check_silver_stage_gate_coverage.py.
+#
+# gating_category (DOCUMENTARY ONLY — not validated by the CI guard):
+#   A = plant-gated by DIRECT plant field (WERKS on the main source)
+#   B = plant-gated by WAREHOUSE mapping (LGNUM -> WERKS via site_config_warehouse)
+#   C = plant-gated by DERIVED order/material/header context
+#   D = global reference/config EXEMPTION (no plant dimension)
+#   E = BLOCKED — no approved plant derivation
+#   Descriptive aliases used by the stage-gate (Silver Fast) entries are equivalent to the letters above:
+#     DIRECT_PLANT == A (direct plant field, e.g. AUFK/AFVC.WERKS, inspection_qals.WERK).
+#   (The WM/MM reference entries predate the aliases and keep the A/B letters.)
+# current_status: ENFORCED | EXEMPT | BLOCKED | NEEDS_MAPPING
+#   ENFORCED      = gate helper applied in code (Phase 1 reference set).
+#   EXEMPT        = global reference/config; requires exempt_reason.
+#   NEEDS_MAPPING = operational, plant/warehouse-derivable, gate NOT yet applied (Phase 2 backlog).
+#   BLOCKED       = no approved plant derivation; needs a source/owner decision.
+# Phase 1 enforces the runnable WM/MM reference set; all 40 outputs are classified for completeness.
+
+meta:
+  canonical_gate_plant: site_config_plant
+  canonical_gate_warehouse: site_config_warehouse
+  helper: silver/_plant_gate.py
+  phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; + quality source-guarded
+  enforced_count: 5            # 4 WM/MM + process_order (header)
+  source_guarded_count: 4      # process_order_operation / pi_sheet_execution / downtime_event + quality_inspection_lot — gate-ready/CDC-blocked
+  exempt_count: 16
+  needs_mapping_count: 15
+  blocked_count: 0
+
+silver_outputs:
+  # ── ENFORCED (Phase 1 — WM/MM reference set) ──────────────────────────────
+  - table_name: goods_movement
+    file: silver/tables/warehouse_fast.py
+    source_tables: [inventorymovement_mseg, materialdocument_mkpf]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "MSEG.WERKS (direct)"
+    gate_config_table: site_config_plant
+    product_area: ioreporting
+    current_status: ENFORCED
+    owner_action_required: none
+
+  - table_name: batch_stock
+    file: silver/tables/warehouse_fast.py
+    source_tables: [batchstock_mchb, materialmaster_mara]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "MCHB.WERKS (direct)"
+    gate_config_table: site_config_plant
+    product_area: stock
+    current_status: ENFORCED
+    owner_action_required: none
+
+  - table_name: warehouse_transfer_order
+    file: silver/tables/warehouse_fast.py
+    source_tables: [transferorderobjects_ltak, transferorderobjects_ltap]
+    gating_category: B
+    gate_field: warehouse_number
+    gate_join_path: "LTAK.LGNUM -> site_config_warehouse.plant_code (raw LTAK.WERKS unreliable; adds governed plant_id)"
+    gate_config_table: site_config_warehouse
+    product_area: warehouse
+    current_status: ENFORCED
+    owner_action_required: none
+
+  - table_name: warehouse_transfer_requirement
+    file: silver/tables/warehouse_fast.py
+    source_tables: [transferrequirementobjects_ltbk, transferrequirementobjects_ltbp]
+    gating_category: B
+    gate_field: warehouse_number
+    gate_join_path: "LTBK.LGNUM -> site_config_warehouse.plant_code (adds governed plant_id)"
+    gate_config_table: site_config_warehouse
+    product_area: warehouse
+    current_status: ENFORCED
+    owner_action_required: none
+
+  # ── NEEDS_MAPPING (operational; Phase 2 enforcement) ──────────────────────
+  - table_name: quality_inspection_lot
+    file: silver/tables/quality.py
+    source_tables: [inspection_qals, qualitymessage_qmih]
+    gating_category: DIRECT_PLANT   # plant is WERK on inspection_qals (NOT WERKS) — direct, once the contract is reconciled
+    gate_field: plant_code
+    gate_join_path: "inspection_qals.WERK (direct)"
+    gate_config_table: site_config_plant
+    product_area: quality
+    current_status: SOURCE_GUARDED
+    owner_action_required: >-
+      Source-guarded off (inspection_qals lacks AERUNID/AERECNO CDC metadata → no deterministic SCD1; only
+      AEDATTM present). Does NOT materialise, so it is NOT a recurring-cost flow. A plant gate is NOT yet
+      applied (deliberate): the transform's field contract mismatches the replicated inspection_qals, so a
+      gate/WERK fix in isolation gives no runtime benefit. FULL QM RECONCILIATION required before enabling:
+      (1) CDC metadata on inspection_qals (AERUNID/AERECNO) OR an approved snapshot/current-state design;
+      (2) field contract — plant WERK (not WERKS); LOTORIGIN/MENGE/MEINH appear renamed (HERKUNFT/LOSMENGE/
+      MENGENEINH — confirm via DD03L); VCODE/VENDAT (usage decision) are NOT on QALS (QAVE); ENSTDE/EENDDE/
+      KZLOESCH absent. MANDANT/client already fixed (#27). See sap_unresolved_sources.yml
+      (quality_inspection_qals_field_contract_and_cdc_gap) + validation/quality_qm_field_contract_check.sql.
+      Then add apply_plant_gate(quality) and reclassify ENFORCED. NOT a Warehouse360 feeder; no gold reads it.
+    validation_query_reference: validation/quality_qm_field_contract_check.sql
+
+  - table_name: reservation_requirement
+    file: silver/tables/warehouse_flow.py
+    source_tables: [reservationrequirement_resb]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "RESB.WERKS (direct)"
+    gate_config_table: site_config_plant
+    product_area: ioreporting
+    current_status: NEEDS_MAPPING
+    owner_action_required: "Apply apply_plant_gate (slow tier)."
+
+  - table_name: outbound_delivery
+    file: silver/tables/warehouse_flow.py
+    source_tables: [deliveryobjects_likp, deliveryobjects_lips]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "LIPS.WERKS (direct, item-level)"
+    gate_config_table: site_config_plant
+    product_area: ioreporting
+    current_status: NEEDS_MAPPING
+    owner_action_required: "Apply apply_plant_gate on item plant; header may span plants."
+
+  - table_name: purchase_order
+    file: silver/tables/inbound.py
+    source_tables: [procurementorderobject_ekko, procurementorderobject_ekpo]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "EKPO.WERKS (direct, item-level)"
+    gate_config_table: site_config_plant
+    product_area: ioreporting
+    current_status: NEEDS_MAPPING
+    owner_action_required: "Apply apply_plant_gate on item plant."
+
+  - table_name: handling_unit
+    file: silver/tables/inbound.py
+    source_tables: [handlingunit_vekp, handlingunit_vepo]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "VEKP/VEPO.WERKS (direct)"
+    gate_config_table: site_config_plant
+    product_area: warehouse360
+    current_status: NEEDS_MAPPING
+    owner_action_required: "Apply apply_plant_gate. Already HU-gated off in dev_shakedown (enable_hu_reconciliation)."
+
+  - table_name: physical_inventory_document
+    file: silver/tables/inbound.py
+    source_tables: [header_physical_inventory_doc_ikpf, physical_inventory_doc_items_iseg]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "ISEG.WERKS (direct)"
+    gate_config_table: site_config_plant
+    product_area: stock
+    current_status: NEEDS_MAPPING
+    owner_action_required: "Apply apply_plant_gate."
+
+  - table_name: stock_at_location
+    file: silver/tables/reference.py
+    source_tables: [storagelocationmaterial_mard]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "MARD.WERKS (direct)"
+    gate_config_table: site_config_plant
+    product_area: stock
+    current_status: NEEDS_MAPPING
+    owner_action_required: "Operational stock — apply apply_plant_gate(stock) in Phase 2."
+
+  - table_name: process_order
+    file: silver/tables/process_order.py
+    source_tables: [ordermaster_aufk, productionorderobject_afko, recipe_process_line]
+    gating_category: DIRECT_PLANT
+    gate_field: plant_code
+    gate_join_path: "AUFK.WERKS (direct). Gate applied EARLY on the AUFK static read (before AFKO/recipe joins + SCD1) for cost, plus an output gate for null-plant delete rows."
+    gate_config_table: site_config_plant
+    product_area: process_order
+    current_status: ENFORCED
+    owner_action_required: none
+    validation_query_reference: validation/silver_process_order_stage_gate_validation.sql
+
+  - table_name: process_order_operation
+    file: silver/tables/process_order.py
+    source_tables: [processorderobject_afvc, dbstructureoperationquantitydatevalues_afvv, productionorderobject_afko]
+    gating_category: DIRECT_PLANT
+    gate_field: plant_code
+    gate_join_path: "AFVC.WERKS (direct)"
+    gate_config_table: site_config_plant
+    product_area: process_order
+    current_status: SOURCE_GUARDED
+    owner_action_required: "Gate IS applied (apply_plant_gate on the output) — gate-ready. Flow does not materialise yet: source-guarded off because AFVV lacks AERUNID/AERECNO CDC metadata (pp_pi_flows_missing_cdc_metadata). Becomes ENFORCED automatically when AFVV CDC is replicated."
+    validation_query_reference: validation/silver_process_order_stage_gate_validation.sql
+
+  - table_name: pi_sheet_execution
+    file: silver/tables/process_order.py
+    source_tables: [actualpistartenddatetime_zmanpex_e04_002]
+    gating_category: DIRECT_PLANT
+    gate_field: plant_code
+    gate_join_path: "ZWERKS (direct)"
+    gate_config_table: site_config_plant
+    product_area: process_order
+    current_status: SOURCE_GUARDED
+    owner_action_required: "Gate IS applied (apply_plant_gate on the output) — gate-ready. Source-guarded off (no AERUNID/AERECNO CDC metadata). Becomes ENFORCED when CDC is replicated."
+    validation_query_reference: validation/silver_process_order_stage_gate_validation.sql
+
+  - table_name: downtime_event
+    file: silver/tables/process_order.py
+    source_tables: [downtime_zpexpm_dwnt]
+    gating_category: DIRECT_PLANT
+    gate_field: plant_code
+    gate_join_path: "WERKS (direct)"
+    gate_config_table: site_config_plant
+    product_area: process_order
+    current_status: SOURCE_GUARDED
+    owner_action_required: "Gate IS applied (apply_plant_gate on the output) — gate-ready. Source-guarded off (no AERUNID/AERECNO CDC metadata). Becomes ENFORCED when CDC is replicated."
+    validation_query_reference: validation/silver_process_order_stage_gate_validation.sql
+
+  - table_name: capacity_utilisation
+    file: silver/tables/reference.py
+    source_tables: [shiftparametersavailablecapacity_kapa, capacityheadersegment_kako]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "KAKO.WERKS (direct)"
+    gate_config_table: site_config_plant
+    product_area: process_order
+    current_status: NEEDS_MAPPING
+    owner_action_required: "Apply gate. Currently source-guarded off (KAPA cols absent)."
+
+  - table_name: work_centre
+    file: silver/tables/reference.py
+    source_tables: [workcenterheader_crhd, workcentertext_crtx]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "CRHD.WERKS (direct)"
+    gate_config_table: site_config_plant
+    product_area: process_order
+    current_status: NEEDS_MAPPING
+    owner_action_required: "Apply gate. Currently source-guarded off (CRHD/CRTX not replicated)."
+
+  - table_name: storage_bin
+    file: silver/tables/warehouse_reference.py
+    source_tables: [storagebin_lagp, quant_lqua, warehouse_plant_mapping]
+    gating_category: B
+    gate_field: warehouse_number
+    gate_join_path: "LAGP.LGNUM -> site_config_warehouse"
+    gate_config_table: site_config_warehouse
+    product_area: warehouse
+    current_status: NEEDS_MAPPING
+    owner_action_required: "Apply apply_warehouse_gate; today plant_code is coalesced/SHARED-fallback — replace with governed mapping."
+
+  - table_name: storage_type
+    file: silver/tables/reference.py
+    source_tables: [wm_storagetypes_t301, wm_storagetypesdescription_t301t]
+    gating_category: B
+    gate_field: warehouse_number
+    gate_join_path: "T301.LGNUM -> site_config_warehouse"
+    gate_config_table: site_config_warehouse
+    product_area: warehouse
+    current_status: NEEDS_MAPPING
+    owner_action_required: "Warehouse-master; decide gate-to-active-warehouses vs exempt-as-reference (recorded decision)."
+
+  - table_name: warehouse_plant_mapping
+    file: silver/tables/warehouse_reference.py
+    source_tables: [warehouseforplant_t320]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "T320.WERKS"
+    gate_config_table: site_config_plant
+    product_area: warehouse
+    current_status: NEEDS_MAPPING
+    owner_action_required: "SAP-derived warehouse<->plant reference. Decide: gate to active plants vs exempt (governed mapping is site_config_warehouse, not this)."
+
+  - table_name: warehouse_storage_location_mapping
+    file: silver/tables/reference.py
+    source_tables: [warehouseforplant_t320]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "T320.WERKS"
+    gate_config_table: site_config_plant
+    product_area: warehouse
+    current_status: NEEDS_MAPPING
+    owner_action_required: "Reference mapping; decide gate vs exempt."
+
+  - table_name: warehouse_transfer_order_header_delete
+    file: silver/tables/warehouse_fast.py
+    source_tables: [transferorderobjects_ltak]
+    gating_category: B
+    gate_field: warehouse_number
+    gate_join_path: "LTAK.LGNUM -> site_config_warehouse"
+    gate_config_table: site_config_warehouse
+    product_area: warehouse
+    current_status: NEEDS_MAPPING
+    owner_action_required: "Delete-tombstone stream for warehouse_transfer_order; low risk (delete keys), gate for consistency in Phase 2."
+
+  - table_name: material
+    file: silver/tables/reference.py
+    source_tables: [materialmaster_mara, materialforplant_marc, materialdescription_makt]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "MARC.WERKS (plant-extended master)"
+    gate_config_table: site_config_plant
+    product_area: ioreporting
+    current_status: NEEDS_MAPPING
+    owner_action_required: "BORDERLINE master: explicit decision required — gate plant-extended rows to active plants (downstream sees onboarded-plant materials only) vs exempt-as-master. Do NOT default silently."
+
+  - table_name: storage_location
+    file: silver/tables/reference.py
+    source_tables: [storagelocation_t001l]
+    gating_category: A
+    gate_field: plant_code
+    gate_join_path: "T001L.WERKS"
+    gate_config_table: site_config_plant
+    product_area: ioreporting
+    current_status: NEEDS_MAPPING
+    owner_action_required: "BORDERLINE master: gate to active plants vs exempt-as-master (recorded decision)."
+
+  # ── EXEMPT (global reference / config; no plant dimension) ─────────────────
+  - table_name: movement_type_classification
+    file: silver/tables/reference.py
+    source_tables: [movementtype_t156, movementtypetext2_t156t]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Global movement-type enumeration; no plant dimension."
+
+  - table_name: plant
+    file: silver/tables/reference.py
+    source_tables: [plantcode_t001w]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Plant master dimension (the plant axis itself); global reference. Could be narrowed to active plants in future if required."
+
+  - table_name: customer
+    file: silver/tables/reference.py
+    source_tables: [customermaster_kna1]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Customer master; no plant dimension."
+
+  - table_name: material_valuation
+    file: silver/tables/reference.py
+    source_tables: [materialvaluation_mbew]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Valuation keyed by material/valuation-area; no plant dimension."
+
+  - table_name: vendor
+    file: silver/tables/reference.py
+    source_tables: [vendormaster_lfa1]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Vendor master; no plant dimension."
+
+  - table_name: recipe_process_line
+    file: silver/tables/reference.py
+    source_tables: [internalnumberobjectlink_inob, objectcharacteristics_ausp, characteristicvaluedescription_cawnt]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Recipe-object -> production-line classification map; global, keyed by recipe object."
+
+  - table_name: material_uom_conversion
+    file: silver/tables/reference.py
+    source_tables: [materialconversion_marm]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Material UoM conversion factors; global, no plant dimension."
+
+  - table_name: storage_type_role_mapping
+    file: silver/tables/reference.py
+    source_tables: [storage_role_config_seed]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Governed configuration (storage-type roles), already plant/warehouse-scoped by config + review_status; not operational SAP data."
+
+  - table_name: outbound_delivery_header_delete
+    file: silver/tables/warehouse_flow.py
+    source_tables: [deliveryobjects_likp]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Delete-tombstone key stream (header) for outbound_delivery; no plant dimension carried. Parent table is gated."
+
+  - table_name: purchase_order_header_delete
+    file: silver/tables/inbound.py
+    source_tables: [procurementorderobject_ekko]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Delete-tombstone key stream (header) for purchase_order; no plant dimension carried. Parent table is gated."
+
+  - table_name: site_config_plant
+    file: silver/tables/reference.py
+    source_tables: [site_config_plant_seed]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "The plant gate config itself (source of truth). Cannot be gated by itself."
+
+  - table_name: site_config_warehouse
+    file: silver/tables/reference.py
+    source_tables: [site_config_warehouse_seed]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "The warehouse->plant gate mapping itself (source of truth)."
+
+  - table_name: site_config_storage_type_role
+    file: silver/tables/reference.py
+    source_tables: [site_config_storage_type_role_seed]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Governed gate/readiness config; not operational SAP data."
+
+  - table_name: site_config_movement_type_classification
+    file: silver/tables/reference.py
+    source_tables: [site_config_movement_type_classification_seed]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Governed config; movement-type overlay, global."
+
+  - table_name: site_config_staging_method
+    file: silver/tables/reference.py
+    source_tables: [site_config_staging_method_seed]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Governed config; not operational SAP data."
+
+  - table_name: site_config_kpi_enablement
+    file: silver/tables/reference.py
+    source_tables: [site_config_kpi_enablement_seed]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Governed config (per-plant KPI enablement); governance dimension, not gated operational data."

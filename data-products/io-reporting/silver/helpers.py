@@ -40,6 +40,75 @@ def bronze_published() -> str:
     return f"{catalog}.{schema}"
 
 
+def relation_exists(fq_name: str) -> bool:
+    """True if a (fully-qualified) table/view exists, safe to call anywhere in pipeline code.
+
+    Uses a lazy `spark.read.table` analysis probe rather than `spark.catalog.tableExists`, which is
+    a BLOCKED Py4J API in the DLT serverless graph-construction environment (PY4J_BLOCKED_API).
+    `read.table` resolves the relation (metadata only, no Spark job) and raises if it is absent.
+    Self-healing: returns True automatically once the relation exists.
+    """
+    try:
+        get_spark().read.table(fq_name)
+        return True
+    except Exception:  # noqa: BLE001 - missing relation is a normal bootstrap condition
+        return False
+
+
+def bronze_table_exists(name: str) -> bool:
+    """True if a bronze SAP source table exists, safe to call at module-eval to conditionally
+    define a DLT table. See relation_exists for why this avoids spark.catalog.tableExists."""
+    return relation_exists(f"{BRONZE}.{name}")
+
+
+def bronze_columns_exist(name: str, columns) -> bool:
+    """True only if bronze SAP table `name` exists AND contains every column in `columns`.
+
+    Same lazy-probe rationale as relation_exists (spark.catalog.tableExists is blocked at DLT
+    graph-construction). For source-guarding models that reference SAP columns not guaranteed to be
+    replicated in every environment. Self-healing once the columns are replicated. Reading `.columns`
+    only inspects the resolved schema (no Spark job).
+    """
+    try:
+        present = set(get_spark().read.table(f"{BRONZE}.{name}").columns)
+    except Exception:  # noqa: BLE001 - missing source is a normal bootstrap condition
+        return False
+    return all(c in present for c in columns)
+
+
+def col_or_null(df, name: str, dtype: str, alias_prefix: str | None = None) -> Column:
+    """Reference a source column when it is present, else a typed NULL.
+
+    Use for OPTIONAL source columns that are not guaranteed to be replicated in every
+    environment, so a missing column degrades to a typed NULL instead of failing the run with
+    UNRESOLVED_COLUMN. Self-healing: when the column is later replicated it is used automatically.
+    Does NOT change business meaning — never substitute a different field. `dtype` is a Spark DDL
+    type string (e.g. "string", "double") used only for the NULL branch.
+    """
+    if name in df.columns:
+        return F.col(f"{alias_prefix}.{name}" if alias_prefix else name)
+    return F.lit(None).cast(dtype)
+
+
+def hu_reconciliation_enabled() -> bool:
+    """Whether handling-unit (HU) models should be materialised.
+
+    Gated by the `enable_hu_reconciliation` Spark conf (set from the bundle variable;
+    see databricks.yml). In `dev_shakedown` mode this is false because the externally
+    owned `published_dev.central_services` is missing handlingunit_vekp/vepo — so the
+    HU silver/gold models are not defined rather than failing the run. UAT/PROD
+    (`full_validation`) set it true. Defaults to true so a missing conf never silently
+    drops HU in a real environment.
+    """
+    spark = get_spark()
+    return str(spark.conf.get("enable_hu_reconciliation", "true")).strip().lower() == "true"
+
+
+def deployment_mode() -> str:
+    """`dev_shakedown` or `full_validation` (Spark conf, from the bundle variable)."""
+    return str(get_spark().conf.get("deployment_mode", "full_validation")).strip().lower()
+
+
 # AUFK.AUTYP order category for PP-PI process orders. Verified against live
 # connected_plant_uat.sap: process orders are AUTYP='40' (AUART ZI01/ZI02/ZI05/...);
 # AUTYP='10' returns zero rows in Kerry's config.
@@ -58,9 +127,17 @@ PROCESS_LINE_ATINN = None
 # time (e.g. zero-stripping, date-casting). Shifting these transformations to the
 # replication layer can avoid post-ingestion Spark processing overhead and reduce
 # hidden compute/storage costs.
-def strip_zeros(col_name: str) -> Column:
-    """Apply SAP ALPHA-style leading-zero removal for numeric identifiers."""
-    value = F.trim(F.col(col_name).cast("string"))
+def strip_zeros(col: "str | Column") -> Column:
+    """Apply SAP ALPHA-style leading-zero removal for numeric identifiers.
+
+    Accepts either a column name (str, wrapped with F.col) or a pyspark Column used directly,
+    so callers can pass an expression such as strip_zeros(F.coalesce(F.col("i.EBELN"), ...)).
+    Passing a Column to F.col previously raised NOT_ITERABLE. Semantics are unchanged for the
+    str case: NULL/blank -> NULL; all-zero -> NULL; numeric strings have leading zeros stripped;
+    non-numeric values pass through unchanged.
+    """
+    column = F.col(col) if isinstance(col, str) else col
+    value = F.trim(column.cast("string"))
     stripped = F.regexp_replace(value, r"^0+", "")
     return (
         F.when(value.isNull() | (value == ""), None)
