@@ -38,9 +38,17 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="ConnectIO API", version="0.1.0", lifespan=lifespan)
 
+# Allowed CORS origins are environment-driven (comma-separated CORS_ALLOW_ORIGINS); defaults to the
+# local Angular dev server so local development is unchanged. Set CORS_ALLOW_ORIGINS per deployed env.
+_cors_allow_origins = [
+    o.strip()
+    for o in os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:4200").split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200"],
+    allow_origins=_cors_allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
