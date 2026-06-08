@@ -4,6 +4,16 @@ This runbook defines the gates that must pass before Warehouse360 governed contr
 
 ## UAT is the first full-validation environment
 
+> **First UAT attempt (2026-06-08) — Outcome A, did NOT complete.** See
+> [UAT validation results](../architecture/warehouse360-uat-validation-results.md). A first-time deploy
+> surfaced a stage-gate leak + a warehouse config bug (both fixed in
+> `fix/warehouse360-stage-gate-inbound-outbound-p817`), and the validating user has **no write access to
+> `published_uat.security.model`** (and owns the deployed Gold objects), so RLS/entitlement could not be
+> proven. This is why UAT data-shape validation must be runnable **without** the corporate security model:
+> see the planned **validation security modes** (`validation_open` for data-shape, `validation_fixture`
+> for representative entitlement testing), to be implemented in follow-up PRs and split into
+> data-shape / fixture-RLS / strict-RLS gates.
+
 DEV is a **technical shakedown only** (`dev_shakedown`, `enable_hu_reconciliation=false`)
 — see ADR `docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`.
 **UAT runs in `full_validation` mode** (`enable_hu_reconciliation=true`) and is the

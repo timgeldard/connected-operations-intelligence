@@ -10,6 +10,28 @@
 > (`validation/silver_stage_gate_validation.sql` §3) pass only after the next full run. Gating
 > `process_order` (Phase 2) removes that bottleneck.
 
+> **Phase 2 update (2026-06-08) — inbound/outbound enforcement, T320-sourced warehouse mapping, P817 onboarding.**
+> A first-time UAT deploy + C061-scoped Silver run surfaced two gate gaps and a config bug:
+> 1. **`inbound.py` (purchase_order, physical_inventory_document, handling_unit) and `warehouse_flow.py`
+>    (outbound_delivery, reservation_requirement) were NOT gated** — `purchase_order` materialised 640
+>    plants / 18.8M rows in UAT. They are now `apply_plant_gate`-gated and reclassified **ENFORCED** in
+>    `silver_stage_gate_inventory.yml` (so the coverage guard now enforces them).
+> 2. **The warehouse→plant relationship is now sourced from SAP T320** (`warehouse_storage_location_mapping`),
+>    not the hand-maintained `site_config_warehouse` seed. `active_warehouses_df` derives
+>    `(warehouse_number → plant_code)` from T320 ∩ active plants, so the LGNUM↔WERKS mapping cannot drift.
+> 3. **Config bug fixed:** the seed mis-mapped **C061 → warehouse 208**; T320/T300 confirm **C061 → 104**
+>    and **208 belongs to P817** (Jackson [MFG], US). `site_config_warehouse`, the bootstrap, and the
+>    `storage_type_role_mapping` APPROVED set are corrected to C061→104 (the prior APPROVED C061/208 rows
+>    were dropped; the correct C061/104 + P817/208 rows, already present from T301/T301T, were APPROVED).
+> 4. **P817 (Jackson [MFG], US, warehouse 208) onboarded** as an active gated plant (`site_config_plant`).
+> 5. **Master tables wired:** T300 → `warehouse_master`; T320 → `warehouse_storage_location_mapping`
+>    (existing); T001W → `plant` (existing); T301/T301T → `storage_type` (existing).
+>
+> NOT runtime-validated (the UAT environment was torn down after the diagnostic run; no local Spark). The
+> slow-tier `inbound.py` gate reads `site_config_plant` built in the same pipeline — needs a DEV pipeline
+> run to confirm DLT orders that dependency. `site_config_warehouse` is retained for readiness reporting
+> only; the gate no longer reads it.
+
 ## Principle
 
 - **Bronze is raw and unfiltered.** No plant/site filtering is ever applied to Bronze.

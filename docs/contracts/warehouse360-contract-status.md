@@ -5,6 +5,13 @@
 > representative identities tested; DEV `*_secured` views are pass-throughs) and two views are
 > created-empty in the DEV shakedown. Full evidence:
 > [DEV live-validation results](../architecture/warehouse360-dev-live-validation-results.md).
+>
+> **UAT (2026-06-08): validation attempted, did NOT complete (Outcome A).** A first-time UAT deploy
+> surfaced a stage-gate leak (ungated inbound/outbound silver) and a warehouse config bug (C061→104, not
+> 208), both fixed in `fix/warehouse360-stage-gate-inbound-outbound-p817`. Gold/consumption views were
+> not run, and RLS/entitlement could not be proven (no write access to `published_uat.security.model`;
+> deployer owns the Gold objects). No contract advances; no app cutover. Evidence:
+> [UAT validation results](../architecture/warehouse360-uat-validation-results.md).
 
 | Contract ID | View | Runtime status | Validation status | Route-covered? | Notes (DEV 2026-06-08) |
 |---|---|---|---|---|---|
