@@ -144,7 +144,7 @@ is correct and isolating the remaining blockers:
 
 **New CI guard:** `scripts/ci/check_warehouse360_consumption_columns.py` (+ tests) statically verifies
 every source column each consumption view SELECTs resolves against the Gold serving view it reads FROM,
-using `contracts/warehouse360_consumption_column_contract.yml` (captured Gold columns + approved aliases
+using `data-products/io-reporting/contracts/warehouse360_consumption_column_contract.yml` (captured Gold columns + approved aliases
 + documented exceptions). A view is **not live-validated** until its exception list is empty; the guard
 prints the outstanding blockers on every run.
 
@@ -163,8 +163,9 @@ source-mode change; no UAT/PROD; no app cutover. DEV technical only.
 
 Classified every remaining blocker against the live Silver/Gold schemas (read-only). Decisions and the
 per-field rationale are in `docs/decisions/ADR-0004-warehouse360-backlog-grain-and-missing-columns.md`;
-machine-readable classes are in `contracts/warehouse360_consumption_column_contract.yml`. **No runtime
-change** in this analysis — implementation follows as scoped Gold PRs.
+machine-readable classes are in
+`data-products/io-reporting/contracts/warehouse360_consumption_column_contract.yml`. **No runtime change**
+in this analysis — implementation follows as scoped Gold PRs.
 
 | View | Blocker(s) | Class | Resolution (ADR-0004) |
 |---|---|---|---|

@@ -82,10 +82,13 @@ bin-level discrepancy model if bin-level reconciliation is a real requirement.
 
 ### D7 — `overview`: fix the data quality (null plant + dup)
 Base `gold_warehouse_kpi_snapshot` (single snapshot date, 545 rows) has **2 rows with NULL `plant_code`**,
-which produce the 1 duplicate `(plant_id, snapshot_ts)` (NULL plants collapse on the key). **Recommended:**
-filter `plant_code IS NOT NULL` in `gold_warehouse_kpi_snapshot` (or the consumption view) **and**
-investigate why null-plant rows exist (likely a SHARED/unmapped bucket in the snapshot aggregation). Do
-not silently hide them in the consumption view without agreeing it as contract behaviour.
+which produce the 1 duplicate `(plant_id, snapshot_ts)`. The snapshot is assembled with full outer joins
+on `plant_code`; in Spark, NULL join keys do not match each other, so NULL-plant rows from different input
+frames can survive as separate rows and then collapse to the same `(NULL, snapshot_ts)` contract key.
+**Recommended:** filter `plant_code IS NOT NULL` from each snapshot input frame before the full outer join
+(or, less preferably, in the final `gold_warehouse_kpi_snapshot` / consumption view) **and** investigate
+why null-plant rows exist (likely a SHARED/unmapped bucket in the snapshot aggregation). Do not silently
+hide them in the consumption view without agreeing it as contract behaviour.
 
 ## Consequences
 - Implementation proceeds as **scoped follow-up PRs**, each tracing field → Silver source → join key →
@@ -94,6 +97,10 @@ not silently hide them in the consumption view without agreeing it as contract b
   2. `feat(gold): inbound PO-line-detail + material-grain shortfall models` (D1, D2).
   3. `fix(gold): overview null-plant filter` (D7).
   4. `docs(contracts): mark carrier / storage_location_id / bin_id optional-or-removed` (D4/D5/D6).
+- D1/D2 introduce new Gold tables, so follow-up implementation PRs must obey the active hardening-sprint
+  rule: do not add a new Gold table unless (1) its Silver dependency already exists, (2) its grain is
+  documented in `data-products/io-reporting/gold/design_spec.md`, (3) unit tests are added, (4)
+  `docs/data_contracts.md` is updated, and (5) freshness impact is assessed.
 - Until then the affected views stay not-live-validated; the consumption-column guard keeps the blockers
   visible. Legacy `wh360` runtime is unchanged; the app stays on legacy mode.
 
