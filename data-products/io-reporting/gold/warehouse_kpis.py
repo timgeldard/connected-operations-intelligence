@@ -349,7 +349,9 @@ def gold_transfer_requirement_material_backlog():
         open_requirements
         .groupBy("plant_code", "material_code")
         .agg(
-            F.coalesce(F.sum("open_quantity"), F.lit(0.0)).alias("open_tr_qty"),
+            F.coalesce(F.sum("open_quantity"), F.lit(0))
+            .cast("decimal(18,4)")
+            .alias("open_tr_qty"),
             F.count(F.lit(1)).alias("open_tr_items"),
             F.min("created_datetime").alias("oldest_tr_creation_datetime"),
         )
