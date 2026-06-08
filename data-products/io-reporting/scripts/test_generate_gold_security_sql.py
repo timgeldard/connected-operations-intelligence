@@ -15,8 +15,12 @@ gen = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gen)
 
 
+@pytest.fixture(autouse=True)
+def _use_tmp_cwd(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+
 def _gen(tmp_path, mode, env="uat"):
-    os.chdir(tmp_path)
     gen.generate_sql(env_filter=env, security_mode=mode)
     sql_dir = tmp_path / "resources" / "sql"
     return {p.name: p.read_text(encoding="utf-8") for p in sql_dir.glob("*.sql")}
@@ -69,7 +73,6 @@ def test_strict_and_open_have_no_enabled_guard(tmp_path):
 
 @pytest.mark.parametrize("mode", ["validation-open", "validation-fixture"])
 def test_prod_forbids_validation_modes(tmp_path, mode):
-    os.chdir(tmp_path)
     with pytest.raises(SystemExit) as exc:
         gen.generate_sql(env_filter="prod", security_mode=mode)
     assert "forbidden for prod" in str(exc.value)
@@ -87,6 +90,11 @@ def test_deterministic(tmp_path):
 
 
 def test_unknown_mode_rejected(tmp_path):
-    os.chdir(tmp_path)
     with pytest.raises(SystemExit):
         gen.generate_sql(env_filter="uat", security_mode="bogus")
+
+
+def test_unknown_env_rejected(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        gen.generate_sql(env_filter="bogus", security_mode="strict")
+    assert "Unknown --env" in str(exc.value)
