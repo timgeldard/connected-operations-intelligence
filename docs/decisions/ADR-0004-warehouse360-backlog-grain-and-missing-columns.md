@@ -3,10 +3,10 @@
 **Status:** Proposed (pending Gold/data-product owner ratification) · **Date:** 2026-06-08
 **Supersedes/extends:** the blocker set from PR #39 (DEV live validation) and PR #40 (naming reconciliation).
 
-> This is a **design-decision record**. It changes **no runtime** — no Gold pipeline code, no consumption
-> SQL, no source mode, no contract promotion. It records the recommended target Gold/contract changes so
-> the implementation can proceed in scoped follow-up PRs. It does **not** make Warehouse360 governed mode
-> ready, does **not** prove UAT readiness, and does **not** switch the app source mode.
+> This is a **design-decision record plus partial Gold implementation** for low-risk same-grain fields:
+> outbound SD partner roles / delivery dates / header gross weight, and order-grain staging UoM/material
+> description. It does **not** add new detail-grain Gold tables, promote the contract, make Warehouse360
+> governed mode ready, prove UAT readiness, or switch the app source mode.
 
 ## Context
 
@@ -50,17 +50,22 @@ The contract grain is **component-level** (`order_id + reservation_no + batch_id
 - **Recommended:** reduce the contract to **order grain** for now (drop `reservation_no`/`batch_id` from
   the contract, or mark optional) — the staging *workload* KPI is naturally per order — and add the
   order-grain fields that ARE available: `uom ← process_order.order_quantity_uom`,
-  `material_name ← join silver.material on material_code`, `sap_order ← order_number` (confirm intent).
+  `material_name ← join silver.material on plant_code + material_code` (material is plant-grain),
+  `sap_order ← order_number` (confirm intent).
 - Alternative: build a component-grain staging model from `silver.warehouse_transfer_requirement`
   (has reservation/batch/material) if the app genuinely needs component rows.
 
-### D4 — `outbound_backlog`: add available columns, join customer dim, decide customer_id, drop carrier
+### D4 — `outbound_backlog`: add available columns, carry sold-to + ship-to, join customer dim, drop carrier
 `silver.outbound_delivery` (same delivery grain) HAS `actual_goods_issue_date`, `delivery_date`,
-`gross_weight` → **add to `gold_delivery_pick_status`** (`missing-but-available-upstream`).
-`customer_name` → **join `silver.customer`** (`customer_code` ↔ `sold_to_customer`)
-(`missing-requires-dimension-join`). `customer_id` → **contract-semantic decision**: define `customer_id`
-as the **sold-to party** and map `sold_to_customer AS customer_id` *only if ratified*; otherwise keep it
-a documented blocker (do not assume the equivalence). `carrier` → **no replicated source**
+and header `delivery_gross_weight` (LIKP `BTGEW`) → **add to `gold_delivery_pick_status`**
+(`missing-but-available-upstream`). Item `gross_weight` (LIPS `BRGEW`) is item-grain; do not surface it
+at delivery grain without an explicit aggregation rule. SD customer roles should be explicit:
+**carry both** `ship_to_customer` (LIKP `KUNNR`) and `sold_to_customer` (LIKP `KUNAG`) in Gold. The current
+Warehouse360 app contract defines `customer_id` as **ship-to customer number**, so map
+`ship_to_customer AS customer_id` unless the app contract is ratified to change. `customer_name` should
+join `silver.customer` on the selected customer role (for the current contract: ship-to); if consumers
+need both names, add explicit `ship_to_customer_name` and `sold_to_customer_name` fields rather than
+overloading `customer_name`. `carrier` → **no replicated source**
 (LIKP has no carrier; it lives on shipment/VBPA, not replicated) → **mark the contract field optional or
 remove it.**
 
@@ -84,9 +89,9 @@ investigate why null-plant rows exist (likely a SHARED/unmapped bucket in the sn
 not silently hide them in the consumption view without agreeing it as contract behaviour.
 
 ## Consequences
-- Implementation proceeds as **scoped follow-up PRs**, each tracing field → Silver source → join key →
+- Remaining implementation proceeds as **scoped follow-up PRs**, each tracing field → Silver source → join key →
   grain → contract (per the prompt's Phase 7), with a Gold rerun + DEV re-validation:
-  1. `fix(gold): outbound + staging available-upstream columns + dimension joins` (D3 order-grain part, D4 adds/joins).
+  1. DONE in this PR: `fix(gold): outbound + staging available-upstream columns + dimension joins` (D3 order-grain part, D4 adds/joins; outbound carries both sold-to and ship-to).
   2. `feat(gold): inbound PO-line-detail + material-grain shortfall models` (D1, D2).
   3. `fix(gold): overview null-plant filter` (D7).
   4. `docs(contracts): mark carrier / storage_location_id / bin_id optional-or-removed` (D4/D5/D6).
@@ -95,4 +100,5 @@ not silently hide them in the consumption view without agreeing it as contract b
 
 ## What was NOT decided here
 App cutover, source-mode change, contract promotion, UAT, and the exact owning Gold module for each new
-model (gold owner's call). `customer_id`-as-sold-to (D4) requires explicit business ratification.
+model (gold owner's call). Exposing sold-to to the app contract as a separate field requires explicit
+business/API ratification; current `customer_id` remains ship-to.
