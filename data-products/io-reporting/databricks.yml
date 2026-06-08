@@ -127,10 +127,13 @@ targets:
     mode: production
     workspace:
       profile: uat
-      # TODO(deploy-decoupling): tie this to a deploy SERVICE PRINCIPAL rather than the deploying user,
-      # e.g. root_path: /Workspace/Users/<service-principal-app-id>/.bundle/${bundle.name}/${bundle.target}.
-      # NOT /Workspace/Shared (writable by all workspace users — a security downgrade for UAT/PROD).
-      # Left user-scoped until the deploy service-principal identity is provided.
+      # DEPLOYER-INDEPENDENT root is the goal (user-scoped paths create a separate bundle instance per
+      # deployer → duplicate pipeline/job instances + write conflicts on the same catalog/schema). The
+      # correct target is a platform-provisioned, ACCESS-CONTROLLED shared folder or a deploy service
+      # principal — not settable from here (verified 2026-06): /Workspace/Deployments/... → 403
+      # PERMISSION_DENIED (folder not provisioned for the deployer); /Workspace/Shared/... → writable by
+      # ALL workspace users (security downgrade, validator-flagged). Kept user-scoped so validate/deploy
+      # stay functional; PLATFORM TASK: provision an access-controlled deploy root (or SP) and repoint here.
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: connected_plant_uat
@@ -149,10 +152,13 @@ targets:
     mode: production
     workspace:
       profile: prod
-      # TODO(deploy-decoupling): tie this to a deploy SERVICE PRINCIPAL rather than the deploying user,
-      # e.g. root_path: /Workspace/Users/<service-principal-app-id>/.bundle/${bundle.name}/${bundle.target}.
-      # NOT /Workspace/Shared (writable by all workspace users — a security downgrade for UAT/PROD).
-      # Left user-scoped until the deploy service-principal identity is provided.
+      # DEPLOYER-INDEPENDENT root is the goal (user-scoped paths create a separate bundle instance per
+      # deployer → duplicate pipeline/job instances + write conflicts on the same catalog/schema). The
+      # correct target is a platform-provisioned, ACCESS-CONTROLLED shared folder or a deploy service
+      # principal — not settable from here (verified 2026-06): /Workspace/Deployments/... → 403
+      # PERMISSION_DENIED (folder not provisioned for the deployer); /Workspace/Shared/... → writable by
+      # ALL workspace users (security downgrade, validator-flagged). Kept user-scoped so validate/deploy
+      # stay functional; PLATFORM TASK: provision an access-controlled deploy root (or SP) and repoint here.
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: connected_plant_prod
