@@ -225,6 +225,12 @@ def generate_sql(env_filter: str | None = None, security_mode: str = "strict"):
     if env_filter and env_filter not in ENVIRONMENTS:
         raise SystemExit(f"Unknown --env '{env_filter}' (allowed: {', '.join(ENVIRONMENTS)}).")
 
+    if security_mode in VALIDATION_MODES and not env_filter:
+        raise SystemExit(
+            f"An explicit --env is required when using validation security modes "
+            f"(allowed: {', '.join(e for e in ENVIRONMENTS if e != 'prod')})."
+        )
+
     envs = {env_filter: ENVIRONMENTS[env_filter]} if env_filter else ENVIRONMENTS
 
     # GUARDRAIL: prod must use the real corporate security model — never a pass-through or fixture.
