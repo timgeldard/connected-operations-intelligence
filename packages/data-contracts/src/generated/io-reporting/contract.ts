@@ -267,10 +267,10 @@ export const Warehouse360StockExceptionsContract = {
 } as const;
 
 /**
- * Material shortfalls and staging transfer requirement backlogs. Candidate contract pending DEV profiling of grain, primary key uniqueness, plant_id nullability, data types, and freshness.
+ * Material shortfalls — open transfer-requirement backlog aggregated to plant x material (ADR-0004 D2; sourced from gold_transfer_requirement_material_backlog / silver.warehouse_transfer_requirement). Candidate contract pending DEV profiling.
 
  * Source View: vw_consumption_warehouse360_shortfalls
- * Version: 0.1.0
+ * Version: 0.2.0
  */
 export interface Warehouse360Shortfalls {
   /** SAP plant ID */
@@ -287,7 +287,7 @@ export interface Warehouse360Shortfalls {
 
 export const Warehouse360ShortfallsContract = {
   id: "warehouse360.shortfalls",
-  version: "0.1.0",
+  version: "0.2.0",
   domain: "warehouse",
   owner: "warehouse-operations",
   lifecycle: "draft",

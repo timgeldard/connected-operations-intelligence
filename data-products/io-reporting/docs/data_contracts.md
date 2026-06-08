@@ -124,6 +124,14 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Freshness Expectation**: Batch triggered.
 * **Snapshot Caveat**: Daily append snapshots are intentionally not part of this contract until retention and scheduling requirements are agreed.
 
+### 8a. `gold.gold_transfer_requirement_material_backlog`
+* **Status**: Production-candidate (first-wave)
+* **Grain**: 1 row per plant × material
+* **Source Silver Tables**: `silver.warehouse_transfer_requirement`
+* **Purpose**: open transfer-requirement backlog aggregated to plant × material for the Warehouse360 `shortfalls` governed view (ADR-0004 D2). Open = not processing-complete and open_quantity > 0.
+* **Aggregation Logic**: group open TR lines by plant × material → `open_tr_qty` = SUM(open_quantity), `open_tr_items` = COUNT(*), `oldest_tr_creation_date` = MIN(created_datetime) cast to date. Warehouses/queues/storage types are aggregated away to match the contract's plant × material grain (the queue/storage-type view remains `gold_transfer_requirement_backlog`).
+* **Security**: consumed via `gold_transfer_requirement_material_backlog_secured` (the shortfalls view reads the RLS-secured view, not the base table).
+
 ### 9. `gold.gold_stock_expiry_risk`
 * **Status**: Pilot-grade
 * **Grain**: 1 row per plant × material × batch × base UOM

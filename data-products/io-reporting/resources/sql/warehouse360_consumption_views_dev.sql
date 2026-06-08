@@ -120,7 +120,8 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_stock_exceptions TO `users`;
 
 
 -- 6. Shortfalls
--- Grain: 1 row per plant_id + material_id
+-- Grain: 1 row per plant_id + material_id (ADR-0004 D2: material-grain TR backlog,
+-- gold_transfer_requirement_material_backlog; reads the RLS-secured view).
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_shortfalls AS
 SELECT
   plant_code AS plant_id,
@@ -128,7 +129,7 @@ SELECT
   open_tr_qty AS shortfall_qty,
   open_tr_items AS open_items_count,
   oldest_tr_creation_date AS oldest_tr_date
-FROM connected_plant_dev.gold_io_reporting.gold_transfer_requirement_backlog;
+FROM connected_plant_dev.gold_io_reporting.gold_transfer_requirement_material_backlog_secured;
 
 GRANT SELECT ON VIEW vw_consumption_warehouse360_shortfalls TO `users`;
 

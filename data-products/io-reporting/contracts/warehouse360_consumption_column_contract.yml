@@ -20,6 +20,7 @@ gold_source_columns:
   gold_process_order_staging_live: [days_to_start, is_operationally_trusted, material_code, material_name, order_number, order_quantity, plant_code, risk_band, scheduled_finish_date, scheduled_start_date, staging_fraction, to_items_done, to_items_total, uom]
   gold_stock_expiry_risk_live: [base_uom, batch_number, earliest_goods_receipt_date, expired_qty, expiry_ok_qty, expiry_risk_30_90d_qty, expiry_risk_7_30d_qty, expiry_risk_lt_7d_qty, has_minimum_shelf_life_breach, highest_expiry_risk_bucket, material_code, material_description, minimum_days_to_expiry, minimum_expiry_date, minimum_remaining_shelf_life_days, minimum_shelf_life_breach_qty, plant_code, shelf_life_days, total_stock_qty]
   gold_transfer_requirement_backlog: [backlog_item_count, destination_storage_type, oldest_created_datetime, oldest_planned_execution_datetime, open_qty, open_quantity_rate, plant_code, queue, required_qty, source_storage_type, transfer_priority, warehouse_number]
+  gold_transfer_requirement_material_backlog_secured: [material_id, oldest_tr_creation_date, open_tr_items, open_tr_qty, plant_code]
   gold_warehouse_exceptions: [age_days, batch_number, detail, detected_date, exception_type, material_code, plant_code, quantity, reference_id, severity, sla_hours, warehouse_number]
 
 # gold_column -> contract-facing field (mechanical, safe renames applied in the consumption SQL).
@@ -45,9 +46,5 @@ approved_exceptions:
   vw_consumption_warehouse360_outbound_backlog: {}   # ADR-0004 D4: carrier removed from first-wave consumption SQL + contract (no replicated source — shipment/VBPA not replicated). Future-enrichment candidate; view now live-validatable.
   vw_consumption_warehouse360_staging_workload: {}   # ADR-0004 D3: first wave reduced to ORDER grain (plant x order). Component fields reservation_no/batch_id + semantic-duplicate sap_order deferred to a future staging_components contract. View now live-validatable.
   vw_consumption_warehouse360_stock_exceptions: {}   # ADR-0004 D5: storage_location_id removed from first wave (IM/LGORT axis absent from the WM-bin x material x batch expiry-risk gold source). Future-enrichment candidate; view now live-validatable.
-  vw_consumption_warehouse360_shortfalls:        # ADR-0004 D2: build gold_transfer_requirement_material_backlog (silver.warehouse_transfer_requirement has material_code).
-    material_id: grain-redesign-required
-    open_tr_qty: grain-redesign-required
-    open_tr_items: grain-redesign-required
-    oldest_tr_creation_date: grain-redesign-required
+  vw_consumption_warehouse360_shortfalls: {}   # ADR-0004 D2: reads gold_transfer_requirement_material_backlog (plant x material aggregate of open TRs from silver.warehouse_transfer_requirement, via the RLS-secured view). View now live-validatable.
   vw_consumption_warehouse360_im_wm_reconciliation: {}   # ADR-0004 D6: first wave re-grained to an AGGREGATE exception summary (plant x material x batch x exception_type) — storage_location_id/bin_id removed (no stable per-exception variance key upstream; reference_id ~99% null). View now live-validatable; detail-grain is future work.

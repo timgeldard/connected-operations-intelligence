@@ -463,3 +463,41 @@ referencing the pre-alias `vendor_code`; fixed to `vendor_id` and re-ran to COMP
 DEV re-validation: `inbound_backlog` now **creates** — **1,112,080 rows, 0 NULL plant/po/item, 0 duplicate
 `(plant_id, po_id, po_item)` PK**. **5/7 → 6/7 create.** Remaining: shortfalls (D2 — new material-grain
 Gold model, PR D).
+
+---
+
+## Update 2026-06-08 (later) — PR D: gold_transfer_requirement_material_backlog built (ADR-0004 D2) → 7/7
+
+> DEV technical validation only. New Gold model materialised via a DEV Gold-pipeline run; no source-mode
+> change; no GRANTs; no UAT/PROD; no app cutover.
+
+Built `gold_transfer_requirement_material_backlog` (plant × material) from
+`silver.warehouse_transfer_requirement` (15.9M rows; open = not processing-complete and open_quantity > 0):
+`open_tr_qty` = SUM(open_quantity), `open_tr_items` = COUNT(*), `oldest_tr_creation_date` =
+MIN(created_datetime)→date — aggregated across warehouses/queues to the contract's plant × material grain
+(the queue/storage-type view remains `gold_transfer_requirement_backlog`). Added a generator-driven
+`_secured` view; **no `_live`** (no date-relative columns — like `overview`). The `shortfalls` consumption
+view is repointed from the raw aggregate to `gold_transfer_requirement_material_backlog_secured` (also
+closing a pre-existing RLS gap — it previously read the un-secured base table). Contract v0.1.0→0.2.0;
+shortfalls has no governed adapter (contract/dashboard only), so no adapter/guard change.
+
+DEV re-validation: `shortfalls` now **creates** — **1,788 rows, 0 NULL `material_id`, 0 duplicate
+`(plant_id, material_id)` PK**. **6/7 → 7/7 create.**
+
+### Full DEV revalidation — all 7 first-wave governed views (2026-06-08, Gold update `73ebef43`)
+
+| View | Created? | Rows | Null plant_id | Dup PK | Status |
+|---|---|---:|---:|---:|---|
+| `…_overview` | ✅ | 543 | 0 | 0 | created-and-valid-shape (null-plant filtered) |
+| `…_outbound_backlog` | ✅ | 2,162,748 | 0 | 0 | created-and-valid-shape |
+| `…_staging_workload` | ✅ | 0 | — | — | created-empty (gold_process_order_staging 0 rows in DEV) |
+| `…_stock_exceptions` | ✅ | 0 | — | — | created-empty (gold_stock_expiry_risk 0 rows in DEV) |
+| `…_im_wm_reconciliation` | ✅ | 198,860 | 0 | 0 | created-and-valid-shape (aggregate summary) |
+| `…_inbound_backlog` | ✅ | 1,112,080 | 0 | 0 | created-and-valid-shape (PO-line, core fields) |
+| `…_shortfalls` | ✅ | 1,788 | 0 | 0 | created-and-valid-shape (material grain) |
+
+> **DEV technical validation only.** Does not prove UAT readiness, production readiness, app cutover
+> readiness, or RLS/entitlement correctness (no representative identities tested; DEV `_secured` views are
+> pass-throughs). Two views are created-empty in the DEV shakedown (limited/old data), valid-shape but not
+> data-validated. The app remains on legacy `wh360`; `WAREHOUSE360_SOURCE_MODE` unchanged. Next step is the
+> UAT gate (see governed-path-status), NOT app cutover.

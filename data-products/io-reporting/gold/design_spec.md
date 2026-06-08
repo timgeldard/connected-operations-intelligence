@@ -171,6 +171,7 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 |---|---|---|---|
 | `gold_transfer_order_performance` | wh × plant × operator × confirmed_date × source ST | pick_accuracy, fully_confirmed_rate, cycle/processing time | confirmed TO items |
 | `gold_transfer_requirement_backlog` | wh × plant × queue × src/dst ST × priority | open backlog count, open qty, oldest age | open TRs (not complete, open_qty>0) |
+| `gold_transfer_requirement_material_backlog` | plant × material | open_tr_qty (SUM), open_tr_items (COUNT), oldest_tr_creation_date | open TRs aggregated to material grain — feeds Warehouse360 shortfalls (ADR-0004 D2) |
 | `gold_bin_occupancy` | wh × plant × storage_type × bin_type | occupancy_rate, occupied/empty/blocked counts | current bin state |
 | `gold_stock_availability` | plant × sloc × material × batch × UOM | unrestricted/QI/blocked/restricted/in-transfer | batch stock (MCHB) |
 | `gold_stock_expiry_risk` | plant × material × batch × UOM | expiry buckets (expired/<7/7-30/30-90/OK) | bin stock joined to shelf-life |

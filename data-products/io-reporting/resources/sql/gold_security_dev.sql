@@ -33,6 +33,10 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_transfer_requi
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_transfer_requirement_backlog;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_transfer_requirement_backlog_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_transfer_requirement_material_backlog_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_transfer_requirement_material_backlog;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_transfer_requirement_material_backlog_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_stock_expiry_risk_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_stock_expiry_risk;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_stock_expiry_risk_secured TO `users`;
