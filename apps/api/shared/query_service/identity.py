@@ -50,6 +50,9 @@ class UserIdentity:
 #   x-forwarded-email        — user email address             (UNVERIFIED — must be confirmed in live Databricks Apps environment before production)
 # Verification steps: deploy with ENABLE_AUTH_DIAGNOSTICS=true, hit /api/diagnostics/auth-headers,
 # confirm the three header names match, then remove the UNVERIFIED markers and the startup warning in main.py.
+# Procedure + results log: docs/audit/databricks-apps-oauth-header-verification.md.
+# The names below are pinned by apps/api/tests/shared/test_identity_headers.py so a code-side rename
+# fails CI; that test does NOT prove they match what Databricks Apps injects — only the live check does.
 
 
 def extract_user_identity(
