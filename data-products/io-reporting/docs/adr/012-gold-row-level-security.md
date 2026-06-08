@@ -50,6 +50,16 @@ The `users` group is granted SELECT on the `*_secured` views; direct SELECT on t
 tables is reserved for the data-product owner / admins. The hardening REVOKE script
 (`resources/sql/gold_security_harden_<env>.sql`) is applied separately (operationally sensitive).
 
+**Order matters, and is now verified.** The two scripts must be run in order
+(`gold_security_<env>.sql` → `gold_security_harden_<env>.sql`); a skipped harden step leaves base
+Gold tables readable by `users`. The **`gold_security_verify` job** (`resources/gold_security_job.job.yml`,
+driver `gold/security/verify_gold_security.py`) automates the verification gate: it discovers every
+`*_secured` view and asserts the `users` group has SELECT on the secured view but **not** on its base
+table, failing when `--enforce=true`. It defaults to verification-only / report mode (`--enforce=false`);
+flip to enforce once UAT is clean. It can also apply the two scripts in order (`--apply=true`), but the
+priority — and default — is the verification gate, so the manual admin run above remains the apply path
+until the apply mode is exercised. Verification core unit-tested in `tests/test_verify_gold_security.py`.
+
 ### 3. Snapshot tables — no row filter
 `gold/snapshots/warehouse_snapshot.py` writes `*_snapshot` companion tables. These no longer
 carry a UC row filter. Access control is the same as Gold MVs: consumers query the
