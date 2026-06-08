@@ -54,7 +54,17 @@ def test_validation_fixture_uses_local_fixture(tmp_path):
     assert "connected_plant_uat.gold_io_reporting.security_model_fixture" in body
     assert "WHERE EXISTS" in body
     assert "published_uat.security.model" not in body
+    # fixture mode honours the `enabled` flag so a disabled fixture row grants nothing
+    assert "COALESCE(enabled, true)" in body
     assert not any("harden" in n for n in files)
+
+
+def test_strict_and_open_have_no_enabled_guard(tmp_path):
+    # the corporate model has no `enabled` column — only fixture mode adds the guard
+    strict = _gen(tmp_path, "strict")["gold_security_uat.sql"]
+    opn = _gen(tmp_path, "validation-open")["gold_security_uat_validation_open.sql"]
+    assert "COALESCE(enabled" not in strict
+    assert "COALESCE(enabled" not in opn
 
 
 @pytest.mark.parametrize("mode", ["validation-open", "validation-fixture"])

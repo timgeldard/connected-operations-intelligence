@@ -153,22 +153,27 @@ CUSTOM_SELECTS: dict[str, str] = {}
 # columns the consumption views need. Emptied — all secured views now use the default body.
 
 
-def _security_filter(security_model: str) -> str:
-    """Return the WHERE clause for the CSM security model EXISTS check, or empty string for dev."""
+def _security_filter(security_model: str, enabled_guard: bool = False) -> str:
+    """Return the WHERE clause for the CSM security model EXISTS check, or empty string for a pass-through.
+
+    enabled_guard adds `AND COALESCE(enabled, true)` to both branches — used by validation-fixture so a
+    fixture row with enabled=false grants nothing (the corporate model has no `enabled` column, so strict
+    never sets this)."""
     if not security_model:
         return ""
+    en = "\n      AND COALESCE(enabled, true)" if enabled_guard else ""
     return (
         f"\n  WHERE EXISTS (\n"
         f"    SELECT 1 FROM {security_model}\n"
         f"    WHERE current_user() = email\n"
         f"      AND application_key = '{APPLICATION_KEY}'\n"
-        f"      AND LOWER(access_type) = 'full view'\n"
+        f"      AND LOWER(access_type) = 'full view'{en}\n"
         f"    UNION ALL\n"
         f"    SELECT 1 FROM {security_model}\n"
         f"    WHERE current_user() = email\n"
         f"      AND application_key = '{APPLICATION_KEY}'\n"
         f"      AND LOWER(access_type) = 'filter'\n"
-        f"      AND array_contains(filter_plant, plant_code)\n"
+        f"      AND array_contains(filter_plant, plant_code){en}\n"
         f"  )"
     )
 
@@ -231,7 +236,10 @@ def generate_sql(env_filter: str | None = None, security_mode: str = "strict"):
         catalog = cfg["catalog"]
         gold = f"{catalog}.{cfg['gold_schema']}"
         group = cfg["consumer_group"]
-        where = _security_filter(_mode_model_ref(cfg, gold, security_mode))
+        where = _security_filter(
+            _mode_model_ref(cfg, gold, security_mode),
+            enabled_guard=(security_mode == "validation-fixture"),
+        )
 
         # In dev_shakedown, HU-dependent Gold tables are not built, so skip their secured views.
         env_tables = [
