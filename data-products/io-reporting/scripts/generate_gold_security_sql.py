@@ -16,10 +16,31 @@ pass-through (no filter) — silver_io_reporting is inaccessible to civilians in
 
 Outputs SQL scripts to resources/sql/ for dev, uat and prod. Run once per env as a UC
 admin after the first deploy (re-runnable; views are CREATE OR REPLACE).
+
+Security modes (--security-mode):
+  * strict (default)      — secured views filter on the real published_<env>.security.model.
+                            This is the only mode allowed for prod.
+  * validation-open       — secured views are pass-throughs (same names + grants, no security
+                            predicate). UAT/DEV only — for data-shape validation when the
+                            corporate security model is unavailable. Does NOT prove RLS.
+  * validation-fixture    — secured views filter on a LOCAL fixture table
+                            (<catalog>.<gold_schema>.security_model_fixture) instead of the
+                            corporate model. UAT/DEV only — for representative entitlement
+                            testing with placeholder identities.
+Validation modes are FORBIDDEN for prod (the generator errors). Strict mode writes the
+canonical gold_security_<env>.sql (+ the harden script); validation modes write a clearly
+named gold_security_<env>_validation_<mode>.sql and reuse the same harden script.
 """
+import argparse
 import os
+import sys
 
 APPLICATION_KEY = "io_reporting"
+
+SECURITY_MODES = ("strict", "validation-open", "validation-fixture")
+VALIDATION_MODES = ("validation-open", "validation-fixture")
+# Local fixture table (UAT/DEV) used by validation-fixture mode in place of the corporate model.
+FIXTURE_TABLE = "security_model_fixture"
 
 ENVIRONMENTS = {
     "dev": {
@@ -152,14 +173,65 @@ def _security_filter(security_model: str) -> str:
     )
 
 
-def generate_sql():
+def _mode_model_ref(cfg: dict, gold: str, security_mode: str):
+    """The table the secured-view predicate filters against for a given mode (None = pass-through)."""
+    if security_mode == "strict":
+        return cfg["security_model"]
+    if security_mode == "validation-open":
+        return None
+    if security_mode == "validation-fixture":
+        return f"{gold}.{FIXTURE_TABLE}"
+    raise ValueError(f"Unknown security_mode '{security_mode}' (allowed: {', '.join(SECURITY_MODES)}).")
+
+
+def _output_filename(cfg: dict, security_mode: str) -> str:
+    """Strict → the canonical gold_security_<env>.sql; validation modes → a clearly named variant."""
+    if security_mode == "strict":
+        return cfg["filename"]
+    base, ext = os.path.splitext(cfg["filename"])
+    suffix = security_mode.replace("-", "_")  # validation-open -> validation_open
+    return f"{base}_{suffix}{ext}"
+
+
+def _mode_header_note(security_mode: str) -> str:
+    if security_mode == "validation-open":
+        return (
+            "--\n-- SECURITY MODE: validation-open (UAT/DEV ONLY). The *_secured views below are\n"
+            "-- PASS-THROUGHS (no security predicate) so UAT data-shape validation can run when\n"
+            "-- published_<env>.security.model is unavailable. This preserves the secured-view boundary\n"
+            "-- and view names, but does NOT prove RLS / plant filtering / entitlement. MUST NOT be used\n"
+            "-- in prod or to claim cutover readiness. Run gold_security_harden_<env>.sql after it so the\n"
+            "-- base Gold tables remain revoked from `users`.\n"
+        )
+    if security_mode == "validation-fixture":
+        return (
+            "--\n-- SECURITY MODE: validation-fixture (UAT/DEV ONLY). The *_secured views filter on the\n"
+            f"-- LOCAL <catalog>.<gold_schema>.{FIXTURE_TABLE} table (placeholder test identities), NOT the\n"
+            "-- corporate published_<env>.security.model. Proves the secured-view PREDICATE logic and\n"
+            "-- representative plant scoping, NOT real corporate-RLS integration. MUST NOT be used in prod.\n"
+        )
+    return ""
+
+
+def generate_sql(env_filter: str | None = None, security_mode: str = "strict"):
     os.makedirs("resources/sql", exist_ok=True)
 
-    for env, cfg in ENVIRONMENTS.items():
+    if security_mode not in SECURITY_MODES:
+        raise SystemExit(f"Unknown --security-mode '{security_mode}' (allowed: {', '.join(SECURITY_MODES)}).")
+
+    envs = {env_filter: ENVIRONMENTS[env_filter]} if env_filter else ENVIRONMENTS
+    if env_filter and env_filter not in ENVIRONMENTS:
+        raise SystemExit(f"Unknown --env '{env_filter}' (allowed: {', '.join(ENVIRONMENTS)}).")
+
+    for env, cfg in envs.items():
+        # GUARDRAIL: prod must use the real corporate security model — never a pass-through or fixture.
+        if env == "prod" and security_mode in VALIDATION_MODES:
+            raise SystemExit("validation security modes are forbidden for prod")
+
         catalog = cfg["catalog"]
         gold = f"{catalog}.{cfg['gold_schema']}"
         group = cfg["consumer_group"]
-        where = _security_filter(cfg["security_model"])
+        where = _security_filter(_mode_model_ref(cfg, gold, security_mode))
 
         # In dev_shakedown, HU-dependent Gold tables are not built, so skip their secured views.
         env_tables = [
@@ -171,6 +243,7 @@ def generate_sql():
             env_upper=env.upper(), env_lower=env,
             catalog=catalog, gold_schema=cfg["gold_schema"],
         )
+        sql += _mode_header_note(security_mode)
         if not cfg["enable_hu_reconciliation"]:
             sql += (
                 "\n-- NOTE: enable_hu_reconciliation=false — HU-dependent secured views "
@@ -193,9 +266,16 @@ def generate_sql():
             )
 
         sql += REVOKE_NOTE.format(env_lower=env)
-        with open(cfg["filename"], "w", encoding="utf-8", newline="\n") as f:
+        out_fn = _output_filename(cfg, security_mode)
+        with open(out_fn, "w", encoding="utf-8", newline="\n") as f:
             f.write(sql)
-        print(f"Generated: {cfg['filename']}")
+        print(f"Generated: {out_fn}")
+
+        # The harden script (base-table REVOKEs) is mode-independent and canonical — only strict mode
+        # writes it. Validation modes reuse the same gold_security_harden_<env>.sql (so base Gold stays
+        # revoked from `users` even while the secured views are pass-throughs/fixtures).
+        if security_mode != "strict":
+            continue
 
         # Separate hardening script: real (uncommented) base-table REVOKEs, so the security model is
         # actually enforced rather than relying on nobody having direct base-table SELECT.
@@ -214,5 +294,21 @@ def generate_sql():
         print(f"Generated: {harden_fn}")
 
 
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Generate Gold row-level-security SQL for Unity Catalog.")
+    parser.add_argument(
+        "--security-mode", choices=SECURITY_MODES, default="strict",
+        help="strict (real security model; only mode allowed for prod), validation-open (pass-through "
+             "secured views, UAT/DEV only), or validation-fixture (local fixture table, UAT/DEV only).",
+    )
+    parser.add_argument(
+        "--env", choices=list(ENVIRONMENTS), default=None,
+        help="Restrict generation to one environment (default: all). Required intent for validation modes.",
+    )
+    args = parser.parse_args(argv)
+    generate_sql(env_filter=args.env, security_mode=args.security_mode)
+    return 0
+
+
 if __name__ == "__main__":
-    generate_sql()
+    sys.exit(main())
