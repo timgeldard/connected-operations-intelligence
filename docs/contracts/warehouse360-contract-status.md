@@ -1,14 +1,20 @@
 # Warehouse360 Contract Status
 
-| Contract ID | View | Runtime status | Validation status | Route-covered? | Notes |
+> **All 7 first-wave governed views CREATE in DEV (2026-06-08, Gold update `73ebef43`)** — technical
+> shape only. `not-live-validated` is retained for every contract: RLS/entitlement is unproven (no
+> representative identities tested; DEV `*_secured` views are pass-throughs) and two views are
+> created-empty in the DEV shakedown. Full evidence:
+> [DEV live-validation results](../architecture/warehouse360-dev-live-validation-results.md).
+
+| Contract ID | View | Runtime status | Validation status | Route-covered? | Notes (DEV 2026-06-08) |
 |---|---|---|---|---|---|
-| warehouse360.overview | `vw_consumption_warehouse360_overview` | expected | not-live-validated | yes | Requires plant_id + snapshot_ts grain |
-| warehouse360.inbound_backlog | `vw_consumption_warehouse360_inbound_backlog` | expected | not-live-validated | yes | Uses plant_id alias from plant_code |
-| warehouse360.outbound_backlog | `vw_consumption_warehouse360_outbound_backlog` | expected | not-live-validated | yes | Creates in DEV 2026-06-08 (2/7): 2,162,748 rows, 0 null plant_id, 0 dup PK, 451 plants. `carrier` removed from first wave (no replicated source — ADR-0004 D4). RLS/entitlement still unproven, so not yet fully live-validated. |
-| warehouse360.staging_workload | `vw_consumption_warehouse360_staging_workload` | expected | not-live-validated | yes | Pending DEV validation |
-| warehouse360.stock_exceptions | `vw_consumption_warehouse360_stock_exceptions` | expected | not-live-validated | candidate | Creates in DEV 2026-06-08 (4/7) but **empty** (source gold_stock_expiry_risk has no rows in DEV) — shape-valid, not data-validated. `storage_location_id` removed from first wave (ADR-0004 D5, v0.2.0). |
-| warehouse360.shortfalls | `vw_consumption_warehouse360_shortfalls` | expected | not-live-validated | candidate | Generated validation SQL includes this |
-| warehouse360.im_wm_reconciliation | `vw_consumption_warehouse360_im_wm_reconciliation` | expected | not-live-validated | yes | Re-grained to first-wave AGGREGATE exception summary (ADR-0004 D6, v0.2.0). Creates in DEV 2026-06-08: 198,860 rows, 0 dup PK (plant×material×batch×exception_type, unique by GROUP BY construction). storage_location_id/bin_id removed; detail-grain deferred. RLS/plant scope still unproven. |
+| warehouse360.overview | `vw_consumption_warehouse360_overview` | expected | not-live-validated | yes | Creates: 543 rows, 0 null plant_id, 0 dup PK. Null-plant rows filtered (ADR-0004 D7 / PR A). RLS unproven. |
+| warehouse360.inbound_backlog | `vw_consumption_warehouse360_inbound_backlog` | expected | not-live-validated | yes | Creates: 1,112,080 rows, 0 null plant/po/item, 0 dup PK. New PO-line model `gold_inbound_po_line_backlog` (D1 / PR C, v0.2.0). gr_qty/open_qty/delivery_date/qa_status/vendor_name deferred. RLS unproven. |
+| warehouse360.outbound_backlog | `vw_consumption_warehouse360_outbound_backlog` | expected | not-live-validated | yes | Creates: 2,162,748 rows, 0 null plant_id, 0 dup PK. `carrier` removed from first wave (ADR-0004 D4). RLS unproven. |
+| warehouse360.staging_workload | `vw_consumption_warehouse360_staging_workload` | expected | not-live-validated | yes | Creates — **empty** (gold_process_order_staging 0 rows in DEV shakedown); shape-valid, not data-validated. Order-grain first wave (ADR-0004 D3 / PR B, v0.2.0); reservation_no/batch_id/sap_order deferred. |
+| warehouse360.stock_exceptions | `vw_consumption_warehouse360_stock_exceptions` | expected | not-live-validated | candidate | Creates — **empty** (gold_stock_expiry_risk 0 rows in DEV); shape-valid. `storage_location_id` removed (ADR-0004 D5, v0.2.0). |
+| warehouse360.shortfalls | `vw_consumption_warehouse360_shortfalls` | expected | not-live-validated | candidate | Creates: 1,788 rows, 0 null material_id, 0 dup PK (plant×material). New model `gold_transfer_requirement_material_backlog` (ADR-0004 D2 / PR D, v0.2.0); reads RLS-secured view. RLS unproven. |
+| warehouse360.im_wm_reconciliation | `vw_consumption_warehouse360_im_wm_reconciliation` | expected | not-live-validated | yes | Creates: 198,860 rows, 0 dup PK. First-wave AGGREGATE exception summary (ADR-0004 D6, v0.2.0); storage_location_id/bin_id removed, detail-grain deferred. RLS unproven. |
 
 ## Status definitions
 

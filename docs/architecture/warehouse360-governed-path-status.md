@@ -53,3 +53,22 @@
 2. Capture validation evidence.
 3. Fix any view creation or contract-shape blockers.
 4. Only then proceed to UAT validation.
+
+## UAT readiness gate
+
+DEV reached **7/7 views create** (2026-06-08). Do **not** begin UAT — and certainly not app cutover —
+until all of these hold:
+
+- [x] DEV SQL sequence (security → serving → consumption) runs cleanly and all 7 first-wave views create.
+- [x] PK-duplicate counts are 0 and required plant/key nulls are 0 on the views that have data.
+- [ ] The two **created-empty** views (`staging_workload`, `stock_exceptions`) are validated against a
+  data-bearing environment (DEV gold_process_order_staging / gold_stock_expiry_risk are 0 rows in the shakedown).
+- [ ] **RLS / entitlement proven** with representative identities (DEV `*_secured` views are pass-throughs;
+  the `gold_security` apply/verify job — `resources/gold_security_job.job.yml` — run/scheduled as a gate).
+- [ ] **OAuth identity header verification** completed (or explicitly separated from cutover) — see
+  `docs/audit/databricks-apps-oauth-header-verification.md`.
+- [ ] Type-compatibility + freshness checks reviewed against `information_schema` in UAT.
+- [ ] Status docs reflect current state.
+
+Only then the next plan is `chore(uat): validate Warehouse360 governed consumption views in UAT` — **not**
+app cutover, and **not** setting `WAREHOUSE360_SOURCE_MODE=governed_contracts`.
