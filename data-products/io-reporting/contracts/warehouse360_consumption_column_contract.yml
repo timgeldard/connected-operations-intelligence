@@ -1,0 +1,77 @@
+# Warehouse360 consumption-view ↔ Gold column contract.
+#
+# Used by scripts/ci/check_warehouse360_consumption_columns.py to statically verify that every
+# source column selected by resources/sql/warehouse360_consumption_views_*.sql resolves against the
+# actual Gold serving view it reads FROM — catching the consumption-vs-Gold drift found in PR #39.
+#
+# gold_source_columns: snapshot of each Gold serving view's columns, CAPTURED FROM DEV
+#   (connected_plant_dev.gold_io_reporting) on 2026-06-08. Regenerate when the Gold schema changes.
+# approved_aliases: documented gold_column -> contract_field renames applied in the consumption SQL.
+# approved_exceptions: source identifiers a consumption view references that DO NOT resolve against its
+#   Gold source — i.e. documented, not-live-validated blockers (missing columns or grain mismatch).
+#   Listing one here lets CI pass while the blocker is tracked; remove it once the Gold source provides
+#   the column (or the contract drops it). The view is NOT live-validated until its list is empty.
+
+gold_source_columns:
+  gold_warehouse_kpi_snapshot_secured: [active_order_count, bin_utilisation_pct, blocked_bin_count, occupied_bin_count, open_delivery_count, open_inbound_item_count, open_to_item_count, open_tr_item_count, plant_code, snapshot_date, total_bin_count]
+  gold_inbound_po_backlog_enhanced_live: [confirmed_putaway_to_count, earliest_po_date, fully_gr_item_count, inbound_backlog_risk_band, item_without_gr_count, latest_gr_posting_date, latest_putaway_to_confirmed_date, oldest_po_age_days, oldest_putaway_to_created_datetime, open_item_count, open_po_count, partial_gr_item_count, plant_code, purchasing_org, putaway_to_count, qa_inspection_item_count, remaining_open_qty, total_gr_qty, total_open_value, total_ordered_qty, vendor_code]
+  gold_delivery_pick_status_live: [base_uom_count, days_to_goods_issue, delivery_number, delivery_qty, delivery_type, has_mixed_base_uom, has_unconverted_delivery_qty, is_shipped, line_count, null_delivery_base_count, pick_fraction, picked_qty, planned_goods_issue_date, plant_code, risk_band, sold_to_customer, warehouse_number]
+  gold_process_order_staging_live: [days_to_start, is_operationally_trusted, material_code, order_number, order_quantity, plant_code, risk_band, scheduled_finish_date, scheduled_start_date, staging_fraction, to_items_done, to_items_total]
+  gold_stock_expiry_risk_live: [base_uom, batch_number, earliest_goods_receipt_date, expired_qty, expiry_ok_qty, expiry_risk_30_90d_qty, expiry_risk_7_30d_qty, expiry_risk_lt_7d_qty, has_minimum_shelf_life_breach, highest_expiry_risk_bucket, material_code, material_description, minimum_days_to_expiry, minimum_expiry_date, minimum_remaining_shelf_life_days, minimum_shelf_life_breach_qty, plant_code, shelf_life_days, total_stock_qty]
+  gold_transfer_requirement_backlog: [backlog_item_count, destination_storage_type, oldest_created_datetime, oldest_planned_execution_datetime, open_qty, open_quantity_rate, plant_code, queue, required_qty, source_storage_type, transfer_priority, warehouse_number]
+  gold_warehouse_exceptions: [age_days, batch_number, detail, detected_date, exception_type, material_code, plant_code, quantity, reference_id, severity, sla_hours, warehouse_number]
+
+# gold_column -> contract-facing field (mechanical, safe renames applied in the consumption SQL).
+approved_aliases:
+  plant_code: plant_id
+  material_code: material_id
+  batch_number: batch_id
+  delivery_number: delivery_id
+  order_number: order_id
+  order_quantity: order_qty
+  quantity: qty
+  detail: detail_text
+
+# Documented blockers per consumption view (source identifier -> reason). View is not-live-validated
+# until its list is empty. NOT auto-filled with NULLs — these columns are absent from the Gold source.
+approved_exceptions:
+  vw_consumption_warehouse360_overview: {}
+  vw_consumption_warehouse360_inbound_backlog:   # GRAIN: gold_inbound_po_backlog_enhanced is aggregated per plant x vendor x purchasing_org; no PO-line detail exists in any inbound Gold table (gold_inbound_po_backlog is also aggregated). Needs a detail-grain Gold model or a contract grain redesign.
+    po_id: grain
+    po_item: grain
+    doc_type: grain
+    vendor_id: grain
+    vendor_name: grain
+    storage_loc: grain
+    material_id: grain
+    material_name: grain
+    ordered_qty: grain
+    gr_qty: grain
+    uom: grain
+    delivery_date: grain
+    po_date: grain
+    open_qty: grain
+    qa_status: grain
+  vw_consumption_warehouse360_outbound_backlog:  # MISSING: gold_delivery_pick_status has no customer name/id split, carrier, actual GI date, delivery date, or gross weight. sold_to_customer exists but is NOT an accepted customer_id mapping (no doc/contract states the equivalence).
+    customer_id: missing
+    customer_name: missing
+    carrier: missing
+    actual_goods_issue_date: missing
+    delivery_date: missing
+    gross_weight: missing
+  vw_consumption_warehouse360_staging_workload:  # MISSING from gold_process_order_staging.
+    uom: missing
+    material_name: missing
+    reservation_no: missing
+    batch_id: missing
+    sap_order: missing
+  vw_consumption_warehouse360_stock_exceptions:  # MISSING from gold_stock_expiry_risk (grain is plant x material x batch; no storage location).
+    storage_location_id: missing
+  vw_consumption_warehouse360_shortfalls:        # GRAIN: gold_transfer_requirement_backlog is aggregated per plant x warehouse x storage_type x queue x priority; no per-material detail. Needs a material-grain Gold model or contract grain redesign.
+    material_id: grain
+    open_tr_qty: grain
+    open_tr_items: grain
+    oldest_tr_creation_date: grain
+  vw_consumption_warehouse360_im_wm_reconciliation:  # MISSING from gold_warehouse_exceptions.
+    storage_location_id: missing
+    bin_id: missing
