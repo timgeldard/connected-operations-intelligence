@@ -147,7 +147,7 @@ SELECT
   batch_number AS batch_id,
   exception_type,
   COUNT(*) AS exception_count,
-  COALESCE(SUM(quantity), 0.0) AS qty,
+  CAST(COALESCE(SUM(quantity), 0) AS DECIMAL(18,4)) AS qty,
   MAX(severity) AS severity,
   MAX(age_days) AS max_age_days,
   MIN(detected_date) AS oldest_detected_date,
