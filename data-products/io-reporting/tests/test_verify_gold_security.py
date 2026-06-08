@@ -1,9 +1,10 @@
 """Unit tests for the Gold RLS verification core (gold/security/verify_gold_security.py).
 
-Covers the pure ``find_rls_violations`` logic — no Spark required. The Spark glue (SHOW GRANTS /
-SHOW VIEWS) is intentionally thin and exercised only at job runtime.
+Covers the pure logic — ``find_rls_violations`` plus the ``fq`` identifier builder and the
+``view_name_of`` DBR-casing helper — no Spark required. The remaining Spark glue (SHOW GRANTS /
+SHOW VIEWS calls) is intentionally thin and exercised only at job runtime.
 """
-from gold.security.verify_gold_security import find_rls_violations
+from gold.security.verify_gold_security import find_rls_violations, fq, view_name_of
 
 
 def test_clean_setup_has_no_violations():
@@ -57,3 +58,18 @@ def test_custom_consumer_group():
     grantees = {"gold_x_secured": {"app_readers"}, "gold_x": {"app_readers"}}
     violations = find_rls_violations(secured, grantees, consumer_group="app_readers")
     assert len(violations) == 1 and "app_readers" in violations[0]
+
+
+def test_fq_quotes_each_part_separately():
+    # Each of catalog/schema/object must be quoted on its own — not catalog.schema as one token.
+    assert fq("connected_plant_prod", "gold_io_reporting", "gold_x_secured") == (
+        "`connected_plant_prod`.`gold_io_reporting`.`gold_x_secured`"
+    )
+
+
+def test_view_name_of_handles_dbr_casing_variants():
+    assert view_name_of({"viewName": "gold_x_secured"}) == "gold_x_secured"      # camelCase
+    assert view_name_of({"view_name": "gold_x_secured"}) == "gold_x_secured"     # snake_case
+    assert view_name_of({"tableName": "gold_x_secured"}) == "gold_x_secured"     # SHOW VIEWS alt
+    assert view_name_of({"table_name": "gold_x_secured"}) == "gold_x_secured"
+    assert view_name_of({"namespace": "gold_io_reporting"}) is None              # no name key

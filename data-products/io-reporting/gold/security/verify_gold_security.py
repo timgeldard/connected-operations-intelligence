@@ -68,8 +68,32 @@ def _spark():
     return SparkSession.builder.getOrCreate()
 
 
+def fq(catalog, schema, obj):
+    """Three-part backtick-quoted identifier `catalog`.`schema`.`obj` — each part quoted SEPARATELY.
+    (Quoting `catalog.schema` as one token would address a non-existent object and break the query.)"""
+    return f"`{catalog}`.`{schema}`.`{obj}`"
+
+
+# SHOW VIEWS returns the view name under different keys across DBR versions (camelCase vs snake_case).
+_VIEW_NAME_KEYS = ("viewName", "view_name", "tableName", "table_name")
+
+
+def view_name_of(row_dict):
+    """Extract the view name from a SHOW VIEWS row dict across DBR casing conventions."""
+    for key in _VIEW_NAME_KEYS:
+        val = row_dict.get(key)
+        if val:
+            return val
+    return None
+
+
 def _run_sql_file(spark, path):
-    """Execute a .sql file statement-by-statement (split on ';', skip blank/comment-only)."""
+    """Execute a .sql file statement-by-statement (split on ';', drop '--' line comments).
+
+    Deliberately simple — intended ONLY for the repo's own GENERATED security SQL
+    (gold_security_<env>.sql / gold_security_harden_<env>.sql), which contain no ';' or '--' inside
+    string literals. This is not a general SQL parser; do not point it at arbitrary SQL.
+    """
     with open(path, encoding="utf-8") as fh:
         content = fh.read()
     lines = [ln if ln.find("--") < 0 else ln[: ln.find("--")] for ln in content.splitlines()]
@@ -78,13 +102,18 @@ def _run_sql_file(spark, path):
             spark.sql(stmt)
 
 
-def _select_grantees(spark, gold_fqn, object_name):
-    """Return the set of principals holding SELECT (or ALL/OWN) on an object, via SHOW GRANTS."""
+def _select_grantees(spark, catalog, schema, object_name):
+    """Principals holding SELECT (or ALL) on an object, via SHOW GRANTS.
+
+    Returns an empty set when the object does not exist. Any other failure is SURFACED (printed to
+    stderr) rather than silently swallowed, so a broken check cannot masquerade as "no grants".
+    """
     grantees = set()
     try:
-        rows = spark.sql(f"SHOW GRANTS ON TABLE `{gold_fqn}`.`{object_name}`").collect()
-    except Exception:
-        return grantees  # object does not exist -> no grants
+        rows = spark.sql(f"SHOW GRANTS ON TABLE {fq(catalog, schema, object_name)}").collect()
+    except Exception as exc:  # noqa: BLE001 — surface the error, do not mask it
+        print(f"WARNING: SHOW GRANTS failed for {catalog}.{schema}.{object_name}: {exc}", file=sys.stderr)
+        return grantees
     for r in rows:
         d = r.asDict()
         priv = str(d.get("ActionType") or d.get("action_type") or "").upper()
@@ -118,18 +147,16 @@ def main(argv=None):
         _run_sql_file(spark, args.security_sql)
         _run_sql_file(spark, args.harden_sql)
 
-    # Discover secured views at runtime (robust to the table list drifting).
+    # Discover secured views at runtime (robust to the table list drifting). view_name_of handles
+    # the camelCase/snake_case column-name variation across DBR versions.
     view_rows = spark.sql(f"SHOW VIEWS IN `{args.gold_catalog}`.`{args.gold_schema}`").collect()
-    secured_views = [
-        (r.asDict().get("viewName") or r.asDict().get("tableName"))
-        for r in view_rows
-        if str(r.asDict().get("viewName") or r.asDict().get("tableName") or "").endswith(_SECURED_SUFFIX)
-    ]
+    all_views = [view_name_of(r.asDict()) for r in view_rows]
+    secured_views = [v for v in all_views if v and v.endswith(_SECURED_SUFFIX)]
 
     select_grantees = {}
     objects_to_check = set(secured_views) | {v[: -len(_SECURED_SUFFIX)] for v in secured_views}
     for obj in objects_to_check:
-        select_grantees[obj] = _select_grantees(spark, gold_fqn, obj)
+        select_grantees[obj] = _select_grantees(spark, args.gold_catalog, args.gold_schema, obj)
 
     violations = find_rls_violations(secured_views, select_grantees, args.consumer_group)
 
