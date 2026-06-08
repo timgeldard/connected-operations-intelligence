@@ -34,44 +34,48 @@ approved_aliases:
 
 # Documented blockers per consumption view (source identifier -> reason). View is not-live-validated
 # until its list is empty. NOT auto-filled with NULLs — these columns are absent from the Gold source.
+# Exception values classify the blocker + name the candidate source (evidence 2026-06-08). See
+# docs/decisions/ADR-0004-warehouse360-backlog-grain-and-missing-columns.md for the resolution decisions.
+# Classes: grain-redesign-required | missing-but-available-upstream | missing-requires-dimension-join |
+#          missing-no-source | contract-semantic-decision.
 approved_exceptions:
-  vw_consumption_warehouse360_overview: {}
-  vw_consumption_warehouse360_inbound_backlog:   # GRAIN: gold_inbound_po_backlog_enhanced is aggregated per plant x vendor x purchasing_org; no PO-line detail exists in any inbound Gold table (gold_inbound_po_backlog is also aggregated). Needs a detail-grain Gold model or a contract grain redesign.
-    po_id: grain
-    po_item: grain
-    doc_type: grain
-    vendor_id: grain
-    vendor_name: grain
-    storage_loc: grain
-    material_id: grain
-    material_name: grain
-    ordered_qty: grain
-    gr_qty: grain
-    uom: grain
-    delivery_date: grain
-    po_date: grain
-    open_qty: grain
-    qa_status: grain
-  vw_consumption_warehouse360_outbound_backlog:  # MISSING: gold_delivery_pick_status has no customer name/id split, carrier, actual GI date, delivery date, or gross weight. sold_to_customer exists but is NOT an accepted customer_id mapping (no doc/contract states the equivalence).
-    customer_id: missing
-    customer_name: missing
-    carrier: missing
-    actual_goods_issue_date: missing
-    delivery_date: missing
-    gross_weight: missing
-  vw_consumption_warehouse360_staging_workload:  # MISSING from gold_process_order_staging.
-    uom: missing
-    material_name: missing
-    reservation_no: missing
-    batch_id: missing
-    sap_order: missing
-  vw_consumption_warehouse360_stock_exceptions:  # MISSING from gold_stock_expiry_risk (grain is plant x material x batch; no storage location).
-    storage_location_id: missing
-  vw_consumption_warehouse360_shortfalls:        # GRAIN: gold_transfer_requirement_backlog is aggregated per plant x warehouse x storage_type x queue x priority; no per-material detail. Needs a material-grain Gold model or contract grain redesign.
-    material_id: grain
-    open_tr_qty: grain
-    open_tr_items: grain
-    oldest_tr_creation_date: grain
-  vw_consumption_warehouse360_im_wm_reconciliation:  # MISSING from gold_warehouse_exceptions.
-    storage_location_id: missing
-    bin_id: missing
+  vw_consumption_warehouse360_overview: {}   # creates; data-quality only (null plant_code) — ADR-0004 D7.
+  vw_consumption_warehouse360_inbound_backlog:   # ADR-0004 D1: build gold_inbound_po_line_backlog (silver.purchase_order EKKO/EKPO). gold_inbound_po_backlog(_enhanced) are both aggregated.
+    po_id: grain-redesign-required
+    po_item: grain-redesign-required
+    doc_type: grain-redesign-required
+    vendor_id: grain-redesign-required
+    vendor_name: grain-redesign-required
+    storage_loc: grain-redesign-required
+    material_id: grain-redesign-required
+    material_name: grain-redesign-required
+    ordered_qty: grain-redesign-required
+    gr_qty: grain-redesign-required
+    uom: grain-redesign-required
+    delivery_date: grain-redesign-required
+    po_date: grain-redesign-required
+    open_qty: grain-redesign-required
+    qa_status: grain-redesign-required
+  vw_consumption_warehouse360_outbound_backlog:  # ADR-0004 D4.
+    actual_goods_issue_date: missing-but-available-upstream   # silver.outbound_delivery.actual_goods_issue_date (delivery grain)
+    delivery_date: missing-but-available-upstream             # silver.outbound_delivery.delivery_date
+    gross_weight: missing-but-available-upstream              # silver.outbound_delivery.delivery_gross_weight (LIKP header, delivery grain)
+    customer_name: missing-requires-dimension-join            # customer_id semantics must be ratified as ship-to vs sold-to before implementation
+    customer_id: contract-semantic-decision                   # ship-to vs sold-to decision; do not assume sold_to_customer equivalence
+    carrier: missing-no-source                                # not replicated (shipment/VBPA); mark contract optional/remove
+  vw_consumption_warehouse360_staging_workload:  # ADR-0004 D3 (grain decision: reduce to order grain or build component grain).
+    uom: missing-but-available-upstream                       # process_order.order_quantity_uom (order grain)
+    material_name: missing-requires-dimension-join            # join silver.material on plant_code + material_code (material is plant-grain)
+    sap_order: contract-semantic-decision                     # likely process_order.order_number — confirm intent
+    reservation_no: grain-redesign-required                   # component grain (gold is order grain)
+    batch_id: grain-redesign-required                         # component grain
+  vw_consumption_warehouse360_stock_exceptions:  # ADR-0004 D5: storage_location is IM(LGORT) axis; gold_stock_expiry_risk is WM-bin x material x batch.
+    storage_location_id: grain-redesign-required              # drop from contract OR build storage-location expiry from silver.batch_stock
+  vw_consumption_warehouse360_shortfalls:        # ADR-0004 D2: build gold_transfer_requirement_material_backlog (silver.warehouse_transfer_requirement has material_code).
+    material_id: grain-redesign-required
+    open_tr_qty: grain-redesign-required
+    open_tr_items: grain-redesign-required
+    oldest_tr_creation_date: grain-redesign-required
+  vw_consumption_warehouse360_im_wm_reconciliation:  # ADR-0004 D6: reconciliation is plant x material; storage_location/bin are finer. Drop from contract or build bin-level model.
+    storage_location_id: grain-redesign-required
+    bin_id: grain-redesign-required

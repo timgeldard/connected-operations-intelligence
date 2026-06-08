@@ -63,7 +63,7 @@ layer does not produce.** Three distinct failure classes:
 |---|---|---|---|
 | inbound_backlog | `gold_inbound_po_backlog_enhanced` | **GRAIN** | MV is aggregated per plant×vendor×purchasing_org (`open_po_count`, `open_item_count`, `total_ordered_qty`, `vendor_code`). Contract wants PO-line detail (`po_id`, `po_item`, `vendor_id`, `material_id`, …) — not present at any grain. |
 | shortfalls | `gold_transfer_requirement_backlog` | **GRAIN** | MV aggregated per plant×warehouse×storage_type×queue×priority (`backlog_item_count`, `open_qty`). Contract wants per-material (`material_id`, `open_tr_qty`) — no `material_id`. |
-| outbound_backlog | `gold_delivery_pick_status` | **NAMING + MISSING** | `delivery_number`≠`delivery_id`; `sold_to_customer` only. Missing `customer_id`, `customer_name`, `carrier`, `actual_goods_issue_date`, `gross_weight`. |
+| outbound_backlog | `gold_delivery_pick_status` | **NAMING + MISSING** | `delivery_number`≠`delivery_id`; currently carries `sold_to_customer` only. Missing contract-facing ship-to `customer_id`, `customer_name`, `carrier`, `actual_goods_issue_date`, delivery-grain `gross_weight`. |
 | staging_workload | `gold_process_order_staging` | **NAMING + MISSING** | `order_number`≠`order_id`, `material_code`≠`material_id`, `order_quantity`≠`order_qty`. Missing `material_name`, `reservation_no`, `batch_id`, `sap_order`. |
 | stock_exceptions | `gold_stock_expiry_risk` (live) | **NAMING + MISSING** | `material_code`≠`material_id`, `batch_number`≠`batch_id`. Missing `storage_location_id`. |
 | im_wm_reconciliation | `gold_warehouse_exceptions` | **NAMING + MISSING** | `material_code`≠`material_id`, `batch_number`≠`batch_id`, `quantity`≠`qty`, `detail`≠`detail_text`. Missing `storage_location_id`, `bin_id`. |
@@ -77,8 +77,9 @@ contract columns have **no Gold source at all** (genuinely missing, not renamabl
 
 1. **Naming reconciliation** (mechanical, like #34): in `warehouse360_consumption_views_dev.sql` (+uat/prod),
    alias `material_code AS material_id`, `batch_number AS batch_id`, `delivery_number AS delivery_id`,
-   `order_number AS order_id`, `order_quantity AS order_qty`, `quantity AS qty`, `detail AS detail_text`,
-   `sold_to_customer AS customer_id` (decide name/id semantics). Add a CI guard that every consumption-view
+   `order_number AS order_id`, `order_quantity AS order_qty`, `quantity AS qty`, `detail AS detail_text`.
+   Do not map `sold_to_customer AS customer_id` unless the app contract changes: current contract says
+   `customer_id` is ship-to. Add a CI guard that every consumption-view
    column resolves against its Gold source (extend `check_warehouse360_migration_static.py`).
 2. **Missing columns** (design): decide per column whether the Gold MV must add it (e.g.
    `customer_name`, `carrier`, `gross_weight`, `storage_location_id`, `bin_id`, `reservation_no`,
@@ -123,9 +124,9 @@ the contract-facing field, scoped per view (no NULL placeholders, grain views un
 | `quantity` | `qty` | im_wm |
 | `detail` | `detail_text` | im_wm |
 
-**`sold_to_customer → customer_id` was NOT applied** — the manifest defines `customer_id` *and*
-`customer_name` as distinct fields, and no doc/contract states the `sold_to_customer` equivalence. Left
-as a documented blocker.
+**`sold_to_customer → customer_id` was NOT applied** — the manifest defines `customer_id` as ship-to
+customer number. Left as a documented blocker until Gold carries `ship_to_customer` and the consumption
+view maps ship-to to `customer_id` (with sold-to retained separately in Gold).
 
 **Re-validation (DEV, 2026-06-08):** still **1/7 create** — but every previously-blocking *name* column
 now resolves; the failures moved to the genuinely missing / grain columns, confirming the naming layer
@@ -143,7 +144,7 @@ is correct and isolating the remaining blockers:
 
 **New CI guard:** `scripts/ci/check_warehouse360_consumption_columns.py` (+ tests) statically verifies
 every source column each consumption view SELECTs resolves against the Gold serving view it reads FROM,
-using `contracts/warehouse360_consumption_column_contract.yml` (captured Gold columns + approved aliases
+using `data-products/io-reporting/contracts/warehouse360_consumption_column_contract.yml` (captured Gold columns + approved aliases
 + documented exceptions). A view is **not live-validated** until its exception list is empty; the guard
 prints the outstanding blockers on every run.
 
@@ -155,3 +156,37 @@ scope for this naming PR.
 
 **Still NOT done:** missing columns not manufactured (no NULLs); grain not solved; no GRANTs; no
 source-mode change; no UAT/PROD; no app cutover. DEV technical only.
+
+---
+
+## Update 2026-06-08 — missing-column & grain analysis (design decisions in ADR-0004)
+
+Classified every remaining blocker against the live Silver/Gold schemas (read-only). Decisions and the
+per-field rationale are in `docs/decisions/ADR-0004-warehouse360-backlog-grain-and-missing-columns.md`;
+machine-readable classes are in
+`data-products/io-reporting/contracts/warehouse360_consumption_column_contract.yml`. **No runtime change**
+in this analysis — implementation follows as scoped Gold PRs.
+
+| View | Blocker(s) | Class | Resolution (ADR-0004) |
+|---|---|---|---|
+| inbound_backlog | po_id … qa_status | grain-redesign | D1: build `gold_inbound_po_line_backlog` from `silver.purchase_order` |
+| shortfalls | material_id, open_tr_* | grain-redesign | D2: build `gold_transfer_requirement_material_backlog` from `silver.warehouse_transfer_requirement` (has material_code) |
+| staging_workload | reservation_no, batch_id | grain-redesign | D3: reduce contract to order grain (or build component grain) |
+| staging_workload | uom | available-upstream | D3: `process_order.order_quantity_uom` |
+| staging_workload | material_name | dimension-join | D3: join `silver.material` on plant×material |
+| staging_workload | sap_order | semantic-decision | D3: likely `order_number` (confirm) |
+| outbound_backlog | actual_goods_issue_date, delivery_date, gross_weight | available-upstream | D4: dates plus LIKP header `delivery_gross_weight` are present in `silver.outbound_delivery` |
+| outbound_backlog | customer_name | dimension-join | D4: join `silver.customer` on the ratified customer role |
+| outbound_backlog | customer_id | semantic-decision | D4: ratify ship-to vs sold-to before implementation |
+| outbound_backlog | carrier | no-source | D4: not replicated → contract optional/remove |
+| stock_exceptions | storage_location_id | grain-redesign | D5: IM axis on a WM model → drop or re-grain |
+| im_wm_reconciliation | storage_location_id, bin_id | grain-redesign | D6: finer than plant×material → drop or bin-level model |
+| overview | null plant_id / dup PK | data-quality | D7: filter null `plant_code` + RCA |
+
+**overview RCA (DEV, read-only):** base `gold_warehouse_kpi_snapshot` = 545 rows, **single** snapshot
+date, **2 rows with NULL `plant_code`**, which alone produce the 1 duplicate `(plant_id, snapshot_ts)`
+(NULL plants collapse on the composite key). Fix = filter `plant_code IS NOT NULL` + investigate the
+null-plant source (likely a SHARED/unmapped bucket). `snapshot_ts` granularity is not the cause.
+
+Net: most blockers are resolvable from replicated Silver, but via **Gold-model additions / new
+detail-grain models + grain decisions** — design first (this ADR), implement in follow-up Gold PRs.
