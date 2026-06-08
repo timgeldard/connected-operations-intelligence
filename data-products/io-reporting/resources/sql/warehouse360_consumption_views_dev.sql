@@ -60,7 +60,7 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_inbound_backlog TO `users`;
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_outbound_backlog AS
 SELECT
   plant_code AS plant_id,
-  delivery_id,
+  delivery_number AS delivery_id,
   delivery_type,
   customer_id,
   customer_name,
@@ -83,9 +83,9 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_outbound_backlog TO `users`;
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_staging_workload AS
 SELECT
   plant_code AS plant_id,
-  order_id,
-  material_id,
-  order_qty,
+  order_number AS order_id,
+  material_code AS material_id,
+  order_quantity AS order_qty,
   uom,
   material_name,
   scheduled_start_date AS sched_start,
@@ -108,8 +108,8 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_staging_workload TO `users`;
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_stock_exceptions AS
 SELECT
   plant_code AS plant_id,
-  material_id,
-  batch_id,
+  material_code AS material_id,
+  batch_number AS batch_id,
   storage_location_id AS storage_loc,
   highest_expiry_risk_bucket AS exception_type,
   total_stock_qty AS qty,
@@ -139,15 +139,15 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_shortfalls TO `users`;
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_im_wm_reconciliation AS
 SELECT
   plant_code AS plant_id,
-  material_id,
-  batch_id,
+  material_code AS material_id,
+  batch_number AS batch_id,
   storage_location_id AS storage_loc,
   exception_type,
   severity,
   sla_hours,
-  qty,
+  quantity AS qty,
   bin_id,
-  detail_text,
+  detail AS detail_text,
   detected_date
 FROM connected_plant_dev.gold_io_reporting.gold_warehouse_exceptions;
 

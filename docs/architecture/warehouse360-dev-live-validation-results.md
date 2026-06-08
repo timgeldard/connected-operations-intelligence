@@ -104,3 +104,54 @@ All of the above are **repo PRs + a Gold rerun**, not manual Databricks edits.
 `fix(warehouse360): resolve DEV consumption-view-vs-gold contract mismatch` — start with the mechanical
 naming reconciliation (#1) + the static guard, then triage the missing-column/grain items (#2, #3) with
 the Gold owner. DEV remains a technical shakedown; UAT validation only after DEV creates + queries all 7.
+
+---
+
+## Update 2026-06-08 — naming reconciliation applied + CI guard (recommendation #1)
+
+Implemented the **safe mechanical naming reconciliation** in
+`warehouse360_consumption_views_{dev,uat,prod}.sql` — only where the Gold source column clearly maps to
+the contract-facing field, scoped per view (no NULL placeholders, grain views untouched):
+
+| Gold column | Contract field | Views aliased |
+|---|---|---|
+| `delivery_number` | `delivery_id` | outbound |
+| `order_number` | `order_id` | staging |
+| `order_quantity` | `order_qty` | staging |
+| `material_code` | `material_id` | staging, stock_exceptions, im_wm |
+| `batch_number` | `batch_id` | stock_exceptions, im_wm |
+| `quantity` | `qty` | im_wm |
+| `detail` | `detail_text` | im_wm |
+
+**`sold_to_customer → customer_id` was NOT applied** — the manifest defines `customer_id` *and*
+`customer_name` as distinct fields, and no doc/contract states the `sold_to_customer` equivalence. Left
+as a documented blocker.
+
+**Re-validation (DEV, 2026-06-08):** still **1/7 create** — but every previously-blocking *name* column
+now resolves; the failures moved to the genuinely missing / grain columns, confirming the naming layer
+is correct and isolating the remaining blockers:
+
+| View | First unresolved column now | Class |
+|---|---|---|
+| overview | — (creates) | — |
+| inbound_backlog | `po_id` | **grain** (unedited) |
+| outbound_backlog | `customer_id` | missing |
+| staging_workload | `uom` | missing |
+| stock_exceptions | `storage_location_id` | missing |
+| shortfalls | `material_id` | **grain** (unedited) |
+| im_wm_reconciliation | `storage_location_id` | missing |
+
+**New CI guard:** `scripts/ci/check_warehouse360_consumption_columns.py` (+ tests) statically verifies
+every source column each consumption view SELECTs resolves against the Gold serving view it reads FROM,
+using `contracts/warehouse360_consumption_column_contract.yml` (captured Gold columns + approved aliases
++ documented exceptions). A view is **not live-validated** until its exception list is empty; the guard
+prints the outstanding blockers on every run.
+
+**Grain views — detail-source check (recommendation #3):** confirmed there is **no detail-grain Gold
+source** for either: `gold_inbound_po_backlog` (non-enhanced) is also aggregated (`open_po_count`, no
+`po_id`), and `gold_transfer_requirement_backlog` has no per-material grain. Both
+`inbound_backlog` and `shortfalls` require a **Gold model and/or contract grain redesign** — out of
+scope for this naming PR.
+
+**Still NOT done:** missing columns not manufactured (no NULLs); grain not solved; no GRANTs; no
+source-mode change; no UAT/PROD; no app cutover. DEV technical only.
