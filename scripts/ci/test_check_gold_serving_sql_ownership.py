@@ -69,10 +69,10 @@ def test_run_checks_commented_forbidden_pattern_passes(tmp_path):
     sec_file = sql_dir / "gold_security_dev.sql"
     sec_file.write_text("""
     -- This view does not use current_date() or datediff;
-    /* 
+    /*
     Some explanation;
     CREATE VIEW my_view AS SELECT a;
-    min_days_to_expiry is also not used here 
+    min_days_to_expiry is also not used here
     */
     CREATE OR REPLACE VIEW my_view_secured AS
       SELECT * FROM my_view;
