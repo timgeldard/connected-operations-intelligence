@@ -44,3 +44,4 @@ spark-warehouse/
 node_modules/
 .npm
 .pnpm-debug.log
+.uat_tmp/
