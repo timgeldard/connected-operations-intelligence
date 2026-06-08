@@ -81,7 +81,9 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_outbound_backlog TO `users`;
 
 
 -- 4. Staging Workload
--- Grain: 1 row per plant_id + order_id + reservation_no + batch_id (order-component level)
+-- Grain: 1 row per plant_id + order_id (ORDER-grain first wave — ADR-0004 D3). gold_process_order_staging
+-- is order-grain; the component-grain fields reservation_no/batch_id and the semantic-duplicate sap_order
+-- are deferred to a future component-grain contract (vw_consumption_warehouse360_staging_components).
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_staging_workload AS
 SELECT
   plant_code AS plant_id,
@@ -96,10 +98,7 @@ SELECT
   to_items_total,
   to_items_done,
   days_to_start * 1440 AS mins_to_start,
-  risk_band AS risk,
-  reservation_no,
-  batch_id,
-  sap_order
+  risk_band AS risk
 FROM connected_plant_dev.gold_io_reporting.gold_process_order_staging_live;
 
 GRANT SELECT ON VIEW vw_consumption_warehouse360_staging_workload TO `users`;

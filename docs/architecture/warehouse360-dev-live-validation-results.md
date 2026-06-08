@@ -423,3 +423,23 @@ contract behaviour (overview is per *mapped* plant). No NULL placeholders; no Go
 DEV re-validation: `overview` now **543 rows, 0 NULL `plant_id`, 0 duplicate PK** — contract-valid shape.
 Still **4/7 create** (overview now valid-shape). Remaining: staging_workload (D3), inbound_backlog (D1),
 shortfalls (D2).
+
+---
+
+## Update 2026-06-08 (later) — PR B: staging_workload reduced to order grain (ADR-0004 D3) → 5/7
+
+> DEV technical validation only. No Gold rerun (consumption-SQL + contract reduction); no source-mode
+> change; no GRANTs; no UAT/PROD; no app cutover.
+
+`staging_workload` failed to create on the component-grain / semantic fields `reservation_no`, `batch_id`,
+`sap_order` — `gold_process_order_staging` is **order-grain**. Per D3, the first-wave contract is reduced
+to **order grain** (`plant_id + order_id`): the three fields are removed (component detail deferred to a
+future `staging_components` contract; `sap_order` was a semantic duplicate of `order_id`). Removed across
+consumption SQL (dev/uat/prod) + manifest (v0.1.0→0.2.0) + view_expectations + consumption_column_contract
+(exceptions cleared → live-validatable) + the **governed** adapter SELECT + adapter-column guard. Not a
+breaking API change (the `Warehouse360StagingItem` response model fields are optional; it has no `sap_order`).
+
+DEV re-validation: `staging_workload` now **creates** — **created-empty** (gold_process_order_staging is 0
+rows in this DEV shakedown; 0 null plant/order, 0 dup PK at the order grain). **4/7 → 5/7 create**
+(overview, outbound, stock_exceptions[empty], im_wm[aggregate], staging[empty]). Remaining: inbound_backlog
+(D1 — new PO-line Gold model), shortfalls (D2 — new material-grain Gold model).

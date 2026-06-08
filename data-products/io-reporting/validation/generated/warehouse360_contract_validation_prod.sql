@@ -112,7 +112,7 @@ LIMIT 20;
 -- ============================================================================
 -- Contract: warehouse360.staging_workload
 -- View: connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_staging_workload
--- Grain: one row per plant_id, process order, reservation number, and batch ID
+-- Grain: one row per plant_id and process order (order grain — first wave)
 -- ============================================================================
 
 DESCRIBE TABLE connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_staging_workload;
@@ -126,16 +126,14 @@ SELECT
   'vw_consumption_warehouse360_staging_workload' AS view_name,
   COUNT(*) AS total_rows,
   COUNT_IF(plant_id IS NULL) AS null_plant_id_rows,
-  COUNT_IF(order_id IS NULL) AS null_order_id_rows,
-  COUNT_IF(reservation_no IS NULL) AS null_reservation_no_rows,
-  COUNT_IF(batch_id IS NULL) AS null_batch_id_rows
+  COUNT_IF(order_id IS NULL) AS null_order_id_rows
 FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_staging_workload;
 
 SELECT
   'vw_consumption_warehouse360_staging_workload' AS view_name,
   COUNT(*) AS total_rows,
-  COUNT(DISTINCT struct(plant_id, order_id, reservation_no, batch_id)) AS distinct_pk_rows,
-  COUNT(*) - COUNT(DISTINCT struct(plant_id, order_id, reservation_no, batch_id)) AS duplicate_pk_rows
+  COUNT(DISTINCT struct(plant_id, order_id)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(plant_id, order_id)) AS duplicate_pk_rows
 FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_staging_workload;
 
 SELECT

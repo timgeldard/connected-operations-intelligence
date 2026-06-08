@@ -69,11 +69,8 @@ ACTIVE_ROUTE_COLUMNS: dict[str, set[str]] = {
     },
     "warehouse360.staging_workload": {
         "order_id",
-        "sap_order",
-        "reservation_no",
         "material_id",
         "material_name",
-        "batch_id",
         "plant_id",
         "uom",
         "order_qty",
