@@ -2,8 +2,18 @@
 Lakeflow Spark Declarative Pipeline — Warehouse Exceptions Gold.
 
 gold_warehouse_exceptions: a uniform-schema UNION of warehouse data-integrity and
-aging exceptions, each tagged with a severity (1-4) and an SLA in hours. Mirrors
-the prototype imwm_exceptions view, sourced from conformed silver tables.
+aging exception CANDIDATES, each tagged with a severity (1-4) and an SLA in hours.
+Mirrors the prototype imwm_exceptions view, sourced from conformed silver tables.
+
+DETERMINISM (hardening plan Phase 2 / ADR 012): this base MV contains no
+current_date()/current_timestamp() so it stays incrementally refreshable. Aging
+branches emit ALL candidates plus the date the age is measured from
+(`aging_reference_date` / `aging_reference_datetime`); the age thresholds
+(expired, QI > 14d, blocked > 3d, TO > 24h), `age_days` and `detected_date` are
+applied/computed at query time by the gold_warehouse_exceptions_live serving
+view (scripts/generate_gold_serving_views_sql.py). Consumers must read the
+_live view — the base MV / _secured view rows are candidates, not confirmed
+exceptions.
 """
 
 import dlt
@@ -17,17 +27,18 @@ from gold._shared import (
 )
 
 # Uniform output columns shared by every exception branch (order matters for unionByName).
-# `detected_date` is appended once after the union (constant per run) and is intentionally
-# not listed here.
+# `age_days` and `detected_date` are computed in the _live serving view (query time), not here.
 _COLS = [
     "exception_type", "severity", "sla_hours", "plant_code", "warehouse_number",
-    "material_code", "batch_number", "reference_id", "quantity", "age_days", "detail",
+    "material_code", "batch_number", "reference_id", "quantity",
+    "aging_reference_date", "aging_reference_datetime", "detail",
 ]
 
 
 def _branch(df, exception_type, severity, sla_hours, *, warehouse_number=None,
             material_code=None, batch_number=None, reference_id=None,
-            quantity=None, age_days=None, detail=None):
+            quantity=None, aging_reference_date=None, aging_reference_datetime=None,
+            detail=None):
     """Project an arbitrary source df onto the uniform exception schema."""
     def col(value, cast):
         if value is None:
@@ -44,13 +55,16 @@ def _branch(df, exception_type, severity, sla_hours, *, warehouse_number=None,
         col(batch_number, "string").alias("batch_number"),
         col(reference_id, "string").alias("reference_id"),
         col(quantity, "double").alias("quantity"),
-        col(age_days, "int").alias("age_days"),
+        col(aging_reference_date, "date").alias("aging_reference_date"),
+        col(aging_reference_datetime, "timestamp").alias("aging_reference_datetime"),
         col(detail, "string").alias("detail"),
     )
 
 
 @dlt.table(**gold_table_args(
-    comment="Warehouse data-integrity and aging exceptions with severity (1-4) and SLA hours.",
+    comment="Warehouse data-integrity and aging exception CANDIDATES with severity (1-4) and SLA "
+            "hours. Age thresholds are applied at query time by gold_warehouse_exceptions_live "
+            "(base MV is deterministic — read the _live view for confirmed exceptions).",
     cluster_by=["plant_code", "exception_type"],
 ))
 @dlt.expect("severity in range", "severity BETWEEN 1 AND 4")
@@ -67,8 +81,6 @@ def gold_warehouse_exceptions():
     )
 
     occupied = storage_bin.filter(F.col("quant_number").isNotNull())
-    gr_age_days = F.datediff(F.current_date(), F.col("goods_receipt_date"))
-    expiry_age_days = F.datediff(F.current_date(), F.col("expiry_date"))
 
     # 1. Negative IM book stock (MARD unrestricted < 0)
     neg_im = _branch(
@@ -92,11 +104,10 @@ def gold_warehouse_exceptions():
         detail=F.lit("WM quant quantity is negative"),
     )
 
-    # 3. Expired batch still holding stock
+    # 3. Batch with stock and an expiry date — _live confirms expiry_date < current_date().
     expired = _branch(
         occupied.filter(
             F.col("expiry_date").isNotNull()
-            & (F.col("expiry_date") < F.current_date())
             & (F.coalesce(F.col("total_quantity"), F.lit(0.0)) > 0)
         ),
         "EXPIRED_BATCH_WITH_STOCK", 3, 8,
@@ -105,16 +116,15 @@ def gold_warehouse_exceptions():
         batch_number=F.col("batch_number"),
         reference_id=F.col("quant_number"),
         quantity=F.col("total_quantity"),
-        age_days=expiry_age_days,
+        aging_reference_date=F.col("expiry_date"),
         detail=F.lit("Stock held on an expired batch"),
     )
 
-    # 4. Quality-inspection stock aged > 14 days
+    # 4. Quality-inspection stock — _live confirms GR age > 14 days.
     qi_aged = _branch(
         occupied.filter(
             (F.col("stock_category_code") == "Q")
             & (F.coalesce(F.col("total_quantity"), F.lit(0.0)) > 0)
-            & (gr_age_days > 14)
         ),
         "QI_STOCK_AGED_14D", 2, 0,
         warehouse_number=F.col("warehouse_number"),
@@ -122,16 +132,15 @@ def gold_warehouse_exceptions():
         batch_number=F.col("batch_number"),
         reference_id=F.col("quant_number"),
         quantity=F.col("total_quantity"),
-        age_days=gr_age_days,
+        aging_reference_date=F.col("goods_receipt_date"),
         detail=F.lit("Quality-inspection stock aged beyond 14 days"),
     )
 
-    # 5. Blocked stock aged > 3 days
+    # 5. Blocked stock — _live confirms GR age > 3 days.
     blocked_aged = _branch(
         occupied.filter(
             (F.col("stock_category_code") == "S")
             & (F.coalesce(F.col("total_quantity"), F.lit(0.0)) > 0)
-            & (gr_age_days > 3)
         ),
         "BLOCKED_STOCK_AGED_3D", 1, 0,
         warehouse_number=F.col("warehouse_number"),
@@ -139,19 +148,15 @@ def gold_warehouse_exceptions():
         batch_number=F.col("batch_number"),
         reference_id=F.col("quant_number"),
         quantity=F.col("total_quantity"),
-        age_days=gr_age_days,
+        aging_reference_date=F.col("goods_receipt_date"),
         detail=F.lit("Blocked stock aged beyond 3 days"),
     )
 
-    # 6. Open transfer order aged > 24 hours
-    to_age_hours = (
-        F.unix_timestamp(F.current_timestamp()) - F.unix_timestamp(F.col("created_datetime"))
-    ) / 3600.0
+    # 6. Open transfer order — _live confirms creation age > 24 hours (rolling, on the timestamp).
     open_to = _branch(
         transfer_orders.filter(
             (F.col("item_status") != "Fully Confirmed")
             & F.col("created_datetime").isNotNull()
-            & (to_age_hours > 24)
         ),
         "OPEN_TO_AGED_24H", 2, 0,
         warehouse_number=F.col("warehouse_number"),
@@ -159,7 +164,8 @@ def gold_warehouse_exceptions():
         batch_number=F.col("batch_number"),
         reference_id=F.col("transfer_order_number"),
         quantity=F.col("requested_quantity"),
-        age_days=F.datediff(F.current_date(), F.to_date(F.col("created_datetime"))),
+        aging_reference_date=F.to_date(F.col("created_datetime")),
+        aging_reference_datetime=F.col("created_datetime"),
         detail=F.lit("Transfer order open beyond 24 hours"),
     )
 
@@ -202,4 +208,4 @@ def gold_warehouse_exceptions():
     result = branches[0]
     for branch in branches[1:]:
         result = result.unionByName(branch)
-    return result.withColumn("detected_date", F.current_date())
+    return result

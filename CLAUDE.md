@@ -21,24 +21,33 @@ Configure auth before deploying: `databricks auth login --profile DEFAULT`
 
 ## Project layout
 
+> The reporting-pipelines data product lives in `data-products/io-reporting/` within this
+> monorepo — every path below is relative to that directory. (The repo root additionally holds
+> the Warehouse360 app under `apps/`, domain UI integrations under `domain-integrations/`, and
+> repo-wide CI guards under `scripts/ci/`.)
+
 ```
-databricks.yml                    # Bundle config (dev / uat / prod targets)
-resources/
-  silver_fast_pipeline.pipeline.yml    # Continuous Silver pipeline definition
-  silver_slow_pipeline.pipeline.yml    # Triggered Silver reference pipeline definition
-  silver_quality_pipeline.pipeline.yml # Triggered Silver quality pipeline definition
-  gold_pipeline.pipeline.yml      # Triggered Gold pipeline definition
-silver/
-  tables/                         # Domain-specific table definitions (process_order, warehouse_fast, warehouse_reference, etc.)
-  dlt_silver_fast.py              # Fast operational silver entrypoint (continuous)
-  dlt_silver_slow.py              # Slow reference silver entrypoint (triggered)
-  dlt_silver_quality.py           # Quality silver entrypoint (triggered)
-  helpers.py                      # Shared DLT helpers and constants
-  design_spec.md                  # Silver architecture and table catalogue
-gold/
-  dlt_gold_pipeline.py            # Gold aggregate definitions (daily output, schedule adherence, quality)
-  design_spec.md                  # Gold architecture and KPI specs
-tests/                            # Unit tests for silver helpers and gold tables
+data-products/io-reporting/
+  databricks.yml                  # Bundle config (dev / uat / prod targets)
+  resources/
+    silver_fast_pipeline.pipeline.yml    # Continuous Silver pipeline definition
+    silver_slow_pipeline.pipeline.yml    # Triggered Silver reference pipeline definition
+    silver_quality_pipeline.pipeline.yml # Triggered Silver quality pipeline definition
+    gold_pipeline.pipeline.yml    # Triggered Gold pipeline definition
+    sql/                          # Generated UC SQL (RLS secured views, _live serving views, consumption views)
+  silver/
+    tables/                       # Domain-specific table definitions (process_order, warehouse_fast, warehouse_reference, etc.)
+    dlt_silver_fast.py            # Fast operational silver entrypoint (continuous)
+    dlt_silver_slow.py            # Slow reference silver entrypoint (triggered)
+    dlt_silver_quality.py         # Quality silver entrypoint (triggered)
+    helpers.py                    # Shared DLT helpers and constants
+    design_spec.md                # Silver architecture and table catalogue
+  gold/
+    dlt_gold_pipeline.py          # Gold aggregate definitions (daily output, schedule adherence, quality)
+    design_spec.md                # Gold architecture and KPI specs
+  scripts/                        # SQL generators (gold security / serving views)
+  contracts/                      # Data contracts (Warehouse360 consumption, column snapshots)
+  tests/                          # Unit tests for silver helpers and gold tables
 ```
 
 ## Development workflow

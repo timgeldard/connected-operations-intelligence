@@ -59,3 +59,19 @@ SELECT
   CASE WHEN datediff(current_date(), b.po_date) IS NULL THEN 'grey' WHEN datediff(current_date(), b.po_date) >= 30 THEN 'red' WHEN datediff(current_date(), b.po_date) >= 14 THEN 'amber' ELSE 'green' END AS inbound_backlog_risk_band
 FROM connected_plant_uat.gold_io_reporting.gold_inbound_po_line_backlog_secured AS b;
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_inbound_po_line_backlog_live TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_warehouse_kpi_snapshot_live AS
+SELECT
+  b.*,
+  current_date() AS snapshot_date
+FROM connected_plant_uat.gold_io_reporting.gold_warehouse_kpi_snapshot_secured AS b;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_warehouse_kpi_snapshot_live TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_warehouse_exceptions_live AS
+SELECT
+  b.*,
+  CAST(datediff(current_date(), b.aging_reference_date) AS INT) AS age_days,
+  current_date() AS detected_date
+FROM connected_plant_uat.gold_io_reporting.gold_warehouse_exceptions_secured AS b
+WHERE CASE b.exception_type WHEN 'EXPIRED_BATCH_WITH_STOCK' THEN b.aging_reference_date < current_date() WHEN 'QI_STOCK_AGED_14D' THEN datediff(current_date(), b.aging_reference_date) > 14 WHEN 'BLOCKED_STOCK_AGED_3D' THEN datediff(current_date(), b.aging_reference_date) > 3 WHEN 'OPEN_TO_AGED_24H' THEN (unix_timestamp(current_timestamp()) - unix_timestamp(b.aging_reference_datetime)) / 3600.0 > 24 ELSE TRUE END;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_warehouse_exceptions_live TO `users`;

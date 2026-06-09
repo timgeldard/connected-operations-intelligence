@@ -11,6 +11,11 @@ stale KPIs with no signal. This module adds:
   gold_critical_freshness_gate — fails the Gold run (@dlt.expect_or_fail) when a CRITICAL table is
                                 STALE or has NO_DATA, so empty critical inputs cannot pass silently.
 
+DETERMINISM EXEMPTION: these are full-recompute MONITORING tables, not analytics bases — the
+checked_at / latest_observed_at wall-clock audit columns and lag calculations are the tables'
+purpose. They are exempt from the no-current_date()-in-base-MV rule (see
+scripts/ci/check_gold_mv_determinism.py EXEMPT_FILES) and must not be used as serving sources.
+
 Contracts (table → domain → criticality → SLA minutes) are documented in
 docs/freshness_contracts.md and must be kept in sync with FRESHNESS_CONTRACTS below.
 """

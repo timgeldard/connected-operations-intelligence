@@ -24,7 +24,8 @@ SELECT
   blocked_bin_count AS bins_blocked,
   total_bin_count AS bins_total,
   CAST(bin_utilisation_pct AS DECIMAL(5,2)) AS bin_util_pct
-FROM connected_plant_uat.gold_io_reporting.gold_warehouse_kpi_snapshot_secured
+-- _live adds the query-time snapshot_date over the RLS-secured view (base MV is deterministic).
+FROM connected_plant_uat.gold_io_reporting.gold_warehouse_kpi_snapshot_live
 WHERE plant_code IS NOT NULL;
 
 -- TODO_SECURITY: replace with approved group.
@@ -164,8 +165,10 @@ SELECT
   MIN(detected_date) AS oldest_detected_date,
   MAX(detected_date) AS latest_detected_date,
   MAX(detail) AS detail_text
--- Read the SECURED view so per-user plant RLS applies before aggregation (not the base table).
-FROM connected_plant_uat.gold_io_reporting.gold_warehouse_exceptions_secured
+-- Read the LIVE serving view (built on the _secured view, so per-user plant RLS still applies
+-- before aggregation). _live confirms the age-threshold exceptions and computes age_days /
+-- detected_date at query time; the _secured rows are unconfirmed aging candidates.
+FROM connected_plant_uat.gold_io_reporting.gold_warehouse_exceptions_live
 GROUP BY plant_code, material_code, batch_number, exception_type;
 
 -- TODO_SECURITY: replace with approved group.

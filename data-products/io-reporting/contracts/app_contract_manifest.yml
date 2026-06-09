@@ -417,6 +417,11 @@ contracts:
       (storage_location_id/bin_id absent; reference_id ~99% null), so detail rows are rolled up to
       plant x material x batch x exception_type with count/quantity/severity/age/date measures. A
       detail-grain reconciliation contract is future work, only once a stable variance key exists upstream.
+      detected_date is the QUERY-TIME evaluation date (the underlying gold_warehouse_exceptions_live
+      serving view confirms age-threshold exceptions and stamps detected_date at query time; the
+      deterministic base MV does not persist a first-seen date), so oldest_/latest_detected_date both
+      equal the evaluation date today — they are kept for interface stability until a persisted
+      first-seen date exists upstream.
       Candidate contract pending DEV profiling of primary key uniqueness, plant_id nullability, and freshness.
     source_view: vw_consumption_warehouse360_im_wm_reconciliation
     grain: one row per plant_id, material_id, batch_id, and exception type (aggregate exception summary)
@@ -468,11 +473,15 @@ contracts:
       - name: oldest_detected_date
         type: date
         required: false
-        description: Earliest detection date across the aggregated exceptions
+        description: >-
+          Earliest detection date across the aggregated exceptions. Currently the query-time
+          evaluation date (no persisted first-seen date upstream) — equals latest_detected_date.
       - name: latest_detected_date
         type: date
         required: false
-        description: Most recent detection date across the aggregated exceptions
+        description: >-
+          Most recent detection date across the aggregated exceptions. Currently the query-time
+          evaluation date (no persisted first-seen date upstream).
       - name: detail_text
         type: string
         required: false

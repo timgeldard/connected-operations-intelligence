@@ -201,6 +201,12 @@ jobs:
       - name: Run security-mode policy guard
         run: python3 scripts/ci/check_security_mode_policy.py
 
+      - name: Run base-MV determinism guard tests
+        run: PYTHONPATH=scripts/ci python3 -m pytest scripts/ci/test_check_gold_mv_determinism.py -q
+
+      - name: Run base-MV determinism guard
+        run: python3 scripts/ci/check_gold_mv_determinism.py
+
       - name: Run app migration registry guard
         run: python3 scripts/ci/check_app_migration_registry_guard.py
 

@@ -107,10 +107,13 @@ def gold_warehouse_kpi_snapshot():
     for c in count_cols:
         snapshot = snapshot.withColumn(c, F.coalesce(F.col(c), F.lit(0)))
 
+    # No snapshot_date / current_date() here: the base MV stays deterministic (hardening plan
+    # Phase 2 / ADR 012). Consumers needing an as-of marker compute it at query time (e.g. the
+    # Warehouse360 overview consumption view derives snapshot_ts from current_date()).
     return snapshot.withColumn(
         "bin_utilisation_pct",
         F.when(
             F.col("total_bin_count") > 0,
             F.round(F.col("occupied_bin_count") / F.col("total_bin_count") * 100, 1),
         ).otherwise(F.lit(0.0)),
-    ).withColumn("snapshot_date", F.current_date())
+    )

@@ -4,7 +4,7 @@
 
 WITH expected_columns AS (
   SELECT 'gold_warehouse_kpi_snapshot_secured' AS table_name, 'plant_code' AS column_name UNION ALL
-  SELECT 'gold_warehouse_kpi_snapshot_secured', 'snapshot_date' UNION ALL
+  SELECT 'gold_warehouse_kpi_snapshot_live', 'snapshot_date' UNION ALL  -- query-time column (base MV is deterministic)
   SELECT 'gold_warehouse_kpi_snapshot_secured', 'active_order_count' UNION ALL
   SELECT 'gold_warehouse_kpi_snapshot_secured', 'open_tr_item_count' UNION ALL
   SELECT 'gold_warehouse_kpi_snapshot_secured', 'open_to_item_count' UNION ALL
@@ -90,7 +90,7 @@ WITH expected_columns AS (
   SELECT 'gold_warehouse_exceptions', 'qty' UNION ALL
   SELECT 'gold_warehouse_exceptions', 'bin_id' UNION ALL
   SELECT 'gold_warehouse_exceptions', 'detail_text' UNION ALL
-  SELECT 'gold_warehouse_exceptions', 'detected_date'
+  SELECT 'gold_warehouse_exceptions_live', 'detected_date'  -- query-time column (base MV holds deterministic candidates)
 ),
 actual_columns AS (
   SELECT
