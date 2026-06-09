@@ -436,12 +436,10 @@ def stg_warehouse_transfer_requirement():
     # Pre-gate pushdown: shrink the wide static LTBP to onboarded WAREHOUSES BEFORE the changed-keys
     # fan-out join. Uses the LGNUM (warehouse_number) axis — the SAME axis as the final
     # apply_warehouse_gate (NOT WERKS, which is unreliable on WM rows: LGNUM != WERKS). Filter-only
-    # semi-join (no plant_id enrichment — that stays on the final gate); row-equivalent to gating at the
+    # LEFT_SEMI (no plant_id enrichment — that stays on the final gate); row-equivalent to gating at the
     # end. The final apply_warehouse_gate is kept (authoritative filter + plant_id + coverage-guard).
-    _active_wh = active_warehouses_df(spark, "warehouse").select(
-        F.col("warehouse_number").alias("_gate_lgnum")
-    )
-    ltbp = ltbp.join(F.broadcast(_active_wh), ltbp["LGNUM"] == F.col("_gate_lgnum"), "inner").drop("_gate_lgnum")
+    _active_wh = active_warehouses_df(spark, "warehouse")
+    ltbp = ltbp.join(F.broadcast(_active_wh), ltbp["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
     requirement_items_to_refresh = (
         changed_keys.alias("c")
         # .hint("merge"): pre-filtered LTBP is small-but-wide; force sort-merge so it is not
