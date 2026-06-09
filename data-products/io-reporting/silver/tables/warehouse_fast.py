@@ -190,6 +190,12 @@ dlt.apply_changes(
 def batch_stock():
     spark = get_spark()
     mchb = spark.read.table(f"{BRONZE}.batchstock_mchb")
+    # Pre-gate pushdown: shrink the ~11.5M-row MCHB to plants onboarded for stock (MCHB.WERKS, the SAME
+    # plant axis as the final apply_plant_gate) BEFORE the MARA base_uom join, so this full-recompute MV
+    # joins only the onboarded-plant subset instead of all plants. Row-equivalent to gating at the end
+    # (MARA is a left base_uom lookup that adds no rows). The final apply_plant_gate is kept (authoritative
+    # + coverage-guard). Batch MV — MARA is a narrow 3-col lookup, left to the optimizer (no merge hint).
+    mchb = apply_plant_gate(mchb, "WERKS", "stock", spark=spark)
     # base_uom from material master (MCHB has no MEINS); MARA is unique per MANDT+MATNR.
     mara = spark.read.table(f"{BRONZE}.materialmaster_mara").select(
         F.col("MANDT").alias("_mara_mandt"),

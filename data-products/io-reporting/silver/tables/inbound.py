@@ -46,10 +46,18 @@ def stg_purchase_order():
     changed_keys = ekko_changes.unionByName(ekpo_changes)
     ekko = spark.read.table(f"{published}.procurementorderobject_ekko")
     ekpo = spark.read.table(f"{published}.procurementorderobject_ekpo")
+    # Pre-gate pushdown: shrink the wide static EKPO (~6.62M item rows) to onboarded plants (EKPO.WERKS,
+    # the SAME plant axis as the final apply_plant_gate) BEFORE the changed-keys fan-out join. Row-equivalent
+    # to gating at the end; the final apply_plant_gate is kept (authoritative). Mirrors outbound_delivery's
+    # LIPS pre-gate exactly (incl. the header-only-delete limitation). EKKO (header) carries no plant, so it
+    # is not pre-filtered — only the merge hint applies to its join.
+    ekpo = apply_plant_gate(ekpo, "WERKS", "ioreporting", spark=spark)
 
     items_to_refresh = (
         changed_keys.alias("c")
-        .join(ekpo.alias("i"), ["EBELN", "MANDT"], "left")
+        # .hint("merge"): the pre-filtered EKPO is small-but-wide; force sort-merge so it is not
+        # auto-broadcast (which would re-introduce the wide-row OOM the header merge hint prevents).
+        .join(ekpo.alias("i").hint("merge"), ["EBELN", "MANDT"], "left")
         .select(
             "i.*",
             F.col("c.EBELN").alias("_change_ebeln"),
@@ -62,7 +70,9 @@ def stg_purchase_order():
 
     gated = (
         items_to_refresh.alias("i")
-        .join(ekko.alias("h"), ["EBELN", "MANDT"], "left")
+        # .hint("merge"): force sort-merge on the wide EKKO header join — Photon's default broadcast hash
+        # join OOMs/spills on the wide reconstructed item rows (same pattern as outbound_delivery's LIKP join).
+        .join(ekko.alias("h").hint("merge"), ["EBELN", "MANDT"], "left")
         .select(
             # ── Natural key
             strip_zeros(F.coalesce(F.col("i.EBELN"), F.col("i._change_ebeln"))).alias("purchase_order_number"),
@@ -240,6 +250,11 @@ def physical_inventory_document():
     published = bronze_published()
     ikpf = spark.read.table(f"{published}.header_physical_inventory_doc_ikpf")
     iseg = spark.read.table(f"{published}.physical_inventory_doc_items_iseg")
+    # Pre-gate pushdown: shrink the ISEG item table to plants onboarded for stock (ISEG.WERKS, the SAME
+    # plant axis as the final apply_plant_gate) BEFORE the IKPF header join. Row-equivalent to gating at
+    # the end; the final apply_plant_gate is kept (authoritative). Batch MV — IKPF is a narrow header
+    # lookup, left to the optimizer (no merge hint; not a wide-row stream-static broadcast risk).
+    iseg = apply_plant_gate(iseg, "WERKS", "stock", spark=spark)
 
     gated = (
         iseg.alias("i")
