@@ -29,11 +29,15 @@ try:
         WarehouseOutboundRequest,
         WarehouseOverviewRequest,
         WarehouseStagingRequest,
+        WarehouseStockExceptionsRequest,
+        WarehouseShortfallsRequest,
         get_warehouse_exceptions_spec,
         get_warehouse_inbound_spec,
         get_warehouse_outbound_spec,
         get_warehouse_overview_spec,
         get_warehouse_staging_spec,
+        get_warehouse_stock_exceptions_spec,
+        get_warehouse_shortfalls_spec,
     )
 except ImportError as err:
     print(f"Error importing adapter: {err}")
@@ -79,6 +83,8 @@ def run_contract_coverage() -> None:
         ("outbound", lambda: get_warehouse_outbound_spec(WarehouseOutboundRequest("WH01"))),
         ("staging", lambda: get_warehouse_staging_spec(WarehouseStagingRequest("WH01"))),
         ("exceptions", lambda: get_warehouse_exceptions_spec(WarehouseExceptionRequest("WH01"))),
+        ("stock_exceptions", lambda: get_warehouse_stock_exceptions_spec(WarehouseStockExceptionsRequest("WH01"))),
+        ("shortfalls", lambda: get_warehouse_shortfalls_spec(WarehouseShortfallsRequest("WH01"))),
     ]
 
     errors: list[str] = []
@@ -133,8 +139,8 @@ def run_contract_coverage() -> None:
         "warehouse360.outbound_backlog": "route-covered",
         "warehouse360.staging_workload": "route-covered",
         "warehouse360.im_wm_reconciliation": "route-covered",
-        "warehouse360.stock_exceptions": "contract-only",
-        "warehouse360.shortfalls": "contract-only",
+        "warehouse360.stock_exceptions": "route-covered",
+        "warehouse360.shortfalls": "route-covered",
         "warehouse360.dispensary_queue": "placeholder / not runtime-ready",
     }
     for c_id, status in coverage_map.items():

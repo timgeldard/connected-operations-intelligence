@@ -215,32 +215,7 @@ class TestWarehouse360GovernedContractRoutes:
         _, kwargs = mock_exec.call_args
         assert kwargs["tags"]["contract_id"] == contract_id
 
-    @pytest.mark.parametrize(
-        "source_mode",
-        [None, "mock"],
-    )
-    async def test_source_mode_misconfiguration_fails_clearly(
-        self,
-        monkeypatch,
-        wh360_databricks_env,
-        source_mode,
-    ) -> None:
-        if source_mode is None:
-            monkeypatch.delenv("WAREHOUSE360_SOURCE_MODE", raising=False)
-        else:
-            monkeypatch.setenv("WAREHOUSE360_SOURCE_MODE", source_mode)
 
-        async with _make_client() as client:
-            response = await client.get(
-                "/api/warehouse360/inbound",
-                params={"warehouse_id": "WH01"},
-                headers=_HEADERS_WITH_TOKEN,
-            )
-
-        assert response.status_code == 503
-        assert "WAREHOUSE360_SOURCE_MODE" in response.json()["detail"]
-        assert "legacy_wh360" in response.json()["detail"]
-        assert "governed_contracts" in response.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -569,6 +544,134 @@ class TestWarehouseExceptionsRoute:
         assert response.status_code == 502
 
 
+class TestWarehouseStockExceptionsRoute:
+    async def test_returns_401_when_unauthenticated(self, wh360_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/warehouse360/stock-exceptions",
+                params={"warehouse_id": "WH01"},
+            )
+        assert response.status_code == 401
+
+    async def test_returns_200_with_mapped_stock_exceptions(self, wh360_databricks_env) -> None:
+        fake_rows = [
+            {
+                "plant_id": "IE10",
+                "material_id": "MAT01",
+                "batch_id": "B01",
+                "exception_type": "EXPIRED",
+                "qty": 10.5,
+                "minimum_days_to_expiry": -5,
+                "has_minimum_shelf_life_breach": True
+            }
+        ]
+
+        with patch(
+            "shared.query_service.databricks_client.StatementApiDatabricksClient.execute",
+            new_callable=AsyncMock,
+            return_value=fake_rows,
+        ):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/warehouse360/stock-exceptions",
+                    params={"warehouse_id": "WH01"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 1
+        item = data[0]
+        assert item["plantId"] == "IE10"
+        assert item["materialId"] == "MAT01"
+        assert item["batchId"] == "B01"
+        assert item["exceptionType"] == "EXPIRED"
+        assert item["qty"] == 10.5
+        assert item["minimumDaysToExpiry"] == -5
+        assert item["hasMinimumShelfLifeBreach"] is True
+        assert response.headers.get("x-query-name") == "warehouse360.get_stock_exceptions"
+
+    async def test_returns_502_on_databricks_query_error(self, wh360_databricks_env) -> None:
+        from shared.query_service.errors import DatabricksQueryError
+
+        with patch(
+            "shared.query_service.databricks_client.StatementApiDatabricksClient.execute",
+            new_callable=AsyncMock,
+            side_effect=DatabricksQueryError("warehouse360.get_stock_exceptions", "Warehouse failed"),
+        ):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/warehouse360/stock-exceptions",
+                    params={"warehouse_id": "WH01"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 502
+
+
+class TestWarehouseShortfallsRoute:
+    async def test_returns_401_when_unauthenticated(self, wh360_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/warehouse360/shortfalls",
+                params={"warehouse_id": "WH01"},
+            )
+        assert response.status_code == 401
+
+    async def test_returns_200_with_mapped_shortfalls(self, wh360_databricks_env) -> None:
+        fake_rows = [
+            {
+                "plant_id": "IE10",
+                "material_id": "MAT01",
+                "shortfall_qty": 500.0,
+                "open_items_count": 5,
+                "oldest_tr_date": "2026-05-10"
+            }
+        ]
+
+        with patch(
+            "shared.query_service.databricks_client.StatementApiDatabricksClient.execute",
+            new_callable=AsyncMock,
+            return_value=fake_rows,
+        ):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/warehouse360/shortfalls",
+                    params={"warehouse_id": "WH01"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 1
+        item = data[0]
+        assert item["plantId"] == "IE10"
+        assert item["materialId"] == "MAT01"
+        assert item["shortfallQty"] == 500.0
+        assert item["openItemsCount"] == 5
+        assert item["oldestTrDate"] == "2026-05-10"
+        assert response.headers.get("x-query-name") == "warehouse360.get_shortfalls"
+
+    async def test_returns_502_on_databricks_query_error(self, wh360_databricks_env) -> None:
+        from shared.query_service.errors import DatabricksQueryError
+
+        with patch(
+            "shared.query_service.databricks_client.StatementApiDatabricksClient.execute",
+            new_callable=AsyncMock,
+            side_effect=DatabricksQueryError("warehouse360.get_shortfalls", "Warehouse failed"),
+        ):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/warehouse360/shortfalls",
+                    params={"warehouse_id": "WH01"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 502
+
+
 class TestWarehouse360ParameterValidation:
     async def test_empty_warehouse_id_returns_422(self, wh360_databricks_env) -> None:
         async with _make_client() as client:
@@ -657,4 +760,12 @@ class TestWarehouse360ResponseModelEnforcement:
     async def test_exceptions_response_model_is_wired(self) -> None:
         ref = await self._get_route_schema_ref("/api/warehouse360/exceptions")
         assert ref is not None and "Warehouse360ExceptionItem" in ref
+
+    async def test_stock_exceptions_response_model_is_wired(self) -> None:
+        ref = await self._get_route_schema_ref("/api/warehouse360/stock-exceptions")
+        assert ref is not None and "Warehouse360StockExceptionItem" in ref
+
+    async def test_shortfalls_response_model_is_wired(self) -> None:
+        ref = await self._get_route_schema_ref("/api/warehouse360/shortfalls")
+        assert ref is not None and "Warehouse360ShortfallItem" in ref
 

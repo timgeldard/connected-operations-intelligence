@@ -265,7 +265,7 @@ views:
       - name: has_minimum_shelf_life_breach
         type: boolean
     freshness_column: null
-    runtime_route_exists: false
+    runtime_route_exists: true
     dashboard_consumption_expected: true
     live_validation_required:
       - primary_key_uniqueness
@@ -295,7 +295,7 @@ views:
       - name: oldest_tr_date
         type: date
     freshness_column: null
-    runtime_route_exists: false
+    runtime_route_exists: true
     dashboard_consumption_expected: true
     live_validation_required:
       - primary_key_uniqueness
