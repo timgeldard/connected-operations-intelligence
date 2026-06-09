@@ -12,6 +12,14 @@
 > not run, and RLS/entitlement could not be proven (no write access to `published_uat.security.model`;
 > deployer owns the Gold objects). No contract advances; no app cutover. Evidence:
 > [UAT validation results](../architecture/warehouse360-uat-validation-results.md).
+>
+> **UAT revalidation (2026-06-09) after stage-gate fixes — Outcome A (partial).** Silver gate now FIXED
+> and proven (the 6 operational tables checked this run = C061+P817; `purchase_order` 184,553/2 — leak gone;
+> T320 C061→104, P817→208). All 7 consumption views CREATE; inbound/outbound/shortfalls correctly 2-plant.
+> `overview` (133) + `im_wm_reconciliation` (327) still leaked via ungated `storage_bin` +
+> `stock_at_location` — **now fixed in `fix/silver-gate-storage-bin-stock-at-location` (DEV-validated: both
+> → 2 plants).** RLS unproven (validation_open = data-shape only; the `users`-group absence is a Gate B/C
+> harden concern, NOT a data-shape blocker). No contract advances; no cutover. Next: re-run UAT under validation_open.
 
 | Contract ID | View | Runtime status | Validation status | Route-covered? | Notes (DEV 2026-06-08) |
 |---|---|---|---|---|---|
