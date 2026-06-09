@@ -8,7 +8,7 @@ Tables: goods_movement, batch_stock, warehouse_transfer_order,
 import dlt
 from pyspark.sql import functions as F
 
-from silver._plant_gate import apply_plant_gate, apply_warehouse_gate
+from silver._plant_gate import active_warehouses_df, apply_plant_gate, apply_warehouse_gate
 from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
 
 # ── 1. GOODS MOVEMENT ────────────────────────────────────────────────────────
@@ -433,9 +433,18 @@ def stg_warehouse_transfer_requirement():
     changed_keys = ltbk_changes.unionByName(ltbp_changes)
     ltbk = spark.read.table(f"{BRONZE}.transferrequirementobjects_ltbk")
     ltbp = spark.read.table(f"{BRONZE}.transferrequirementobjects_ltbp")
+    # Pre-gate pushdown: shrink the wide static LTBP to onboarded WAREHOUSES BEFORE the changed-keys
+    # fan-out join. Uses the LGNUM (warehouse_number) axis — the SAME axis as the final
+    # apply_warehouse_gate (NOT WERKS, which is unreliable on WM rows: LGNUM != WERKS). Filter-only
+    # LEFT_SEMI (no plant_id enrichment — that stays on the final gate); row-equivalent to gating at the
+    # end. The final apply_warehouse_gate is kept (authoritative filter + plant_id + coverage-guard).
+    _active_wh = active_warehouses_df(spark, "warehouse")
+    ltbp = ltbp.join(F.broadcast(_active_wh), ltbp["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
     requirement_items_to_refresh = (
         changed_keys.alias("c")
-        .join(ltbp.alias("i"), ["LGNUM", "TBNUM", "MANDT"], "left")
+        # .hint("merge"): pre-filtered LTBP is small-but-wide; force sort-merge so it is not
+        # auto-broadcast (which would re-introduce the wide-row OOM the header merge hints prevent).
+        .join(ltbp.alias("i").hint("merge"), ["LGNUM", "TBNUM", "MANDT"], "left")
         .select(
             "i.*",
             F.col("c.LGNUM").alias("_change_lgnum"),

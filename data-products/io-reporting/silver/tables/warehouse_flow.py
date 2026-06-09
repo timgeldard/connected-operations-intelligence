@@ -115,10 +115,17 @@ def stg_outbound_delivery():
     changed_keys = likp_changes.unionByName(lips_changes)
     likp = spark.read.table(f"{BRONZE}.deliveryobjects_likp")
     lips = spark.read.table(f"{BRONZE}.deliveryobjects_lips")
+    # Pre-gate pushdown: shrink the wide static LIPS to onboarded plants (same plant axis as the final
+    # apply_plant_gate) BEFORE the changed-keys fan-out join. Filter-only (plant gate adds no columns);
+    # row-equivalent to gating at the end, but the join's static side drops from ~15.6M to the
+    # onboarded-plant subset. The final apply_plant_gate is kept (authoritative + coverage-guard).
+    lips = apply_plant_gate(lips, "WERKS", "ioreporting", spark=spark)
 
     delivery_items_to_refresh = (
         changed_keys.alias("c")
-        .join(lips.alias("i"), ["VBELN", "MANDT"], "left")
+        # .hint("merge"): the pre-filtered LIPS is small-but-wide; force sort-merge so it is not
+        # auto-broadcast (which would re-introduce the wide-row OOM the header merge hints prevent).
+        .join(lips.alias("i").hint("merge"), ["VBELN", "MANDT"], "left")
         .select(
             "i.*",
             F.col("c.VBELN").alias("_change_vbeln"),
