@@ -98,3 +98,42 @@ def test_inbound_po_backlog_enhanced_live_aging_band(spark: SparkSession):
     assert rows["new"]["inbound_backlog_risk_band"] == "green"
     assert rows["done"]["inbound_backlog_risk_band"] == "green"
     assert rows["unknown"]["inbound_backlog_risk_band"] == "grey"
+
+
+def test_warehouse_exceptions_live_age_thresholds(spark: SparkSession):
+    """The exceptions base MV holds aging CANDIDATES; the _live view confirms each type's age
+    threshold at query time and computes age_days / detected_date."""
+    from datetime import datetime as dt
+
+    today = _today(spark)
+    now = spark.sql("SELECT current_timestamp() AS t").collect()[0]["t"]
+
+    def cand(ref_id, exc_type, ref_date=None, ref_dt=None):
+        return Row(reference_id=ref_id, exception_type=exc_type, plant_code="C061",
+                   aging_reference_date=ref_date, aging_reference_datetime=ref_dt)
+
+    base = spark.createDataFrame([
+        # Expired: confirmed only once the expiry date has passed (today is not expired).
+        cand("EXP_PAST", "EXPIRED_BATCH_WITH_STOCK", ref_date=today - timedelta(days=2)),
+        cand("EXP_TODAY", "EXPIRED_BATCH_WITH_STOCK", ref_date=today),
+        # QI: > 14 days since goods receipt; null GR date never confirms (matches pre-Phase-2 logic).
+        cand("QI_OLD", "QI_STOCK_AGED_14D", ref_date=today - timedelta(days=15)),
+        cand("QI_AT", "QI_STOCK_AGED_14D", ref_date=today - timedelta(days=14)),
+        cand("QI_NULL", "QI_STOCK_AGED_14D", ref_date=None),
+        # Blocked: > 3 days since goods receipt.
+        cand("BLK_OLD", "BLOCKED_STOCK_AGED_3D", ref_date=today - timedelta(days=4)),
+        cand("BLK_NEW", "BLOCKED_STOCK_AGED_3D", ref_date=today - timedelta(days=3)),
+        # Open TO: rolling > 24h on the creation timestamp.
+        cand("TO_OLD", "OPEN_TO_AGED_24H", ref_dt=dt(2000, 1, 1, 0, 0, 0)),
+        cand("TO_NEW", "OPEN_TO_AGED_24H", ref_dt=now),
+        # Non-aging types pass through unfiltered.
+        cand("NEG_IM", "NEGATIVE_IM_STOCK"),
+        cand("VAR", "IM_WM_TRUE_VARIANCE"),
+    ])
+
+    rows = {r["reference_id"]: r for r in all_rows(_serve(spark, "gold_warehouse_exceptions", base))}
+    assert set(rows) == {"EXP_PAST", "QI_OLD", "BLK_OLD", "TO_OLD", "NEG_IM", "VAR"}
+    assert rows["EXP_PAST"]["age_days"] == 2
+    assert rows["QI_OLD"]["age_days"] == 15
+    assert rows["NEG_IM"]["age_days"] is None
+    assert rows["QI_OLD"]["detected_date"] == today

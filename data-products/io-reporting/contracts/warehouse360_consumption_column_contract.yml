@@ -13,7 +13,7 @@
 #   the column (or the contract drops it). The view is NOT live-validated until its list is empty.
 
 gold_source_columns:
-  gold_warehouse_kpi_snapshot_secured: [active_order_count, bin_utilisation_pct, blocked_bin_count, occupied_bin_count, open_delivery_count, open_inbound_item_count, open_to_item_count, open_tr_item_count, plant_code, snapshot_date, total_bin_count]
+  gold_warehouse_kpi_snapshot_secured: [active_order_count, bin_utilisation_pct, blocked_bin_count, occupied_bin_count, open_delivery_count, open_inbound_item_count, open_to_item_count, open_tr_item_count, plant_code, total_bin_count]
   gold_inbound_po_backlog_enhanced_live: [confirmed_putaway_to_count, earliest_po_date, fully_gr_item_count, inbound_backlog_risk_band, item_without_gr_count, latest_gr_posting_date, latest_putaway_to_confirmed_date, oldest_po_age_days, oldest_putaway_to_created_datetime, open_item_count, open_po_count, partial_gr_item_count, plant_code, purchasing_org, putaway_to_count, qa_inspection_item_count, remaining_open_qty, total_gr_qty, total_open_value, total_ordered_qty, vendor_code]
   gold_inbound_po_line_backlog_live: [doc_type, inbound_backlog_risk_band, material_id, material_name, oldest_po_age_days, ordered_qty, plant_code, po_date, po_id, po_item, storage_loc, uom, vendor_id]
   gold_delivery_pick_status_live: [actual_goods_issue_date, base_uom_count, customer_id, customer_name, days_to_goods_issue, delivery_date, delivery_number, delivery_qty, delivery_type, gross_weight, gross_weight_unit, has_mixed_base_uom, has_unconverted_delivery_qty, is_shipped, line_count, null_delivery_base_count, pick_fraction, picked_qty, planned_goods_issue_date, plant_code, risk_band, ship_to_customer, ship_to_customer_name, sold_to_customer, sold_to_customer_name, warehouse_number]
@@ -21,8 +21,11 @@ gold_source_columns:
   gold_stock_expiry_risk_live: [base_uom, batch_number, earliest_goods_receipt_date, expired_qty, expiry_ok_qty, expiry_risk_30_90d_qty, expiry_risk_7_30d_qty, expiry_risk_lt_7d_qty, has_minimum_shelf_life_breach, highest_expiry_risk_bucket, material_code, material_description, minimum_days_to_expiry, minimum_expiry_date, minimum_remaining_shelf_life_days, minimum_shelf_life_breach_qty, plant_code, shelf_life_days, total_stock_qty]
   gold_transfer_requirement_backlog: [backlog_item_count, destination_storage_type, oldest_created_datetime, oldest_planned_execution_datetime, open_qty, open_quantity_rate, plant_code, queue, required_qty, source_storage_type, transfer_priority, warehouse_number]
   gold_transfer_requirement_material_backlog_secured: [material_id, oldest_tr_creation_date, open_tr_items, open_tr_qty, plant_code]
-  gold_warehouse_exceptions: [age_days, batch_number, detail, detected_date, exception_type, material_code, plant_code, quantity, reference_id, severity, sla_hours, warehouse_number]
-  gold_warehouse_exceptions_secured: [age_days, batch_number, detail, detected_date, exception_type, material_code, plant_code, quantity, reference_id, severity, sla_hours, warehouse_number]
+  # Base MV / _secured hold deterministic aging CANDIDATES (no age_days/detected_date — those are
+  # query-time, in _live). Consumption reads _live so age thresholds are confirmed.
+  gold_warehouse_exceptions: [aging_reference_date, aging_reference_datetime, batch_number, detail, exception_type, material_code, plant_code, quantity, reference_id, severity, sla_hours, warehouse_number]
+  gold_warehouse_exceptions_secured: [aging_reference_date, aging_reference_datetime, batch_number, detail, exception_type, material_code, plant_code, quantity, reference_id, severity, sla_hours, warehouse_number]
+  gold_warehouse_exceptions_live: [age_days, aging_reference_date, aging_reference_datetime, batch_number, detail, detected_date, exception_type, material_code, plant_code, quantity, reference_id, severity, sla_hours, warehouse_number]
 
 # gold_column -> contract-facing field (mechanical, safe renames applied in the consumption SQL).
 approved_aliases:

@@ -12,7 +12,7 @@ USE SCHEMA gold_io_reporting;
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_overview AS
 SELECT
   plant_code AS plant_id,
-  CAST(snapshot_date AS TIMESTAMP) AS snapshot_ts,
+  CAST(current_date() AS TIMESTAMP) AS snapshot_ts,
   active_order_count AS orders_total,
   CAST(NULL AS LONG) AS orders_red,
   CAST(NULL AS LONG) AS orders_amber,
@@ -164,8 +164,10 @@ SELECT
   MIN(detected_date) AS oldest_detected_date,
   MAX(detected_date) AS latest_detected_date,
   MAX(detail) AS detail_text
--- Read the SECURED view so per-user plant RLS applies before aggregation (not the base table).
-FROM connected_plant_uat.gold_io_reporting.gold_warehouse_exceptions_secured
+-- Read the LIVE serving view (built on the _secured view, so per-user plant RLS still applies
+-- before aggregation). _live confirms the age-threshold exceptions and computes age_days /
+-- detected_date at query time; the _secured rows are unconfirmed aging candidates.
+FROM connected_plant_uat.gold_io_reporting.gold_warehouse_exceptions_live
 GROUP BY plant_code, material_code, batch_number, exception_type;
 
 -- TODO_SECURITY: replace with approved group.

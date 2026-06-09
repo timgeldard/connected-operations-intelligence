@@ -34,7 +34,10 @@ def _bin(**kw):
     return Row(**base)
 
 
-def test_exceptions_detects_expected_types(spark):
+def test_exceptions_emits_deterministic_candidates(spark):
+    """The base MV emits aging CANDIDATES with their reference date — no current_date()
+    threshold filtering and no age_days/detected_date (those live in the _live serving view,
+    covered in test_gold_serving_views.py)."""
     from gold.warehouse_exceptions import gold_warehouse_exceptions
 
     _save(spark, [
@@ -44,11 +47,11 @@ def test_exceptions_detects_expected_types(spark):
     ], "stock_at_location")
 
     _save(spark, [
-        # expired batch with stock
+        # batch with stock and an expiry date (candidate regardless of whether it has passed)
         _bin(quant_number="Q1", material_code="M1", expiry_date=date(2000, 1, 1), total_quantity=10.0),
         # negative WM quant
         _bin(quant_number="Q2", material_code="M2", total_quantity=-3.0),
-        # QI stock aged
+        # QI stock — candidate even before the 14-day threshold (applied in _live)
         _bin(quant_number="Q3", material_code="M3", stock_category_code="Q",
              total_quantity=5.0, goods_receipt_date=date(2000, 1, 1)),
     ], "storage_bin")
@@ -59,12 +62,23 @@ def test_exceptions_detects_expected_types(spark):
             material_code="M1", batch_number="L1", requested_quantity=10.0),
     ], "warehouse_transfer_order")
 
-    types = {r["exception_type"] for r in all_rows(gold_warehouse_exceptions())}
-    assert "NEGATIVE_IM_STOCK" in types
-    assert "NEGATIVE_WM_QUANT" in types
-    assert "EXPIRED_BATCH_WITH_STOCK" in types
-    assert "QI_STOCK_AGED_14D" in types
-    assert "OPEN_TO_AGED_24H" in types
+    rows = all_rows(gold_warehouse_exceptions())
+    by_type = {r["exception_type"]: r for r in rows}
+    assert "NEGATIVE_IM_STOCK" in by_type
+    assert "NEGATIVE_WM_QUANT" in by_type
+    assert "EXPIRED_BATCH_WITH_STOCK" in by_type
+    assert "QI_STOCK_AGED_14D" in by_type
+    assert "OPEN_TO_AGED_24H" in by_type
+
+    # Deterministic schema: aging reference columns present, query-time columns absent.
+    columns = set(rows[0].asDict().keys())
+    assert {"aging_reference_date", "aging_reference_datetime"} <= columns
+    assert "age_days" not in columns
+    assert "detected_date" not in columns
+    assert by_type["EXPIRED_BATCH_WITH_STOCK"]["aging_reference_date"] == date(2000, 1, 1)
+    assert by_type["QI_STOCK_AGED_14D"]["aging_reference_date"] == date(2000, 1, 1)
+    assert by_type["OPEN_TO_AGED_24H"]["aging_reference_datetime"] == datetime(2000, 1, 1, 0, 0, 0)
+    assert by_type["NEGATIVE_IM_STOCK"]["aging_reference_date"] is None
 
 
 def test_kpi_snapshot_per_plant(spark):
