@@ -22,6 +22,7 @@ gold_source_columns:
   gold_transfer_requirement_backlog: [backlog_item_count, destination_storage_type, oldest_created_datetime, oldest_planned_execution_datetime, open_qty, open_quantity_rate, plant_code, queue, required_qty, source_storage_type, transfer_priority, warehouse_number]
   gold_transfer_requirement_material_backlog_secured: [material_id, oldest_tr_creation_date, open_tr_items, open_tr_qty, plant_code]
   gold_warehouse_exceptions: [age_days, batch_number, detail, detected_date, exception_type, material_code, plant_code, quantity, reference_id, severity, sla_hours, warehouse_number]
+  gold_warehouse_exceptions_secured: [age_days, batch_number, detail, detected_date, exception_type, material_code, plant_code, quantity, reference_id, severity, sla_hours, warehouse_number]
 
 # gold_column -> contract-facing field (mechanical, safe renames applied in the consumption SQL).
 approved_aliases:

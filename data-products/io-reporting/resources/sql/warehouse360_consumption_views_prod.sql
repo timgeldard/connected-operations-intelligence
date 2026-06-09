@@ -165,7 +165,8 @@ SELECT
   MIN(detected_date) AS oldest_detected_date,
   MAX(detected_date) AS latest_detected_date,
   MAX(detail) AS detail_text
-FROM connected_plant_prod.gold_io_reporting.gold_warehouse_exceptions
+-- Read the SECURED view so per-user plant RLS applies before aggregation (not the base table).
+FROM connected_plant_prod.gold_io_reporting.gold_warehouse_exceptions_secured
 GROUP BY plant_code, material_code, batch_number, exception_type;
 
 -- TODO_SECURITY: replace with approved group.
