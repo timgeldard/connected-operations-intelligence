@@ -24,6 +24,7 @@ import dlt
 from pyspark.sql import Window
 from pyspark.sql import functions as F
 
+from silver._plant_gate import apply_warehouse_gate
 from silver.helpers import (
     BRONZE,
     bronze_published,
@@ -129,7 +130,7 @@ def stg_storage_bin():
         "left",
     )
 
-    return (
+    gated = (
         bins_with_quants.join(
             t320_agg.alias("m"),
             F.col("b.LGNUM") == F.col("m.warehouse_number"),
@@ -195,6 +196,17 @@ def stg_storage_bin():
             F.greatest(F.col("b.AEDATTM"), F.col("q.AEDATTM")).alias("_replicated_at"),
         )
     )
+    # Stage gate: scope bins to onboarded WAREHOUSES (LGNUM axis, via apply_warehouse_gate → T320 active
+    # warehouses) before the snapshot CDC source. storage_bin feeds gold_warehouse_kpi_snapshot (overview)
+    # + gold_warehouse_exceptions (im_wm_reconciliation) — ungated, it leaked all plants in UAT. Adds the
+    # governed plant_id (distinct from the raw/SHARED plant_code resolved above).
+    # Same-pipeline dependencies: apply_warehouse_gate reads warehouse_storage_location_mapping AND
+    # site_config_plant (both built in THIS slow pipeline) via fully-qualified spark.read.table, which DLT
+    # does NOT auto-track — declare them explicitly to force correct intra-pipeline ordering (this view
+    # already declares its warehouse_plant_mapping input the same way above).
+    _ = dlt.read("warehouse_storage_location_mapping")
+    _ = dlt.read("site_config_plant")
+    return apply_warehouse_gate(gated, "warehouse_number", "warehouse")
 
 
 # storage_bin stays a STREAMING table (so the external UC row filter applied by
@@ -220,7 +232,8 @@ dlt.create_streaming_table(
 @dlt.view(name="storage_bin_gate")
 @dlt.expect("total_quantity non-negative", "total_quantity IS NULL OR total_quantity >= 0.0")
 def storage_bin_gate():
-    # Pass-through view/wrapper to apply DLT expectations before snapshot CDC merges the changes
+    # Pass-through view/wrapper to apply DLT expectations before snapshot CDC merges the changes.
+    # The plant/warehouse stage gate is applied upstream in stg_storage_bin.
     return dlt.read("stg_storage_bin")
 
 dlt.apply_changes_from_snapshot(

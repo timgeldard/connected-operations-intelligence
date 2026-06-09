@@ -32,6 +32,9 @@ resources:
         storage_role_config_table: ${var.catalog}.${var.schema}.storage_type_role_mapping_config
         site_config_plant_table: ${var.catalog}.${var.schema}.site_config_plant
         site_config_warehouse_table: ${var.catalog}.${var.schema}.site_config_warehouse
+        # storage_bin (warehouse_reference.py) applies apply_warehouse_gate in the slow tier; its
+        # active_warehouses_df reads the T320-derived warehouse↔plant mapping (same conf as the fast tier).
+        warehouse_sloc_mapping_table: ${var.catalog}.${var.schema}.warehouse_storage_location_mapping
         site_config_storage_type_role_table: ${var.catalog}.${var.schema}.site_config_storage_type_role
         site_config_movement_type_classification_table: ${var.catalog}.${var.schema}.site_config_movement_type_classification
         site_config_staging_method_table: ${var.catalog}.${var.schema}.site_config_staging_method

@@ -7,6 +7,8 @@ from pyspark.sql import Row, Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import BooleanType, StringType, StructField, StructType
 
+from silver._plant_gate import apply_plant_gate
+
 from silver.helpers import (
     BRONZE,
     PROCESS_LINE_ATINN,
@@ -457,7 +459,7 @@ def storage_type():
 def stock_at_location():
     spark = get_spark()
     src = spark.read.table(f"{BRONZE}.storagelocationmaterial_mard")
-    return src.select(
+    out = src.select(
         strip_zeros("MATNR").alias("material_code"),
         F.col("MATNR").alias("material_code_raw"),
         F.col("WERKS").alias("plant_code"),
@@ -474,6 +476,13 @@ def stock_at_location():
         F.col("LFMON").alias("fiscal_period"),
         F.col("AEDATTM").alias("_replicated_at"),
     )
+    # Stage gate: scope IM stock-at-location to onboarded plants (MARD.WERKS, direct plant axis).
+    # Feeds gold_warehouse_exceptions (im_wm_reconciliation) — ungated, this leaked all plants in UAT.
+    # Same-pipeline dependency: the gate reads site_config_plant (built above in THIS slow pipeline) via a
+    # fully-qualified spark.read.table inside apply_plant_gate, which DLT does NOT auto-track — so declare it
+    # explicitly to force correct intra-pipeline ordering (without it this can run before site_config_plant).
+    _ = dlt.read("site_config_plant")
+    return apply_plant_gate(out, "plant_code", "stock", spark=spark)
 
 
 # ── 10. MATERIAL VALUATION ────────────────────────────────────────────────────

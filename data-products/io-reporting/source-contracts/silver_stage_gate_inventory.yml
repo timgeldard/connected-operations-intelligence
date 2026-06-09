@@ -22,10 +22,10 @@ meta:
   canonical_gate_warehouse: site_config_warehouse
   helper: silver/_plant_gate.py
   phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; + quality source-guarded
-  enforced_count: 10           # 4 WM/MM + process_order + inbound (purchase_order/physical_inventory/handling_unit) + warehouse_flow (outbound_delivery/reservation_requirement)
+  enforced_count: 12           # + stock_at_location (plant axis) + storage_bin (warehouse axis) — fixed the overview/im_wm consumption-view leak
   source_guarded_count: 4      # process_order_operation / pi_sheet_execution / downtime_event + quality_inspection_lot — gate-ready/CDC-blocked
   exempt_count: 17
-  needs_mapping_count: 10
+  needs_mapping_count: 8
   blocked_count: 0
 
 silver_outputs:
@@ -160,8 +160,8 @@ silver_outputs:
     gate_join_path: "MARD.WERKS (direct)"
     gate_config_table: site_config_plant
     product_area: stock
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Operational stock — apply apply_plant_gate(stock) in Phase 2."
+    current_status: ENFORCED
+    owner_action_required: none
 
   - table_name: process_order
     file: silver/tables/process_order.py
@@ -241,8 +241,8 @@ silver_outputs:
     gate_join_path: "LAGP.LGNUM -> site_config_warehouse"
     gate_config_table: site_config_warehouse
     product_area: warehouse
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply apply_warehouse_gate; today plant_code is coalesced/SHARED-fallback — replace with governed mapping."
+    current_status: ENFORCED
+    owner_action_required: "none (apply_warehouse_gate applied in storage_bin_gate; adds governed plant_id alongside the raw/SHARED plant_code)."
 
   - table_name: storage_type
     file: silver/tables/reference.py
