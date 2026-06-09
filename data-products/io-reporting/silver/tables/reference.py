@@ -580,8 +580,12 @@ def storage_type_role_mapping():
             spark.read.table(config_table)
             .filter(
                 (F.upper(F.col("review_status")) == "APPROVED")
-                & (F.col("valid_from").isNull() | (F.col("valid_from") <= F.current_date()))
-                & (F.col("valid_to").isNull() | (F.col("valid_to") > F.current_date()))
+                # determinism-exempt: governed-config validity window is evaluated at refresh time
+                # by design. Tiny admin-maintained table on the TRIGGERED slow pipeline (full
+                # recompute is intended and free); accepted deviation from the no-current_date()
+                # base-MV rule — see scripts/ci/check_gold_mv_determinism.py.
+                & (F.col("valid_from").isNull() | (F.col("valid_from") <= F.current_date()))  # determinism-exempt
+                & (F.col("valid_to").isNull() | (F.col("valid_to") > F.current_date()))  # determinism-exempt
             )
             .select("plant_code", "plant_name", "warehouse_number", "storage_type", "storage_type_description", "role")
         )

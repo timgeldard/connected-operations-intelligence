@@ -12,7 +12,7 @@ USE SCHEMA gold_io_reporting;
 CREATE OR REPLACE VIEW vw_consumption_warehouse360_overview AS
 SELECT
   plant_code AS plant_id,
-  CAST(current_date() AS TIMESTAMP) AS snapshot_ts,
+  CAST(snapshot_date AS TIMESTAMP) AS snapshot_ts,
   active_order_count AS orders_total,
   CAST(NULL AS LONG) AS orders_red,
   CAST(NULL AS LONG) AS orders_amber,
@@ -24,7 +24,8 @@ SELECT
   blocked_bin_count AS bins_blocked,
   total_bin_count AS bins_total,
   CAST(bin_utilisation_pct AS DECIMAL(5,2)) AS bin_util_pct
-FROM connected_plant_uat.gold_io_reporting.gold_warehouse_kpi_snapshot_secured
+-- _live adds the query-time snapshot_date over the RLS-secured view (base MV is deterministic).
+FROM connected_plant_uat.gold_io_reporting.gold_warehouse_kpi_snapshot_live
 WHERE plant_code IS NOT NULL;
 
 -- TODO_SECURITY: replace with approved group.

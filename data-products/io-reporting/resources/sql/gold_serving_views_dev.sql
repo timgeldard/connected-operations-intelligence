@@ -60,6 +60,13 @@ SELECT
 FROM connected_plant_dev.gold_io_reporting.gold_inbound_po_line_backlog_secured AS b;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_inbound_po_line_backlog_live TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_warehouse_kpi_snapshot_live AS
+SELECT
+  b.*,
+  current_date() AS snapshot_date
+FROM connected_plant_dev.gold_io_reporting.gold_warehouse_kpi_snapshot_secured AS b;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_warehouse_kpi_snapshot_live TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_warehouse_exceptions_live AS
 SELECT
   b.*,

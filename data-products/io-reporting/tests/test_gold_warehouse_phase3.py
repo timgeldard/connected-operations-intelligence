@@ -71,7 +71,7 @@ def test_exceptions_emits_deterministic_candidates(spark):
     assert "OPEN_TO_AGED_24H" in by_type
 
     # Deterministic schema: aging reference columns present, query-time columns absent.
-    columns = set(rows[0].asDict().keys())
+    columns = set(rows[0].keys())
     assert {"aging_reference_date", "aging_reference_datetime"} <= columns
     assert "age_days" not in columns
     assert "detected_date" not in columns

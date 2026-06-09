@@ -128,6 +128,11 @@ SERVING_VIEWS = {
          f"WHEN {_DAYS_SINCE_PO_LINE} >= 14 THEN 'amber' "
          "ELSE 'green' END"),
     ],
+    # KPI snapshot: the base MV is deterministic (no snapshot_date); the query-time as-of marker
+    # is added here so consumers (Warehouse360 overview) get it without wall-clock SQL of their own.
+    "gold_warehouse_kpi_snapshot": [
+        ("snapshot_date", "current_date()"),
+    ],
     # Warehouse exceptions: the base MV stores ALL aging candidates with their reference date
     # (deterministic, incrementally refreshable); the per-type age thresholds, age_days and
     # detected_date are evaluated here at query time. Consumers must read _live, not _secured —
