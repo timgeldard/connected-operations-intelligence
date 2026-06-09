@@ -200,6 +200,12 @@ def stg_storage_bin():
     # warehouses) before the snapshot CDC source. storage_bin feeds gold_warehouse_kpi_snapshot (overview)
     # + gold_warehouse_exceptions (im_wm_reconciliation) — ungated, it leaked all plants in UAT. Adds the
     # governed plant_id (distinct from the raw/SHARED plant_code resolved above).
+    # Same-pipeline dependencies: apply_warehouse_gate reads warehouse_storage_location_mapping AND
+    # site_config_plant (both built in THIS slow pipeline) via fully-qualified spark.read.table, which DLT
+    # does NOT auto-track — declare them explicitly to force correct intra-pipeline ordering (this view
+    # already declares its warehouse_plant_mapping input the same way above).
+    _ = dlt.read("warehouse_storage_location_mapping")
+    _ = dlt.read("site_config_plant")
     return apply_warehouse_gate(gated, "warehouse_number", "warehouse")
 
 
