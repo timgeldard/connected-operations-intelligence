@@ -1,11 +1,74 @@
 # Warehouse360 UAT Validation Results
 
-First UAT validation attempt of the governed io-reporting Silver→Gold→consumption path.
+> [!WARNING]
+> UAT technical validation does not by itself prove production readiness or app cutover readiness. RLS /
+> entitlement is NOT proven (see below). No app source-mode change was made; legacy `wh360` is untouched.
+
+## Revalidation — 2026-06-09 (after Silver stage-gate fixes #58/#60/#62/#63) — Outcome A (partial)
+
+Full UAT rerun after the stage-gate hardening: first-time redeploy (`mode:production`, profile DEFAULT,
+warehouse `e76480b94bea6ed5`), Silver slow (`78186be0`) → fast (`9778d1a2`) → Gold (`d89c0d1b`), then
+`validation_open` security + serving + consumption + generated contract-validation SQL. Deployment torn
+down afterwards (both io-reporting schemas dropped); UAT left clean.
+
+**Silver stage-gate — FIXED and proven (the #58 regression check passes).** Every gated operational
+table is now scoped to exactly the two onboarded plants (C061 + P817) — the 640-plant / 18.8M-row
+`purchase_order` leak is gone:
+
+| Silver table | rows | distinct plants |
+|---|---|---|
+| purchase_order | 184,553 | **2 (C061+P817)** ✓ |
+| outbound_delivery | 820,799 | 2 ✓ |
+| reservation_requirement | 3,222,700 | 2 ✓ |
+| physical_inventory_document | 140,658 | 2 ✓ |
+| handling_unit | 672,525 | 2 ✓ |
+| warehouse_transfer_requirement | 1,665,526 | 2 ✓ |
+
+**Warehouse mapping — correct (T320):** `warehouse_storage_location_mapping` gives **C061→104, P817→208**
+(the prior C061→208 seed bug is gone); `site_config_plant` active = C061 + P817.
+
+**Consumption views — all 7 CREATE through the `*_secured` boundary**, but 2 still LEAK all plants:
+
+| view | rows | distinct plant_id | status |
+|---|---|---|---|
+| inbound_backlog | 31,327 | 2 | created-and-valid-shape ✓ |
+| outbound_backlog | 116,695 | 2 | created-and-valid-shape ✓ |
+| shortfalls | 22 | 2 | created-and-valid-shape ✓ |
+| staging_workload | 0 | — | created-empty (source `gold_process_order_staging` = 0) |
+| stock_exceptions | 0 | — | created-empty (source `gold_stock_expiry_risk` = 0) |
+| **overview** | 133 | **133** | **created-with-data-quality-issue — LEAK** |
+| **im_wm_reconciliation** | 204,177 | **327** | **created-with-data-quality-issue — LEAK** |
+
+**Root cause of the residual leak:** `#58` gated the inbound/outbound/process-order/reservation operational
+flows, but two Gold models read silver tables that are still `NEEDS_MAPPING` (ungated):
+- `gold_warehouse_kpi_snapshot` (→ overview) reads **`storage_bin`** (ungated, warehouse axis).
+- `gold_warehouse_exceptions` (→ im_wm_reconciliation) reads **`stock_at_location`** (ungated, plant axis,
+  MARD.WERKS) and **`storage_bin`**.
+So those two views inherit all-plant scope. The fix is to gate `storage_bin` (warehouse axis, via
+`active_warehouses_df` / T320) and `stock_at_location` (plant axis, MARD.WERKS) and reclassify them
+ENFORCED — a scoped follow-up `fix(silver)` PR.
+
+**Schema/types — pass:** `inbound_backlog.ordered_qty` = DECIMAL, `inbound_backlog.po_date` = DATE,
+`shortfalls.shortfall_qty` = DECIMAL (the #54/#55/#57 decimal/date fixes hold).
+
+**Security / RLS — NOT proven.** Used `validation_open` (no write access to `published_uat.security.model`).
+Additional finding: **the `users` consumer group does not exist in this UAT metastore** —
+`PRINCIPAL_DOES_NOT_EXIST` on every `GRANT … TO users` and the harden `REVOKE … FROM users`. The
+`*_secured` views were created (pass-throughs), but the consumer grant + base-table harden could not run.
+RLS/entitlement remains unproven (validation_open proves data shape only).
+
+**Outcome A (partial):** the #58-targeted leak is fixed and proven, but `overview` + `im_wm_reconciliation`
+still leak via ungated `storage_bin`/`stock_at_location`. **Next:** `fix(silver): gate storage_bin +
+stock_at_location` (then re-run UAT). The consumer-group (`users`) naming also needs reconciliation before
+the harden/grant step can run in UAT. No app cutover; no source-mode change.
+
+---
+
+## (2026-06-08) First UAT validation attempt — did NOT complete
 
 > [!WARNING]
-> **UAT data-shape validation did NOT complete, and RLS/entitlement is NOT proven.** No app cutover
-> decision can be made from this result. The governed secured-view boundary remains mandatory. No app
-> source-mode change was made; legacy `wh360` is untouched.
+> **This earlier attempt did NOT complete, and RLS/entitlement was NOT proven** (superseded by the
+> 2026-06-09 revalidation above for the stage-gate result). No app cutover decision can be made from it.
 
 ## Execution metadata
 

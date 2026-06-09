@@ -14,6 +14,15 @@ This runbook defines the gates that must pass before Warehouse360 governed contr
 > for representative entitlement testing), to be implemented in follow-up PRs and split into
 > data-shape / fixture-RLS / strict-RLS gates.
 
+> **UAT revalidation (2026-06-09) after the stage-gate fixes — Outcome A (partial).** The Silver gate is
+> now proven (all 6 gated tables = C061+P817; `purchase_order` 184,553/2 — the leak is gone; T320 mapping
+> correct). All 7 consumption views create via the secured boundary, but **`overview` + `im_wm_reconciliation`
+> still leak all plants** because `gold_warehouse_kpi_snapshot`/`gold_warehouse_exceptions` read still-ungated
+> `storage_bin` + `stock_at_location`. Two more blockers before UAT can pass: (1) gate those two silver
+> tables (`fix(silver): gate storage_bin + stock_at_location`); (2) the **`users` consumer group does not
+> exist in the UAT metastore**, so Gate A/B/C's grant + harden steps cannot run until the consumer group is
+> reconciled. See [UAT validation results](../architecture/warehouse360-uat-validation-results.md).
+
 DEV is a **technical shakedown only** (`dev_shakedown`, `enable_hu_reconciliation=false`)
 — see ADR `docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`.
 **UAT runs in `full_validation` mode** (`enable_hu_reconciliation=true`) and is the
