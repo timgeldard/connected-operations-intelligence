@@ -1,0 +1,53 @@
+# ConnectIO V2 APP bundle (Databricks Apps) — the FastAPI+React platform app (apps/api).
+#
+# This is ONE of TWO separate bundles in this monorepo:
+#   • APP bundle      — THIS file (repo root). Deploys the `connectio-v2` Databricks App.
+#                       Deploy:  databricks bundle deploy -t uat --profile DEFAULT
+#   • DATA-LAYER bundle — data-products/io-reporting/databricks.yml (bundle name `connected-plant`).
+#                       Deploys the Silver/Gold DLT pipelines. Deploy from that directory.
+# They are independent: CI validates the data-layer bundle with working-directory: data-products/io-reporting,
+# so this root bundle does not interfere. Run app-bundle commands from the repo root.
+#
+# Ported from the original connectio-rad-v2 repo (now merged into this monorepo). The app's per-environment
+# behaviour is set as literals in apps/api/app.yaml (DAB ${var.*} substitution does NOT apply to app.yaml);
+# WAREHOUSE360_SOURCE_MODE=governed_contracts + WH360_SCHEMA=gold_io_reporting there point Warehouse360 at the
+# governed serving views.
+
+bundle:
+  name: connectio-v2
+
+variables:
+  databricks_host:
+    description: Databricks workspace host URL (including https://)
+  sql_warehouse_id:
+    description: SQL warehouse ID for Databricks queries
+  poh_catalog:
+    description: Unity Catalog catalog name for Process Order History domain
+  cq_catalog:
+    description: Unity Catalog catalog name for Connected Quality Lab domain
+  wh360_catalog:
+    description: Unity Catalog catalog name for Warehouse360 domain
+
+workspace:
+  host: https://adb-604667594731808.8.azuredatabricks.net
+  profile: uat
+  root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+
+targets:
+  uat:
+    default: true
+    variables:
+      databricks_host: https://adb-604667594731808.8.azuredatabricks.net
+      sql_warehouse_id: e76480b94bea6ed5
+      poh_catalog: connected_plant_uat
+      cq_catalog: connected_plant_uat
+      wh360_catalog: connected_plant_uat
+
+resources:
+  apps:
+    connectio_v2:
+      name: connectio-v2
+      description: ConnectIO V2 — process-domain RAD with FastAPI backend and React frontend
+      source_code_path: apps/api
+      user_api_scopes:
+        - sql
