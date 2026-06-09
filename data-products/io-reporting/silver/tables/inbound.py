@@ -115,9 +115,14 @@ def stg_purchase_order():
         )
     )
     # Stage gate: scope to onboarded plants before SCD1 (stream-static broadcast join on plant_code).
-    # Slow-tier: site_config_plant is built by reference.py in THIS pipeline; DLT orders the
-    # spark.read.table dependency. Header-only deletes with a purged item carry null plant_code and are
-    # dropped — consistent with the documented "header-only delete can't cascade" limitation below.
+    # Slow-tier same-pipeline dependency: the gate reads site_config_plant (built by reference.py in THIS
+    # pipeline) via a fully-qualified spark.read.table inside apply_plant_gate, which DLT does NOT auto-track
+    # (proof: site_config_plant reads its own published name via conf, which would be a compile-time cycle if
+    # such reads were tracked) — so declare it explicitly to force correct intra-pipeline ordering. Fast-tier
+    # gated tables read site_config_plant CROSS-pipeline and rely on deploy-order; they must NOT use dlt.read.
+    _ = dlt.read("site_config_plant")
+    # Header-only deletes with a purged item carry null plant_code and are dropped — consistent with the
+    # documented "header-only delete can't cascade" limitation below.
     return apply_plant_gate(gated, "plant_code", "ioreporting", spark=spark)
 
 dlt.create_streaming_table(
@@ -228,7 +233,10 @@ if hu_reconciliation_enabled():
                 F.col("i.AEDATTM").alias("_replicated_at"),
             )
         )
-        # Stage gate: scope handling units to onboarded plants (warehouse product area).
+        # Stage gate: scope handling units to onboarded plants (warehouse product area). Declare the
+        # same-pipeline site_config_plant dependency explicitly (apply_plant_gate's spark.read.table is
+        # not DLT-tracked); see purchase_order above.
+        _ = dlt.read("site_config_plant")
         return apply_plant_gate(gated, "plant_code", "warehouse", spark=spark)
 
 
@@ -313,5 +321,8 @@ def physical_inventory_document():
             F.coalesce(F.col("i.AEDATTM"), F.col("h.AEDATTM")).alias("_replicated_at"),
         )
     )
-    # Stage gate: scope physical-inventory counts to onboarded plants (batch/stock product area).
+    # Stage gate: scope physical-inventory counts to onboarded plants (batch/stock product area). Declare
+    # the same-pipeline site_config_plant dependency explicitly (apply_plant_gate's spark.read.table is
+    # not DLT-tracked); see purchase_order above.
+    _ = dlt.read("site_config_plant")
     return apply_plant_gate(gated, "plant_code", "stock", spark=spark)

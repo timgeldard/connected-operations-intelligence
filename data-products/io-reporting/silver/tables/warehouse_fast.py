@@ -243,6 +243,9 @@ def batch_stock():
     )
     # Plant stage-gate (DIRECT WERKS): MCHB carries the true plant in WERKS. Scope to plants onboarded
     # for stock (batch_managed_flag). Batch-static left-semi against the governed active-plant set.
+    # Fast-tier: the gate reads site_config_plant CROSS-pipeline (built by the slow pipeline), so it relies
+    # on deploy-order — do NOT add dlt.read("site_config_plant") here; that dataset is not in this pipeline
+    # and the reference would fail to compile. (Slow-tier same-pipeline gates DO declare it; see inbound.py.)
     return apply_plant_gate(batch_stock_out, "plant_code", "stock", spark=spark)
 
 
