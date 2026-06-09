@@ -478,6 +478,10 @@ def stock_at_location():
     )
     # Stage gate: scope IM stock-at-location to onboarded plants (MARD.WERKS, direct plant axis).
     # Feeds gold_warehouse_exceptions (im_wm_reconciliation) — ungated, this leaked all plants in UAT.
+    # Same-pipeline dependency: the gate reads site_config_plant (built above in THIS slow pipeline) via a
+    # fully-qualified spark.read.table inside apply_plant_gate, which DLT does NOT auto-track — so declare it
+    # explicitly to force correct intra-pipeline ordering (without it this can run before site_config_plant).
+    _ = dlt.read("site_config_plant")
     return apply_plant_gate(out, "plant_code", "stock", spark=spark)
 
 

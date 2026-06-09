@@ -40,6 +40,11 @@ def stg_goods_movement():
 
     changed_keys = mseg_changes.unionByName(mkpf_changes)
     mseg = spark.read.table(f"{BRONZE}.inventorymovement_mseg")
+    # Pre-gate pushdown: shrink the ~155M-row MSEG static table to onboarded plants (MSEG.WERKS, the
+    # SAME plant axis as the final apply_plant_gate) BEFORE the changed-keys fan-out join. Row-equivalent
+    # to gating at the end; cuts the stream-static join's static side from ~8.7 GB to the onboarded-plant
+    # subset. Matches the LTBP/LIPS pre-gate pattern. The final apply_plant_gate is kept (authoritative).
+    mseg = apply_plant_gate(mseg, "WERKS", "ioreporting", spark=spark)
     mkpf = spark.read.table(f"{BRONZE}.materialdocument_mkpf").select(
         "MBLNR", "MJAHR", "MANDT", "BUDAT", "BLDAT", "USNAM", "TCODE"
     )
@@ -185,6 +190,12 @@ dlt.apply_changes(
 def batch_stock():
     spark = get_spark()
     mchb = spark.read.table(f"{BRONZE}.batchstock_mchb")
+    # Pre-gate pushdown: shrink the ~11.5M-row MCHB to plants onboarded for stock (MCHB.WERKS, the SAME
+    # plant axis as the final apply_plant_gate) BEFORE the MARA base_uom join, so this full-recompute MV
+    # joins only the onboarded-plant subset instead of all plants. Row-equivalent to gating at the end
+    # (MARA is a left base_uom lookup that adds no rows). The final apply_plant_gate is kept (authoritative
+    # + coverage-guard). Batch MV — MARA is a narrow 3-col lookup, left to the optimizer (no merge hint).
+    mchb = apply_plant_gate(mchb, "WERKS", "stock", spark=spark)
     # base_uom from material master (MCHB has no MEINS); MARA is unique per MANDT+MATNR.
     mara = spark.read.table(f"{BRONZE}.materialmaster_mara").select(
         F.col("MANDT").alias("_mara_mandt"),
@@ -232,6 +243,9 @@ def batch_stock():
     )
     # Plant stage-gate (DIRECT WERKS): MCHB carries the true plant in WERKS. Scope to plants onboarded
     # for stock (batch_managed_flag). Batch-static left-semi against the governed active-plant set.
+    # Fast-tier: the gate reads site_config_plant CROSS-pipeline (built by the slow pipeline), so it relies
+    # on deploy-order — do NOT add dlt.read("site_config_plant") here; that dataset is not in this pipeline
+    # and the reference would fail to compile. (Slow-tier same-pipeline gates DO declare it; see inbound.py.)
     return apply_plant_gate(batch_stock_out, "plant_code", "stock", spark=spark)
 
 
@@ -256,6 +270,14 @@ def stg_warehouse_transfer_order():
     changed_keys = ltak_changes.unionByName(ltap_changes)
     ltak = spark.read.table(f"{BRONZE}.transferorderobjects_ltak")
     ltap = spark.read.table(f"{BRONZE}.transferorderobjects_ltap")
+    # Pre-gate pushdown: shrink the wide LTAP (~91M) + LTAK (~77M) static tables to onboarded WAREHOUSES
+    # (LGNUM axis — the SAME axis as the final apply_warehouse_gate; NOT WERKS, unreliable on WM rows)
+    # BEFORE the fan-out join. LEFT_SEMI (filter-only — no plant_id enrichment, that stays on the final
+    # gate); row-equivalent. Matches the LTBP pattern; the prior code read all ~11.6 GB then gated the
+    # output. The final apply_warehouse_gate is kept (authoritative filter + plant_id + coverage-guard).
+    _active_wh = active_warehouses_df(spark, "warehouse")
+    ltap = ltap.join(F.broadcast(_active_wh), ltap["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
+    ltak = ltak.join(F.broadcast(_active_wh), ltak["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
     order_items_to_refresh = (
         changed_keys.alias("c")
         .join(ltap.alias("i"), ["LGNUM", "TANUM", "MANDT"], "left")
@@ -433,13 +455,17 @@ def stg_warehouse_transfer_requirement():
     changed_keys = ltbk_changes.unionByName(ltbp_changes)
     ltbk = spark.read.table(f"{BRONZE}.transferrequirementobjects_ltbk")
     ltbp = spark.read.table(f"{BRONZE}.transferrequirementobjects_ltbp")
-    # Pre-gate pushdown: shrink the wide static LTBP to onboarded WAREHOUSES BEFORE the changed-keys
-    # fan-out join. Uses the LGNUM (warehouse_number) axis — the SAME axis as the final
-    # apply_warehouse_gate (NOT WERKS, which is unreliable on WM rows: LGNUM != WERKS). Filter-only
-    # LEFT_SEMI (no plant_id enrichment — that stays on the final gate); row-equivalent to gating at the
-    # end. The final apply_warehouse_gate is kept (authoritative filter + plant_id + coverage-guard).
+    # Pre-gate pushdown: shrink BOTH the wide static LTBP (item) AND the LTBK (header, ~9.6M rows) to
+    # onboarded WAREHOUSES BEFORE the joins — mirrors transfer_order, which pre-gates both LTAP+LTAK. Uses
+    # the LGNUM (warehouse_number) axis — the SAME axis as the final apply_warehouse_gate (NOT WERKS, which
+    # is unreliable on WM rows: LGNUM != WERKS). Filter-only LEFT_SEMI (no plant_id enrichment — that stays
+    # on the final gate); row-equivalent to gating at the end (header LGNUM == item LGNUM, so pre-filtering
+    # LTBK drops no header that a kept item would match). The final apply_warehouse_gate is kept
+    # (authoritative filter + plant_id + coverage-guard). NOTE: this only shrinks the static join side; the
+    # CDC stream (LTBK+LTBP change feed) is still read in full on the initial backfill.
     _active_wh = active_warehouses_df(spark, "warehouse")
     ltbp = ltbp.join(F.broadcast(_active_wh), ltbp["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
+    ltbk = ltbk.join(F.broadcast(_active_wh), ltbk["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
     requirement_items_to_refresh = (
         changed_keys.alias("c")
         # .hint("merge"): pre-filtered LTBP is small-but-wide; force sort-merge so it is not
