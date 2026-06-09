@@ -455,13 +455,17 @@ def stg_warehouse_transfer_requirement():
     changed_keys = ltbk_changes.unionByName(ltbp_changes)
     ltbk = spark.read.table(f"{BRONZE}.transferrequirementobjects_ltbk")
     ltbp = spark.read.table(f"{BRONZE}.transferrequirementobjects_ltbp")
-    # Pre-gate pushdown: shrink the wide static LTBP to onboarded WAREHOUSES BEFORE the changed-keys
-    # fan-out join. Uses the LGNUM (warehouse_number) axis — the SAME axis as the final
-    # apply_warehouse_gate (NOT WERKS, which is unreliable on WM rows: LGNUM != WERKS). Filter-only
-    # LEFT_SEMI (no plant_id enrichment — that stays on the final gate); row-equivalent to gating at the
-    # end. The final apply_warehouse_gate is kept (authoritative filter + plant_id + coverage-guard).
+    # Pre-gate pushdown: shrink BOTH the wide static LTBP (item) AND the LTBK (header, ~9.6M rows) to
+    # onboarded WAREHOUSES BEFORE the joins — mirrors transfer_order, which pre-gates both LTAP+LTAK. Uses
+    # the LGNUM (warehouse_number) axis — the SAME axis as the final apply_warehouse_gate (NOT WERKS, which
+    # is unreliable on WM rows: LGNUM != WERKS). Filter-only LEFT_SEMI (no plant_id enrichment — that stays
+    # on the final gate); row-equivalent to gating at the end (header LGNUM == item LGNUM, so pre-filtering
+    # LTBK drops no header that a kept item would match). The final apply_warehouse_gate is kept
+    # (authoritative filter + plant_id + coverage-guard). NOTE: this only shrinks the static join side; the
+    # CDC stream (LTBK+LTBP change feed) is still read in full on the initial backfill.
     _active_wh = active_warehouses_df(spark, "warehouse")
     ltbp = ltbp.join(F.broadcast(_active_wh), ltbp["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
+    ltbk = ltbk.join(F.broadcast(_active_wh), ltbk["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
     requirement_items_to_refresh = (
         changed_keys.alias("c")
         # .hint("merge"): pre-filtered LTBP is small-but-wide; force sort-merge so it is not
