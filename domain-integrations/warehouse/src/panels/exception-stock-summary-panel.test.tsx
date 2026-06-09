@@ -1,8 +1,43 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ExceptionStockSummaryPanel } from './exception-stock-summary-panel.js'
 import type { Warehouse360AdapterRequest } from '../adapters/warehouse-360-adapter.js'
+
+vi.mock('../adapters/warehouse-360-queries.js', () => ({
+  useStockOverview: vi.fn(() => ({
+    data: {
+      ok: true,
+      data: {
+        warehouseId: 'WH-IE10-MAIN',
+        zones: [
+          {
+            zoneId: 'ZONE-CHILL-A',
+            zoneName: 'Chilled Zone A (0–4°C)',
+            zoneType: 'chilled',
+            stockLines: 142,
+            capacityPercent: 81,
+            holdPercent: 6.3,
+          },
+          {
+            zoneId: 'ZONE-CHILL-B',
+            zoneName: 'Chilled Zone B (0–4°C)',
+            zoneType: 'chilled',
+            stockLines: 98,
+            capacityPercent: 67,
+            holdPercent: 11.2,
+          },
+        ],
+        totalStorageLocations: 1240,
+        occupiedLocations: 920,
+        blockedLocations: 47,
+      },
+      fetchedAt: '2026-05-14T10:00:00.000Z',
+      source: 'databricks-api',
+    },
+    isLoading: false,
+  })),
+}))
 
 function makeQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } })
@@ -31,7 +66,7 @@ describe('ExceptionStockSummaryPanel', () => {
 
   it('renders the blocked locations count from mock data', async () => {
     render(<Wrapper><ExceptionStockSummaryPanel request={request} /></Wrapper>)
-    // mockStockOverview has blockedLocations: 47
+    // mocked response has blockedLocations: 47
     await waitFor(() => {
       expect(screen.getByText('47')).toBeInTheDocument()
     })
@@ -39,7 +74,7 @@ describe('ExceptionStockSummaryPanel', () => {
 
   it('renders the total storage locations', async () => {
     render(<Wrapper><ExceptionStockSummaryPanel request={request} /></Wrapper>)
-    // mockStockOverview has totalStorageLocations: 1240
+    // mocked response has totalStorageLocations: 1240
     await waitFor(() => {
       expect(screen.getByText('1240')).toBeInTheDocument()
     })

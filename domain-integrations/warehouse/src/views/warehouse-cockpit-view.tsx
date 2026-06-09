@@ -2,7 +2,6 @@ import { useState, useTransition } from 'react'
 import {
   VerificationStatusBanner,
   GovernancePendingBadge,
-  UnavailableValue,
   StatusBadge,
 } from '@connectio/design-system'
 import { EvidenceCaveatList } from '@connectio/evidence-panel-runtime'
@@ -293,19 +292,6 @@ export function WarehouseCockpitView({ request }: WarehouseCockpitViewProps) {
       setCopiedUrlType(type)
       setTimeout(() => setCopiedUrlType(null), 2000)
     })
-  }
-
-  const getSeverityBadgeColor = (severity?: string | null) => {
-    switch (severity) {
-      case 'critical':
-        return { bg: COLORS.dangerBg, text: COLORS.danger }
-      case 'high':
-        return { bg: '#ffedd5', text: COLORS.warning }
-      case 'medium':
-        return { bg: '#eff6ff', text: COLORS.info }
-      default:
-        return { bg: COLORS.slate100, text: COLORS.slate600 }
-    }
   }
 
   const getStatusBadgeVariant = (status?: string | null): 'good' | 'warn' | 'bad' | 'info' | 'neutral' => {

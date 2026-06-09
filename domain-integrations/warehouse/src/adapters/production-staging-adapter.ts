@@ -18,7 +18,6 @@ import {
   mockZoneCapacity,
   mockShortfalls,
   mockMoveRequests,
-  mockPickingWaves,
   mockStagingAlerts,
 } from './production-staging-mock-data.js'
 
@@ -96,7 +95,16 @@ export class ProductionStagingAdapter {
   async getStagingPickingWaves(
     _request: ProductionStagingAdapterRequest,
   ): Promise<AdapterResult<StagingPickingWave[]>> {
-    return ok(mockPickingWaves, this.now)
+    return {
+      ok: true,
+      data: [],
+      fetchedAt: this.now(),
+      source: 'databricks-api',
+      gap: {
+        source: 'LTAK / REFNR wave groupings (missing from SAP replication)',
+        tracking: 'SAP-WAVE-01',
+      },
+    }
   }
 
   async getStagingAlerts(

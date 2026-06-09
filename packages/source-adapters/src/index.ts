@@ -2,6 +2,7 @@ export type {
   AdapterSource,
   AdapterError,
   AdapterResult,
+  DataGap,
   SourceFreshness,
   SourceConfidence,
   DrillThroughTarget,

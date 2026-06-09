@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { warehouse360AdapterInstance as warehouse360Adapter } from './warehouse-360-adapter-factory.js'
+import { warehouse360Adapter } from './warehouse-360-adapter.js'
 import type { Warehouse360AdapterRequest } from './warehouse-360-adapter.js'
 
 const STALE = 5 * 60 * 1000
