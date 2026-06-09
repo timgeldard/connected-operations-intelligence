@@ -27,9 +27,9 @@ instead of the corporate model — same `WHERE EXISTS (… current_user() = emai
 Run as the Gold object owner, in order (per-statement; the `GRANT … TO users` lines fail on the missing
 group — that is expected and harmless, RLS does not depend on them):
 ```
-resources/sql/gold_security_uat_validation_fixture.sql      -- *_secured views, predicate → local fixture
-resources/sql/gold_serving_views_uat.sql                    -- *_live views
-resources/sql/warehouse360_consumption_views_uat.sql        -- the 7 vw_consumption_* views
+data-products/io-reporting/resources/sql/gold_security_uat_validation_fixture.sql      -- *_secured views, predicate → local fixture
+data-products/io-reporting/resources/sql/gold_serving_views_uat.sql                    -- *_live views
+data-products/io-reporting/resources/sql/warehouse360_consumption_views_uat.sql        -- the 7 vw_consumption_* views
 ```
 The fixture **table** must exist before the secured views are created (its name is referenced in the
 predicate). Seed it first (next step).

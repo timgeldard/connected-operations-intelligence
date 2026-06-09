@@ -9,15 +9,17 @@
 --   :filter_plant array('C061','P817')  when access_type='filter'   (use NULL for 'full view')
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
--- 1. Entitlement row (idempotent: clears any prior row for this email first)
+-- 1. Entitlement row (idempotent: clears this email's io_reporting row first — scoped to the
+--    application_key so a user's entitlements for other apps in this shared table are untouched;
+--    LOWER() keeps email lowercase to match the case-sensitive current_user() = email predicate)
 DELETE FROM connected_plant_uat.gold_io_reporting.security_model_fixture
-WHERE email = 'REPLACE_EMAIL';
+WHERE email = LOWER('REPLACE_EMAIL') AND application_key = 'io_reporting';
 
 INSERT INTO connected_plant_uat.gold_io_reporting.security_model_fixture
   (email, application_key, access_type, filter_plant, test_case, enabled) VALUES
-  ('REPLACE_EMAIL', 'io_reporting', 'full view', NULL, 'manual onboard', true);
+  (LOWER('REPLACE_EMAIL'), 'io_reporting', 'full view', NULL, 'manual onboard', true);
   -- single-plant example instead of the line above:
-  -- ('REPLACE_EMAIL', 'io_reporting', 'filter', array('C061'), 'manual onboard (C061 only)', true);
+  -- (LOWER('REPLACE_EMAIL'), 'io_reporting', 'filter', array('C061'), 'manual onboard (C061 only)', true);
 
 -- 2. Grants — each end-user queries as themselves (identity passthrough); ownership chaining covers the
 --    underlying *_live/*_secured/Gold + the fixture table. Do NOT grant base tables to consumers.
