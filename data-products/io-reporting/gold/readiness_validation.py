@@ -1,3 +1,15 @@
+"""
+Gold plant-readiness validation and health scoring (observability layer).
+
+Validation tables comparing silver coverage/mappings against expectations, plus a per-plant
+readiness assessment. Outputs drive the readiness dashboard, not analytics serving.
+
+DETERMINISM EXEMPTION: these are full-recompute MONITORING tables — last_checked_at /
+last_assessed_at wall-clock stamps and bounded recent-window scans (e.g. 90-day filters) are
+intended behaviour. Exempt from the no-current_date()-in-base-MV rule (see
+scripts/ci/check_gold_mv_determinism.py EXEMPT_FILES); must not be used as serving sources.
+"""
+
 import dlt
 from pyspark.sql import Row, Window
 from pyspark.sql import functions as F
