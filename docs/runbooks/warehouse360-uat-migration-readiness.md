@@ -15,13 +15,14 @@ This runbook defines the gates that must pass before Warehouse360 governed contr
 > data-shape / fixture-RLS / strict-RLS gates.
 
 > **UAT revalidation (2026-06-09) after the stage-gate fixes — Outcome A (partial).** The Silver gate is
-> now proven (all 6 gated tables = C061+P817; `purchase_order` 184,553/2 — the leak is gone; T320 mapping
-> correct). All 7 consumption views create via the secured boundary, but **`overview` + `im_wm_reconciliation`
-> still leak all plants** because `gold_warehouse_kpi_snapshot`/`gold_warehouse_exceptions` read still-ungated
-> `storage_bin` + `stock_at_location`. Two more blockers before UAT can pass: (1) gate those two silver
-> tables (`fix(silver): gate storage_bin + stock_at_location`); (2) the **`users` consumer group does not
-> exist in the UAT metastore**, so Gate A/B/C's grant + harden steps cannot run until the consumer group is
-> reconciled. See [UAT validation results](../architecture/warehouse360-uat-validation-results.md).
+> now proven (the 6 operational tables checked this run = C061+P817; `purchase_order` 184,553/2 — the leak
+> is gone; T320 mapping correct). All 7 consumption views create via the secured boundary. `overview` +
+> `im_wm_reconciliation` still leaked all plants (ungated `storage_bin` + `stock_at_location`) — **now fixed
+> in `fix/silver-gate-storage-bin-stock-at-location` (DEV-validated: both → 2 plants).** The remaining item
+> is **not** a data-shape blocker: the **`users` consumer group does not exist in the UAT metastore**, so the
+> consumer grant + harden (Gate B/C / production-security) cannot run until the group name is reconciled —
+> but Gate A (validation_open) data-shape validation runs without it. See
+> [UAT validation results](../architecture/warehouse360-uat-validation-results.md).
 
 DEV is a **technical shakedown only** (`dev_shakedown`, `enable_hu_reconciliation=false`)
 — see ADR `docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`.
@@ -88,6 +89,9 @@ UAT validation is split into three gates so data-shape validation can proceed ev
 `*_secured` boundary or claiming RLS that was not proven. The secured-view predicate is chosen by
 `generate_gold_security_sql.py --security-mode` (strict | validation-open | validation-fixture); prod is
 locked to `strict` by `scripts/ci/check_security_mode_policy.py`.
+> **Naming:** the **CLI flag values use hyphens** (`--security-mode validation-open` — argparse rejects the
+> underscore form), while the **mode/gate/file names use underscores** (`validation_open` →
+> `gold_security_uat_validation_open.sql`). The Gate headings below use the underscore (mode) form.
 
 ### Gate A — UAT data-shape validation (`validation_open`)
 
