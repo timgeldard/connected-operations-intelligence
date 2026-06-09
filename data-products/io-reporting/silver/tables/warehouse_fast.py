@@ -40,6 +40,11 @@ def stg_goods_movement():
 
     changed_keys = mseg_changes.unionByName(mkpf_changes)
     mseg = spark.read.table(f"{BRONZE}.inventorymovement_mseg")
+    # Pre-gate pushdown: shrink the ~155M-row MSEG static table to onboarded plants (MSEG.WERKS, the
+    # SAME plant axis as the final apply_plant_gate) BEFORE the changed-keys fan-out join. Row-equivalent
+    # to gating at the end; cuts the stream-static join's static side from ~8.7 GB to the onboarded-plant
+    # subset. Matches the LTBP/LIPS pre-gate pattern. The final apply_plant_gate is kept (authoritative).
+    mseg = apply_plant_gate(mseg, "WERKS", "ioreporting", spark=spark)
     mkpf = spark.read.table(f"{BRONZE}.materialdocument_mkpf").select(
         "MBLNR", "MJAHR", "MANDT", "BUDAT", "BLDAT", "USNAM", "TCODE"
     )
@@ -256,6 +261,14 @@ def stg_warehouse_transfer_order():
     changed_keys = ltak_changes.unionByName(ltap_changes)
     ltak = spark.read.table(f"{BRONZE}.transferorderobjects_ltak")
     ltap = spark.read.table(f"{BRONZE}.transferorderobjects_ltap")
+    # Pre-gate pushdown: shrink the wide LTAP (~91M) + LTAK (~77M) static tables to onboarded WAREHOUSES
+    # (LGNUM axis — the SAME axis as the final apply_warehouse_gate; NOT WERKS, unreliable on WM rows)
+    # BEFORE the fan-out join. LEFT_SEMI (filter-only — no plant_id enrichment, that stays on the final
+    # gate); row-equivalent. Matches the LTBP pattern; the prior code read all ~11.6 GB then gated the
+    # output. The final apply_warehouse_gate is kept (authoritative filter + plant_id + coverage-guard).
+    _active_wh = active_warehouses_df(spark, "warehouse")
+    ltap = ltap.join(F.broadcast(_active_wh), ltap["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
+    ltak = ltak.join(F.broadcast(_active_wh), ltak["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
     order_items_to_refresh = (
         changed_keys.alias("c")
         .join(ltap.alias("i"), ["LGNUM", "TANUM", "MANDT"], "left")
