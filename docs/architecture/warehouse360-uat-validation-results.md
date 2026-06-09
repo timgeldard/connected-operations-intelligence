@@ -4,6 +4,30 @@
 > UAT technical validation does not by itself prove production readiness or app cutover readiness. RLS /
 > entitlement is NOT proven (see below). No app source-mode change was made; legacy `wh360` is untouched.
 
+## UAT re-run with the leak fix — 2026-06-09 (validation_open) — Outcome C: data-shape gate PASSES
+
+After `fix/silver-gate-storage-bin-stock-at-location` (gating `stock_at_location` + `storage_bin`), the
+full UAT chain was re-run under `validation_open` (redeploy → Silver slow→fast → Gold → validation_open
+secured + serving + consumption views). **All 7 consumption views now scope correctly — the `overview` /
+`im_wm_reconciliation` leak is gone:**
+
+| view | rows | distinct plant_id |
+|---|---|---|
+| overview | 2 | **2 (C061+P817)** ✓ — was 133 |
+| im_wm_reconciliation | 4,497 | **2** ✓ — was 327 |
+| inbound_backlog | 31,327 | 2 ✓ |
+| outbound_backlog | 116,695 | 2 ✓ |
+| shortfalls | 22 | 2 ✓ |
+| staging_workload | 0 | — (source `gold_process_order_staging` 0) |
+| stock_exceptions | 0 | — (source `gold_stock_expiry_risk` 0) |
+
+Silver fix targets confirmed gated in UAT: `stock_at_location` 30,105/2 plants, `storage_bin` 15,506/2
+plants. **Outcome C** — the UAT **data-shape gate passes** (all 7 views create + correctly plant-scoped via
+`validation_open`). NOT proven: RLS/entitlement (validation_open is data-shape only; the `users` consumer
+group is absent in the UAT metastore → consumer-grant + harden = the separate Gate B/C step). No app
+cutover; no source-mode change. UAT deployment torn down afterwards (schemas dropped). Next: Gate B/C —
+reconcile the `users` consumer group + provide representative test identities.
+
 ## Revalidation — 2026-06-09 (after Silver stage-gate fixes #58/#60/#62/#63) — Outcome A (partial)
 
 Full UAT rerun after the stage-gate hardening: first-time redeploy (`mode:production`, profile DEFAULT,
