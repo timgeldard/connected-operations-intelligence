@@ -131,7 +131,10 @@ def stg_outbound_delivery():
 
     gated = (
         delivery_items_to_refresh.alias("i")
-        .join(likp.alias("h"), ["VBELN", "MANDT"], "left")
+        # .hint("merge"): force sort-merge on the wide LIKP header join — Photon's default broadcast
+        # hash join OOMs/spills on the wide reconstructed item rows (same pattern as
+        # warehouse_transfer_order's LTAK join).
+        .join(likp.alias("h").hint("merge"), ["VBELN", "MANDT"], "left")
         .select(
             # ── Natural key
             strip_zeros(F.coalesce(F.col("i.VBELN"), F.col("i._change_vbeln"))).alias("delivery_number"),

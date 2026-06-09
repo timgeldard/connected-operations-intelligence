@@ -449,7 +449,10 @@ def stg_warehouse_transfer_requirement():
 
     transfer_requirement_out = (
         requirement_items_to_refresh.alias("i")
-        .join(ltbk.alias("h"), ["LGNUM", "TBNUM", "MANDT"], "left")
+        # .hint("merge"): force sort-merge on the wide LTBK header join — Photon's default broadcast
+        # hash join OOMs/spills on the wide reconstructed item rows (same pattern as
+        # warehouse_transfer_order's LTAK join).
+        .join(ltbk.alias("h").hint("merge"), ["LGNUM", "TBNUM", "MANDT"], "left")
         .select(
             # ── Natural key
             F.coalesce(F.col("i.LGNUM"), F.col("i._change_lgnum")).alias("warehouse_number"),
