@@ -1350,9 +1350,9 @@ def gold_transfer_order_open_items():
 
     return (
         transfer_orders
-        .filter(F.col("item_status") == "Open")
+        .filter(F.col("item_status") != "Fully Confirmed")
         .select(
-            F.col("plant_id").alias("plant_code"),
+            "plant_code",
             "warehouse_number",
             "transfer_order_number",
             "item_number",
@@ -1392,7 +1392,7 @@ def gold_transfer_requirement_open_items():
             & (F.coalesce(F.col("open_quantity"), F.lit(0.0)) > 0)
         )
         .select(
-            F.col("plant_id").alias("plant_code"),
+            "plant_code",
             "warehouse_number",
             "transfer_requirement_number",
             "item_number",
