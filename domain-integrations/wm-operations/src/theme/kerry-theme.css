@@ -78,6 +78,13 @@
   background: var(--kw-stone);
   border-radius: var(--kw-r-lg);
   padding: 20px 24px 32px;
+
+  /* The workspace renders as a single child of the EvidenceGrid
+     (repeat(auto-fill, minmax(320px, 1fr))) — span every column so the
+     Kerry surface fills the body instead of one 320px cell. */
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
 }
 
 /* ── Typography ─────────────────────────────────────────────────────────── */
