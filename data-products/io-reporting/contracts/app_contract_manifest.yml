@@ -708,3 +708,283 @@ contracts:
         required: true
         description: Count of blocked orders
 
+  - id: warehouse360.open_holds
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Occupied WM quants under hold (quality-inspection, blocked, or batch-restricted stock) with
+      quantity and goods-receipt age. Hold provenance (who placed the hold / why) is a documented
+      data gap: no QM hold log is replicated. age_hours is the query-time evaluation age.
+    source_view: vw_consumption_warehouse360_open_holds
+    grain: one row per plant_id, warehouse_number, and quant under hold
+    primary_key:
+      - plant_id
+      - warehouse_number
+      - quant_number
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: warehouse_number
+        type: string
+        required: true
+        description: Warehouse number
+      - name: storage_type
+        type: string
+        required: false
+        description: Storage type holding the quant
+      - name: storage_bin
+        type: string
+        required: false
+        description: Bin code holding the quant
+      - name: quant_number
+        type: string
+        required: true
+        description: WM quant number (LQUA)
+      - name: material_id
+        type: string
+        required: true
+        description: Material code
+      - name: batch_id
+        type: string
+        required: false
+        description: Batch number (null for non-batch-managed stock)
+      - name: hold_type
+        type: string
+        required: true
+        description: Hold classification — quality, blocked, or restricted
+      - name: quantity
+        type: decimal
+        required: false
+        description: Quant total quantity
+      - name: uom
+        type: string
+        required: false
+        description: Base unit of measure
+      - name: goods_receipt_date
+        type: date
+        required: false
+        description: Goods receipt date (hold age basis)
+      - name: age_hours
+        type: decimal
+        required: false
+        description: Query-time age in hours since goods receipt
+
+  - id: warehouse360.pick_tasks
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Open transfer-order items (item_status != 'Fully Confirmed') as staging pick tasks, with
+      source/destination locations, quantities, status, and process-order linkage (BETYP/BENUM).
+      assignee maps to confirmed_by_user when present. age_hours is the query-time evaluation age.
+    source_view: vw_consumption_warehouse360_pick_tasks
+    grain: one row per warehouse_number, task_id (transfer order), and item_number
+    primary_key:
+      - warehouse_number
+      - task_id
+      - item_number
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: warehouse_number
+        type: string
+        required: true
+        description: Warehouse number
+      - name: task_id
+        type: string
+        required: true
+        description: Transfer order number
+      - name: item_number
+        type: string
+        required: true
+        description: Transfer order item number
+      - name: material_id
+        type: string
+        required: true
+        description: Material code
+      - name: batch_id
+        type: string
+        required: false
+        description: Batch number
+      - name: source_storage_type
+        type: string
+        required: false
+        description: Source storage type
+      - name: source_storage_bin
+        type: string
+        required: false
+        description: Source bin
+      - name: destination_storage_type
+        type: string
+        required: false
+        description: Destination storage type
+      - name: destination_storage_bin
+        type: string
+        required: false
+        description: Destination bin
+      - name: requested_quantity
+        type: decimal
+        required: false
+        description: Requested quantity (VSOLM)
+      - name: confirmed_quantity
+        type: decimal
+        required: false
+        description: Confirmed quantity (VISTA)
+      - name: item_status
+        type: string
+        required: true
+        description: Open or Partially Confirmed (Fully Confirmed excluded)
+      - name: created_datetime
+        type: timestamp
+        required: false
+        description: Transfer order creation timestamp
+      - name: order_reference_type
+        type: string
+        required: false
+        description: SAP reference type (BETYP; F = process order)
+      - name: order_reference_number
+        type: string
+        required: false
+        description: SAP reference number (BENUM; process order when BETYP='F')
+      - name: transfer_priority
+        type: string
+        required: false
+        description: Transfer priority
+      - name: delivery_number
+        type: string
+        required: false
+        description: Linked delivery number
+      - name: created_by_user
+        type: string
+        required: false
+        description: TO creator (BNAME)
+      - name: confirmed_by_user
+        type: string
+        required: false
+        description: Confirming user (QNAME) — maps to assignee in the app
+      - name: age_hours
+        type: decimal
+        required: false
+        description: Query-time age in hours since TO creation
+
+  - id: warehouse360.move_requests
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Open transfer-requirement items (not processing-complete, open_quantity > 0) as warehouse
+      move requests, with source/destination locations, queue, priority, and reference linkage.
+      Assignee is a documented data gap (LTBK carries none). age_hours is the query-time
+      evaluation age.
+    source_view: vw_consumption_warehouse360_move_requests
+    grain: one row per warehouse_number, request_id (transfer requirement), and item_number
+    primary_key:
+      - warehouse_number
+      - request_id
+      - item_number
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: warehouse_number
+        type: string
+        required: true
+        description: Warehouse number
+      - name: request_id
+        type: string
+        required: true
+        description: Transfer requirement number
+      - name: item_number
+        type: string
+        required: true
+        description: Transfer requirement item number
+      - name: material_id
+        type: string
+        required: true
+        description: Material code
+      - name: batch_id
+        type: string
+        required: false
+        description: Batch number
+      - name: source_storage_type
+        type: string
+        required: false
+        description: Source storage type
+      - name: source_storage_bin
+        type: string
+        required: false
+        description: Source bin
+      - name: destination_storage_type
+        type: string
+        required: false
+        description: Destination storage type
+      - name: destination_storage_bin
+        type: string
+        required: false
+        description: Destination bin
+      - name: required_quantity
+        type: decimal
+        required: false
+        description: Required quantity (MENGE)
+      - name: open_quantity
+        type: decimal
+        required: false
+        description: Open quantity (MENGE - TAMEN)
+      - name: created_datetime
+        type: timestamp
+        required: false
+        description: Transfer requirement creation timestamp
+      - name: planned_execution_datetime
+        type: timestamp
+        required: false
+        description: Planned execution timestamp
+      - name: queue
+        type: string
+        required: false
+        description: WM queue (custom ZZQUEUE)
+      - name: transfer_priority
+        type: string
+        required: false
+        description: Transfer priority
+      - name: order_reference_type
+        type: string
+        required: false
+        description: SAP reference type (BETYP)
+      - name: order_reference_number
+        type: string
+        required: false
+        description: SAP reference number (BENUM)
+      - name: age_hours
+        type: decimal
+        required: false
+        description: Query-time age in hours since TR creation

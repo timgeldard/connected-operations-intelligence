@@ -251,3 +251,90 @@ GROUP BY plant_code, CAST(scheduled_start_date AS DATE);
 -- GRANT SELECT ON VIEW vw_consumption_warehouse360_staging_readiness TO `warehouse360_app_users`;
 -- GRANT SELECT ON VIEW vw_consumption_warehouse360_staging_readiness TO `warehouse360_dashboard_users`;
 
+
+-- 12. Open Holds
+-- Grain: 1 row per plant_id + warehouse_number + quant under hold (quality / blocked / restricted).
+-- hold provenance (who placed it / why) is a documented data gap: no QM hold log is replicated.
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_open_holds AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number,
+  storage_type,
+  storage_bin,
+  quant_number,
+  material_code AS material_id,
+  batch_number AS batch_id,
+  hold_type,
+  quantity,
+  base_uom AS uom,
+  goods_receipt_date,
+  age_hours
+FROM connected_plant_uat.gold_io_reporting.gold_stock_holds_live;
+
+-- TODO_SECURITY: replace with approved group.
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_open_holds TO `warehouse360_app_users`;
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_open_holds TO `warehouse360_dashboard_users`;
+
+
+-- 13. Staging Pick Tasks
+-- Grain: 1 row per warehouse_number + task_id (transfer order) + item_number, open items only
+-- (item_status != 'Fully Confirmed'). assignee maps to confirmed_by_user when present.
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_pick_tasks AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number,
+  transfer_order_number AS task_id,
+  item_number,
+  material_code AS material_id,
+  batch_number AS batch_id,
+  source_storage_type,
+  source_storage_bin,
+  destination_storage_type,
+  destination_storage_bin,
+  requested_quantity,
+  confirmed_quantity,
+  item_status,
+  created_datetime,
+  order_reference_type,
+  order_reference_number,
+  transfer_priority,
+  delivery_number,
+  created_by_user,
+  confirmed_by_user,
+  age_hours
+FROM connected_plant_uat.gold_io_reporting.gold_transfer_order_open_items_live;
+
+-- TODO_SECURITY: replace with approved group.
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_pick_tasks TO `warehouse360_app_users`;
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_pick_tasks TO `warehouse360_dashboard_users`;
+
+
+-- 14. Staging Move Requests
+-- Grain: 1 row per warehouse_number + request_id (transfer requirement) + item_number, open items
+-- only (not processing-complete, open_quantity > 0). assignee is a documented data gap (LTBK has none).
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_move_requests AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number,
+  transfer_requirement_number AS request_id,
+  item_number,
+  material_code AS material_id,
+  batch_number AS batch_id,
+  source_storage_type,
+  source_storage_bin,
+  destination_storage_type,
+  destination_storage_bin,
+  required_quantity,
+  open_quantity,
+  created_datetime,
+  planned_execution_datetime,
+  queue,
+  transfer_priority,
+  order_reference_type,
+  order_reference_number,
+  age_hours
+FROM connected_plant_uat.gold_io_reporting.gold_transfer_requirement_open_items_live;
+
+-- TODO_SECURITY: replace with approved group.
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_move_requests TO `warehouse360_app_users`;
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_move_requests TO `warehouse360_dashboard_users`;
