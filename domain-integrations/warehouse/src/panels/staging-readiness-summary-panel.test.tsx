@@ -1,8 +1,34 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StagingReadinessSummaryPanel } from './staging-readiness-summary-panel.js'
 import type { ProductionStagingAdapterRequest } from '../adapters/production-staging-adapter.js'
+
+vi.mock('../adapters/production-staging-queries.js', () => ({
+  useStagingReadinessSummary: vi.fn(() => ({
+    data: {
+      ok: true,
+      data: {
+        planDate: '2024-03-08',
+        warehouseId: 'WH-IE10-01',
+        totalOrders: 18,
+        fullyStaged: 12,
+        partiallyStaged: 3,
+        notStaged: 2,
+        blocked: 1,
+        percentReady: 66.7,
+        openShortfalls: 2,
+        pendingPickTasks: 8,
+        openMoveRequests: 4,
+        riskStatus: 'at-risk',
+        confidence: 0.88,
+      },
+      fetchedAt: '2024-03-08T15:00:00.000Z',
+      source: 'databricks-api',
+    },
+    isLoading: false,
+  })),
+}))
 
 function makeQueryClient() {
   return new QueryClient({
@@ -25,6 +51,7 @@ const request: ProductionStagingAdapterRequest = {
   warehouseId: 'WH-IE10-01',
   planDate: '2024-03-08',
 }
+
 
 describe('StagingReadinessSummaryPanel', () => {
   it('renders the panel container with correct data-testid', async () => {

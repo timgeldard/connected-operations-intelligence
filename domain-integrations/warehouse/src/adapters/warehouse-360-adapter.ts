@@ -136,17 +136,73 @@ export class Warehouse360Adapter {
   async getStockOverview(
     request: Warehouse360AdapterRequest
   ): Promise<AdapterResult<StockOverview>> {
-    return {
-      ok: true,
-      data: {
-        warehouseId: request.warehouseId ?? '',
-        totalStorageLocations: 0,
-        occupiedLocations: 0,
-        blockedLocations: 0,
-        zones: [],
-      },
-      fetchedAt: this.now(),
-      source: 'databricks-api',
+    const warehouseId = request.warehouseId ?? 'WH01'
+    try {
+      const url = buildEndpointUrl(this.baseUrl, '/api/warehouse360/stock-zones', warehouseId, request)
+      const res = await fetch(url, { method: 'GET', credentials: 'include' })
+      if (!res.ok) {
+        return this.handleHttpError<StockOverview>(res, 'databricks-api')
+      }
+      const rawList = await res.json()
+      if (!Array.isArray(rawList)) {
+        throw new Error('Response was not an array')
+      }
+
+      const zoneMap = new Map<string, {
+        occupied: number;
+        blocked: number;
+        total: number;
+      }>();
+      let totalStorageLocations = 0;
+      let occupiedLocations = 0;
+      let blockedLocations = 0;
+
+      for (const item of rawList) {
+        const binRecord = nullableNumber(item.binRecordCount) ?? 0;
+        const occupied = nullableNumber(item.occupiedBinCount) ?? 0;
+        const blocked = nullableNumber(item.blockedBinCount) ?? 0;
+
+        totalStorageLocations += binRecord;
+        occupiedLocations += occupied;
+        blockedLocations += blocked;
+
+        const zoneId = String(item.storageType ?? 'unknown');
+        if (!zoneMap.has(zoneId)) {
+          zoneMap.set(zoneId, { occupied: 0, blocked: 0, total: 0 });
+        }
+        const zoneData = zoneMap.get(zoneId)!;
+        zoneData.occupied += occupied;
+        zoneData.blocked += blocked;
+        zoneData.total += binRecord;
+      }
+
+      const zones = Array.from(zoneMap.entries()).map(([zoneId, data]) => {
+        const capacityPercent = data.total > 0 ? (data.occupied / data.total) * 100 : 0;
+        const holdPercent = data.total > 0 ? (data.blocked / data.total) * 100 : 0;
+        return {
+          zoneId,
+          zoneName: zoneId,
+          zoneType: mapStorageTypeToZoneType(zoneId),
+          stockLines: data.occupied,
+          capacityPercent,
+          holdPercent,
+        };
+      });
+
+      return {
+        ok: true,
+        data: {
+          warehouseId,
+          totalStorageLocations,
+          occupiedLocations,
+          blockedLocations,
+          zones,
+        },
+        fetchedAt: this.now(),
+        source: 'databricks-api',
+      }
+    } catch (e) {
+      return this.handleCatchError<StockOverview>(e, 'databricks-api')
     }
   }
 
@@ -612,6 +668,16 @@ export class Warehouse360Adapter {
       source,
     }
   }
+}
+
+function mapStorageTypeToZoneType(storageType: string): 'ambient' | 'chilled' | 'frozen' | 'hazardous' | 'bulk' | 'staging' {
+  const low = storageType.toLowerCase();
+  if (low.includes('cold') || low.includes('chil') || low.includes('ref')) return 'chilled';
+  if (low.includes('froz') || low.includes('freez')) return 'frozen';
+  if (low.includes('haz') || low.includes('chem')) return 'hazardous';
+  if (low.includes('bulk') || low.includes('rack')) return 'bulk';
+  if (low.includes('stg') || low.includes('stage') || low.includes('staging')) return 'staging';
+  return 'ambient';
 }
 
 export const warehouse360Adapter = new Warehouse360Adapter()

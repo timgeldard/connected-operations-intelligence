@@ -531,3 +531,180 @@ contracts:
         type: string
         required: false
         description: Dispensary task status
+
+  - id: warehouse360.stock_zones
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: Warehouse stock zone capacities and bin counts.
+    source_view: vw_consumption_warehouse360_stock_zones
+    grain: one row per plant_id, warehouse_number, storage_type, and bin_type
+    primary_key:
+      - plant_id
+      - warehouse_number
+      - storage_type
+      - bin_type
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: warehouse_number
+        type: string
+        required: true
+        description: Warehouse number
+      - name: storage_type
+        type: string
+        required: true
+        description: Storage type
+      - name: bin_type
+        type: string
+        required: true
+        description: Bin type
+      - name: bin_record_count
+        type: integer
+        required: true
+        description: Total bin count
+      - name: occupied_bin_count
+        type: integer
+        required: true
+        description: Occupied bin count
+      - name: empty_bin_count
+        type: integer
+        required: true
+        description: Empty bin count
+      - name: blocked_bin_count
+        type: integer
+        required: true
+        description: Blocked bin count
+      - name: occupancy_rate
+        type: decimal
+        required: true
+        description: Occupancy rate
+
+  - id: warehouse360.batch_hold_status
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: Warehouse stock and hold status for a batch, release-decision oriented.
+    source_view: vw_consumption_warehouse360_batch_hold_status
+    grain: one row per plant_id, storage_location_id, material_id, and batch_id
+    primary_key:
+      - plant_id
+      - storage_location_id
+      - material_id
+      - batch_id
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: storage_location_id
+        type: string
+        required: true
+        description: Storage location ID
+      - name: material_id
+        type: string
+        required: true
+        description: Material ID
+      - name: batch_id
+        type: string
+        required: true
+        description: Batch ID
+      - name: uom
+        type: string
+        required: true
+        description: Base unit of measure
+      - name: unrestricted_quantity
+        type: double
+        required: true
+        description: Unrestricted stock quantity
+      - name: blocked_quantity
+        type: double
+        required: true
+        description: Blocked stock quantity
+      - name: restricted_quantity
+        type: double
+        required: true
+        description: Restricted stock quantity
+      - name: total_quantity
+        type: double
+        required: true
+        description: Total stock quantity
+      - name: stock_type
+        type: string
+        required: true
+        description: Stock status category
+      - name: has_blocking_hold
+        type: boolean
+        required: true
+        description: Whether batch is under any blocking hold
+      - name: last_updated_at
+        type: timestamp
+        required: true
+        description: Timestamp when status was last updated
+
+  - id: warehouse360.staging_readiness
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: Production staging readiness summary counts.
+    source_view: vw_consumption_warehouse360_staging_readiness
+    grain: one row per plant_id and plan_date
+    primary_key:
+      - plant_id
+      - plan_date
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: plan_date
+        type: date
+        required: true
+        description: Planned staging start date
+      - name: total_orders
+        type: integer
+        required: true
+        description: Total number of scheduled process orders
+      - name: fully_staged
+        type: integer
+        required: true
+        description: Count of fully staged orders
+      - name: partially_staged
+        type: integer
+        required: true
+        description: Count of partially staged orders
+      - name: not_staged
+        type: integer
+        required: true
+        description: Count of not staged orders
+      - name: blocked
+        type: integer
+        required: true
+        description: Count of blocked orders
+

@@ -182,3 +182,73 @@ GROUP BY plant_code, material_code, batch_number, exception_type;
 -- NOT DEPLOYED IN WAVE 1.
 -- Source and grain are not confirmed.
 -- Contract remains draft / not_runtime_ready.
+
+
+-- 9. Stock Zones
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_stock_zones AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number,
+  storage_type,
+  bin_type,
+  bin_record_count,
+  occupied_bin_count,
+  empty_bin_count,
+  blocked_bin_count,
+  CAST(occupancy_rate AS DECIMAL(5,2)) AS occupancy_rate
+FROM connected_plant_prod.gold_io_reporting.gold_bin_occupancy_secured;
+
+-- TODO_SECURITY: replace with approved group.
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_stock_zones TO `warehouse360_app_users`;
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_stock_zones TO `warehouse360_dashboard_users`;
+
+
+-- 10. Batch Hold Status
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_batch_hold_status AS
+SELECT
+  plant_code AS plant_id,
+  storage_location_code AS storage_location_id,
+  material_code AS material_id,
+  batch_number AS batch_id,
+  base_uom AS uom,
+  unrestricted_qty AS unrestricted_quantity,
+  blocked_qty AS blocked_quantity,
+  restricted_use_qty AS restricted_quantity,
+  total_stock_qty AS total_quantity,
+  CASE
+    WHEN quality_inspection_qty > 0 THEN 'quality-inspection'
+    WHEN blocked_qty > 0 THEN 'blocked'
+    WHEN restricted_use_qty > 0 THEN 'blocked'
+    WHEN blocked_returns_qty > 0 THEN 'returns'
+    WHEN in_transfer_qty > 0 THEN 'transit'
+    ELSE 'unrestricted'
+  END AS stock_type,
+  CASE
+    WHEN quality_inspection_qty > 0 OR blocked_qty > 0 OR restricted_use_qty > 0 OR blocked_returns_qty > 0 THEN true
+    ELSE false
+  END AS has_blocking_hold,
+  current_timestamp() AS last_updated_at
+FROM connected_plant_prod.gold_io_reporting.gold_stock_availability_secured;
+
+-- TODO_SECURITY: replace with approved group.
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_batch_hold_status TO `warehouse360_app_users`;
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_batch_hold_status TO `warehouse360_dashboard_users`;
+
+
+-- 11. Staging Readiness
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_staging_readiness AS
+SELECT
+  plant_code AS plant_id,
+  CAST(scheduled_start_date AS DATE) AS plan_date,
+  COUNT(*) AS total_orders,
+  SUM(CASE WHEN staging_fraction = 1.0 THEN 1 ELSE 0 END) AS fully_staged,
+  SUM(CASE WHEN staging_fraction > 0.0 AND staging_fraction < 1.0 THEN 1 ELSE 0 END) AS partially_staged,
+  SUM(CASE WHEN staging_fraction = 0.0 THEN 1 ELSE 0 END) AS not_staged,
+  SUM(CASE WHEN risk_band = 'red' THEN 1 ELSE 0 END) AS blocked
+FROM connected_plant_prod.gold_io_reporting.gold_process_order_staging_live
+GROUP BY plant_code, CAST(scheduled_start_date AS DATE);
+
+-- TODO_SECURITY: replace with approved group.
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_staging_readiness TO `warehouse360_app_users`;
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_staging_readiness TO `warehouse360_dashboard_users`;
+

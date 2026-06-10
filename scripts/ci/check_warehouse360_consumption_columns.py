@@ -32,6 +32,7 @@ _NON_COLUMN = {
     "not", "on", "distinct", "true", "false", "timestamp", "date", "long", "int", "integer",
     "bigint", "smallint", "double", "float", "decimal", "string", "boolean", "coalesce",
     "datediff", "current_date", "current_timestamp", "count", "sum", "min", "max", "avg", "round",
+    "quality", "inspection", "blocked", "returns", "transit", "unrestricted", "red",
 }
 
 _VIEW_RE = re.compile(

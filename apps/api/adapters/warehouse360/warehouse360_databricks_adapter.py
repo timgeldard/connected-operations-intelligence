@@ -75,6 +75,25 @@ class WarehouseShortfallsRequest:
     limit: int = 100
 
 
+@dataclass
+class WarehouseStockZonesRequest:
+    warehouse_id: str
+    plant_id: Optional[str] = None
+    limit: int = 100
+
+
+@dataclass
+class WarehouseBatchHoldStatusRequest:
+    batch_id: str
+    plant_id: Optional[str] = None
+
+
+@dataclass
+class WarehouseStagingReadinessRequest:
+    plant_id: str
+    plan_date: str
+
+
 # ---------------------------------------------------------------------------
 # Utility Mapping & Formatting Helpers
 # ---------------------------------------------------------------------------
@@ -828,6 +847,111 @@ def get_warehouse_shortfalls_spec(request: WarehouseShortfallsRequest) -> QueryS
     )
 
 
+def get_warehouse_stock_zones_spec(request: WarehouseStockZonesRequest) -> QuerySpec:
+    view = resolve_contract_object("warehouse360.stock_zones", "wh360")
+    contract_id = "warehouse360.stock_zones"
+    params = {}
+    where_clauses = ["warehouse_number = :warehouse_id"]
+    params["warehouse_id"] = request.warehouse_id
+    if request.plant_id:
+        where_clauses.append("plant_id = :plant_id")
+        params["plant_id"] = request.plant_id
+    where_str = " WHERE " + " AND ".join(where_clauses)
+    sql = f"""
+    SELECT
+        plant_id,
+        warehouse_number,
+        storage_type,
+        bin_type,
+        bin_record_count,
+        occupied_bin_count,
+        empty_bin_count,
+        blocked_bin_count,
+        occupancy_rate
+    FROM {view}
+    {where_str}
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="warehouse360.get_stock_zones",
+        module="wh360",
+        endpoint="/api/warehouse360/stock-zones",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "stock", "zones"],
+        contract_id=contract_id,
+    )
+
+
+def get_warehouse_batch_hold_status_spec(request: WarehouseBatchHoldStatusRequest) -> QuerySpec:
+    view = resolve_contract_object("warehouse360.batch_hold_status", "wh360")
+    contract_id = "warehouse360.batch_hold_status"
+    params = {"batch_id": request.batch_id}
+    where_clauses = ["batch_id = :batch_id"]
+    if request.plant_id:
+        where_clauses.append("plant_id = :plant_id")
+        params["plant_id"] = request.plant_id
+    where_str = " WHERE " + " AND ".join(where_clauses)
+    sql = f"""
+    SELECT
+        plant_id,
+        storage_location_id,
+        material_id,
+        batch_id,
+        uom,
+        unrestricted_quantity,
+        blocked_quantity,
+        restricted_quantity,
+        total_quantity,
+        stock_type,
+        has_blocking_hold,
+        last_updated_at
+    FROM {view}
+    {where_str}
+    LIMIT 1
+    """
+    return QuerySpec(
+        name="warehouse360.get_batch_hold_status",
+        module="wh360",
+        endpoint="/api/warehouse360/batch/{{batchId}}/hold-status",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "batch", "hold_status"],
+        contract_id=contract_id,
+    )
+
+
+def get_warehouse_staging_readiness_spec(request: WarehouseStagingReadinessRequest) -> QuerySpec:
+    view = resolve_contract_object("warehouse360.staging_readiness", "wh360")
+    contract_id = "warehouse360.staging_readiness"
+    params = {"plant_id": request.plant_id, "plan_date": request.plan_date}
+    sql = f"""
+    SELECT
+        plant_id,
+        plan_date,
+        total_orders,
+        fully_staged,
+        partially_staged,
+        not_staged,
+        blocked
+    FROM {view}
+    WHERE plant_id = :plant_id AND plan_date = CAST(:plan_date AS DATE)
+    LIMIT 1
+    """
+    return QuerySpec(
+        name="warehouse360.get_staging_readiness",
+        module="wh360",
+        endpoint="/api/warehouse360/staging-readiness",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "staging", "readiness"],
+        contract_id=contract_id,
+    )
+
+
 def map_warehouse_stock_exceptions_rows(rows: list[dict]) -> list[dict]:
     """Map raw stock exceptions rows to Warehouse360StockExceptionItem."""
     result = []
@@ -854,6 +978,61 @@ def map_warehouse_shortfalls_rows(rows: list[dict]) -> list[dict]:
             "shortfallQty": _safe_float(row.get("shortfall_qty")) if row.get("shortfall_qty") is not None else None,
             "openItemsCount": _safe_int(row.get("open_items_count")) if row.get("open_items_count") is not None else None,
             "oldestTrDate": str(row["oldest_tr_date"]) if row.get("oldest_tr_date") else None,
+        })
+    return result
+
+
+def map_warehouse_stock_zones_rows(rows: list[dict]) -> list[dict]:
+    """Map raw stock zones rows."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "warehouseNumber": str(row["warehouse_number"]) if row.get("warehouse_number") else None,
+            "storageType": str(row["storage_type"]) if row.get("storage_type") else None,
+            "binType": str(row["bin_type"]) if row.get("bin_type") else None,
+            "binRecordCount": _safe_int(row.get("bin_record_count")),
+            "occupiedBinCount": _safe_int(row.get("occupied_bin_count")),
+            "emptyBinCount": _safe_int(row.get("empty_bin_count")),
+            "blockedBinCount": _safe_int(row.get("blocked_bin_count")),
+            "occupancyRate": _safe_float(row.get("occupancy_rate")),
+        })
+    return result
+
+
+def map_warehouse_batch_hold_status_rows(rows: list[dict]) -> list[dict]:
+    """Map raw batch hold status rows."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "storageLocationId": str(row["storage_location_id"]) if row.get("storage_location_id") else None,
+            "materialId": str(row["material_id"]) if row.get("material_id") else None,
+            "batchId": str(row["batch_id"]) if row.get("batch_id") else None,
+            "uom": str(row["uom"]) if row.get("uom") else None,
+            "unrestrictedQuantity": _safe_float(row.get("unrestricted_quantity")),
+            "blockedQuantity": _safe_float(row.get("blocked_quantity")),
+            "restrictedQuantity": _safe_float(row.get("restricted_quantity")),
+            "totalQuantity": _safe_float(row.get("total_quantity")),
+            "stockType": str(row["stock_type"]) if row.get("stock_type") else None,
+            "hasBlockingHold": bool(row.get("has_blocking_hold")),
+            "lastUpdatedAt": _format_datetime(row.get("last_updated_at")),
+        })
+    return result
+
+
+def map_warehouse_staging_readiness_rows(rows: list[dict]) -> list[dict]:
+    """Map raw staging readiness rows."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "planDate": str(row["plan_date"]) if row.get("plan_date") else None,
+            "totalOrders": _safe_int(row.get("total_orders")),
+            "fullyStaged": _safe_int(row.get("fully_staged")),
+            "partiallyStaged": _safe_int(row.get("partially_staged")),
+            "notStaged": _safe_int(row.get("not_staged")),
+            "blocked": _safe_int(row.get("blocked")),
         })
     return result
 
@@ -903,5 +1082,23 @@ class Warehouse360Repository:
     async def fetch_warehouse_shortfalls(self, request: WarehouseShortfallsRequest) -> tuple[list[dict], QuerySpec]:
         return await self._repository.fetch(
             spec_factory=lambda: get_warehouse_shortfalls_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_stock_zones(self, request: WarehouseStockZonesRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_stock_zones_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_batch_hold_status(self, request: WarehouseBatchHoldStatusRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_batch_hold_status_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_staging_readiness(self, request: WarehouseStagingReadinessRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_staging_readiness_spec(request),
             mapper=lambda rows: rows,
         )

@@ -8,6 +8,9 @@ from adapters.warehouse360.warehouse360_databricks_adapter import (
     WarehouseStagingRequest,
     WarehouseStockExceptionsRequest,
     WarehouseShortfallsRequest,
+    WarehouseStockZonesRequest,
+    WarehouseBatchHoldStatusRequest,
+    WarehouseStagingReadinessRequest,
     _format_datetime,
     _safe_float,
     _safe_int,
@@ -18,6 +21,9 @@ from adapters.warehouse360.warehouse360_databricks_adapter import (
     get_warehouse_staging_spec,
     get_warehouse_stock_exceptions_spec,
     get_warehouse_shortfalls_spec,
+    get_warehouse_stock_zones_spec,
+    get_warehouse_batch_hold_status_spec,
+    get_warehouse_staging_readiness_spec,
     map_warehouse_exceptions_rows,
     map_warehouse_inbound_rows,
     map_warehouse_outbound_rows,
@@ -25,6 +31,9 @@ from adapters.warehouse360.warehouse360_databricks_adapter import (
     map_warehouse_staging_rows,
     map_warehouse_stock_exceptions_rows,
     map_warehouse_shortfalls_rows,
+    map_warehouse_stock_zones_rows,
+    map_warehouse_batch_hold_status_rows,
+    map_warehouse_staging_readiness_rows,
 )
 from shared.query_service.cache_policy import CacheTier
 from shared.query_service.errors import DatabricksConfigError
@@ -449,3 +458,114 @@ class TestWarehouseRowMappers:
         assert res[0]["shortfallQty"] == 500.0
         assert res[0]["openItemsCount"] == 5
         assert res[0]["oldestTrDate"] == "2026-05-10"
+
+    def test_map_stock_zones_rows(self) -> None:
+        rows = [{
+            "plant_id": "IE10",
+            "warehouse_number": "WH01",
+            "storage_type": "COLD",
+            "bin_type": "PALLET",
+            "bin_record_count": 100,
+            "occupied_bin_count": 80,
+            "empty_bin_count": 20,
+            "blocked_bin_count": 5,
+            "occupancy_rate": 0.8
+        }]
+        res = map_warehouse_stock_zones_rows(rows)
+        assert len(res) == 1
+        assert res[0]["plantId"] == "IE10"
+        assert res[0]["warehouseNumber"] == "WH01"
+        assert res[0]["storageType"] == "COLD"
+        assert res[0]["binType"] == "PALLET"
+        assert res[0]["binRecordCount"] == 100
+        assert res[0]["occupiedBinCount"] == 80
+        assert res[0]["emptyBinCount"] == 20
+        assert res[0]["blockedBinCount"] == 5
+        assert res[0]["occupancyRate"] == 0.8
+
+    def test_map_batch_hold_status_rows(self) -> None:
+        rows = [{
+            "plant_id": "IE10",
+            "storage_location_id": "SL01",
+            "material_id": "MAT01",
+            "batch_id": "B01",
+            "uom": "KG",
+            "unrestricted_quantity": 1000.0,
+            "blocked_quantity": 100.0,
+            "restricted_quantity": 0.0,
+            "total_quantity": 1100.0,
+            "stock_type": "blocked",
+            "has_blocking_hold": True,
+            "last_updated_at": "2026-06-10 00:00:00"
+        }]
+        res = map_warehouse_batch_hold_status_rows(rows)
+        assert len(res) == 1
+        assert res[0]["plantId"] == "IE10"
+        assert res[0]["storageLocationId"] == "SL01"
+        assert res[0]["materialId"] == "MAT01"
+        assert res[0]["batchId"] == "B01"
+        assert res[0]["uom"] == "KG"
+        assert res[0]["unrestrictedQuantity"] == 1000.0
+        assert res[0]["blockedQuantity"] == 100.0
+        assert res[0]["restrictedQuantity"] == 0.0
+        assert res[0]["totalQuantity"] == 1100.0
+        assert res[0]["stockType"] == "blocked"
+        assert res[0]["hasBlockingHold"] is True
+        assert "2026-06-10T00:00:00" in res[0]["lastUpdatedAt"]
+
+    def test_map_staging_readiness_rows(self) -> None:
+        rows = [{
+            "plant_id": "IE10",
+            "plan_date": "2026-06-10",
+            "total_orders": 10,
+            "fully_staged": 6,
+            "partially_staged": 3,
+            "not_staged": 1,
+            "blocked": 2
+        }]
+        res = map_warehouse_staging_readiness_rows(rows)
+        assert len(res) == 1
+        assert res[0]["plantId"] == "IE10"
+        assert res[0]["planDate"] == "2026-06-10"
+        assert res[0]["totalOrders"] == 10
+        assert res[0]["fullyStaged"] == 6
+        assert res[0]["partiallyStaged"] == 3
+        assert res[0]["notStaged"] == 1
+        assert res[0]["blocked"] == 2
+
+
+class TestQuerySpecCategoryBFiltering:
+    def test_stock_zones_with_filters(self) -> None:
+        req = WarehouseStockZonesRequest(
+            warehouse_id="WH01",
+            plant_id="PL10",
+            limit=250,
+        )
+        spec = get_warehouse_stock_zones_spec(req)
+        assert spec.params["warehouse_id"] == "WH01"
+        assert spec.params["plant_id"] == "PL10"
+        assert "warehouse_number = :warehouse_id" in spec.sql
+        assert "plant_id = :plant_id" in spec.sql
+        assert "LIMIT 250" in spec.sql
+
+    def test_batch_hold_status_with_filters(self) -> None:
+        req = WarehouseBatchHoldStatusRequest(
+            batch_id="B01",
+            plant_id="PL10",
+        )
+        spec = get_warehouse_batch_hold_status_spec(req)
+        assert spec.params["batch_id"] == "B01"
+        assert spec.params["plant_id"] == "PL10"
+        assert "batch_id = :batch_id" in spec.sql
+        assert "plant_id = :plant_id" in spec.sql
+
+    def test_staging_readiness_with_filters(self) -> None:
+        req = WarehouseStagingReadinessRequest(
+            plant_id="PL10",
+            plan_date="2026-06-10",
+        )
+        spec = get_warehouse_staging_readiness_spec(req)
+        assert spec.params["plant_id"] == "PL10"
+        assert spec.params["plan_date"] == "2026-06-10"
+        assert "plant_id = :plant_id" in spec.sql
+        assert "plan_date = CAST(:plan_date AS DATE)" in spec.sql

@@ -31,6 +31,9 @@ try:
         WarehouseStagingRequest,
         WarehouseStockExceptionsRequest,
         WarehouseShortfallsRequest,
+        WarehouseStockZonesRequest,
+        WarehouseBatchHoldStatusRequest,
+        WarehouseStagingReadinessRequest,
         get_warehouse_exceptions_spec,
         get_warehouse_inbound_spec,
         get_warehouse_outbound_spec,
@@ -38,6 +41,9 @@ try:
         get_warehouse_staging_spec,
         get_warehouse_stock_exceptions_spec,
         get_warehouse_shortfalls_spec,
+        get_warehouse_stock_zones_spec,
+        get_warehouse_batch_hold_status_spec,
+        get_warehouse_staging_readiness_spec,
     )
 except ImportError as err:
     print(f"Error importing adapter: {err}")
@@ -85,6 +91,9 @@ def run_contract_coverage() -> None:
         ("exceptions", lambda: get_warehouse_exceptions_spec(WarehouseExceptionRequest("WH01"))),
         ("stock_exceptions", lambda: get_warehouse_stock_exceptions_spec(WarehouseStockExceptionsRequest("WH01"))),
         ("shortfalls", lambda: get_warehouse_shortfalls_spec(WarehouseShortfallsRequest("WH01"))),
+        ("stock_zones", lambda: get_warehouse_stock_zones_spec(WarehouseStockZonesRequest("WH01"))),
+        ("batch_hold_status", lambda: get_warehouse_batch_hold_status_spec(WarehouseBatchHoldStatusRequest("B001"))),
+        ("staging_readiness", lambda: get_warehouse_staging_readiness_spec(WarehouseStagingReadinessRequest("P001", "2026-06-10"))),
     ]
 
     errors: list[str] = []
@@ -141,6 +150,9 @@ def run_contract_coverage() -> None:
         "warehouse360.im_wm_reconciliation": "route-covered",
         "warehouse360.stock_exceptions": "route-covered",
         "warehouse360.shortfalls": "route-covered",
+        "warehouse360.stock_zones": "route-covered",
+        "warehouse360.batch_hold_status": "route-covered",
+        "warehouse360.staging_readiness": "route-covered",
         "warehouse360.dispensary_queue": "placeholder / not runtime-ready",
     }
     for c_id, status in coverage_map.items():

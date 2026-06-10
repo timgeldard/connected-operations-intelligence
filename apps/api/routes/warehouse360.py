@@ -19,6 +19,9 @@ from adapters.warehouse360.warehouse360_databricks_adapter import (
     WarehouseStagingRequest,
     WarehouseStockExceptionsRequest,
     WarehouseShortfallsRequest,
+    WarehouseStockZonesRequest,
+    WarehouseBatchHoldStatusRequest,
+    WarehouseStagingReadinessRequest,
     map_warehouse_exceptions_rows,
     map_warehouse_inbound_rows,
     map_warehouse_outbound_rows,
@@ -26,6 +29,9 @@ from adapters.warehouse360.warehouse360_databricks_adapter import (
     map_warehouse_staging_rows,
     map_warehouse_stock_exceptions_rows,
     map_warehouse_shortfalls_rows,
+    map_warehouse_stock_zones_rows,
+    map_warehouse_batch_hold_status_rows,
+    map_warehouse_staging_readiness_rows,
 )
 from contracts.generated import (
     Warehouse360ExceptionItem,
@@ -73,6 +79,55 @@ class Warehouse360ShortfallItem(BaseModel):
     shortfall_qty: Optional[float] = Field(None, alias='shortfallQty')
     open_items_count: Optional[int] = Field(None, alias='openItemsCount')
     oldest_tr_date: Optional[str] = Field(None, alias='oldestTrDate')
+
+
+class Warehouse360StockZoneItem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    plant_id: str = Field(..., alias='plantId')
+    warehouse_number: str = Field(..., alias='warehouseNumber')
+    storage_type: str = Field(..., alias='storageType')
+    bin_type: str = Field(..., alias='binType')
+    bin_record_count: int = Field(..., alias='binRecordCount')
+    occupied_bin_count: int = Field(..., alias='occupiedBinCount')
+    empty_bin_count: int = Field(..., alias='emptyBinCount')
+    blocked_bin_count: int = Field(..., alias='blockedBinCount')
+    occupancy_rate: float = Field(..., alias='occupancyRate')
+
+
+class Warehouse360BatchHoldStatus(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    plant_id: str = Field(..., alias='plantId')
+    storage_location_id: Optional[str] = Field(None, alias='storageLocationId')
+    material_id: str = Field(..., alias='materialId')
+    batch_id: str = Field(..., alias='batchId')
+    uom: str
+    unrestricted_quantity: float = Field(..., alias='unrestrictedQuantity')
+    blocked_quantity: float = Field(..., alias='blockedQuantity')
+    restricted_quantity: float = Field(..., alias='restrictedQuantity')
+    total_quantity: float = Field(..., alias='totalQuantity')
+    stock_type: str = Field(..., alias='stockType')
+    has_blocking_hold: bool = Field(..., alias='hasBlockingHold')
+    last_updated_at: str = Field(..., alias='lastUpdatedAt')
+
+
+class Warehouse360StagingReadiness(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    plant_id: str = Field(..., alias='plantId')
+    plan_date: str = Field(..., alias='planDate')
+    total_orders: int = Field(..., alias='totalOrders')
+    fully_staged: int = Field(..., alias='fullyStaged')
+    partially_staged: int = Field(..., alias='partiallyStaged')
+    not_staged: int = Field(..., alias='notStaged')
+    blocked: int = Field(..., alias='blocked')
 
 
 @router.get("/warehouse360/overview")
@@ -434,3 +489,141 @@ async def warehouse_shortfalls(
     )
     set_databricks_response_headers(response, spec)
     return map_warehouse_shortfalls_rows(rows)
+
+
+@router.get("/warehouse360/stock-zones", response_model=list[Warehouse360StockZoneItem])
+async def warehouse_stock_zones(
+    warehouse_id: str,
+    response: Response,
+    plant_id: str | None = None,
+    limit: int = 100,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[Warehouse360StockZoneItem]:
+    """Get stock zone metrics — databricks-api only."""
+    backend_mode = os.getenv("BACKEND_ADAPTER_MODE", "legacy-api")
+    if backend_mode != "databricks-api":
+        raise HTTPException(
+            status_code=503,
+            detail="Warehouse stock zones requires BACKEND_ADAPTER_MODE=databricks-api",
+        )
+
+    w_id = warehouse_id.strip() if warehouse_id else ""
+    if not w_id:
+        raise HTTPException(status_code=422, detail="warehouse_id cannot be empty")
+
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+
+    p_id = plant_id.strip() if plant_id else None
+
+    req = WarehouseStockZonesRequest(
+        warehouse_id=w_id,
+        plant_id=p_id,
+        limit=limit,
+    )
+
+    host, db_warehouse_id = require_databricks_config()
+    identity = build_user_identity(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    repository = build_databricks_repository(identity, host, db_warehouse_id)
+    wh_repo = Warehouse360Repository(repository)
+    rows, spec = await run_repository_fetch(
+        lambda: wh_repo.fetch_warehouse_stock_zones(req)
+    )
+    set_databricks_response_headers(response, spec)
+    return map_warehouse_stock_zones_rows(rows)
+
+
+@router.get("/warehouse360/batch/{batchId}/hold-status", response_model=Warehouse360BatchHoldStatus)
+async def warehouse_batch_hold_status(
+    batchId: str,
+    response: Response,
+    plant_id: str | None = None,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> Warehouse360BatchHoldStatus:
+    """Get batch hold status — databricks-api only."""
+    backend_mode = os.getenv("BACKEND_ADAPTER_MODE", "legacy-api")
+    if backend_mode != "databricks-api":
+        raise HTTPException(
+            status_code=503,
+            detail="Warehouse batch hold status requires BACKEND_ADAPTER_MODE=databricks-api",
+        )
+
+    b_id = batchId.strip() if batchId else ""
+    if not b_id:
+        raise HTTPException(status_code=422, detail="batchId cannot be empty")
+
+    p_id = plant_id.strip() if plant_id else None
+
+    req = WarehouseBatchHoldStatusRequest(
+        batch_id=b_id,
+        plant_id=p_id,
+    )
+
+    host, db_warehouse_id = require_databricks_config()
+    identity = build_user_identity(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    repository = build_databricks_repository(identity, host, db_warehouse_id)
+    wh_repo = Warehouse360Repository(repository)
+    rows, spec = await run_repository_fetch(
+        lambda: wh_repo.fetch_warehouse_batch_hold_status(req)
+    )
+    set_databricks_response_headers(response, spec)
+    mapped = map_warehouse_batch_hold_status_rows(rows)
+    if not mapped:
+        raise HTTPException(status_code=404, detail=f"Batch {b_id} not found")
+    return mapped[0]
+
+
+@router.get("/warehouse360/staging-readiness", response_model=Warehouse360StagingReadiness)
+async def warehouse_staging_readiness(
+    plant_id: str,
+    plan_date: str,
+    response: Response,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> Warehouse360StagingReadiness:
+    """Get staging readiness summary — databricks-api only."""
+    backend_mode = os.getenv("BACKEND_ADAPTER_MODE", "legacy-api")
+    if backend_mode != "databricks-api":
+        raise HTTPException(
+            status_code=503,
+            detail="Warehouse staging readiness requires BACKEND_ADAPTER_MODE=databricks-api",
+        )
+
+    p_id = plant_id.strip() if plant_id else ""
+    if not p_id:
+        raise HTTPException(status_code=422, detail="plant_id cannot be empty")
+
+    p_date = plan_date.strip() if plan_date else ""
+    if not p_date:
+        raise HTTPException(status_code=422, detail="plan_date cannot be empty")
+
+    req = WarehouseStagingReadinessRequest(
+        plant_id=p_id,
+        plan_date=p_date,
+    )
+
+    host, db_warehouse_id = require_databricks_config()
+    identity = build_user_identity(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    repository = build_databricks_repository(identity, host, db_warehouse_id)
+    wh_repo = Warehouse360Repository(repository)
+    rows, spec = await run_repository_fetch(
+        lambda: wh_repo.fetch_warehouse_staging_readiness(req)
+    )
+    set_databricks_response_headers(response, spec)
+    mapped = map_warehouse_staging_readiness_rows(rows)
+    if not mapped:
+        return Warehouse360StagingReadiness(
+            plantId=p_id,
+            planDate=p_date,
+            totalOrders=0,
+            fullyStaged=0,
+            partiallyStaged=0,
+            notStaged=0,
+            blocked=0
+        )
+    return mapped[0]

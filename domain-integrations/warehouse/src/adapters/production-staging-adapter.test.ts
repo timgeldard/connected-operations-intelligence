@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
 import { z } from 'zod'
 import { ProductionStagingAdapter } from './production-staging-adapter.js'
 import {
@@ -16,6 +16,51 @@ import {
 const fixedNow = () => '2024-03-08T15:00:00.000Z'
 const adapter = new ProductionStagingAdapter({ now: fixedNow })
 const request = { plantId: 'IE10', warehouseId: 'WH-IE10-01', planDate: '2024-03-08' }
+
+beforeAll(() => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.includes('/api/warehouse360/staging-readiness')) {
+      return {
+        ok: true,
+        json: async () => ({
+          plantId: 'IE10',
+          planDate: '2024-03-08',
+          totalOrders: 18,
+          fullyStaged: 12,
+          partiallyStaged: 3,
+          notStaged: 2,
+          blocked: 1,
+        }),
+      } as Response
+    }
+    if (url.includes('/api/warehouse360/shortfalls')) {
+      return {
+        ok: true,
+        json: async () => [
+          {
+            plantId: 'IE10',
+            materialId: 'MAT-RM-RENNET',
+            shortfallQty: 75,
+            openItemsCount: 2,
+            oldestTrDate: '2026-05-12T08:00:00.000Z',
+          },
+          {
+            plantId: 'IE10',
+            materialId: 'MAT-RM-OTHER',
+            shortfallQty: 20,
+            openItemsCount: 1,
+            oldestTrDate: '2026-05-13T08:00:00.000Z',
+          }
+        ],
+      } as Response
+    }
+    return { ok: true, json: async () => [] } as Response
+  }))
+})
+
+afterAll(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('ProductionStagingAdapter', () => {
   it('getProductionStagingContext returns ok: true with valid contract data', async () => {

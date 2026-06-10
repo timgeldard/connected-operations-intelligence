@@ -733,17 +733,165 @@ class TestWarehouse360ParameterValidation:
             assert called_params["date_to"] == "2026-05-31"
 
 
+class TestWarehouse360StockZonesRoute:
+    async def test_requires_authentication(self, wh360_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/warehouse360/stock-zones",
+                params={"warehouse_id": "WH01"},
+            )
+        assert response.status_code == 401
+
+    async def test_returns_200_with_mapped_stock_zones(self, wh360_databricks_env) -> None:
+        fake_rows = [
+            {
+                "plant_id": "IE10",
+                "warehouse_number": "WH01",
+                "storage_type": "COLD",
+                "bin_type": "PALLET",
+                "bin_record_count": 100,
+                "occupied_bin_count": 80,
+                "empty_bin_count": 20,
+                "blocked_bin_count": 5,
+                "occupancy_rate": 0.8
+            }
+        ]
+        with patch(
+            "shared.query_service.databricks_client.StatementApiDatabricksClient.execute",
+            new_callable=AsyncMock,
+            return_value=fake_rows,
+        ):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/warehouse360/stock-zones",
+                    params={"warehouse_id": "WH01"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 1
+        item = data[0]
+        assert item["plantId"] == "IE10"
+        assert item["warehouseNumber"] == "WH01"
+        assert item["storageType"] == "COLD"
+        assert item["binType"] == "PALLET"
+        assert item["binRecordCount"] == 100
+        assert item["occupiedBinCount"] == 80
+        assert item["emptyBinCount"] == 20
+        assert item["blockedBinCount"] == 5
+        assert item["occupancyRate"] == 0.8
+
+
+class TestWarehouse360BatchHoldStatusRoute:
+    async def test_requires_authentication(self, wh360_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/warehouse360/batch/B01/hold-status",
+            )
+        assert response.status_code == 401
+
+    async def test_returns_200_with_mapped_hold_status(self, wh360_databricks_env) -> None:
+        fake_rows = [
+            {
+                "plant_id": "IE10",
+                "storage_location_id": "SL01",
+                "material_id": "MAT01",
+                "batch_id": "B01",
+                "uom": "KG",
+                "unrestricted_quantity": 1000.0,
+                "blocked_quantity": 100.0,
+                "restricted_quantity": 0.0,
+                "total_quantity": 1100.0,
+                "stock_type": "blocked",
+                "has_blocking_hold": True,
+                "last_updated_at": "2026-06-10 00:00:00"
+            }
+        ]
+        with patch(
+            "shared.query_service.databricks_client.StatementApiDatabricksClient.execute",
+            new_callable=AsyncMock,
+            return_value=fake_rows,
+        ):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/warehouse360/batch/B01/hold-status",
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, dict)
+        assert data["plantId"] == "IE10"
+        assert data["storageLocationId"] == "SL01"
+        assert data["materialId"] == "MAT01"
+        assert data["batchId"] == "B01"
+        assert data["uom"] == "KG"
+        assert data["unrestrictedQuantity"] == 1000.0
+        assert data["blockedQuantity"] == 100.0
+        assert data["restrictedQuantity"] == 0.0
+        assert data["totalQuantity"] == 1100.0
+        assert data["stockType"] == "blocked"
+        assert data["hasBlockingHold"] is True
+
+
+class TestWarehouse360StagingReadinessRoute:
+    async def test_requires_authentication(self, wh360_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/warehouse360/staging-readiness",
+                params={"plant_id": "PL10", "plan_date": "2026-06-10"},
+            )
+        assert response.status_code == 401
+
+    async def test_returns_200_with_mapped_readiness(self, wh360_databricks_env) -> None:
+        fake_rows = [
+            {
+                "plant_id": "PL10",
+                "plan_date": "2026-06-10",
+                "total_orders": 10,
+                "fully_staged": 6,
+                "partially_staged": 3,
+                "not_staged": 1,
+                "blocked": 2
+            }
+        ]
+        with patch(
+            "shared.query_service.databricks_client.StatementApiDatabricksClient.execute",
+            new_callable=AsyncMock,
+            return_value=fake_rows,
+        ):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/warehouse360/staging-readiness",
+                    params={"plant_id": "PL10", "plan_date": "2026-06-10"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, dict)
+        assert data["plantId"] == "PL10"
+        assert data["planDate"] == "2026-06-10"
+        assert data["totalOrders"] == 10
+        assert data["fullyStaged"] == 6
+        assert data["partiallyStaged"] == 3
+        assert data["notStaged"] == 1
+        assert data["blocked"] == 2
+
+
 class TestWarehouse360ResponseModelEnforcement:
     """Verify response_model is wired for inbound/outbound/staging/exceptions via OpenAPI schema."""
 
-    async def _get_route_schema_ref(self, path: str) -> str | None:
+    async def _get_route_schema_ref(self, path: str, is_list: bool = True) -> str | None:
         async with _make_client() as client:
             resp = await client.get("/openapi.json")
         schema = resp.json()
         path_item = schema["paths"].get(path, {})
         resp_200 = path_item.get("get", {}).get("responses", {}).get("200", {})
-        items = resp_200.get("content", {}).get("application/json", {}).get("schema", {}).get("items", {})
-        return items.get("$ref")
+        schema_obj = resp_200.get("content", {}).get("application/json", {}).get("schema", {})
+        if is_list:
+            items = schema_obj.get("items", {})
+            return items.get("$ref")
+        return schema_obj.get("$ref")
 
     async def test_inbound_response_model_is_wired(self) -> None:
         ref = await self._get_route_schema_ref("/api/warehouse360/inbound")
@@ -768,4 +916,16 @@ class TestWarehouse360ResponseModelEnforcement:
     async def test_shortfalls_response_model_is_wired(self) -> None:
         ref = await self._get_route_schema_ref("/api/warehouse360/shortfalls")
         assert ref is not None and "Warehouse360ShortfallItem" in ref
+
+    async def test_stock_zones_response_model_is_wired(self) -> None:
+        ref = await self._get_route_schema_ref("/api/warehouse360/stock-zones")
+        assert ref is not None and "Warehouse360StockZoneItem" in ref
+
+    async def test_batch_hold_status_response_model_is_wired(self) -> None:
+        ref = await self._get_route_schema_ref("/api/warehouse360/batch/{batchId}/hold-status", is_list=False)
+        assert ref is not None and "Warehouse360BatchHoldStatus" in ref
+
+    async def test_staging_readiness_response_model_is_wired(self) -> None:
+        ref = await self._get_route_schema_ref("/api/warehouse360/staging-readiness", is_list=False)
+        assert ref is not None and "Warehouse360StagingReadiness" in ref
 
