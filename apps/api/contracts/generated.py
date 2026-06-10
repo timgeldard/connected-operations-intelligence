@@ -1986,30 +1986,29 @@ class GoodsMovementEvent(BaseModel):
     )
     movement_id: str = Field(..., alias='movementId')
     """
-    [classification: source-field]
+    [classification: source-field — document/year/line]
     """
-    timestamp: AwareDatetime
+    timestamp: str
     """
-    [classification: source-field]
+    [classification: source-field — posting date]
     """
     movement_type: Literal[
-        'goods-receipt',
-        'goods-issue',
-        'transfer-order',
-        'stock-transfer',
-        'return',
-        'adjustment',
+        'goods-receipt', 'goods-issue', 'transfer', 'reversal', 'other'
     ] = Field(..., alias='movementType')
     """
-    [classification: source-field]
+    [classification: source-derived — classification flags]
+    """
+    movement_type_code: Optional[str] = Field(None, alias='movementTypeCode')
+    """
+    [classification: source-field — BWART]
     """
     material_id: str = Field(..., alias='materialId')
     """
     [classification: source-field]
     """
-    material_description: str = Field(..., alias='materialDescription')
+    material_description: Optional[str] = Field(None, alias='materialDescription')
     """
-    [classification: source-field]
+    [classification: data-gap — material join deferred]
     """
     batch_id: Optional[str] = Field(None, alias='batchId')
     """
@@ -2019,21 +2018,21 @@ class GoodsMovementEvent(BaseModel):
     """
     [classification: source-field]
     """
-    uom: str
+    uom: Optional[str] = None
     """
     [classification: source-field]
     """
     source_location: Optional[str] = Field(None, alias='sourceLocation')
     """
-    [classification: source-field]
+    [classification: source-field — IM storage location]
     """
     destination_location: Optional[str] = Field(None, alias='destinationLocation')
     """
-    [classification: source-field]
+    [classification: data-gap — not modelled at IM grain]
     """
     reference_document: Optional[str] = Field(None, alias='referenceDocument')
     """
-    [classification: source-field]
+    [classification: source-field — PO/order/delivery]
     """
     posted_by: Optional[str] = Field(None, alias='postedBy')
     """
@@ -2995,6 +2994,13 @@ class MonitoredSPCCharacteristic(BaseModel):
     """
 
 
+class Quantity(RootModel[float]):
+    root: float = Field(..., ge=0.0)
+    """
+    [classification: source-field]
+    """
+
+
 class NearExpiryBatch(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -3008,15 +3014,15 @@ class NearExpiryBatch(BaseModel):
     """
     [classification: source-field]
     """
-    material_description: str = Field(..., alias='materialDescription')
+    material_description: Optional[str] = Field(None, alias='materialDescription')
     """
     [classification: source-field]
     """
-    storage_location_id: str = Field(..., alias='storageLocationId')
+    storage_location_id: Optional[str] = Field(None, alias='storageLocationId')
     """
     [classification: source-field]
     """
-    expiry_date: AwareDatetime = Field(..., alias='expiryDate')
+    expiry_date: Optional[AwareDatetime] = Field(None, alias='expiryDate')
     """
     [classification: source-field]
     """
@@ -3024,11 +3030,11 @@ class NearExpiryBatch(BaseModel):
     """
     [classification: application-derived]
     """
-    quantity: float = Field(..., ge=0.0)
+    quantity: Optional[Quantity] = None
     """
     [classification: source-field]
     """
-    uom: str
+    uom: Optional[str] = None
     """
     [classification: source-field]
     """
@@ -3036,8 +3042,8 @@ class NearExpiryBatch(BaseModel):
     """
     [classification: application-heuristic]
     """
-    hold_status: Literal['unrestricted', 'quality-hold', 'blocked'] = Field(
-        ..., alias='holdStatus'
+    hold_status: Optional[Literal['unrestricted', 'quality-hold', 'blocked']] = Field(
+        None, alias='holdStatus'
     )
     """
     [classification: application-heuristic]
@@ -3061,41 +3067,35 @@ class OpenHoldItem(BaseModel):
     """
     [classification: source-field]
     """
-    material_description: str = Field(..., alias='materialDescription')
+    material_description: Optional[str] = Field(None, alias='materialDescription')
     """
-    [classification: source-field]
+    [classification: data-gap — material join deferred]
     """
     storage_location_id: str = Field(..., alias='storageLocationId')
     """
-    [classification: source-field]
+    [classification: source-field — storage_type/bin composite]
     """
-    hold_reason: Literal[
-        'quality-hold',
-        'customer-hold',
-        'production-hold',
-        'regulatory-hold',
-        'damaged',
-        'expired',
-        'investigation',
-    ] = Field(..., alias='holdReason')
+    hold_reason: Literal['quality', 'blocked', 'restricted'] = Field(
+        ..., alias='holdReason'
+    )
+    """
+    [classification: source-field — SAP stock category]
+    """
+    hold_quantity: float = Field(..., alias='holdQuantity')
     """
     [classification: source-field]
     """
-    hold_quantity: float = Field(..., alias='holdQuantity', ge=0.0)
+    uom: Optional[str] = None
     """
     [classification: source-field]
     """
-    uom: str
+    raised_at: Optional[str] = Field(None, alias='raisedAt')
     """
-    [classification: source-field]
-    """
-    raised_at: AwareDatetime = Field(..., alias='raisedAt')
-    """
-    [classification: source-field]
+    [classification: source-field — goods receipt date (age basis)]
     """
     raised_by: Optional[str] = Field(None, alias='raisedBy')
     """
-    [classification: source-field]
+    [classification: data-gap — no QM hold log replicated]
     """
     age_hours: float = Field(..., alias='ageHours', ge=0.0)
     """
@@ -4411,9 +4411,9 @@ class ProductionStagingContext(BaseModel):
     """
     [classification: source-field]
     """
-    warehouse_name: str = Field(..., alias='warehouseName')
+    warehouse_name: Optional[str] = Field(None, alias='warehouseName')
     """
-    [classification: source-field]
+    [classification: data-gap — no warehouse-name source replicated]
     """
     plan_date: date_aliased = Field(..., alias='planDate')
     """
@@ -5804,6 +5804,27 @@ class ReliabilityMetric(BaseModel):
     """
 
 
+class CurrentStockQuantity(RootModel[float]):
+    root: float = Field(..., ge=0.0)
+    """
+    [classification: source-field]
+    """
+
+
+class ReorderPoint(RootModel[float]):
+    root: float = Field(..., ge=0.0)
+    """
+    [classification: source-field]
+    """
+
+
+class TargetQuantity(RootModel[float]):
+    root: float = Field(..., ge=0.0)
+    """
+    [classification: source-field]
+    """
+
+
 class ReplenishmentNeed(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -5817,27 +5838,29 @@ class ReplenishmentNeed(BaseModel):
     """
     [classification: source-field]
     """
-    material_description: str = Field(..., alias='materialDescription')
+    material_description: Optional[str] = Field(None, alias='materialDescription')
     """
     [classification: source-field]
     """
-    storage_location_id: str = Field(..., alias='storageLocationId')
+    storage_location_id: Optional[str] = Field(None, alias='storageLocationId')
     """
     [classification: source-field]
     """
-    current_stock_quantity: float = Field(..., alias='currentStockQuantity', ge=0.0)
+    current_stock_quantity: Optional[CurrentStockQuantity] = Field(
+        None, alias='currentStockQuantity'
+    )
     """
     [classification: source-field]
     """
-    reorder_point: float = Field(..., alias='reorderPoint', ge=0.0)
+    reorder_point: Optional[ReorderPoint] = Field(None, alias='reorderPoint')
     """
     [classification: source-field]
     """
-    target_quantity: float = Field(..., alias='targetQuantity', ge=0.0)
+    target_quantity: Optional[TargetQuantity] = Field(None, alias='targetQuantity')
     """
     [classification: source-field]
     """
-    uom: str
+    uom: Optional[str] = None
     """
     [classification: source-field]
     """
@@ -6479,11 +6502,11 @@ class StagingAlert(BaseModel):
     """
     [classification: application-heuristic]
     """
-    raised_at: AwareDatetime = Field(..., alias='raisedAt')
+    raised_at: str = Field(..., alias='raisedAt')
     """
-    [classification: source-field]
+    [classification: source-derived — oldest underlying record or fetch time]
     """
-    resolved_at: Optional[AwareDatetime] = Field(None, alias='resolvedAt')
+    resolved_at: Optional[str] = Field(None, alias='resolvedAt')
     """
     [classification: source-field]
     """
@@ -6522,29 +6545,29 @@ class StagingMoveRequest(BaseModel):
     """
     [classification: source-field]
     """
-    material_description: str = Field(..., alias='materialDescription')
+    material_description: Optional[str] = Field(None, alias='materialDescription')
     """
-    [classification: source-field]
+    [classification: data-gap — material join deferred]
     """
     quantity: float
     """
     [classification: source-field]
     """
-    uom: str
+    uom: Optional[str] = None
     """
-    [classification: source-field]
+    [classification: data-gap — not sourced at TR-item grain]
     """
     process_order_id: Optional[str] = Field(None, alias='processOrderId')
     """
-    [classification: source-field]
+    [classification: source-field — BENUM when BETYP=F]
     """
-    requested_by: str = Field(..., alias='requestedBy')
+    requested_by: Optional[str] = Field(None, alias='requestedBy')
     """
-    [classification: source-field]
+    [classification: data-gap — LTBK carries no requester]
     """
     assigned_to: Optional[str] = Field(None, alias='assignedTo')
     """
-    [classification: source-field]
+    [classification: data-gap — LTBK carries no assignee]
     """
     status: Literal['open', 'assigned', 'in-transit', 'completed', 'cancelled']
     """
@@ -6552,19 +6575,19 @@ class StagingMoveRequest(BaseModel):
     """
     priority: Literal['low', 'medium', 'high', 'critical']
     """
-    [classification: source-field]
+    [classification: application-heuristic]
     """
-    created_at: AwareDatetime = Field(..., alias='createdAt')
-    """
-    [classification: source-field]
-    """
-    completed_at: Optional[AwareDatetime] = Field(None, alias='completedAt')
+    created_at: Optional[str] = Field(None, alias='createdAt')
     """
     [classification: source-field]
     """
-    reason: str
+    completed_at: Optional[str] = Field(None, alias='completedAt')
     """
     [classification: source-field]
+    """
+    reason: Optional[str] = None
+    """
+    [classification: source-field — WM queue]
     """
 
 
@@ -6581,25 +6604,25 @@ class StagingOrderSummary(BaseModel):
     """
     [classification: source-field]
     """
-    material_description: str = Field(..., alias='materialDescription')
+    material_description: Optional[str] = Field(None, alias='materialDescription')
     """
     [classification: source-field]
     """
-    batch_id: str = Field(..., alias='batchId')
+    batch_id: Optional[str] = Field(None, alias='batchId')
     """
-    [classification: source-field]
+    [classification: data-gap — order batch not at this grain]
     """
     plant_id: str = Field(..., alias='plantId')
     """
     [classification: source-field]
     """
-    line_or_resource: str = Field(..., alias='lineOrResource')
+    line_or_resource: Optional[str] = Field(None, alias='lineOrResource')
     """
-    [classification: source-field]
+    [classification: data-gap — production line join deferred]
     """
-    planned_start: AwareDatetime = Field(..., alias='plannedStart')
+    planned_start: Optional[str] = Field(None, alias='plannedStart')
     """
-    [classification: source-field]
+    [classification: source-field — sched_start]
     """
     required_quantity: float = Field(..., alias='requiredQuantity')
     """
@@ -6607,31 +6630,31 @@ class StagingOrderSummary(BaseModel):
     """
     staged_quantity: float = Field(..., alias='stagedQuantity')
     """
-    [classification: source-field]
+    [classification: application-derived — order_qty * staging_pct]
     """
     shortfall_quantity: float = Field(..., alias='shortfallQuantity')
     """
     [classification: source-derived]
     """
-    uom: str
+    uom: Optional[str] = None
     """
     [classification: source-field]
     """
-    staging_area: str = Field(..., alias='stagingArea')
+    staging_area: Optional[str] = Field(None, alias='stagingArea')
     """
-    [classification: source-field]
+    [classification: data-gap — storage location absent]
     """
     status: Literal['not-staged', 'partial', 'staged', 'blocked', 'not-required']
     """
-    [classification: source-field]
+    [classification: application-heuristic]
     """
     urgency: Literal['low', 'medium', 'high', 'critical']
     """
     [classification: source-derived]
     """
-    pick_task_ids: list[str] = Field(..., alias='pickTaskIds')
+    pick_task_ids: Optional[list[str]] = Field(None, alias='pickTaskIds')
     """
-    [classification: source-field]
+    [classification: data-gap — TO linkage via pick-tasks dataset]
     """
     blocker_reason: Optional[str] = Field(None, alias='blockerReason')
     """
@@ -6648,17 +6671,17 @@ class StagingPickTask(BaseModel):
     """
     [classification: source-field]
     """
-    process_order_id: str = Field(..., alias='processOrderId')
+    process_order_id: Optional[str] = Field(None, alias='processOrderId')
     """
-    [classification: source-field]
+    [classification: source-field — BENUM when BETYP=F]
     """
     material_id: str = Field(..., alias='materialId')
     """
     [classification: source-field]
     """
-    material_description: str = Field(..., alias='materialDescription')
+    material_description: Optional[str] = Field(None, alias='materialDescription')
     """
-    [classification: source-field]
+    [classification: data-gap — material join deferred]
     """
     warehouse_id: str = Field(..., alias='warehouseId')
     """
@@ -6680,13 +6703,13 @@ class StagingPickTask(BaseModel):
     """
     [classification: source-field]
     """
-    uom: str
+    uom: Optional[str] = None
     """
-    [classification: source-field]
+    [classification: data-gap — not sourced at TO-item grain]
     """
     assignee: Optional[str] = None
     """
-    [classification: source-field]
+    [classification: source-field — confirming user]
     """
     status: Literal['open', 'in-progress', 'picked', 'staged', 'cancelled']
     """
@@ -6694,13 +6717,13 @@ class StagingPickTask(BaseModel):
     """
     priority: Literal['low', 'medium', 'high', 'critical']
     """
+    [classification: application-heuristic]
+    """
+    created_at: Optional[str] = Field(None, alias='createdAt')
+    """
     [classification: source-field]
     """
-    created_at: AwareDatetime = Field(..., alias='createdAt')
-    """
-    [classification: source-field]
-    """
-    completed_at: Optional[AwareDatetime] = Field(None, alias='completedAt')
+    completed_at: Optional[str] = Field(None, alias='completedAt')
     """
     [classification: source-field]
     """
@@ -6845,41 +6868,41 @@ class StagingShortfall(BaseModel):
     """
     [classification: source-field]
     """
-    material_description: str = Field(..., alias='materialDescription')
+    material_description: Optional[str] = Field(None, alias='materialDescription')
     """
-    [classification: source-field]
+    [classification: data-gap — material join deferred]
     """
     plant_id: str = Field(..., alias='plantId')
     """
     [classification: source-field]
     """
-    warehouse_id: str = Field(..., alias='warehouseId')
+    warehouse_id: Optional[str] = Field(None, alias='warehouseId')
     """
-    [classification: source-field]
+    [classification: data-gap — material-grain dataset]
     """
     required_quantity: float = Field(..., alias='requiredQuantity')
     """
-    [classification: source-field]
+    [classification: source-field — open TR qty]
     """
-    available_quantity: float = Field(..., alias='availableQuantity')
+    available_quantity: Optional[float] = Field(None, alias='availableQuantity')
     """
-    [classification: source-field]
+    [classification: data-gap — stock join deferred]
     """
     shortfall_quantity: float = Field(..., alias='shortfallQuantity')
     """
     [classification: source-derived]
     """
-    uom: str
+    uom: Optional[str] = None
     """
-    [classification: source-field]
+    [classification: data-gap — not sourced at material grain]
     """
-    affected_orders: list[str] = Field(..., alias='affectedOrders')
+    affected_orders: Optional[list[str]] = Field(None, alias='affectedOrders')
     """
-    [classification: source-field]
+    [classification: data-gap — order linkage deferred]
     """
     urgency: Literal['low', 'medium', 'high', 'critical']
     """
-    [classification: source-derived]
+    [classification: application-heuristic — TR age]
     """
     procurement_status: Literal[
         'in-stock', 'in-transit', 'ordered', 'delayed', 'out-of-stock', 'unknown'
@@ -6887,13 +6910,13 @@ class StagingShortfall(BaseModel):
     """
     [classification: application-heuristic]
     """
-    expected_arrival: Optional[AwareDatetime] = Field(None, alias='expectedArrival')
+    expected_arrival: Optional[str] = Field(None, alias='expectedArrival')
     """
-    [classification: source-field]
+    [classification: data-gap]
     """
-    can_be_substituted: bool = Field(..., alias='canBeSubstituted')
+    can_be_substituted: Optional[bool] = Field(None, alias='canBeSubstituted')
     """
-    [classification: source-derived]
+    [classification: data-gap]
     """
 
 
@@ -6904,11 +6927,11 @@ class StagingZoneCapacity(BaseModel):
     )
     zone_id: str = Field(..., alias='zoneId')
     """
-    [classification: source-field]
+    [classification: source-field — storage type]
     """
     zone_name: str = Field(..., alias='zoneName')
     """
-    [classification: source-field]
+    [classification: source-field — storage type]
     """
     warehouse_id: str = Field(..., alias='warehouseId')
     """
@@ -6916,19 +6939,19 @@ class StagingZoneCapacity(BaseModel):
     """
     capacity_percent: float = Field(..., alias='capacityPercent', ge=0.0, le=100.0)
     """
-    [classification: source-derived]
+    [classification: source-derived — occupancy rate]
     """
-    pending_orders: int = Field(..., alias='pendingOrders', ge=0)
+    occupied_bins: int = Field(..., alias='occupiedBins', ge=0)
     """
-    [classification: source-derived]
+    [classification: source-field]
     """
-    staged_orders: int = Field(..., alias='stagedOrders', ge=0)
+    empty_bins: int = Field(..., alias='emptyBins', ge=0)
     """
-    [classification: source-derived]
+    [classification: source-field]
     """
-    blocked_orders: int = Field(..., alias='blockedOrders', ge=0)
+    blocked_bins: int = Field(..., alias='blockedBins', ge=0)
     """
-    [classification: source-derived]
+    [classification: source-field]
     """
     status: Literal['available', 'high-utilisation', 'full', 'blocked']
     """

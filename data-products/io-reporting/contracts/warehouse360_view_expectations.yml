@@ -265,7 +265,7 @@ views:
       - name: has_minimum_shelf_life_breach
         type: boolean
     freshness_column: null
-    runtime_route_exists: false
+    runtime_route_exists: true
     dashboard_consumption_expected: true
     live_validation_required:
       - primary_key_uniqueness
@@ -295,7 +295,7 @@ views:
       - name: oldest_tr_date
         type: date
     freshness_column: null
-    runtime_route_exists: false
+    runtime_route_exists: true
     dashboard_consumption_expected: true
     live_validation_required:
       - primary_key_uniqueness
@@ -383,3 +383,255 @@ views:
     runtime_route_exists: false
     dashboard_consumption_expected: false
     live_validation_required: []
+
+  - name: vw_consumption_warehouse360_open_holds
+    contract_id: warehouse360.open_holds
+    expected_grain: one row per plant_id + warehouse_number + quant under hold
+    primary_key:
+      - plant_id
+      - warehouse_number
+      - quant_number
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - warehouse_number
+      - quant_number
+      - hold_type
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: warehouse_number
+        type: string
+      - name: storage_type
+        type: string
+      - name: storage_bin
+        type: string
+      - name: quant_number
+        type: string
+      - name: material_id
+        type: string
+      - name: batch_id
+        type: string
+      - name: hold_type
+        type: string
+      - name: quantity
+        type: decimal
+      - name: uom
+        type: string
+      - name: goods_receipt_date
+        type: date
+      - name: age_hours
+        type: decimal
+    freshness_column: null
+    runtime_route_exists: true
+    dashboard_consumption_expected: true
+    live_validation_required:
+      - primary_key_uniqueness
+      - plant_id_nullability
+      - type_compatibility
+      - row_count
+
+  - name: vw_consumption_warehouse360_pick_tasks
+    contract_id: warehouse360.pick_tasks
+    expected_grain: one row per warehouse_number + task_id + item_number (open TO items)
+    primary_key:
+      - warehouse_number
+      - task_id
+      - item_number
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - warehouse_number
+      - task_id
+      - item_number
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: warehouse_number
+        type: string
+      - name: task_id
+        type: string
+      - name: item_number
+        type: string
+      - name: material_id
+        type: string
+      - name: batch_id
+        type: string
+      - name: source_storage_type
+        type: string
+      - name: source_storage_bin
+        type: string
+      - name: destination_storage_type
+        type: string
+      - name: destination_storage_bin
+        type: string
+      - name: requested_quantity
+        type: decimal
+      - name: confirmed_quantity
+        type: decimal
+      - name: item_status
+        type: string
+      - name: created_datetime
+        type: timestamp
+      - name: order_reference_type
+        type: string
+      - name: order_reference_number
+        type: string
+      - name: transfer_priority
+        type: string
+      - name: delivery_number
+        type: string
+      - name: created_by_user
+        type: string
+      - name: confirmed_by_user
+        type: string
+      - name: age_hours
+        type: decimal
+    freshness_column: null
+    runtime_route_exists: true
+    dashboard_consumption_expected: true
+    live_validation_required:
+      - primary_key_uniqueness
+      - plant_id_nullability
+      - type_compatibility
+      - row_count
+
+  - name: vw_consumption_warehouse360_move_requests
+    contract_id: warehouse360.move_requests
+    expected_grain: one row per warehouse_number + request_id + item_number (open TR items)
+    primary_key:
+      - warehouse_number
+      - request_id
+      - item_number
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - warehouse_number
+      - request_id
+      - item_number
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: warehouse_number
+        type: string
+      - name: request_id
+        type: string
+      - name: item_number
+        type: string
+      - name: material_id
+        type: string
+      - name: batch_id
+        type: string
+      - name: source_storage_type
+        type: string
+      - name: source_storage_bin
+        type: string
+      - name: destination_storage_type
+        type: string
+      - name: destination_storage_bin
+        type: string
+      - name: required_quantity
+        type: decimal
+      - name: open_quantity
+        type: decimal
+      - name: created_datetime
+        type: timestamp
+      - name: planned_execution_datetime
+        type: timestamp
+      - name: queue
+        type: string
+      - name: transfer_priority
+        type: string
+      - name: order_reference_type
+        type: string
+      - name: order_reference_number
+        type: string
+      - name: age_hours
+        type: decimal
+    freshness_column: null
+    runtime_route_exists: true
+    dashboard_consumption_expected: true
+    live_validation_required:
+      - primary_key_uniqueness
+      - plant_id_nullability
+      - type_compatibility
+      - row_count
+
+  - name: vw_consumption_warehouse360_goods_movements
+    contract_id: warehouse360.goods_movements
+    expected_grain: one row per document_number + fiscal_year + line_item (MSEG line)
+    primary_key:
+      - document_number
+      - fiscal_year
+      - line_item
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - document_number
+      - fiscal_year
+      - line_item
+      - movement_type_code
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: storage_location_id
+        type: string
+      - name: document_number
+        type: string
+      - name: fiscal_year
+        type: string
+      - name: line_item
+        type: string
+      - name: material_id
+        type: string
+      - name: batch_id
+        type: string
+      - name: movement_type_code
+        type: string
+      - name: movement_label
+        type: string
+      - name: event_category
+        type: string
+      - name: is_goods_receipt
+        type: boolean
+      - name: is_goods_issue
+        type: boolean
+      - name: is_transfer
+        type: boolean
+      - name: is_reversal
+        type: boolean
+      - name: debit_credit_indicator
+        type: string
+      - name: quantity
+        type: decimal
+      - name: uom
+        type: string
+      - name: amount_local_currency
+        type: decimal
+      - name: currency
+        type: string
+      - name: posting_date
+        type: date
+      - name: document_date
+        type: date
+      - name: order_number
+        type: string
+      - name: purchase_order_number
+        type: string
+      - name: delivery_number
+        type: string
+      - name: sales_order_number
+        type: string
+      - name: posted_by
+        type: string
+      - name: transaction_code
+        type: string
+    freshness_column: posting_date
+    runtime_route_exists: true
+    dashboard_consumption_expected: false
+    live_validation_required:
+      - primary_key_uniqueness
+      - plant_id_nullability
+      - type_compatibility
+      - row_count
+      - query_window_performance

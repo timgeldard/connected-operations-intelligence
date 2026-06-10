@@ -1281,3 +1281,196 @@ def gold_stock_reconciliation_summary():
             .alias("reconciliation_status"),
         )
     )
+
+
+# ── 18. WAREHOUSE COCKPIT CATEGORY C TABLES ───────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment="Current quant-level holds (Quality, Blocked, Restricted) in WM.",
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_stock_holds():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    storage_bin = spark.read.table(f"{silver_schema}.storage_bin")
+    batch_stock = spark.read.table(f"{silver_schema}.batch_stock")
+
+    # Restricted-use classification is intentionally BATCH-LEVEL: MCHB restricted stock is held
+    # at plant x sloc x batch, but WM quants (LQUA) carry no LGORT, so a storage-location join is
+    # not possible at quant grain (same constraint as stock reconciliation v2). Any restricted-use
+    # stock anywhere for the batch therefore flags all its quants as 'restricted' — a conservative
+    # hold signal, validated by the mixed-sloc unit test.
+    batch_restricted = (
+        batch_stock.groupBy("plant_code", "material_code", "batch_number")
+        .agg(F.sum("restricted_use_quantity").alias("total_restricted_qty"))
+        .filter(F.col("total_restricted_qty") > 0)
+        .select("plant_code", "material_code", "batch_number", "total_restricted_qty")
+        .distinct()
+    )
+
+    return (
+        storage_bin.filter(F.col("quant_number").isNotNull())
+        .join(
+            batch_restricted,
+            ["plant_code", "material_code", "batch_number"],
+            "left"
+        )
+        .withColumn(
+            "hold_type",
+            F.when(F.col("stock_category_code") == "Q", F.lit("quality"))
+            .when(F.col("stock_category_code") == "S", F.lit("blocked"))
+            .when(F.col("total_restricted_qty").isNotNull(), F.lit("restricted"))
+            .otherwise(F.lit(None))
+        )
+        .filter(F.col("hold_type").isNotNull())
+        .select(
+            "plant_code",
+            "warehouse_number",
+            "storage_type",
+            F.col("bin_code").alias("storage_bin"),
+            "quant_number",
+            "material_code",
+            "batch_number",
+            "hold_type",
+            F.col("total_quantity").alias("quantity"),
+            "base_uom",
+            "goods_receipt_date"
+        )
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment="Current open transfer-order items (pick tasks).",
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_transfer_order_open_items():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    transfer_orders = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.warehouse_transfer_order"),
+        silver_schema,
+        "warehouse_transfer_order_header_delete",
+        ["warehouse_number", "transfer_order_number"],
+    )
+
+    return (
+        transfer_orders
+        .filter(F.col("item_status") != "Fully Confirmed")
+        .select(
+            "plant_code",
+            "warehouse_number",
+            "transfer_order_number",
+            "item_number",
+            "material_code",
+            "batch_number",
+            "source_storage_type",
+            F.col("source_bin").alias("source_storage_bin"),
+            "destination_storage_type",
+            F.col("destination_bin").alias("destination_storage_bin"),
+            "requested_quantity",
+            "confirmed_quantity",
+            "item_status",
+            "created_datetime",
+            "confirmed_date",
+            F.col("source_reference_type").alias("order_reference_type"),
+            F.col("source_reference_number").alias("order_reference_number"),
+            "transfer_priority",
+            "delivery_number",
+            "created_by_user",
+            "confirmed_by_user",
+        )
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment="Current open transfer-requirement items (move requests).",
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_transfer_requirement_open_items():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    transfer_requirements = spark.read.table(f"{silver_schema}.warehouse_transfer_requirement")
+
+    return (
+        transfer_requirements.filter(
+            (~F.coalesce(F.col("is_processing_complete"), F.lit(False)))
+            & (F.coalesce(F.col("open_quantity"), F.lit(0.0)) > 0)
+        )
+        .select(
+            "plant_code",
+            "warehouse_number",
+            "transfer_requirement_number",
+            "item_number",
+            "material_code",
+            "batch_number",
+            "source_storage_type",
+            F.col("source_bin").alias("source_storage_bin"),
+            "destination_storage_type",
+            F.col("destination_bin").alias("destination_storage_bin"),
+            "required_quantity",
+            "open_quantity",
+            "created_datetime",
+            "planned_execution_datetime",
+            F.col("source_reference_type").alias("order_reference_type"),
+            F.col("source_reference_number").alias("order_reference_number"),
+            "queue",
+            "transfer_priority",
+        )
+    )
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Goods-movement activity feed at MSEG-line grain (IM postings joined to the "
+        "movement-type classification). High-volume table: consumers MUST filter on a bounded "
+        "posting_date window — the serving route enforces a default 1-day window and a hard "
+        "31-day maximum (see plan section 5, cost controls)."
+    ),
+    cluster_by=["plant_code", "posting_date"],
+))
+def gold_goods_movement_activity():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    goods = spark.read.table(f"{silver_schema}.goods_movement")
+    classification = spark.read.table(f"{silver_schema}.movement_type_classification").select(
+        "movement_type_code",
+        "movement_label",
+        "event_category",
+        "is_goods_receipt",
+        "is_goods_issue",
+        "is_transfer",
+        "is_reversal",
+    )
+
+    return (
+        goods
+        .join(F.broadcast(classification), ["movement_type_code"], "left")
+        .select(
+            "plant_code",
+            "storage_location_code",
+            "material_document_number",
+            "fiscal_year",
+            "document_line_item",
+            "material_code",
+            "batch_number",
+            "movement_type_code",
+            "movement_label",
+            "event_category",
+            F.coalesce(F.col("is_goods_receipt"), F.lit(False)).alias("is_goods_receipt"),
+            F.coalesce(F.col("is_goods_issue"), F.lit(False)).alias("is_goods_issue"),
+            F.coalesce(F.col("is_transfer"), F.lit(False)).alias("is_transfer"),
+            F.coalesce(F.col("is_reversal"), F.lit(False)).alias("is_reversal"),
+            "debit_credit_indicator",
+            "quantity",
+            "base_uom",
+            "amount_local_currency",
+            "currency",
+            "posting_date",
+            "document_date",
+            "order_number",
+            "purchase_order_number",
+            "delivery_number",
+            "sales_order_number",
+            "posted_by_user",
+            "transaction_code",
+        )
+    )

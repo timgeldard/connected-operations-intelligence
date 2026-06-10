@@ -69,6 +69,34 @@ def _wall_clock_calls(func: ast.FunctionDef) -> list[ast.Call]:
     return calls
 
 
+
+WALL_CLOCK_SQL_PATTERN = __import__("re").compile(
+    r"\b(current_date|current_timestamp|now|localtimestamp)\s*\(|\bunix_timestamp\s*\(\s*\)",
+    __import__("re").IGNORECASE,
+)
+
+
+def _wall_clock_sql_string_calls(func):
+    """Flag F.expr/selectExpr/sql calls whose SQL-string argument embeds a wall-clock function.
+
+    Direct-call AST detection misses e.g. F.expr("current_date()") — the wall clock hides
+    inside a string constant, so scan string args of the SQL-wrapper entry points too.
+    """
+    flagged = []
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Call):
+            continue
+        fn_name = node.func.attr if isinstance(node.func, ast.Attribute) else (
+            node.func.id if isinstance(node.func, ast.Name) else None)
+        if fn_name not in {"expr", "selectExpr", "sql"}:
+            continue
+        for arg in node.args:
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str) and WALL_CLOCK_SQL_PATTERN.search(arg.value):
+                flagged.append(node)
+                break
+    return flagged
+
+
 def scan_source(source: str, rel: str) -> list[str]:
     """Return violations for one module's source (pure — unit-testable)."""
     errors = []
@@ -79,7 +107,7 @@ def scan_source(source: str, rel: str) -> list[str]:
             continue
         if not any(_is_dlt_table_decorator(d) for d in node.decorator_list):
             continue
-        for call in _wall_clock_calls(node):
+        for call in _wall_clock_calls(node) + _wall_clock_sql_string_calls(node):
             if MARKER in lines[call.lineno - 1]:
                 continue
             errors.append(
@@ -103,7 +131,8 @@ def check() -> list[str]:
                 rel = os.path.relpath(path, PRODUCT).replace(os.sep, "/")
                 if rel in EXEMPT_FILES:
                     continue
-                errors.extend(scan_source(open(path, encoding="utf-8").read(), rel))
+                with open(path, encoding="utf-8") as f:
+                    errors.extend(scan_source(f.read(), rel))
     return errors
 
 

@@ -66,17 +66,22 @@ export type StockOverview = z.infer<typeof StockOverviewSchema>
 // OpenHoldItem
 // ---------------------------------------------------------------------------
 
+// SAP-truthful shape (governed open-holds dataset): holdReason mirrors the WM stock
+// category / batch-restriction classification exactly — quality (Q), blocked (S), or
+// restricted (MCHB restricted-use stock). Hold provenance (raisedBy) and material
+// description are documented data gaps (no QM hold log / material join in first wave).
+// raisedAt carries the goods-receipt DATE (age basis), not a hold-placement timestamp.
 export const OpenHoldItemSchema = z.object({
   holdId: z.string().describe('[classification: source-field]'),
   batchId: z.string().optional().describe('[classification: source-field]'),
   materialId: z.string().describe('[classification: source-field]'),
-  materialDescription: z.string().describe('[classification: source-field]'),
-  storageLocationId: z.string().describe('[classification: source-field]'),
-  holdReason: z.enum(['quality-hold', 'customer-hold', 'production-hold', 'regulatory-hold', 'damaged', 'expired', 'investigation']).describe('[classification: source-field]'),
-  holdQuantity: z.number().min(0).describe('[classification: source-field]'),
-  uom: z.string().describe('[classification: source-field]'),
-  raisedAt: z.string().datetime().describe('[classification: source-field]'),
-  raisedBy: z.string().optional().describe('[classification: source-field]'),
+  materialDescription: z.string().optional().describe('[classification: data-gap — material join deferred]'),
+  storageLocationId: z.string().describe('[classification: source-field — storage_type/bin composite]'),
+  holdReason: z.enum(['quality', 'blocked', 'restricted']).describe('[classification: source-field — SAP stock category]'),
+  holdQuantity: z.number().describe('[classification: source-field]'),
+  uom: z.string().optional().describe('[classification: source-field]'),
+  raisedAt: z.string().optional().describe('[classification: source-field — goods receipt date (age basis)]'),
+  raisedBy: z.string().optional().describe('[classification: data-gap — no QM hold log replicated]'),
   ageHours: z.number().min(0).describe('[classification: application-derived]'),
   linkedWorkspaceId: z.string().optional().describe('[classification: application-derived]'),
 })
@@ -87,18 +92,24 @@ export type OpenHoldItem = z.infer<typeof OpenHoldItemSchema>
 // GoodsMovementEvent
 // ---------------------------------------------------------------------------
 
+// SAP-truthful shape (governed goods-movements dataset = MSEG lines + movement-type
+// classification): movementType derives from the conformed classification flags
+// (reversal wins over receipt/issue so 102-style reversals are not shown as receipts).
+// timestamp carries the posting DATE (MKPF has no time at this grain);
+// materialDescription is a first-wave data gap (no material join).
 export const GoodsMovementEventSchema = z.object({
-  movementId: z.string().describe('[classification: source-field]'),
-  timestamp: z.string().datetime().describe('[classification: source-field]'),
-  movementType: z.enum(['goods-receipt', 'goods-issue', 'transfer-order', 'stock-transfer', 'return', 'adjustment']).describe('[classification: source-field]'),
+  movementId: z.string().describe('[classification: source-field — document/year/line]'),
+  timestamp: z.string().describe('[classification: source-field — posting date]'),
+  movementType: z.enum(['goods-receipt', 'goods-issue', 'transfer', 'reversal', 'other']).describe('[classification: source-derived — classification flags]'),
+  movementTypeCode: z.string().optional().describe('[classification: source-field — BWART]'),
   materialId: z.string().describe('[classification: source-field]'),
-  materialDescription: z.string().describe('[classification: source-field]'),
+  materialDescription: z.string().optional().describe('[classification: data-gap — material join deferred]'),
   batchId: z.string().optional().describe('[classification: source-field]'),
   quantity: z.number().describe('[classification: source-field]'),
-  uom: z.string().describe('[classification: source-field]'),
-  sourceLocation: z.string().optional().describe('[classification: source-field]'),
-  destinationLocation: z.string().optional().describe('[classification: source-field]'),
-  referenceDocument: z.string().optional().describe('[classification: source-field]'),
+  uom: z.string().optional().describe('[classification: source-field]'),
+  sourceLocation: z.string().optional().describe('[classification: source-field — IM storage location]'),
+  destinationLocation: z.string().optional().describe('[classification: data-gap — not modelled at IM grain]'),
+  referenceDocument: z.string().optional().describe('[classification: source-field — PO/order/delivery]'),
   postedBy: z.string().optional().describe('[classification: source-field]'),
 })
 
@@ -111,12 +122,12 @@ export type GoodsMovementEvent = z.infer<typeof GoodsMovementEventSchema>
 export const ReplenishmentNeedSchema = z.object({
   needId: z.string().describe('[classification: source-field]'),
   materialId: z.string().describe('[classification: source-field]'),
-  materialDescription: z.string().describe('[classification: source-field]'),
-  storageLocationId: z.string().describe('[classification: source-field]'),
-  currentStockQuantity: z.number().min(0).describe('[classification: source-field]'),
-  reorderPoint: z.number().min(0).describe('[classification: source-field]'),
-  targetQuantity: z.number().min(0).describe('[classification: source-field]'),
-  uom: z.string().describe('[classification: source-field]'),
+  materialDescription: z.string().nullable().optional().describe('[classification: source-field]'),
+  storageLocationId: z.string().nullable().optional().describe('[classification: source-field]'),
+  currentStockQuantity: z.number().min(0).nullable().optional().describe('[classification: source-field]'),
+  reorderPoint: z.number().min(0).nullable().optional().describe('[classification: source-field]'),
+  targetQuantity: z.number().min(0).nullable().optional().describe('[classification: source-field]'),
+  uom: z.string().nullable().optional().describe('[classification: source-field]'),
   urgency: z.enum(['critical', 'high', 'medium', 'low']).describe('[classification: application-heuristic]'),
   openPurchaseOrderId: z.string().optional().describe('[classification: source-field]'),
   expectedDelivery: z.string().datetime().optional().describe('[classification: source-field]'),
@@ -150,14 +161,14 @@ export type LocationCapacity = z.infer<typeof LocationCapacitySchema>
 export const NearExpiryBatchSchema = z.object({
   batchId: z.string().describe('[classification: source-field]'),
   materialId: z.string().describe('[classification: source-field]'),
-  materialDescription: z.string().describe('[classification: source-field]'),
-  storageLocationId: z.string().describe('[classification: source-field]'),
-  expiryDate: z.string().datetime().describe('[classification: source-field]'),
+  materialDescription: z.string().nullable().optional().describe('[classification: source-field]'),
+  storageLocationId: z.string().nullable().optional().describe('[classification: source-field]'),
+  expiryDate: z.string().datetime().nullable().optional().describe('[classification: source-field]'),
   daysUntilExpiry: z.number().describe('[classification: application-derived]'),
-  quantity: z.number().min(0).describe('[classification: source-field]'),
-  uom: z.string().describe('[classification: source-field]'),
+  quantity: z.number().min(0).nullable().optional().describe('[classification: source-field]'),
+  uom: z.string().nullable().optional().describe('[classification: source-field]'),
   urgency: z.enum(['expired', 'critical', 'warning', 'caution']).describe('[classification: application-heuristic]'),
-  holdStatus: z.enum(['unrestricted', 'quality-hold', 'blocked']).describe('[classification: application-heuristic]'),
+  holdStatus: z.enum(['unrestricted', 'quality-hold', 'blocked']).nullable().optional().describe('[classification: application-heuristic]'),
 })
 
 export type NearExpiryBatch = z.infer<typeof NearExpiryBatchSchema>

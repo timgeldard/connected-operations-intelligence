@@ -1,8 +1,69 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { NearExpiryStockPanel } from './near-expiry-stock-panel.js'
 import type { Warehouse360AdapterRequest } from '../adapters/warehouse-360-adapter.js'
+
+vi.mock('../adapters/warehouse-360-queries.js', () => ({
+  useNearExpiryStock: vi.fn(() => ({
+    data: {
+      ok: true,
+      data: [
+        {
+          batchId: 'SC-240308-0003',
+          materialId: 'MAT-START-CULTURE-B10',
+          materialDescription: 'Starter Culture B10',
+          storageLocationId: 'CHILL-A-007-B03',
+          expiryDate: '2026-05-17T00:00:00.000Z',
+          daysUntilExpiry: 1,
+          quantity: 3.5,
+          uom: 'KG',
+          urgency: 'critical',
+          holdStatus: 'unrestricted',
+        },
+        {
+          batchId: 'RM-240301-0021',
+          materialId: 'MAT-RM-RENNET',
+          materialDescription: 'Liquid Rennet 25 L',
+          storageLocationId: 'CHILL-A-007-C01',
+          expiryDate: '2026-05-14T00:00:00.000Z',
+          daysUntilExpiry: -2,
+          quantity: 75,
+          uom: 'L',
+          urgency: 'expired',
+          holdStatus: 'quality-hold',
+        },
+        {
+          batchId: 'CH-240225-0018',
+          materialId: 'MAT-CH-CHEDDAR-BLOCK',
+          materialDescription: 'Cheddar Block 20 kg',
+          storageLocationId: 'CHILL-B-011-A02',
+          expiryDate: '2026-05-21T00:00:00.000Z',
+          daysUntilExpiry: 5,
+          quantity: 400,
+          uom: 'KG',
+          urgency: 'warning',
+          holdStatus: 'unrestricted',
+        },
+        {
+          batchId: 'CH-240228-0033',
+          materialId: 'MAT-CH-EMMENTAL-BLOCK',
+          materialDescription: 'Emmental Block 4 kg',
+          storageLocationId: 'CHILL-A-023-B04',
+          expiryDate: '2026-05-26T00:00:00.000Z',
+          daysUntilExpiry: 10,
+          quantity: 120,
+          uom: 'KG',
+          urgency: 'caution',
+          holdStatus: 'unrestricted',
+        },
+      ],
+      fetchedAt: '2026-05-14T10:00:00.000Z',
+      source: 'databricks-api',
+    },
+    isLoading: false,
+  })),
+}))
 
 function makeQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } })

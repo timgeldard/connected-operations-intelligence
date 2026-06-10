@@ -23,22 +23,21 @@ export interface GoodsMovementActivityPanelProps {
   readonly request: Warehouse360AdapterRequest
 }
 
+// SAP-truthful movement classes derived from the movement-type classification flags.
 const MVT_ICON: Record<string, string> = {
   'goods-receipt': '↓',
   'goods-issue': '↑',
-  'transfer-order': '→',
-  'stock-transfer': '⇄',
-  'return': '↩',
-  'adjustment': '±',
+  'transfer': '⇄',
+  'reversal': '↩',
+  'other': '±',
 }
 
 const MVT_COLOR: Record<string, string> = {
   'goods-receipt': '#2E7D32',
   'goods-issue': '#005776',
-  'transfer-order': '#6A1B9A',
-  'stock-transfer': '#1565C0',
-  'return': '#D97706',
-  'adjustment': '#546E7A',
+  'transfer': '#1565C0',
+  'reversal': '#D97706',
+  'other': '#546E7A',
 }
 
 export function GoodsMovementActivityPanel({ request }: GoodsMovementActivityPanelProps) {
@@ -75,14 +74,14 @@ export function GoodsMovementActivityPanel({ request }: GoodsMovementActivityPan
               {MVT_ICON[mvt.movementType] ?? '·'}
             </div>
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--shell-fg)' }}>{mvt.materialDescription}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--shell-fg)' }}>{mvt.materialDescription ?? mvt.materialId}</div>
               <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'var(--shell-fg-2)', marginTop: 2 }}>
                 <span>{Math.abs(mvt.quantity).toLocaleString()} {mvt.uom}</span>
                 {mvt.batchId && <span>Batch: {mvt.batchId}</span>}
                 {mvt.referenceDocument && <span style={{ color: 'var(--shell-fg-3)' }}>{mvt.referenceDocument}</span>}
               </div>
               <div style={{ fontSize: 10, color: 'var(--shell-fg-3)', marginTop: 2 }}>
-                {new Date(mvt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {new Date(mvt.timestamp).toLocaleDateString()}
                 {mvt.destinationLocation && ` · ${mvt.destinationLocation}`}
               </div>
             </div>

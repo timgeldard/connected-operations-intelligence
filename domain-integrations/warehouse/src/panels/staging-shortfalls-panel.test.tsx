@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StagingShortfallsPanel } from './staging-shortfalls-panel.js'
 import type { ProductionStagingAdapterRequest } from '../adapters/production-staging-adapter.js'
@@ -18,6 +18,37 @@ const request: ProductionStagingAdapterRequest = {
   planDate: '2026-05-14',
 }
 
+beforeAll(() => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.includes('/api/warehouse360/shortfalls')) {
+      return {
+        ok: true,
+        json: async () => [
+          {
+            plantId: 'IE10',
+            materialId: 'MAT-PACK-FILM-12U',
+            shortfallQty: 120,
+            openItemsCount: 2,
+            oldestTrDate: '2026-05-12T08:00:00.000Z',
+          },
+          {
+            plantId: 'IE10',
+            materialId: 'MAT-RM-RENNET',
+            shortfallQty: 75,
+            openItemsCount: 1,
+            oldestTrDate: '2026-05-13T08:00:00.000Z',
+          },
+        ],
+      } as Response
+    }
+    return { ok: true, json: async () => [] } as Response
+  }))
+})
+
+afterAll(() => {
+  vi.unstubAllGlobals()
+})
+
 describe('StagingShortfallsPanel', () => {
   it('renders the panel container', async () => {
     render(<Wrapper><StagingShortfallsPanel request={request} /></Wrapper>)
@@ -33,23 +64,17 @@ describe('StagingShortfallsPanel', () => {
     })
   })
 
-  it('renders shortfall material descriptions from mock data', async () => {
+  it('falls back to the material ID when the description is a data gap', async () => {
     render(<Wrapper><StagingShortfallsPanel request={request} /></Wrapper>)
     await waitFor(() => {
-      expect(screen.getByText(/Packaging Film Roll/i)).toBeInTheDocument()
+      expect(screen.getByText('MAT-PACK-FILM-12U')).toBeInTheDocument()
+      expect(screen.getByText('MAT-RM-RENNET')).toBeInTheDocument()
     })
   })
 
-  it('shows "Orders: N" text when no drill-through callback provided', async () => {
-    render(<Wrapper><StagingShortfallsPanel request={request} /></Wrapper>)
-    // SF-001 has 1 affectedOrder, SF-002 has 2 affectedOrders
-    await waitFor(() => {
-      expect(screen.getByText('Orders: 1')).toBeInTheDocument()
-      expect(screen.getByText('Orders: 2')).toBeInTheDocument()
-    })
-  })
-
-  it('renders order ID chips when onProcessOrderClick is provided', async () => {
+  it('hides order linkage entirely while it is a documented data gap', async () => {
+    // affectedOrders is undefined on the governed shortfalls dataset (order linkage deferred):
+    // the panel must not render order chips or an "Orders: N" count it cannot back with data.
     const onProcessOrderClick = vi.fn()
     render(
       <Wrapper>
@@ -57,44 +82,17 @@ describe('StagingShortfallsPanel', () => {
       </Wrapper>
     )
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'PO-4500837310' })).toBeInTheDocument()
+      expect(screen.getByText('MAT-PACK-FILM-12U')).toBeInTheDocument()
     })
+    expect(screen.queryByText(/^Orders:/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /PO-/ })).toBeNull()
   })
 
-  it('calls onProcessOrderClick with correct orderId when chip clicked', async () => {
-    const onProcessOrderClick = vi.fn()
-    render(
-      <Wrapper>
-        <StagingShortfallsPanel request={request} onProcessOrderClick={onProcessOrderClick} />
-      </Wrapper>
-    )
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'PO-4500837310' })).toBeInTheDocument()
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'PO-4500837310' }))
-    expect(onProcessOrderClick).toHaveBeenCalledWith('PO-4500837310')
-  })
-
-  it('renders multiple order chips for SF-002 which affects 2 orders', async () => {
-    const onProcessOrderClick = vi.fn()
-    render(
-      <Wrapper>
-        <StagingShortfallsPanel request={request} onProcessOrderClick={onProcessOrderClick} />
-      </Wrapper>
-    )
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'PO-4500837291' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'PO-4500837295' })).toBeInTheDocument()
-    })
-  })
-
-  it('shows no shortfalls message when data is empty', async () => {
-    // The mock adapter returns mock data, so we just verify the no-results path renders
-    // (tested via snapshot; mock always returns data so test the panel structural empty state text exists in DOM)
+  it('does not show the empty state when shortfalls exist', async () => {
     render(<Wrapper><StagingShortfallsPanel request={request} /></Wrapper>)
-    // With real mock data loaded, empty state should NOT show
     await waitFor(() => {
-      expect(screen.queryByText('No material shortfalls')).toBeNull()
+      expect(screen.getByText('MAT-PACK-FILM-12U')).toBeInTheDocument()
     })
+    expect(screen.queryByText('No material shortfalls')).toBeNull()
   })
 })

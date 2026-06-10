@@ -27,7 +27,15 @@ gold_source_columns:
   # query-time, in _live). Consumption reads _live so age thresholds are confirmed.
   gold_warehouse_exceptions: [aging_reference_date, aging_reference_datetime, batch_number, detail, exception_type, material_code, plant_code, quantity, reference_id, severity, sla_hours, warehouse_number]
   gold_warehouse_exceptions_secured: [aging_reference_date, aging_reference_datetime, batch_number, detail, exception_type, material_code, plant_code, quantity, reference_id, severity, sla_hours, warehouse_number]
+  # Goods-movement activity feed (MSEG-line grain; no _live view — no date-relative columns).
+  gold_goods_movement_activity_secured: [amount_local_currency, base_uom, batch_number, currency, debit_credit_indicator, delivery_number, document_date, document_line_item, event_category, fiscal_year, is_goods_issue, is_goods_receipt, is_reversal, is_transfer, material_code, material_document_number, movement_label, movement_type_code, order_number, plant_code, posted_by_user, posting_date, purchase_order_number, quantity, sales_order_number, storage_location_code, transaction_code]
+  # Category C open-items _live views (base columns + query-time age_hours).
+  gold_stock_holds_live: [age_hours, base_uom, batch_number, goods_receipt_date, hold_type, material_code, plant_code, quantity, quant_number, storage_bin, storage_type, warehouse_number]
+  gold_transfer_order_open_items_live: [age_hours, batch_number, confirmed_by_user, confirmed_date, confirmed_quantity, created_by_user, created_datetime, delivery_number, destination_storage_bin, destination_storage_type, item_number, item_status, material_code, order_reference_number, order_reference_type, plant_code, requested_quantity, source_storage_bin, source_storage_type, transfer_order_number, transfer_priority, warehouse_number]
+  gold_transfer_requirement_open_items_live: [age_hours, batch_number, created_datetime, destination_storage_bin, destination_storage_type, item_number, material_code, open_quantity, order_reference_number, order_reference_type, planned_execution_datetime, plant_code, queue, required_quantity, source_storage_bin, source_storage_type, transfer_requirement_number, warehouse_number, transfer_priority]
   gold_warehouse_exceptions_live: [age_days, aging_reference_date, aging_reference_datetime, batch_number, detail, detected_date, exception_type, material_code, plant_code, quantity, reference_id, severity, sla_hours, warehouse_number]
+  gold_bin_occupancy_secured: [bin_record_count, occupied_bin_count, empty_bin_count, blocked_bin_count, stock_removal_blocked_bin_count, putaway_blocked_bin_count, occupancy_rate, total_stock_qty, available_stock_qty, open_transfer_stock_qty, warehouse_number, plant_code, storage_type, bin_type]
+  gold_stock_availability_secured: [plant_code, storage_location_code, material_code, batch_number, base_uom, unrestricted_qty, quality_inspection_qty, blocked_qty, restricted_use_qty, in_transfer_qty, blocked_returns_qty, available_qty, unavailable_qty, total_stock_qty]
 
 # gold_column -> contract-facing field (mechanical, safe renames applied in the consumption SQL).
 approved_aliases:
@@ -39,6 +47,12 @@ approved_aliases:
   order_quantity: order_qty
   quantity: qty
   detail: detail_text
+  storage_location_code: storage_location_id
+  base_uom: uom
+  unrestricted_qty: unrestricted_quantity
+  blocked_qty: blocked_quantity
+  restricted_use_qty: restricted_quantity
+  total_stock_qty: total_quantity
 
 # Documented blockers per consumption view (source identifier -> reason). View is not-live-validated
 # until its list is empty. NOT auto-filled with NULLs — these columns are absent from the Gold source.
@@ -54,3 +68,6 @@ approved_exceptions:
   vw_consumption_warehouse360_stock_exceptions: {}   # ADR-0011 D5: storage_location_id removed from first wave (IM/LGORT axis absent from the WM-bin x material x batch expiry-risk gold source). Future-enrichment candidate; view now live-validatable.
   vw_consumption_warehouse360_shortfalls: {}   # ADR-0011 D2: reads gold_transfer_requirement_material_backlog (plant x material aggregate of open TRs from silver.warehouse_transfer_requirement, via the RLS-secured view). View now live-validatable.
   vw_consumption_warehouse360_im_wm_reconciliation: {}   # ADR-0011 D6: first wave re-grained to an AGGREGATE exception summary (plant x material x batch x exception_type) — storage_location_id/bin_id removed (no stable per-exception variance key upstream; reference_id ~99% null). View now live-validatable; detail-grain is future work.
+  vw_consumption_warehouse360_stock_zones: {}
+  vw_consumption_warehouse360_batch_hold_status: {}
+  vw_consumption_warehouse360_staging_readiness: {}

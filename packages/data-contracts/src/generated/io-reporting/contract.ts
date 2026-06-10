@@ -306,7 +306,7 @@ export const Warehouse360ShortfallsContract = {
 } as const;
 
 /**
- * IM/WM stock discrepancies summarised per material and exception type (first-wave AGGREGATE contract — ADR-0004 D6). gold_warehouse_exceptions carries no stable per-exception variance key (storage_location_id/bin_id absent; reference_id ~99% null), so detail rows are rolled up to plant x material x batch x exception_type with count/quantity/severity/age/date measures. A detail-grain reconciliation contract is future work, only once a stable variance key exists upstream. Candidate contract pending DEV profiling of primary key uniqueness, plant_id nullability, and freshness.
+ * IM/WM stock discrepancies summarised per material and exception type (first-wave AGGREGATE contract — ADR-0004 D6). gold_warehouse_exceptions carries no stable per-exception variance key (storage_location_id/bin_id absent; reference_id ~99% null), so detail rows are rolled up to plant x material x batch x exception_type with count/quantity/severity/age/date measures. A detail-grain reconciliation contract is future work, only once a stable variance key exists upstream. detected_date is the QUERY-TIME evaluation date (the underlying gold_warehouse_exceptions_live serving view confirms age-threshold exceptions and stamps detected_date at query time; the deterministic base MV does not persist a first-seen date), so oldest_/latest_detected_date both equal the evaluation date today — they are kept for interface stability until a persisted first-seen date exists upstream. Candidate contract pending DEV profiling of primary key uniqueness, plant_id nullability, and freshness.
 
  * Source View: vw_consumption_warehouse360_im_wm_reconciliation
  * Version: 0.2.0
@@ -328,9 +328,9 @@ export interface Warehouse360ImWmReconciliation {
   severity?: number;
   /** Maximum exception age in days across the aggregated exceptions */
   max_age_days?: number;
-  /** Earliest detection date across the aggregated exceptions */
+  /** Earliest detection date across the aggregated exceptions. Currently the query-time evaluation date (no persisted first-seen date upstream) — equals latest_detected_date. */
   oldest_detected_date?: string;
-  /** Most recent detection date across the aggregated exceptions */
+  /** Most recent detection date across the aggregated exceptions. Currently the query-time evaluation date (no persisted first-seen date upstream). */
   latest_detected_date?: string;
   /** Representative context detail from the aggregated exceptions */
   detail_text?: string;
@@ -395,6 +395,421 @@ export const Warehouse360DispensaryQueueContract = {
   },
 } as const;
 
+/**
+ * Warehouse stock zone capacities and bin counts.
+ * Source View: vw_consumption_warehouse360_stock_zones
+ * Version: 0.1.0
+ */
+export interface Warehouse360StockZones {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Warehouse number */
+  warehouse_number: string;
+  /** Storage type */
+  storage_type: string;
+  /** Bin type */
+  bin_type: string;
+  /** Total bin count */
+  bin_record_count: number;
+  /** Occupied bin count */
+  occupied_bin_count: number;
+  /** Empty bin count */
+  empty_bin_count: number;
+  /** Blocked bin count */
+  blocked_bin_count: number;
+  /** Occupancy rate */
+  occupancy_rate: number;
+}
+
+export const Warehouse360StockZonesContract = {
+  id: "warehouse360.stock_zones",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_warehouse360_stock_zones",
+  grain: "one row per plant_id, warehouse_number, storage_type, and bin_type",
+  primaryKey: ["plant_id", "warehouse_number", "storage_type", "bin_type"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Warehouse stock and hold status for a batch, release-decision oriented.
+ * Source View: vw_consumption_warehouse360_batch_hold_status
+ * Version: 0.1.0
+ */
+export interface Warehouse360BatchHoldStatus {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Storage location ID */
+  storage_location_id: string;
+  /** Material ID */
+  material_id: string;
+  /** Batch ID */
+  batch_id: string;
+  /** Base unit of measure */
+  uom: string;
+  /** Unrestricted stock quantity */
+  unrestricted_quantity: number;
+  /** Blocked stock quantity */
+  blocked_quantity: number;
+  /** Restricted stock quantity */
+  restricted_quantity: number;
+  /** Total stock quantity */
+  total_quantity: number;
+  /** Stock status category */
+  stock_type: string;
+  /** Whether batch is under any blocking hold */
+  has_blocking_hold: boolean;
+  /** Timestamp when status was last updated */
+  last_updated_at: string;
+}
+
+export const Warehouse360BatchHoldStatusContract = {
+  id: "warehouse360.batch_hold_status",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_warehouse360_batch_hold_status",
+  grain: "one row per plant_id, storage_location_id, material_id, and batch_id",
+  primaryKey: ["plant_id", "storage_location_id", "material_id", "batch_id"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Production staging readiness summary counts.
+ * Source View: vw_consumption_warehouse360_staging_readiness
+ * Version: 0.1.0
+ */
+export interface Warehouse360StagingReadiness {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Planned staging start date */
+  plan_date: string;
+  /** Total number of scheduled process orders */
+  total_orders: number;
+  /** Count of fully staged orders */
+  fully_staged: number;
+  /** Count of partially staged orders */
+  partially_staged: number;
+  /** Count of not staged orders */
+  not_staged: number;
+  /** Count of orders in the red staging-risk band (staging_fraction and scheduled-start derived) — a staging-risk classification, NOT a QM/blocking-hold count (hold provenance is a documented data gap).
+ */
+  blocked: number;
+}
+
+export const Warehouse360StagingReadinessContract = {
+  id: "warehouse360.staging_readiness",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_warehouse360_staging_readiness",
+  grain: "one row per plant_id and plan_date",
+  primaryKey: ["plant_id", "plan_date"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Occupied WM quants under hold (quality-inspection, blocked, or batch-restricted stock) with quantity and goods-receipt age. Hold provenance (who placed the hold / why) is a documented data gap: no QM hold log is replicated. age_hours is the query-time evaluation age.
+
+ * Source View: vw_consumption_warehouse360_open_holds
+ * Version: 0.1.0
+ */
+export interface Warehouse360OpenHolds {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Warehouse number */
+  warehouse_number: string;
+  /** Storage type holding the quant */
+  storage_type?: string;
+  /** Bin code holding the quant */
+  storage_bin?: string;
+  /** WM quant number (LQUA) */
+  quant_number: string;
+  /** Material code */
+  material_id: string;
+  /** Batch number (null for non-batch-managed stock) */
+  batch_id?: string;
+  /** Hold classification — quality, blocked, or restricted */
+  hold_type: string;
+  /** Quant total quantity */
+  quantity?: number;
+  /** Base unit of measure */
+  uom?: string;
+  /** Goods receipt date (hold age basis) */
+  goods_receipt_date?: string;
+  /** Query-time age in hours since goods receipt */
+  age_hours?: number;
+}
+
+export const Warehouse360OpenHoldsContract = {
+  id: "warehouse360.open_holds",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_warehouse360_open_holds",
+  grain: "one row per plant_id, warehouse_number, and quant under hold",
+  primaryKey: ["plant_id", "warehouse_number", "quant_number"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Open transfer-order items (item_status != 'Fully Confirmed') as staging pick tasks, with source/destination locations, quantities, status, and process-order linkage (BETYP/BENUM). assignee maps to confirmed_by_user when present. age_hours is the query-time evaluation age.
+
+ * Source View: vw_consumption_warehouse360_pick_tasks
+ * Version: 0.1.0
+ */
+export interface Warehouse360PickTasks {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Warehouse number */
+  warehouse_number: string;
+  /** Transfer order number */
+  task_id: string;
+  /** Transfer order item number */
+  item_number: string;
+  /** Material code */
+  material_id: string;
+  /** Batch number */
+  batch_id?: string;
+  /** Source storage type */
+  source_storage_type?: string;
+  /** Source bin */
+  source_storage_bin?: string;
+  /** Destination storage type */
+  destination_storage_type?: string;
+  /** Destination bin */
+  destination_storage_bin?: string;
+  /** Requested quantity (VSOLM) */
+  requested_quantity?: number;
+  /** Confirmed quantity (VISTA) */
+  confirmed_quantity?: number;
+  /** Open or Partially Confirmed (Fully Confirmed excluded) */
+  item_status: string;
+  /** Transfer order creation timestamp */
+  created_datetime?: string;
+  /** SAP reference type (BETYP; F = process order) */
+  order_reference_type?: string;
+  /** SAP reference number (BENUM; process order when BETYP='F') */
+  order_reference_number?: string;
+  /** Transfer priority */
+  transfer_priority?: string;
+  /** Linked delivery number */
+  delivery_number?: string;
+  /** TO creator (BNAME) */
+  created_by_user?: string;
+  /** Confirming user (QNAME) — maps to assignee in the app */
+  confirmed_by_user?: string;
+  /** Query-time age in hours since TO creation */
+  age_hours?: number;
+}
+
+export const Warehouse360PickTasksContract = {
+  id: "warehouse360.pick_tasks",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_warehouse360_pick_tasks",
+  grain: "one row per warehouse_number, task_id (transfer order), and item_number",
+  primaryKey: ["warehouse_number", "task_id", "item_number"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Open transfer-requirement items (not processing-complete, open_quantity > 0) as warehouse move requests, with source/destination locations, queue, priority, and reference linkage. Assignee is a documented data gap (LTBK carries none). age_hours is the query-time evaluation age.
+
+ * Source View: vw_consumption_warehouse360_move_requests
+ * Version: 0.1.0
+ */
+export interface Warehouse360MoveRequests {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Warehouse number */
+  warehouse_number: string;
+  /** Transfer requirement number */
+  request_id: string;
+  /** Transfer requirement item number */
+  item_number: string;
+  /** Material code */
+  material_id: string;
+  /** Batch number */
+  batch_id?: string;
+  /** Source storage type */
+  source_storage_type?: string;
+  /** Source bin */
+  source_storage_bin?: string;
+  /** Destination storage type */
+  destination_storage_type?: string;
+  /** Destination bin */
+  destination_storage_bin?: string;
+  /** Required quantity (MENGE) */
+  required_quantity?: number;
+  /** Open quantity (MENGE - TAMEN) */
+  open_quantity?: number;
+  /** Transfer requirement creation timestamp */
+  created_datetime?: string;
+  /** Planned execution timestamp */
+  planned_execution_datetime?: string;
+  /** WM queue (custom ZZQUEUE) */
+  queue?: string;
+  /** Transfer priority */
+  transfer_priority?: string;
+  /** SAP reference type (BETYP) */
+  order_reference_type?: string;
+  /** SAP reference number (BENUM) */
+  order_reference_number?: string;
+  /** Query-time age in hours since TR creation */
+  age_hours?: number;
+}
+
+export const Warehouse360MoveRequestsContract = {
+  id: "warehouse360.move_requests",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_warehouse360_move_requests",
+  grain: "one row per warehouse_number, request_id (transfer requirement), and item_number",
+  primaryKey: ["warehouse_number", "request_id", "item_number"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Goods-movement activity feed at material-document-line (MSEG) grain with movement-type classification flags. HIGH-VOLUME dataset under mandatory cost controls: the route enforces a default 1-day posting_date window, a hard 31-day maximum window, and limit <= 500. UAT performance/cost validation is required before frontend consumption ships.
+
+ * Source View: vw_consumption_warehouse360_goods_movements
+ * Version: 0.1.0
+ */
+export interface Warehouse360GoodsMovements {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Storage location */
+  storage_location_id?: string;
+  /** Material document number (MBLNR) */
+  document_number: string;
+  /** Material document fiscal year (MJAHR) */
+  fiscal_year: string;
+  /** Material document line (ZEILE) */
+  line_item: string;
+  /** Material code */
+  material_id: string;
+  /** Batch number */
+  batch_id?: string;
+  /** SAP movement type (BWART) */
+  movement_type_code: string;
+  /** Conformed movement label */
+  movement_label?: string;
+  /** Conformed event category (RECEIPT/ISSUE/TRANSFER/...) */
+  event_category?: string;
+  /** Movement classified as goods receipt */
+  is_goods_receipt: boolean;
+  /** Movement classified as goods issue */
+  is_goods_issue: boolean;
+  /** Movement classified as transfer */
+  is_transfer: boolean;
+  /** Movement classified as reversal */
+  is_reversal: boolean;
+  /** Debit/credit indicator (SHKZG) */
+  debit_credit_indicator?: string;
+  /** Movement quantity in base UoM */
+  quantity?: number;
+  /** Base unit of measure */
+  uom?: string;
+  /** Movement value in local currency */
+  amount_local_currency?: number;
+  /** Local currency */
+  currency?: string;
+  /** Posting date (clustering / window key) */
+  posting_date?: string;
+  /** Document date */
+  document_date?: string;
+  /** Linked order (AUFNR) */
+  order_number?: string;
+  /** Linked purchase order (EBELN) */
+  purchase_order_number?: string;
+  /** Linked IM delivery (VBELN_IM) */
+  delivery_number?: string;
+  /** Linked sales order (KDAUF) */
+  sales_order_number?: string;
+  /** Posting user (USNAM) */
+  posted_by?: string;
+  /** SAP transaction code */
+  transaction_code?: string;
+}
+
+export const Warehouse360GoodsMovementsContract = {
+  id: "warehouse360.goods_movements",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_warehouse360_goods_movements",
+  grain: "one row per document_number, fiscal_year, and line_item",
+  primaryKey: ["document_number", "fiscal_year", "line_item"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
 export const ioReportingContracts = {
   contractVersion: "0.1.0",
   product: "connected-operations-intelligence",
@@ -407,5 +822,12 @@ export const ioReportingContracts = {
     "warehouse360.shortfalls": Warehouse360ShortfallsContract,
     "warehouse360.im_wm_reconciliation": Warehouse360ImWmReconciliationContract,
     "warehouse360.dispensary_queue": Warehouse360DispensaryQueueContract,
+    "warehouse360.stock_zones": Warehouse360StockZonesContract,
+    "warehouse360.batch_hold_status": Warehouse360BatchHoldStatusContract,
+    "warehouse360.staging_readiness": Warehouse360StagingReadinessContract,
+    "warehouse360.open_holds": Warehouse360OpenHoldsContract,
+    "warehouse360.pick_tasks": Warehouse360PickTasksContract,
+    "warehouse360.move_requests": Warehouse360MoveRequestsContract,
+    "warehouse360.goods_movements": Warehouse360GoodsMovementsContract,
   },
 } as const;

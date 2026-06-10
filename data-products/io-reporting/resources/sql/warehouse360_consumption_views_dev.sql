@@ -168,3 +168,194 @@ GRANT SELECT ON VIEW vw_consumption_warehouse360_im_wm_reconciliation TO `users`
 -- NOT DEPLOYED IN WAVE 1.
 -- Source and grain are not confirmed.
 -- Contract remains draft / not_runtime_ready.
+
+
+-- 9. Stock Zones
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_stock_zones AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number,
+  storage_type,
+  bin_type,
+  bin_record_count,
+  occupied_bin_count,
+  empty_bin_count,
+  blocked_bin_count,
+  CAST(occupancy_rate AS DECIMAL(5,2)) AS occupancy_rate
+FROM connected_plant_dev.gold_io_reporting.gold_bin_occupancy_secured;
+
+GRANT SELECT ON VIEW vw_consumption_warehouse360_stock_zones TO `users`;
+
+
+-- 10. Batch Hold Status
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_batch_hold_status AS
+SELECT
+  plant_code AS plant_id,
+  storage_location_code AS storage_location_id,
+  material_code AS material_id,
+  batch_number AS batch_id,
+  base_uom AS uom,
+  unrestricted_qty AS unrestricted_quantity,
+  blocked_qty AS blocked_quantity,
+  restricted_use_qty AS restricted_quantity,
+  total_stock_qty AS total_quantity,
+  CASE
+    WHEN quality_inspection_qty > 0 THEN 'quality-inspection'
+    WHEN blocked_qty > 0 THEN 'blocked'
+    WHEN restricted_use_qty > 0 THEN 'blocked'
+    WHEN blocked_returns_qty > 0 THEN 'returns'
+    WHEN in_transfer_qty > 0 THEN 'transit'
+    ELSE 'unrestricted'
+  END AS stock_type,
+  CASE
+    WHEN quality_inspection_qty > 0 OR blocked_qty > 0 OR restricted_use_qty > 0 OR blocked_returns_qty > 0 THEN true
+    ELSE false
+  END AS has_blocking_hold,
+  current_timestamp() AS last_updated_at
+FROM connected_plant_dev.gold_io_reporting.gold_stock_availability_secured;
+
+GRANT SELECT ON VIEW vw_consumption_warehouse360_batch_hold_status TO `users`;
+
+
+-- 11. Staging Readiness
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_staging_readiness AS
+SELECT
+  plant_code AS plant_id,
+  CAST(scheduled_start_date AS DATE) AS plan_date,
+  COUNT(*) AS total_orders,
+  SUM(CASE WHEN staging_fraction = 1.0 THEN 1 ELSE 0 END) AS fully_staged,
+  SUM(CASE WHEN staging_fraction > 0.0 AND staging_fraction < 1.0 THEN 1 ELSE 0 END) AS partially_staged,
+  SUM(CASE WHEN staging_fraction = 0.0 THEN 1 ELSE 0 END) AS not_staged,
+  SUM(CASE WHEN risk_band = 'red' THEN 1 ELSE 0 END) AS blocked
+FROM connected_plant_dev.gold_io_reporting.gold_process_order_staging_live
+GROUP BY plant_code, CAST(scheduled_start_date AS DATE);
+
+GRANT SELECT ON VIEW vw_consumption_warehouse360_staging_readiness TO `users`;
+
+
+-- 12. Open Holds
+-- Grain: 1 row per plant_id + warehouse_number + quant under hold (quality / blocked / restricted).
+-- hold provenance (who placed it / why) is a documented data gap: no QM hold log is replicated.
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_open_holds AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number,
+  storage_type,
+  storage_bin,
+  quant_number,
+  material_code AS material_id,
+  batch_number AS batch_id,
+  hold_type,
+  quantity,
+  base_uom AS uom,
+  goods_receipt_date,
+  age_hours
+FROM connected_plant_dev.gold_io_reporting.gold_stock_holds_live;
+
+-- TODO_SECURITY: replace with approved group.
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_open_holds TO `warehouse360_app_users`;
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_open_holds TO `warehouse360_dashboard_users`;
+
+
+-- 13. Staging Pick Tasks
+-- Grain: 1 row per warehouse_number + task_id (transfer order) + item_number, open items only
+-- (item_status != 'Fully Confirmed'). assignee maps to confirmed_by_user when present.
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_pick_tasks AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number,
+  transfer_order_number AS task_id,
+  item_number,
+  material_code AS material_id,
+  batch_number AS batch_id,
+  source_storage_type,
+  source_storage_bin,
+  destination_storage_type,
+  destination_storage_bin,
+  requested_quantity,
+  confirmed_quantity,
+  item_status,
+  created_datetime,
+  order_reference_type,
+  order_reference_number,
+  transfer_priority,
+  delivery_number,
+  created_by_user,
+  confirmed_by_user,
+  age_hours
+FROM connected_plant_dev.gold_io_reporting.gold_transfer_order_open_items_live;
+
+-- TODO_SECURITY: replace with approved group.
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_pick_tasks TO `warehouse360_app_users`;
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_pick_tasks TO `warehouse360_dashboard_users`;
+
+
+-- 14. Staging Move Requests
+-- Grain: 1 row per warehouse_number + request_id (transfer requirement) + item_number, open items
+-- only (not processing-complete, open_quantity > 0). assignee is a documented data gap (LTBK has none).
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_move_requests AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number,
+  transfer_requirement_number AS request_id,
+  item_number,
+  material_code AS material_id,
+  batch_number AS batch_id,
+  source_storage_type,
+  source_storage_bin,
+  destination_storage_type,
+  destination_storage_bin,
+  required_quantity,
+  open_quantity,
+  created_datetime,
+  planned_execution_datetime,
+  queue,
+  transfer_priority,
+  order_reference_type,
+  order_reference_number,
+  age_hours
+FROM connected_plant_dev.gold_io_reporting.gold_transfer_requirement_open_items_live;
+
+-- TODO_SECURITY: replace with approved group.
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_move_requests TO `warehouse360_app_users`;
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_move_requests TO `warehouse360_dashboard_users`;
+
+
+-- 15. Goods Movements Feed
+-- Grain: 1 row per material document line (MSEG). HIGH-VOLUME source: the serving route
+-- enforces a default 1-day posting_date window and a hard 31-day maximum — never query
+-- this view unbounded.
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_goods_movements AS
+SELECT
+  plant_code AS plant_id,
+  storage_location_code AS storage_location_id,
+  material_document_number AS document_number,
+  fiscal_year,
+  document_line_item AS line_item,
+  material_code AS material_id,
+  batch_number AS batch_id,
+  movement_type_code,
+  movement_label,
+  event_category,
+  is_goods_receipt,
+  is_goods_issue,
+  is_transfer,
+  is_reversal,
+  debit_credit_indicator,
+  quantity,
+  base_uom AS uom,
+  amount_local_currency,
+  currency,
+  posting_date,
+  document_date,
+  order_number,
+  purchase_order_number,
+  delivery_number,
+  sales_order_number,
+  posted_by_user AS posted_by,
+  transaction_code
+FROM connected_plant_dev.gold_io_reporting.gold_goods_movement_activity_secured;
+
+-- TODO_SECURITY: replace with approved group.
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_goods_movements TO `warehouse360_app_users`;
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_goods_movements TO `warehouse360_dashboard_users`;
