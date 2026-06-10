@@ -1008,6 +1008,43 @@ def test_gold_stock_holds(spark):
     assert by_quant["Q3"]["hold_type"] == "restricted"
 
 
+def test_gold_stock_holds_restricted_is_batch_level(spark):
+    """Restricted-use propagates batch-wide BY DESIGN (LQUA lacks LGORT — no sloc join possible)."""
+    from gold.warehouse_flow_gold import gold_stock_holds
+
+    _save(spark, [
+        # Same batch B9: restricted-use stock exists in SLOC A only; quants live in two bins.
+        Row(plant_code="PL10", warehouse_number="WH01", storage_type="100", bin_code="BIN-A",
+            quant_number="QA", material_code="M9", batch_number="B9", stock_category_code=None,
+            total_quantity=5.0, base_uom="KG", goods_receipt_date=None),
+        Row(plant_code="PL10", warehouse_number="WH01", storage_type="100", bin_code="BIN-B",
+            quant_number="QB", material_code="M9", batch_number="B9", stock_category_code=None,
+            total_quantity=7.0, base_uom="KG", goods_receipt_date=None),
+        # Different batch, no restriction: must not be flagged.
+        Row(plant_code="PL10", warehouse_number="WH01", storage_type="100", bin_code="BIN-C",
+            quant_number="QC", material_code="M9", batch_number="B8", stock_category_code=None,
+            total_quantity=3.0, base_uom="KG", goods_receipt_date=None),
+    ], "storage_bin")
+
+    _save(spark, [
+        # Restricted in one storage location only — the other location of B9 is clean.
+        Row(plant_code="PL10", material_code="M9", batch_number="B9",
+            storage_location_code="0001", restricted_use_quantity=2.0),
+        Row(plant_code="PL10", material_code="M9", batch_number="B9",
+            storage_location_code="0002", restricted_use_quantity=0.0),
+        Row(plant_code="PL10", material_code="M9", batch_number="B8",
+            storage_location_code="0001", restricted_use_quantity=0.0),
+    ], "batch_stock")
+
+    results = all_rows(gold_stock_holds())
+    by_quant = {r["quant_number"]: r for r in results}
+    # Batch-level propagation: BOTH quants of B9 are flagged restricted.
+    assert by_quant["QA"]["hold_type"] == "restricted"
+    assert by_quant["QB"]["hold_type"] == "restricted"
+    # Unrestricted batch B8 is not flagged.
+    assert "QC" not in by_quant
+
+
 def test_gold_transfer_order_open_items(spark):
     from gold.warehouse_flow_gold import gold_transfer_order_open_items
     from datetime import date

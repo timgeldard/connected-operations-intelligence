@@ -1295,6 +1295,11 @@ def gold_stock_holds():
     storage_bin = spark.read.table(f"{silver_schema}.storage_bin")
     batch_stock = spark.read.table(f"{silver_schema}.batch_stock")
 
+    # Restricted-use classification is intentionally BATCH-LEVEL: MCHB restricted stock is held
+    # at plant x sloc x batch, but WM quants (LQUA) carry no LGORT, so a storage-location join is
+    # not possible at quant grain (same constraint as stock reconciliation v2). Any restricted-use
+    # stock anywhere for the batch therefore flags all its quants as 'restricted' — a conservative
+    # hold signal, validated by the mixed-sloc unit test.
     batch_restricted = (
         batch_stock.groupBy("plant_code", "material_code", "batch_number")
         .agg(F.sum("restricted_use_quantity").alias("total_restricted_qty"))

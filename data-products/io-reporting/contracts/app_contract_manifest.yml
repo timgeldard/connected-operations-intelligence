@@ -706,7 +706,10 @@ contracts:
       - name: blocked
         type: integer
         required: true
-        description: Count of blocked orders
+        description: >
+          Count of orders in the red staging-risk band (staging_fraction and
+          scheduled-start derived) — a staging-risk classification, NOT a
+          QM/blocking-hold count (hold provenance is a documented data gap).
 
   - id: warehouse360.open_holds
     version: 0.1.0

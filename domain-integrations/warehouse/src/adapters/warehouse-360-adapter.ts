@@ -390,13 +390,14 @@ export class Warehouse360Adapter {
       }
 
       const items: NearExpiryBatch[] = raw.map((r: any) => {
-        const urgency =
-          r.exceptionType === 'expired' ||
-          r.exceptionType === 'critical' ||
-          r.exceptionType === 'warning' ||
-          r.exceptionType === 'caution'
-            ? r.exceptionType
-            : 'caution'
+        const knownUrgencies = ['expired', 'critical', 'warning', 'caution'] as const
+        const urgency = (knownUrgencies as readonly string[]).includes(r.exceptionType)
+          ? (r.exceptionType as (typeof knownUrgencies)[number])
+          : 'caution'
+        if (!(knownUrgencies as readonly string[]).includes(r.exceptionType)) {
+          // Surface contract drift instead of silently coercing unknown classifications.
+          console.warn(`Unrecognized stock-exception type "${r.exceptionType}" mapped to "caution" (material ${r.materialId})`)
+        }
         return {
           batchId: String(r.batchId ?? ''),
           materialId: String(r.materialId ?? ''),

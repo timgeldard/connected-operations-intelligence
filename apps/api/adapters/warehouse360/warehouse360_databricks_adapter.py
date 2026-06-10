@@ -344,6 +344,8 @@ def _derive_inbound_document_status(row: dict) -> Optional[str]:
 
 
 def map_warehouse_inbound_rows(rows: list[dict]) -> list[dict]:
+    # NOTE: open_qty / delivery_date / delivery_complete are documented first-wave field gaps —
+    # the governed inbound consumption view does not expose them, so row.get() yields None by design.
     """Map raw inbound rows to Warehouse360InboundItem schema.
 
     Source columns documented in
@@ -451,6 +453,8 @@ def get_warehouse_outbound_spec(request: WarehouseOutboundRequest) -> QuerySpec:
 
 
 def map_warehouse_outbound_rows(rows: list[dict]) -> list[dict]:
+    # NOTE: lgnum / weight_uom / wm_status are not exposed by the governed outbound consumption
+    # view (delivery grain) — row.get() yields None for them by design (documented gaps).
     """Map raw wh360_deliveries_v rows to Warehouse360OutboundItem.
 
     Source columns verified live 2026-05-25 — see
@@ -1207,10 +1211,13 @@ def map_warehouse_stock_exceptions_rows(rows: list[dict]) -> list[dict]:
     result = []
     for row in rows:
         result.append({
-            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
-            "materialId": str(row["material_id"]) if row.get("material_id") else None,
-            "batchId": str(row["batch_id"]) if row.get("batch_id") else None,
-            "exceptionType": str(row["exception_type"]) if row.get("exception_type") else None,
+            # plant/material/batch/exception_type are contract-required (must_not_be_null in the
+            # view expectations); fall back to "" so a malformed row degrades instead of 500ing
+            # on response-model validation.
+            "plantId": str(row.get("plant_id") or ""),
+            "materialId": str(row.get("material_id") or ""),
+            "batchId": str(row.get("batch_id") or ""),
+            "exceptionType": str(row.get("exception_type") or ""),
             "qty": _safe_float(row.get("qty")) if row.get("qty") is not None else None,
             "minimumDaysToExpiry": _safe_int(row.get("minimum_days_to_expiry")) if row.get("minimum_days_to_expiry") is not None else None,
             "hasMinimumShelfLifeBreach": bool(row["has_minimum_shelf_life_breach"]) if row.get("has_minimum_shelf_life_breach") is not None else None,
@@ -1223,8 +1230,9 @@ def map_warehouse_shortfalls_rows(rows: list[dict]) -> list[dict]:
     result = []
     for row in rows:
         result.append({
-            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
-            "materialId": str(row["material_id"]) if row.get("material_id") else None,
+            # plant/material are contract-required; "" fallback avoids a 500 on model validation.
+            "plantId": str(row.get("plant_id") or ""),
+            "materialId": str(row.get("material_id") or ""),
             "shortfallQty": _safe_float(row.get("shortfall_qty")) if row.get("shortfall_qty") is not None else None,
             "openItemsCount": _safe_int(row.get("open_items_count")) if row.get("open_items_count") is not None else None,
             "oldestTrDate": str(row["oldest_tr_date"]) if row.get("oldest_tr_date") else None,
