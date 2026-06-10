@@ -375,9 +375,19 @@ def gold_wm_order_readiness():
         .distinct()
     )
 
+    # Release evidence: PHAS1 (is_released) where populated, else FTRMI (actual_release_date)
+    # — the WM Cockpit's own definition of released (WMA-E-19: status I0002 or FTRMI not
+    # initial). Verified live (connected_plant_uat 2026-06-10): the replicated AUFK PHAS0-3
+    # flags are blank for all 247k orders, so PHAS1 alone yields zero released orders.
+    # Finished evidence: actual_finish_date (GLTRI) — AUFK IDAT2 (TECO) is not yet replicated
+    # to silver, so confirmed-finished is the closest available completion signal.
     active_orders = orders.filter(
-        F.coalesce(F.col("is_released"), F.lit(False))
+        (
+            F.coalesce(F.col("is_released"), F.lit(False))
+            | F.col("actual_release_date").isNotNull()
+        )
         & (~F.coalesce(F.col("is_closed"), F.lit(False)))
+        & F.col("actual_finish_date").isNull()
     )
 
     components = (

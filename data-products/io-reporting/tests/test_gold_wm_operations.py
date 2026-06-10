@@ -206,21 +206,34 @@ def test_order_readiness_tr_coverage_and_psa_supply(spark):
     from gold.wm_operations_gold import gold_wm_order_readiness
 
     _save(spark, [
+        # Released via the PHAS1 flag
         Row(order_number="900001", plant_code="C061", material_code="FG1",
             order_quantity=1000.0, order_quantity_uom="KG",
             scheduled_start_date=datetime.date(2026, 6, 2),
             scheduled_finish_date=datetime.date(2026, 6, 3),
-            is_released=True, is_closed=False),
+            is_released=True, is_closed=False,
+            actual_release_date=None, actual_finish_date=None),
+        # Released via FTRMI date evidence only (blank PHAS flags — UAT replication shape)
         Row(order_number="900002", plant_code="C061", material_code="FG1",
             order_quantity=500.0, order_quantity_uom="KG",
             scheduled_start_date=datetime.date(2026, 6, 4),
             scheduled_finish_date=datetime.date(2026, 6, 5),
-            is_released=True, is_closed=False),
-        # Excluded: not released
+            is_released=False, is_closed=False,
+            actual_release_date=datetime.date(2026, 6, 3), actual_finish_date=None),
+        # Excluded: no release evidence at all
         Row(order_number="900003", plant_code="C061", material_code="FG1",
             order_quantity=500.0, order_quantity_uom="KG",
             scheduled_start_date=None, scheduled_finish_date=None,
-            is_released=False, is_closed=False),
+            is_released=False, is_closed=False,
+            actual_release_date=None, actual_finish_date=None),
+        # Excluded: released but production finished (GLTRI set)
+        Row(order_number="900004", plant_code="C061", material_code="FG1",
+            order_quantity=500.0, order_quantity_uom="KG",
+            scheduled_start_date=datetime.date(2026, 5, 1),
+            scheduled_finish_date=datetime.date(2026, 5, 2),
+            is_released=True, is_closed=False,
+            actual_release_date=datetime.date(2026, 4, 30),
+            actual_finish_date=datetime.date(2026, 5, 2)),
     ], "process_order")
 
     _save(spark, [
