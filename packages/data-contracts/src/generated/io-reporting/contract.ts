@@ -889,6 +889,8 @@ export interface WmOperationsWorklist {
   latest_to_confirmed_date?: string;
   /** Confirmed TO qty / required qty (0..1; null for mixed-UoM TRs) */
   pick_progress_fraction?: number;
+  latest_to_confirmed_ts?: string;
+  cycle_hours?: number;
   /** Hours since TR creation (query-time, _live view) */
   age_hours?: number;
   /** Planned execution time passed and job not complete (query-time) */
@@ -1131,6 +1133,7 @@ export interface WmOperationsOrderComponents {
   order_id: string;
   reservation_id: string;
   reservation_item: string;
+  operation_number?: string;
   warehouse_id?: string;
   material_id?: string;
   material_name?: string;
@@ -1184,6 +1187,7 @@ export interface WmOperationsOperatorActivity {
   warehouse_id: string;
   operator: string;
   activity_date: string;
+  shift?: string;
   items_confirmed?: number;
   transfer_orders?: number;
   materials?: number;
@@ -1335,6 +1339,378 @@ export const WmOperationsReconAlertsContract = {
   },
 } as const;
 
+/**
+ * Handling-unit (SSCC) counts by status for the inbound/putaway board. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_handling_units
+ * Version: 0.1.0
+ */
+export interface WmOperationsHandlingUnits {
+  plant_id: string;
+  warehouse_id: string;
+  handling_unit_status: string;
+  reference_document_category: string;
+  hu_item_count?: number;
+  distinct_sscc_count?: number;
+  distinct_hu_count?: number;
+  linked_delivery_count?: number;
+  distinct_material_count?: number;
+  total_gross_weight?: number;
+}
+
+export const WmOperationsHandlingUnitsContract = {
+  id: "wm_operations.handling_units",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_handling_units",
+  grain: "one row per plant_id, warehouse_id, handling_unit_status and reference_document_category",
+  primaryKey: ["plant_id", "warehouse_id", "handling_unit_status", "reference_document_category"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Batch-level shelf-life risk with query-time expiry buckets. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_expiry_risk
+ * Version: 0.1.0
+ */
+export interface WmOperationsExpiryRisk {
+  plant_id: string;
+  material_id: string;
+  material_name?: string;
+  batch_id: string;
+  uom?: string;
+  minimum_expiry_date?: string;
+  shelf_life_days?: number;
+  minimum_remaining_shelf_life_days?: number;
+  total_stock_qty?: number;
+  minimum_days_to_expiry?: number;
+  expired_qty?: number;
+  highest_expiry_risk_bucket?: string;
+  has_minimum_shelf_life_breach?: boolean;
+}
+
+export const WmOperationsExpiryRiskContract = {
+  id: "wm_operations.expiry_risk",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_expiry_risk",
+  grain: "one row per plant_id, material_id and batch_id",
+  primaryKey: ["plant_id", "material_id", "batch_id"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Quant-level QI/blocked/restricted holds with query-time age. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_stock_holds
+ * Version: 0.1.0
+ */
+export interface WmOperationsStockHolds {
+  plant_id: string;
+  warehouse_id: string;
+  storage_type?: string;
+  bin_id?: string;
+  quant_id: string;
+  material_id?: string;
+  batch_id?: string;
+  hold_type: string;
+  qty?: number;
+  uom?: string;
+  goods_receipt_date?: string;
+  age_hours?: number;
+}
+
+export const WmOperationsStockHoldsContract = {
+  id: "wm_operations.stock_holds",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_stock_holds",
+  grain: "one row per plant_id, warehouse_id and quant_id",
+  primaryKey: ["plant_id", "warehouse_id", "quant_id"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Aged warehouse exceptions (expired-with-stock, aged QI/blocked, aged open TOs). Served from the _live view ONLY — base rows are unconfirmed candidates. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_exceptions
+ * Version: 0.1.0
+ */
+export interface WmOperationsExceptions {
+  plant_id: string;
+  warehouse_id?: string;
+  exception_type: string;
+  severity?: string;
+  sla_hours?: number;
+  material_id?: string;
+  batch_id?: string;
+  reference_id: string;
+  qty?: number;
+  aging_reference_date?: string;
+  age_days?: number;
+  detail?: string;
+}
+
+export const WmOperationsExceptionsContract = {
+  id: "wm_operations.exceptions",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_exceptions",
+  grain: "one row per confirmed exception",
+  primaryKey: ["plant_id", "exception_type", "reference_id"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * IM-WM stock reconciliation exceptions at batch/category grain (workbench detail). Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_recon_exceptions
+ * Version: 0.1.0
+ */
+export interface WmOperationsReconExceptions {
+  plant_id: string;
+  warehouse_id: string;
+  material_id: string;
+  material_name?: string;
+  batch_id?: string;
+  stock_category: string;
+  uom?: string;
+  im_qty?: number;
+  wm_qty?: number;
+  delta_qty?: number;
+  delta_percent?: number;
+  delta_value?: number;
+  mismatch_reason: string;
+  mismatch_severity?: string;
+  is_trusted?: boolean;
+}
+
+export const WmOperationsReconExceptionsContract = {
+  id: "wm_operations.recon_exceptions",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_recon_exceptions",
+  grain: "one row per plant_id, warehouse_id, material_id, batch_id and stock_category",
+  primaryKey: ["plant_id", "warehouse_id", "material_id", "batch_id", "stock_category"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Value-control rollup of reconciliation exceptions by reason and severity. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_recon_value_summary
+ * Version: 0.1.0
+ */
+export interface WmOperationsReconValueSummary {
+  plant_id: string;
+  warehouse_id: string;
+  mismatch_reason: string;
+  mismatch_severity: string;
+  row_count?: number;
+  tolerance_exceeded_count?: number;
+  net_delta_value?: number;
+  abs_delta_value?: number;
+  abs_delta_quantity?: number;
+  value_reconciliation_status?: string;
+}
+
+export const WmOperationsReconValueSummaryContract = {
+  id: "wm_operations.recon_value_summary",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_recon_value_summary",
+  grain: "one row per plant_id, warehouse_id, mismatch_reason and mismatch_severity",
+  primaryKey: ["plant_id", "warehouse_id", "mismatch_reason", "mismatch_severity"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Campaign-grouped picking progress (LTBK ZZ_CAMPAIGN). Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_campaigns
+ * Version: 0.1.0
+ */
+export interface WmOperationsCampaigns {
+  plant_id: string;
+  warehouse_id: string;
+  campaign_id: string;
+  tr_count?: number;
+  complete_trs?: number;
+  in_progress_trs?: number;
+  parked_trs?: number;
+  no_stock_trs?: number;
+  order_count?: number;
+  operator_count?: number;
+  work_area?: string;
+  required_qty?: number;
+  open_qty?: number;
+  earliest_planned_ts?: string;
+  earliest_created_ts?: string;
+}
+
+export const WmOperationsCampaignsContract = {
+  id: "wm_operations.campaigns",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_campaigns",
+  grain: "one row per plant_id, warehouse_id and campaign_id",
+  primaryKey: ["plant_id", "warehouse_id", "campaign_id"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Daily warehouse activity series (TO confirmations, TRs created, IM receipts/issues) for trend charts. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_daily_activity
+ * Version: 0.1.0
+ */
+export interface WmOperationsDailyActivity {
+  plant_id: string;
+  activity_date: string;
+  to_items_confirmed?: number;
+  active_operators?: number;
+  trs_created?: number;
+  goods_receipt_lines?: number;
+  goods_issue_lines?: number;
+}
+
+export const WmOperationsDailyActivityContract = {
+  id: "wm_operations.daily_activity",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_daily_activity",
+  grain: "one row per plant_id and activity_date",
+  primaryKey: ["plant_id", "activity_date"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Physical inventory count-vs-book detail (counts due, recounts, unposted differences). Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_physical_inventory
+ * Version: 0.1.0
+ */
+export interface WmOperationsPhysicalInventory {
+  plant_id: string;
+  pi_document_id: string;
+  fiscal_year: string;
+  item_number: string;
+  storage_location_id?: string;
+  material_id?: string;
+  batch_id?: string;
+  planned_count_date?: string;
+  count_date?: string;
+  book_qty?: number;
+  counted_qty?: number;
+  delta_qty?: number;
+  delta_value?: number;
+  is_counted?: boolean;
+  is_recount_required?: boolean;
+  is_difference_posted?: boolean;
+  physical_inventory_status?: string;
+}
+
+export const WmOperationsPhysicalInventoryContract = {
+  id: "wm_operations.physical_inventory",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_physical_inventory",
+  grain: "one row per plant_id, pi_document_id, fiscal_year and item_number",
+  primaryKey: ["plant_id", "pi_document_id", "fiscal_year", "item_number"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
 export const ioReportingContracts = {
   contractVersion: "0.1.0",
   product: "connected-operations-intelligence",
@@ -1363,5 +1739,14 @@ export const ioReportingContracts = {
     "wm_operations.queue_workload": WmOperationsQueueWorkloadContract,
     "wm_operations.outbound": WmOperationsOutboundContract,
     "wm_operations.recon_alerts": WmOperationsReconAlertsContract,
+    "wm_operations.handling_units": WmOperationsHandlingUnitsContract,
+    "wm_operations.expiry_risk": WmOperationsExpiryRiskContract,
+    "wm_operations.stock_holds": WmOperationsStockHoldsContract,
+    "wm_operations.exceptions": WmOperationsExceptionsContract,
+    "wm_operations.recon_exceptions": WmOperationsReconExceptionsContract,
+    "wm_operations.recon_value_summary": WmOperationsReconValueSummaryContract,
+    "wm_operations.campaigns": WmOperationsCampaignsContract,
+    "wm_operations.daily_activity": WmOperationsDailyActivityContract,
+    "wm_operations.physical_inventory": WmOperationsPhysicalInventoryContract,
   },
 } as const;

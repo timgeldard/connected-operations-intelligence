@@ -9,6 +9,11 @@ import { StockExplorerView } from './views/stock-explorer-view.js'
 import { OutboundView } from './views/outbound-view.js'
 import { OperatorsView } from './views/operators-view.js'
 import { HandoverView } from './views/handover-view.js'
+import { InboundView } from './views/inbound-view.js'
+import { StockHealthView } from './views/stock-health-view.js'
+import { ReconView } from './views/recon-view.js'
+import { CampaignsView } from './views/campaigns-view.js'
+import { TrendsView } from './views/trends-view.js'
 import { EmptyNote, ViewHeader } from './components/kerry.js'
 import './theme/kerry-theme.css'
 
@@ -20,6 +25,11 @@ export type WmOperationsViewId =
   | 'outbound'
   | 'operators'
   | 'handover'
+  | 'inbound'
+  | 'stock-health'
+  | 'recon'
+  | 'campaigns'
+  | 'trends'
 
 export interface WmOperationsWorkspaceProps {
   readonly scope: ScopeContext
@@ -37,6 +47,11 @@ const VALID_VIEWS: Array<{ id: WmOperationsViewId; label: string }> = [
   { id: 'outbound', label: 'Outbound' },
   { id: 'operators', label: 'Operators' },
   { id: 'handover', label: 'Handover' },
+  { id: 'inbound', label: 'Inbound' },
+  { id: 'stock-health', label: 'Stock Health' },
+  { id: 'recon', label: 'Reconciliation' },
+  { id: 'campaigns', label: 'Campaigns' },
+  { id: 'trends', label: 'Trends' },
 ]
 
 function isValidViewId(viewId: string): viewId is WmOperationsViewId {
@@ -121,6 +136,16 @@ function resolveView(viewId: string, request: WmOperationsAdapterRequest) {
       return <OperatorsView request={request} />
     case 'handover':
       return <HandoverView request={request} />
+    case 'inbound':
+      return <InboundView request={request} />
+    case 'stock-health':
+      return <StockHealthView request={request} />
+    case 'recon':
+      return <ReconView request={request} />
+    case 'campaigns':
+      return <CampaignsView request={request} />
+    case 'trends':
+      return <TrendsView request={request} />
     case 'staging-worklist':
     default:
       return <StagingWorklistView request={request} />

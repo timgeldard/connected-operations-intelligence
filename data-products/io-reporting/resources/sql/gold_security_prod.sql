@@ -763,6 +763,38 @@ CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_wm_queue_work
   );
 GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_wm_queue_workload_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_wm_campaign_summary_secured AS
+  SELECT * FROM connected_plant_prod.gold_io_reporting.gold_wm_campaign_summary
+  WHERE EXISTS (
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_wm_campaign_summary_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_wm_daily_activity_secured AS
+  SELECT * FROM connected_plant_prod.gold_io_reporting.gold_wm_daily_activity
+  WHERE EXISTS (
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_wm_daily_activity_secured TO `users`;
+
 -- ── Base-table access hardening ──
 -- The actual REVOKE statements are generated as a SEPARATE admin script
 -- (resources/sql/gold_security_harden_prod.sql). Apply it AFTER this script so plant-scoped users

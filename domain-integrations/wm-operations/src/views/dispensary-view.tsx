@@ -33,13 +33,26 @@ export function DispensaryView({ request }: DispensaryViewProps) {
   const stock = stockResult.data?.ok ? stockResult.data.data : []
   const stockError = stockResult.data && !stockResult.data.ok ? stockResult.data.error : null
 
+  // FEFO risk: an older-expiry quant of the same material also has available stock.
+  const oldestExpiry = new Map<string, string>()
+  for (const line of stock) {
+    if (line.materialId && line.expiryDate && (line.availableQty ?? 0) > 0) {
+      const cur = oldestExpiry.get(line.materialId)
+      if (!cur || line.expiryDate < cur) oldestExpiry.set(line.materialId, line.expiryDate)
+    }
+  }
+  const isFefoRisk = (line: typeof stock[number]) =>
+    Boolean(line.materialId && line.expiryDate && (line.availableQty ?? 0) > 0
+      && oldestExpiry.get(line.materialId) !== line.expiryDate)
+
   const attentionStock = stock.filter(
     line =>
       line.isExpired
       || (line.daysToExpiry != null && line.daysToExpiry <= EXPIRY_ATTENTION_DAYS)
       || line.isBlockedForStockRemoval
       || line.stockCategory === 'QUALITY'
-      || line.stockCategory === 'BLOCKED',
+      || line.stockCategory === 'BLOCKED'
+      || isFefoRisk(line),
   )
 
   return (
@@ -129,6 +142,7 @@ export function DispensaryView({ request }: DispensaryViewProps) {
                         line.isExpired ? 'Expired' : null,
                         line.isBlockedForStockRemoval ? 'Removal blocked' : null,
                         line.isBinBlocked ? 'Bin blocked' : null,
+                        isFefoRisk(line) ? 'FEFO risk (older batch available)' : null,
                       ]
                         .filter(Boolean)
                         .join(' · ') || '—'}

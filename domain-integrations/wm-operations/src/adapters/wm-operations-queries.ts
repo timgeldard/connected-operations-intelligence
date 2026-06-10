@@ -43,6 +43,20 @@ export function useWmReconAlerts(request: WmDrillRequest) {
   })
 }
 
+/** Generic hook for the declarative second-wave list endpoints. */
+export function useWmList<T>(
+  path: string,
+  params: Record<string, string | number | boolean | undefined>,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['wm-ops-list', path, JSON.stringify(params)],
+    queryFn: () => wmOperationsAdapter.getList<T>(path, params),
+    staleTime: 60 * 1000,
+    enabled,
+  })
+}
+
 export function useWmBatchMovements(request: WmDrillRequest, enabled = true) {
   return useQuery({
     queryKey: ['wm-ops-batch-movements', request.plantId ?? null, request.materialId ?? null, request.batchId ?? null],
@@ -63,7 +77,9 @@ export function useWmWorklist(request: WmOperationsAdapterRequest) {
       request.workArea ?? null,
       request.status ?? null,
       request.queue ?? null,
+      request.campaign ?? null,
       request.includeComplete ?? false,
+      request.limit ?? null,
     ],
     queryFn: () => wmOperationsAdapter.getWorklist(request),
     staleTime: STALE,

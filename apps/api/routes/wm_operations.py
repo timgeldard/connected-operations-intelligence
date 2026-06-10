@@ -20,6 +20,9 @@ from adapters.wm_operations.wm_operations_databricks_adapter import (
     WmOutboundRequest,
     WmQueueWorkloadRequest,
     WmReconAlertsRequest,
+    WmSimpleRequest,
+    SIMPLE_DATASETS,
+    map_wm_simple_rows,
     WmWorklistRequest,
     WmWorklistSummaryRequest,
     map_wm_batch_movements_rows,
@@ -84,6 +87,8 @@ class WmWorklistItem(BaseModel):
     to_items_confirmed: Optional[int] = Field(None, alias='toItemsConfirmed')
     to_confirmed_qty: Optional[float] = Field(None, alias='toConfirmedQty')
     pick_progress_fraction: Optional[float] = Field(None, alias='pickProgressFraction')
+    latest_to_confirmed_ts: Optional[str] = Field(None, alias='latestToConfirmedTs')
+    cycle_hours: Optional[float] = Field(None, alias='cycleHours')
     age_hours: Optional[float] = Field(None, alias='ageHours')
     is_overdue: Optional[bool] = Field(None, alias='isOverdue')
 
@@ -191,8 +196,10 @@ async def wm_operations_worklist(
     work_area: str | None = None,
     status: str | None = None,
     queue: str | None = None,
+    campaign: str | None = None,
     include_complete: bool = False,
     limit: int = 200,
+    offset: int = 0,
     x_forwarded_access_token: str | None = Header(default=None),
     x_forwarded_user: str | None = Header(default=None),
     x_forwarded_email: str | None = Header(default=None),
@@ -208,8 +215,10 @@ async def wm_operations_worklist(
             work_area=work_area.strip().upper() if work_area else None,
             status=status.strip().upper() if status else None,
             queue=queue.strip() if queue else None,
+            campaign=campaign.strip() if campaign else None,
             include_complete=include_complete,
             limit=limit,
+            offset=max(0, offset),
         )
         repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
         rows, spec = await run_repository_fetch(lambda: repo.fetch_worklist(req))
@@ -317,6 +326,7 @@ class WmOrderComponentItem(BaseModel):
     order_id: str = Field(..., alias='orderId')
     reservation_id: Optional[str] = Field(None, alias='reservationId')
     reservation_item: Optional[str] = Field(None, alias='reservationItem')
+    operation_number: Optional[str] = Field(None, alias='operationNumber')
     warehouse_id: Optional[str] = Field(None, alias='warehouseId')
     material_id: Optional[str] = Field(None, alias='materialId')
     material_name: Optional[str] = Field(None, alias='materialName')
@@ -345,6 +355,7 @@ class WmOperatorActivityItem(BaseModel):
     warehouse_id: str = Field(..., alias='warehouseId')
     operator: str
     activity_date: str = Field(..., alias='activityDate')
+    shift: Optional[str] = None
     items_confirmed: Optional[int] = Field(None, alias='itemsConfirmed')
     transfer_orders: Optional[int] = Field(None, alias='transferOrders')
     materials: Optional[int] = None
@@ -562,3 +573,47 @@ async def wm_operations_batch_movements(
     rows, spec = await run_repository_fetch(lambda: repo.fetch_batch_movements(req))
     set_databricks_response_headers(response, spec)
     return map_wm_batch_movements_rows(rows)
+
+
+# ── Generic simple-list endpoints (second wave). Response models intentionally
+# omitted (house precedent: warehouse360 overview) — mappers emit typed camelCase.
+
+def _make_simple_route(dataset: str, cfg: dict):
+    async def handler(
+        response: Response,
+        plant_id: str | None = None,
+        warehouse_id: str | None = None,
+        severity: str | None = None,
+        days: int | None = None,
+        open_only: bool = True,
+        limit: int = 200,
+        x_forwarded_access_token: str | None = Header(default=None),
+        x_forwarded_user: str | None = Header(default=None),
+        x_forwarded_email: str | None = Header(default=None),
+    ) -> list[dict]:
+        _require_databricks_mode(f"WM Operations {dataset}")
+        _validate_limit(limit, 1000)
+        if days is not None and (days < 1 or days > 366):
+            raise HTTPException(status_code=422, detail="days must be between 1 and 366")
+        req = WmSimpleRequest(
+            plant_id=plant_id.strip() if plant_id else None,
+            warehouse_id=warehouse_id.strip() if warehouse_id else None,
+            severity=severity.strip().upper() if severity else None,
+            days=days,
+            open_only=open_only,
+            limit=limit,
+        )
+        repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+        rows, spec = await run_repository_fetch(lambda: repo.fetch_simple(dataset, req))
+        set_databricks_response_headers(response, spec)
+        return map_wm_simple_rows(dataset, rows)
+
+    handler.__name__ = f"wm_operations_{dataset}"
+    handler.__doc__ = f"WM Operations {dataset.replace('_', ' ')} — databricks-api only."
+    route_path = cfg["endpoint"].removeprefix("/api")
+    router.get(route_path)(handler)
+    return handler
+
+
+for _dataset, _cfg in SIMPLE_DATASETS.items():
+    _make_simple_route(_dataset, _cfg)

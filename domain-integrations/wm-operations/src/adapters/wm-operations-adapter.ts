@@ -52,6 +52,8 @@ export interface WmWorklistItem {
   readonly toItemsConfirmed: number | null
   readonly toConfirmedQty: number | null
   readonly pickProgressFraction: number | null
+  readonly latestToConfirmedTs: string | null
+  readonly cycleHours: number | null
   readonly ageHours: number | null
   readonly isOverdue: boolean | null
 }
@@ -140,6 +142,7 @@ export interface WmOperationsAdapterRequest {
   readonly binId?: string
   readonly expiringWithinDays?: number
   readonly queue?: string
+  readonly campaign?: string
   readonly startFromDaysAgo?: number
   readonly startToDaysAhead?: number
   readonly limit?: number
@@ -228,6 +231,7 @@ export class WmOperationsAdapter {
       work_area: request.workArea,
       status: request.status,
       queue: request.queue,
+      campaign: request.campaign,
       include_complete: request.includeComplete,
       limit: request.limit,
     })
@@ -315,6 +319,14 @@ export class WmOperationsAdapter {
     return this.fetchList<WmReconAlertItem>(url)
   }
 
+  /** Generic list fetch for the declarative second-wave datasets. */
+  async getList<T>(
+    path: string,
+    params: Record<string, string | number | boolean | undefined>,
+  ): Promise<AdapterResult<T[]>> {
+    return this.fetchList<T>(this.buildUrl(path, params))
+  }
+
   async getBatchMovements(request: WmDrillRequest): Promise<AdapterResult<WmBatchMovementItem[]>> {
     const url = this.buildUrl('/api/wm-operations/batch-movements', {
       plant_id: request.plantId,
@@ -332,6 +344,7 @@ export interface WmOrderComponentItem {
   readonly orderId: string
   readonly reservationId: string | null
   readonly reservationItem: string | null
+  readonly operationNumber: string | null
   readonly warehouseId: string | null
   readonly materialId: string | null
   readonly materialName: string | null

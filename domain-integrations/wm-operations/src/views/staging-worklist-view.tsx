@@ -31,11 +31,29 @@ const STATUS_OPTIONS: Array<{ value: WmWorklistStatus | ''; label: string }> = [
   { value: 'COMPLETE', label: 'Complete' },
 ]
 
+const FILTER_STORE = 'wm-ops-worklist-filters'
+
+function restoreFilters(): { workArea: string; status: string; queue: string; campaign: string } {
+  try {
+    return { workArea: '', status: '', queue: '', campaign: '', ...JSON.parse(localStorage.getItem(FILTER_STORE) ?? '{}') }
+  } catch {
+    return { workArea: '', status: '', queue: '', campaign: '' }
+  }
+}
+
 export function StagingWorklistView({ request }: StagingWorklistViewProps) {
-  const [workArea, setWorkArea] = useState<WmWorkArea | ''>('')
-  const [status, setStatus] = useState<WmWorklistStatus | ''>('')
-  const [queue, setQueue] = useState('')
-  const [appliedQueue, setAppliedQueue] = useState('')
+  const saved = restoreFilters()
+  const [workArea, setWorkArea] = useState<WmWorkArea | ''>(saved.workArea as WmWorkArea | '')
+  const [status, setStatus] = useState<WmWorklistStatus | ''>(saved.status as WmWorklistStatus | '')
+  const [queue, setQueue] = useState(saved.queue)
+  const [appliedQueue, setAppliedQueue] = useState(saved.queue)
+  const [campaign, setCampaign] = useState(saved.campaign)
+  const [appliedCampaign, setAppliedCampaign] = useState(saved.campaign)
+  const [limit, setLimit] = useState(200)
+  // Filters persist across sessions (saved-preset behaviour, zero ceremony).
+  const persist = (next: Partial<ReturnType<typeof restoreFilters>>) => {
+    try { localStorage.setItem(FILTER_STORE, JSON.stringify({ workArea, status, queue: appliedQueue, campaign: appliedCampaign, ...next })) } catch { /* private mode */ }
+  }
   const [drillOrder, setDrillOrder] = useState<{ plantId: string; orderId: string } | null>(null)
 
   const summaryResult = useWmWorklistSummary(request)
@@ -44,6 +62,8 @@ export function StagingWorklistView({ request }: StagingWorklistViewProps) {
     workArea: workArea || undefined,
     status: status || undefined,
     queue: appliedQueue || undefined,
+    campaign: appliedCampaign || undefined,
+    limit,
   })
 
   const summary = summaryResult.data?.ok ? summaryResult.data.data : []
@@ -66,7 +86,7 @@ export function StagingWorklistView({ request }: StagingWorklistViewProps) {
           <select
             aria-label="Filter by work area"
             value={workArea}
-            onChange={e => setWorkArea(e.target.value as WmWorkArea | '')}
+            onChange={e => { setWorkArea(e.target.value as WmWorkArea | ''); persist({ workArea: e.target.value }) }}
           >
             {WORK_AREA_OPTIONS.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -75,7 +95,7 @@ export function StagingWorklistView({ request }: StagingWorklistViewProps) {
           <select
             aria-label="Filter by status"
             value={status}
-            onChange={e => setStatus(e.target.value as WmWorklistStatus | '')}
+            onChange={e => { setStatus(e.target.value as WmWorklistStatus | ''); persist({ status: e.target.value }) }}
           >
             {STATUS_OPTIONS.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -86,8 +106,16 @@ export function StagingWorklistView({ request }: StagingWorklistViewProps) {
             placeholder="Queue"
             value={queue}
             onChange={e => setQueue(e.target.value)}
-            onBlur={() => setAppliedQueue(queue.trim())}
-            onKeyDown={e => e.key === 'Enter' && setAppliedQueue(queue.trim())}
+            onBlur={() => { setAppliedQueue(queue.trim()); persist({ queue: queue.trim() }) }}
+            onKeyDown={e => { if (e.key === 'Enter') { setAppliedQueue(queue.trim()); persist({ queue: queue.trim() }) } }}
+          />
+          <input
+            aria-label="Filter by campaign"
+            placeholder="Campaign"
+            value={campaign}
+            onChange={e => setCampaign(e.target.value)}
+            onBlur={() => { setAppliedCampaign(campaign.trim()); persist({ campaign: campaign.trim() }) }}
+            onKeyDown={e => { if (e.key === 'Enter') { setAppliedCampaign(campaign.trim()); persist({ campaign: campaign.trim() }) } }}
           />
         </div>
         {error ? (
@@ -98,6 +126,13 @@ export function StagingWorklistView({ request }: StagingWorklistViewProps) {
             isLoading={worklistResult.isLoading}
             onOrderClick={item => item.referenceId && setDrillOrder({ plantId: item.plantId, orderId: item.referenceId })}
           />
+        )}
+        {items.length >= limit && limit < 500 && (
+          <div style={{ textAlign: 'center', marginTop: 10 }}>
+            <button type="button" className="kw-viewnav-tab" onClick={() => setLimit(500)}>
+              Show more (up to 500)
+            </button>
+          </div>
         )}
       </div>
       {drillOrder && (

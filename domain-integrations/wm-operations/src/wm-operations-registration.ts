@@ -94,6 +94,11 @@ export const wmOperationsRegistration: WorkspaceRegistration = {
         { panelId: 'wm-handover', defaultVisible: true, defaultOrder: 0 },
       ],
     },
+    { viewId: 'inbound', displayName: 'Inbound', lifecycle: 'pilot', sortOrder: 7, defaultPanels: [{ panelId: 'wm-inbound', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'stock-health', displayName: 'Stock Health', lifecycle: 'pilot', sortOrder: 8, defaultPanels: [{ panelId: 'wm-stock-health', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'recon', displayName: 'Reconciliation', lifecycle: 'pilot', sortOrder: 9, defaultPanels: [{ panelId: 'wm-recon', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'campaigns', displayName: 'Campaigns', lifecycle: 'pilot', sortOrder: 10, defaultPanels: [{ panelId: 'wm-campaigns', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'trends', displayName: 'Trends', lifecycle: 'pilot', sortOrder: 11, defaultPanels: [{ panelId: 'wm-trends', defaultVisible: true, defaultOrder: 0 }] },
   ],
   defaultPanels: [
     { panelId: 'wm-worklist-summary', defaultVisible: true, defaultOrder: 0 },

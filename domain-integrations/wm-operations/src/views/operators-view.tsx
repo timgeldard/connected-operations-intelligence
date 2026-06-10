@@ -22,9 +22,11 @@ export function OperatorsView({ request }: { readonly request: WmOperationsAdapt
   const openNow = queues.reduce((s, q) => s + (q.openJobs ?? 0), 0)
 
   // Roll daily activity up per operator for the table.
-  const byOperator = new Map<string, { items: number; tos: number; trs: number; days: number; last: string }>()
+  const byOperator = new Map<string, { items: number; tos: number; trs: number; days: number; last: string; shifts: Set<string> }>()
   for (const a of activity) {
-    const cur = byOperator.get(a.operator) ?? { items: 0, tos: 0, trs: 0, days: 0, last: '' }
+    const cur = byOperator.get(a.operator) ?? { items: 0, tos: 0, trs: 0, days: 0, last: '', shifts: new Set<string>() }
+    const shift = (a as { shift?: string | null }).shift
+    if (shift && shift !== 'UNKNOWN') cur.shifts.add(shift)
     cur.items += a.itemsConfirmed ?? 0
     cur.tos += a.transferOrders ?? 0
     cur.trs += a.transferRequirements ?? 0
@@ -86,7 +88,7 @@ export function OperatorsView({ request }: { readonly request: WmOperationsAdapt
           <div className="kw-table-wrap">
             <table className="kw-table">
               <thead>
-                <tr><th>Operator</th><th>Items confirmed</th><th>Transfer orders</th><th>TRs touched</th><th>Active days</th><th>Last active</th></tr>
+                <tr><th>Operator</th><th>Items confirmed</th><th>Transfer orders</th><th>TRs touched</th><th>Active days</th><th>Shifts</th><th>Last active</th></tr>
               </thead>
               <tbody>
                 {operatorRows.map(([op, s]) => (
@@ -96,6 +98,7 @@ export function OperatorsView({ request }: { readonly request: WmOperationsAdapt
                     <td className="kw-num">{s.tos.toLocaleString()}</td>
                     <td className="kw-num">{s.trs.toLocaleString()}</td>
                     <td className="kw-num">{s.days}</td>
+                    <td>{[...s.shifts].sort().join(' / ') || '—'}</td>
                     <td className="kw-num">{formatDate(s.last)}</td>
                   </tr>
                 ))}

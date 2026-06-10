@@ -137,6 +137,8 @@ GOLD_TABLES = [
     "gold_wm_order_component_detail",
     "gold_wm_operator_activity",
     "gold_wm_queue_workload",
+    "gold_wm_campaign_summary",
+    "gold_wm_daily_activity",
 ]
 
 TEMPLATE = """-- Unity Catalog Gold row-level security — secured serving views ({env_upper}).

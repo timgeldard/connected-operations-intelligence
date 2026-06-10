@@ -48,7 +48,7 @@ export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose }: {
           <table className="kw-table">
             <thead>
               <tr>
-                <th>Item</th><th>Material</th><th>Batch</th><th>Required</th><th>Open</th>
+                <th>Item</th><th>Op</th><th>Material</th><th>Batch</th><th>Required</th><th>Open</th>
                 <th>PSA</th><th>TR coverage</th><th>Picked</th><th>Supplied</th>
               </tr>
             </thead>
@@ -56,6 +56,7 @@ export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose }: {
               {rows.map(c => (
                 <tr key={`${c.reservationId}-${c.reservationItem}`}>
                   <td className="kw-mono">{c.reservationItem}</td>
+                  <td className="kw-mono">{c.operationNumber ?? '—'}</td>
                   <td title={c.materialId ?? undefined}>
                     {c.materialName ?? c.materialId ?? '—'}
                     {(c.materialComponentCount ?? 0) > 1 && (

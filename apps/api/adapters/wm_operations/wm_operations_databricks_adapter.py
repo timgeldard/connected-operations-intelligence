@@ -33,8 +33,10 @@ class WmWorklistRequest:
     work_area: Optional[str] = None
     status: Optional[str] = None
     queue: Optional[str] = None
+    campaign: Optional[str] = None
     include_complete: bool = False
     limit: int = 200
+    offset: int = 0
 
 
 @dataclass
@@ -118,6 +120,9 @@ def get_wm_worklist_spec(request: WmWorklistRequest) -> QuerySpec:
     if request.queue:
         clauses.append("queue = :queue")
         params["queue"] = request.queue
+    if request.campaign:
+        clauses.append("campaign_id = :campaign")
+        params["campaign"] = request.campaign
     where_str = _scope_where(request, params, clauses)
     sql = f"""
     SELECT
@@ -155,12 +160,14 @@ def get_wm_worklist_spec(request: WmWorklistRequest) -> QuerySpec:
         to_items_confirmed,
         to_confirmed_qty,
         pick_progress_fraction,
+        latest_to_confirmed_ts,
+        cycle_hours,
         age_hours,
         is_overdue
     FROM {view}
     {where_str}
     ORDER BY planned_execution_ts ASC NULLS LAST, created_ts ASC
-    LIMIT {request.limit}
+    LIMIT {request.limit} OFFSET {int(request.offset)}
     """
     return QuerySpec(
         name="wm_operations.get_worklist",
@@ -213,6 +220,8 @@ def map_wm_worklist_rows(rows: list[dict]) -> list[dict]:
             "toItemsConfirmed": _safe_int(row.get("to_items_confirmed")),
             "toConfirmedQty": _safe_float(row.get("to_confirmed_qty")),
             "pickProgressFraction": _safe_float(row.get("pick_progress_fraction")),
+            "latestToConfirmedTs": _opt_str(row, "latest_to_confirmed_ts"),
+            "cycleHours": _safe_float(row.get("cycle_hours")),
             "ageHours": _safe_float(row.get("age_hours")),
             "isOverdue": bool(row.get("is_overdue")) if row.get("is_overdue") is not None else None,
         })
@@ -478,7 +487,7 @@ def get_wm_order_components_spec(request: WmOrderComponentsRequest) -> QuerySpec
     view = resolve_contract_object("wm_operations.order_components", "wh360")
     sql = f"""
     SELECT
-        plant_id, order_id, reservation_id, reservation_item, warehouse_id,
+        plant_id, order_id, reservation_id, reservation_item, operation_number, warehouse_id,
         material_id, material_name, batch_id, required_qty, open_qty, uom,
         production_supply_area, requirement_date, material_component_count,
         tr_count, tr_required_qty, tr_open_qty, tr_coverage_status,
@@ -507,6 +516,7 @@ def map_wm_order_components_rows(rows: list[dict]) -> list[dict]:
         "orderId": _opt_str(r, "order_id"),
         "reservationId": _opt_str(r, "reservation_id"),
         "reservationItem": _opt_str(r, "reservation_item"),
+        "operationNumber": _opt_str(r, "operation_number"),
         "warehouseId": _opt_str(r, "warehouse_id"),
         "materialId": _opt_str(r, "material_id"),
         "materialName": _opt_str(r, "material_name"),
@@ -546,7 +556,7 @@ def get_wm_operator_activity_spec(request: WmOperatorActivityRequest) -> QuerySp
     where_str = _scope_where(request, params, clauses)
     sql = f"""
     SELECT
-        plant_id, warehouse_id, operator, activity_date,
+        plant_id, warehouse_id, operator, activity_date, shift,
         items_confirmed, transfer_orders, materials, transfer_requirements, confirmed_qty
     FROM {view}
     {where_str}
@@ -571,6 +581,7 @@ def map_wm_operator_activity_rows(rows: list[dict]) -> list[dict]:
         "warehouseId": _opt_str(r, "warehouse_id"),
         "operator": _opt_str(r, "operator"),
         "activityDate": _opt_str(r, "activity_date"),
+        "shift": _opt_str(r, "shift"),
         "itemsConfirmed": _safe_int(r.get("items_confirmed")),
         "transferOrders": _safe_int(r.get("transfer_orders")),
         "materials": _safe_int(r.get("materials")),
@@ -880,6 +891,12 @@ class WmOperationsRepository:
             mapper=lambda rows: rows,
         )
 
+    async def fetch_simple(self, dataset: str, request: WmSimpleRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_simple_spec(dataset, request),
+            mapper=lambda rows: rows,
+        )
+
     async def fetch_batch_movements(
         self, request: WmBatchMovementsRequest
     ) -> tuple[list[dict], QuerySpec]:
@@ -887,3 +904,176 @@ class WmOperationsRepository:
             spec_factory=lambda: get_wm_batch_movements_spec(request),
             mapper=lambda rows: rows,
         )
+
+
+# ── Generic simple-list datasets (screens 5-9 of the second wave) ─────────────
+# One declarative entry per dataset; specs/mappers are generated. Numeric/integer/
+# boolean sets drive JSON type coercion (the statements API returns strings).
+
+def _camel(s: str) -> str:
+    parts = s.split("_")
+    return parts[0] + "".join(p.title() for p in parts[1:])
+
+
+def map_rows_generic(rows: list[dict], numeric=(), integer=(), boolean=()) -> list[dict]:
+    out = []
+    for r in rows:
+        m = {}
+        for k, v in r.items():
+            ck = _camel(k)
+            if k in numeric:
+                m[ck] = _safe_float(v) if v is not None else None
+            elif k in integer:
+                m[ck] = _safe_int(v) if v is not None else None
+            elif k in boolean:
+                m[ck] = (str(v).lower() == "true") if v is not None else None
+            else:
+                m[ck] = _opt_str(r, k)
+        out.append(m)
+    return out
+
+
+@dataclass
+class WmSimpleRequest:
+    plant_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    severity: Optional[str] = None
+    days: Optional[int] = None
+    open_only: bool = True
+    limit: int = 200
+
+
+# name -> (contract_id, endpoint, columns, order_by, numeric, integer, boolean, has_warehouse)
+SIMPLE_DATASETS: dict[str, dict] = {
+    "inbound": dict(
+        contract="warehouse360.inbound_backlog", endpoint="/api/wm-operations/inbound",
+        columns="plant_id, po_id, po_item, doc_type, vendor_id, storage_loc, material_id, "
+                "material_name, ordered_qty, uom, po_date, oldest_po_age_days, inbound_backlog_risk_band",
+        order_by="po_date ASC NULLS LAST", numeric=("ordered_qty",),
+        integer=("oldest_po_age_days",), boolean=(), has_warehouse=False,
+    ),
+    "handling_units": dict(
+        contract="wm_operations.handling_units", endpoint="/api/wm-operations/handling-units",
+        columns="plant_id, warehouse_id, handling_unit_status, reference_document_category, "
+                "hu_item_count, distinct_sscc_count, distinct_hu_count, linked_delivery_count, "
+                "distinct_material_count, total_gross_weight",
+        order_by="hu_item_count DESC", numeric=("total_gross_weight",),
+        integer=("hu_item_count", "distinct_sscc_count", "distinct_hu_count",
+                 "linked_delivery_count", "distinct_material_count"), boolean=(), has_warehouse=True,
+    ),
+    "expiry_risk": dict(
+        contract="wm_operations.expiry_risk", endpoint="/api/wm-operations/expiry-risk",
+        columns="plant_id, material_id, material_name, batch_id, uom, minimum_expiry_date, "
+                "shelf_life_days, minimum_remaining_shelf_life_days, total_stock_qty, "
+                "minimum_days_to_expiry, expired_qty, highest_expiry_risk_bucket, "
+                "has_minimum_shelf_life_breach",
+        order_by="minimum_days_to_expiry ASC NULLS LAST",
+        numeric=("total_stock_qty", "expired_qty"),
+        integer=("shelf_life_days", "minimum_remaining_shelf_life_days", "minimum_days_to_expiry"),
+        boolean=("has_minimum_shelf_life_breach",), has_warehouse=False,
+    ),
+    "stock_holds": dict(
+        contract="wm_operations.stock_holds", endpoint="/api/wm-operations/stock-holds",
+        columns="plant_id, warehouse_id, storage_type, bin_id, quant_id, material_id, batch_id, "
+                "hold_type, qty, uom, goods_receipt_date, age_hours",
+        order_by="age_hours DESC NULLS LAST", numeric=("qty", "age_hours"), integer=(), boolean=(),
+        has_warehouse=True,
+    ),
+    "exceptions": dict(
+        contract="wm_operations.exceptions", endpoint="/api/wm-operations/exceptions",
+        columns="plant_id, warehouse_id, exception_type, severity, sla_hours, material_id, "
+                "batch_id, reference_id, qty, aging_reference_date, age_days, detail",
+        order_by="age_days DESC NULLS LAST", numeric=("qty",), integer=("sla_hours", "age_days"),
+        boolean=(), has_warehouse=True,
+    ),
+    "recon_exceptions": dict(
+        contract="wm_operations.recon_exceptions", endpoint="/api/wm-operations/recon-exceptions",
+        columns="plant_id, warehouse_id, material_id, material_name, batch_id, stock_category, "
+                "uom, im_qty, wm_qty, delta_qty, delta_percent, delta_value, mismatch_reason, "
+                "mismatch_severity, is_trusted",
+        order_by="abs(coalesce(delta_value, 0)) DESC",
+        numeric=("im_qty", "wm_qty", "delta_qty", "delta_percent", "delta_value"),
+        integer=(), boolean=("is_trusted",), has_warehouse=True, severity_col="mismatch_severity",
+    ),
+    "recon_value_summary": dict(
+        contract="wm_operations.recon_value_summary", endpoint="/api/wm-operations/recon-summary",
+        columns="plant_id, warehouse_id, mismatch_reason, mismatch_severity, row_count, "
+                "tolerance_exceeded_count, net_delta_value, abs_delta_value, abs_delta_quantity, "
+                "value_reconciliation_status",
+        order_by="abs_delta_value DESC",
+        numeric=("net_delta_value", "abs_delta_value", "abs_delta_quantity"),
+        integer=("row_count", "tolerance_exceeded_count"), boolean=(), has_warehouse=True,
+    ),
+    "campaigns": dict(
+        contract="wm_operations.campaigns", endpoint="/api/wm-operations/campaigns",
+        columns="plant_id, warehouse_id, campaign_id, tr_count, complete_trs, in_progress_trs, "
+                "parked_trs, no_stock_trs, order_count, operator_count, work_area, required_qty, "
+                "open_qty, earliest_planned_ts, earliest_created_ts",
+        order_by="open_qty DESC",
+        numeric=("required_qty", "open_qty"),
+        integer=("tr_count", "complete_trs", "in_progress_trs", "parked_trs", "no_stock_trs",
+                 "order_count", "operator_count"), boolean=(), has_warehouse=True,
+    ),
+    "daily_activity": dict(
+        contract="wm_operations.daily_activity", endpoint="/api/wm-operations/daily-activity",
+        columns="plant_id, activity_date, to_items_confirmed, active_operators, trs_created, "
+                "goods_receipt_lines, goods_issue_lines",
+        order_by="activity_date ASC", numeric=(),
+        integer=("to_items_confirmed", "active_operators", "trs_created",
+                 "goods_receipt_lines", "goods_issue_lines"), boolean=(), has_warehouse=False,
+        days_col="activity_date",
+    ),
+    "physical_inventory": dict(
+        contract="wm_operations.physical_inventory", endpoint="/api/wm-operations/physical-inventory",
+        columns="plant_id, pi_document_id, fiscal_year, item_number, storage_location_id, "
+                "material_id, batch_id, planned_count_date, count_date, book_qty, counted_qty, "
+                "delta_qty, delta_value, is_counted, is_recount_required, is_difference_posted, "
+                "physical_inventory_status",
+        order_by="planned_count_date ASC NULLS LAST",
+        numeric=("book_qty", "counted_qty", "delta_qty", "delta_value"),
+        integer=(), boolean=("is_counted", "is_recount_required", "is_difference_posted"),
+        has_warehouse=False,
+        open_only_clause="physical_inventory_status IN ('NOT_COUNTED', 'RECOUNT_REQUIRED', 'DIFFERENCE_NOT_POSTED')",
+    ),
+}
+
+
+def get_wm_simple_spec(dataset: str, request: WmSimpleRequest) -> QuerySpec:
+    cfg = SIMPLE_DATASETS[dataset]
+    view = resolve_contract_object(cfg["contract"], "wh360")
+    params: dict[str, object] = {}
+    clauses: list[str] = []
+    if request.plant_id:
+        clauses.append("plant_id = :plant_id")
+        params["plant_id"] = request.plant_id
+    if cfg.get("has_warehouse") and request.warehouse_id:
+        clauses.append("warehouse_id = :warehouse_id")
+        params["warehouse_id"] = request.warehouse_id
+    if cfg.get("severity_col") and request.severity:
+        clauses.append(f"{cfg['severity_col']} = :severity")
+        params["severity"] = request.severity
+    if cfg.get("days_col") and request.days:
+        clauses.append(f"{cfg['days_col']} >= date_sub(current_date(), :days)")
+        params["days"] = int(request.days)
+    if cfg.get("open_only_clause") and request.open_only:
+        clauses.append(cfg["open_only_clause"])
+    where_str = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    sql = (
+        f"\n    SELECT {cfg['columns']}\n    FROM {view}\n    {where_str}\n"
+        f"    ORDER BY {cfg['order_by']}\n    LIMIT {request.limit}\n    "
+    )
+    return QuerySpec(
+        name=f"wm_operations.get_{dataset}",
+        module="wh360",
+        endpoint=cfg["endpoint"],
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", dataset],
+        contract_id=cfg["contract"],
+    )
+
+
+def map_wm_simple_rows(dataset: str, rows: list[dict]) -> list[dict]:
+    cfg = SIMPLE_DATASETS[dataset]
+    return map_rows_generic(rows, numeric=cfg["numeric"], integer=cfg["integer"], boolean=cfg["boolean"])

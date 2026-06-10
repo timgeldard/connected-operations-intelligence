@@ -170,6 +170,7 @@ def gold_wm_staging_worklist():
             F.coalesce(F.sum("requested_quantity"), F.lit(0.0)).alias("to_requested_qty"),
             F.coalesce(F.sum("confirmed_quantity"), F.lit(0.0)).alias("to_confirmed_qty"),
             F.max("confirmed_date").alias("latest_to_confirmed_date"),
+            F.max("confirmed_datetime").alias("latest_to_confirmed_datetime"),
         )
     )
 
@@ -306,6 +307,12 @@ def gold_wm_staging_worklist():
             F.coalesce(F.col("to_requested_qty"), F.lit(0.0)).alias("to_requested_qty"),
             F.coalesce(F.col("to_confirmed_qty"), F.lit(0.0)).alias("to_confirmed_qty"),
             "latest_to_confirmed_date",
+            "latest_to_confirmed_datetime",
+            F.when(
+                F.col("latest_to_confirmed_datetime").isNotNull() & F.col("created_datetime").isNotNull(),
+                (F.unix_timestamp(F.col("latest_to_confirmed_datetime"))
+                 - F.unix_timestamp(F.col("created_datetime"))) / 3600.0,
+            ).alias("cycle_hours"),
             "pick_progress_fraction",
         )
     )
@@ -750,6 +757,7 @@ def gold_wm_order_component_detail():
             "order_number",
             "reservation_number",
             "reservation_item",
+            "operation_number",
             "warehouse_number",
             "material_code",
             "material_description",
@@ -795,11 +803,19 @@ def gold_wm_operator_activity():
             & (F.col("confirmed_by_user") != "")
             & F.col("confirmed_date").isNotNull()
         )
+        .withColumn(
+            "shift",
+            F.when(F.col("confirmed_datetime").isNull(), F.lit("UNKNOWN"))
+            .when(F.hour("confirmed_datetime").between(6, 13), F.lit("EARLY"))
+            .when(F.hour("confirmed_datetime").between(14, 21), F.lit("LATE"))
+            .otherwise(F.lit("NIGHT")),
+        )
         .groupBy(
             "plant_code",
             "warehouse_number",
             F.col("confirmed_by_user").alias("operator"),
             F.col("confirmed_date").alias("activity_date"),
+            "shift",
         )
         .agg(
             F.count(F.lit(1)).alias("items_confirmed"),
@@ -836,4 +852,99 @@ def gold_wm_queue_workload():
             F.min("planned_execution_datetime").alias("earliest_planned_datetime"),
             F.min("created_datetime").alias("earliest_created_datetime"),
         )
+    )
+
+
+# ── 8. CAMPAIGN SUMMARY ───────────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Campaign-grouped picking progress (LTBK ZZ_CAMPAIGN — WMA-E-29/50 shared-material "
+        "campaign picking): TR/status counts, orders covered, operators, quantities."
+    ),
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_wm_campaign_summary():
+    worklist = dlt.read("gold_wm_staging_worklist")
+    return (
+        worklist
+        .filter(F.col("campaign_reference").isNotNull() & (F.col("campaign_reference") != ""))
+        .groupBy("plant_code", "warehouse_number", "campaign_reference")
+        .agg(
+            F.count(F.lit(1)).alias("tr_count"),
+            F.sum(F.when(F.col("worklist_status") == "COMPLETE", F.lit(1)).otherwise(F.lit(0))).alias("complete_trs"),
+            F.sum(F.when(F.col("worklist_status") == "IN_PROGRESS", F.lit(1)).otherwise(F.lit(0))).alias("in_progress_trs"),
+            F.sum(F.when(F.col("worklist_status") == "PARKED", F.lit(1)).otherwise(F.lit(0))).alias("parked_trs"),
+            F.sum(F.when(F.col("worklist_status") == "NO_STOCK", F.lit(1)).otherwise(F.lit(0))).alias("no_stock_trs"),
+            F.count_distinct(
+                F.when(F.col("source_reference_type") == TR_ORDER_REFERENCE_TYPE,
+                       F.col("source_reference_number"))
+            ).alias("order_count"),
+            F.count_distinct("assigned_operator").alias("operator_count"),
+            F.first("work_area", ignorenulls=True).alias("work_area"),
+            F.coalesce(F.sum("required_qty"), F.lit(0.0)).alias("required_qty"),
+            F.coalesce(F.sum("open_qty"), F.lit(0.0)).alias("open_qty"),
+            F.min("planned_execution_datetime").alias("earliest_planned_datetime"),
+            F.min("created_datetime").alias("earliest_created_datetime"),
+        )
+    )
+
+
+# ── 9. DAILY ACTIVITY (trend facts) ──────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Daily warehouse activity series per plant: TO items confirmed, TRs created, and "
+        "IM goods receipts/issues. Deterministic facts (no snapshots) for trend charts."
+    ),
+    cluster_by=["plant_code", "activity_date"],
+))
+def gold_wm_daily_activity():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    tos = (
+        spark.read.table(f"{ss}.warehouse_transfer_order")
+        .filter(F.col("confirmed_date").isNotNull())
+        .groupBy("plant_code", F.col("confirmed_date").alias("activity_date"))
+        .agg(
+            F.count(F.lit(1)).alias("to_items_confirmed"),
+            F.count_distinct("confirmed_by_user").alias("active_operators"),
+        )
+    )
+    trs = (
+        spark.read.table(f"{ss}.warehouse_transfer_requirement")
+        .filter(F.col("created_datetime").isNotNull())
+        .groupBy("plant_code", F.to_date("created_datetime").alias("activity_date"))
+        .agg(F.count_distinct("transfer_requirement_number").alias("trs_created"))
+    )
+    goods = (
+        spark.read.table(f"{ss}.goods_movement")
+        .join(
+            F.broadcast(
+                spark.read.table(f"{ss}.movement_type_classification").select(
+                    "movement_type_code", "is_goods_receipt", "is_goods_issue"
+                )
+            ),
+            "movement_type_code",
+            "left",
+        )
+        .filter(F.col("posting_date").isNotNull())
+        .groupBy("plant_code", F.col("posting_date").alias("activity_date"))
+        .agg(
+            F.sum(F.when(F.coalesce(F.col("is_goods_receipt"), F.lit(False)), F.lit(1)).otherwise(F.lit(0))).alias("goods_receipt_lines"),
+            F.sum(F.when(F.coalesce(F.col("is_goods_issue"), F.lit(False)), F.lit(1)).otherwise(F.lit(0))).alias("goods_issue_lines"),
+        )
+    )
+
+    keys = ["plant_code", "activity_date"]
+    return (
+        tos.join(trs, keys, "full")
+        .join(goods, keys, "full")
+        .filter(F.col("plant_code").isNotNull() & F.col("activity_date").isNotNull())
+        .withColumn("to_items_confirmed", F.coalesce(F.col("to_items_confirmed"), F.lit(0)))
+        .withColumn("active_operators", F.coalesce(F.col("active_operators"), F.lit(0)))
+        .withColumn("trs_created", F.coalesce(F.col("trs_created"), F.lit(0)))
+        .withColumn("goods_receipt_lines", F.coalesce(F.col("goods_receipt_lines"), F.lit(0)))
+        .withColumn("goods_issue_lines", F.coalesce(F.col("goods_issue_lines"), F.lit(0)))
     )

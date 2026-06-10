@@ -347,6 +347,7 @@ def stg_warehouse_transfer_order():
             sap_datetime("h.BDATU", "h.BZEIT").alias("created_datetime"),
             sap_date("h.PLDAT").alias("planned_execution_date"),
             sap_date("i.QDATU").alias("confirmed_date"),
+            sap_datetime("i.QDATU", "i.QZEIT").alias("confirmed_datetime"),
             sap_datetime("h.STDAT", "h.STUZT").alias("start_datetime"),
             sap_datetime("h.ENDAT", "h.ENUZT").alias("end_datetime"),
 

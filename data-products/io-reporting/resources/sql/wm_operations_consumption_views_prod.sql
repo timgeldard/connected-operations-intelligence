@@ -49,6 +49,8 @@ SELECT
   to_confirmed_qty,
   CAST(latest_to_confirmed_date AS DATE) AS latest_to_confirmed_date,
   pick_progress_fraction,
+  CAST(latest_to_confirmed_datetime AS TIMESTAMP) AS latest_to_confirmed_ts,
+  cycle_hours,
   age_hours,
   is_overdue
 FROM connected_plant_prod.gold_io_reporting.gold_wm_staging_worklist_live
@@ -150,6 +152,7 @@ SELECT
   order_number AS order_id,
   reservation_number AS reservation_id,
   reservation_item,
+  operation_number,
   warehouse_number AS warehouse_id,
   material_code AS material_id,
   material_description AS material_name,
@@ -181,6 +184,7 @@ SELECT
   warehouse_number AS warehouse_id,
   operator,
   CAST(activity_date AS DATE) AS activity_date,
+  shift,
   items_confirmed,
   transfer_orders,
   materials,
@@ -245,4 +249,85 @@ SELECT
   delta_quantity AS delta_qty,
   delta_value
 FROM connected_plant_prod.gold_io_reporting.gold_reconciliation_alerts_secured
+WHERE plant_code IS NOT NULL;
+
+
+-- 10. Handling-unit summary (inbound/putaway board)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_handling_units AS
+SELECT plant_code AS plant_id, warehouse_number AS warehouse_id, handling_unit_status,
+  reference_document_category, hu_item_count, distinct_sscc_count, distinct_hu_count,
+  linked_delivery_count, distinct_material_count, total_gross_weight
+FROM connected_plant_prod.gold_io_reporting.gold_handling_unit_summary_secured
+WHERE plant_code IS NOT NULL;
+
+-- 11. Stock expiry risk (stock health)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_expiry_risk AS
+SELECT plant_code AS plant_id, material_code AS material_id, material_description AS material_name,
+  batch_number AS batch_id, base_uom AS uom, CAST(minimum_expiry_date AS DATE) AS minimum_expiry_date,
+  shelf_life_days, minimum_remaining_shelf_life_days, total_stock_qty,
+  minimum_days_to_expiry, expired_qty, highest_expiry_risk_bucket, has_minimum_shelf_life_breach
+FROM connected_plant_prod.gold_io_reporting.gold_stock_expiry_risk_live
+WHERE plant_code IS NOT NULL;
+
+-- 12. Stock holds (stock health)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_stock_holds AS
+SELECT plant_code AS plant_id, warehouse_number AS warehouse_id, storage_type,
+  storage_bin AS bin_id, quant_number AS quant_id, material_code AS material_id,
+  batch_number AS batch_id, hold_type, quantity AS qty, base_uom AS uom,
+  CAST(goods_receipt_date AS DATE) AS goods_receipt_date, age_hours
+FROM connected_plant_prod.gold_io_reporting.gold_stock_holds_live
+WHERE plant_code IS NOT NULL;
+
+-- 13. Aged warehouse exceptions (MUST read _live — _secured rows are candidates, not confirmed)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_exceptions AS
+SELECT plant_code AS plant_id, warehouse_number AS warehouse_id, exception_type, severity,
+  sla_hours, material_code AS material_id, batch_number AS batch_id, reference_id,
+  quantity AS qty, CAST(aging_reference_date AS DATE) AS aging_reference_date, age_days, detail
+FROM connected_plant_prod.gold_io_reporting.gold_warehouse_exceptions_live
+WHERE plant_code IS NOT NULL;
+
+-- 14. Reconciliation exceptions (workbench detail)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_recon_exceptions AS
+SELECT plant_code AS plant_id, warehouse_number AS warehouse_id, material_code AS material_id,
+  material_description AS material_name, batch_number AS batch_id, stock_category,
+  base_uom AS uom, im_quantity AS im_qty, wm_quantity AS wm_qty, delta_quantity AS delta_qty,
+  delta_percent, delta_value, mismatch_reason, mismatch_severity,
+  is_operationally_trusted AS is_trusted
+FROM connected_plant_prod.gold_io_reporting.gold_stock_reconciliation_exceptions_v2_secured
+WHERE plant_code IS NOT NULL;
+
+-- 15. Reconciliation value rollup (workbench summary)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_recon_value_summary AS
+SELECT plant_code AS plant_id, warehouse_number AS warehouse_id, mismatch_reason,
+  mismatch_severity, row_count, tolerance_exceeded_count, net_delta_value,
+  abs_delta_value, abs_delta_quantity, value_reconciliation_status
+FROM connected_plant_prod.gold_io_reporting.gold_stock_value_reconciliation_secured
+WHERE plant_code IS NOT NULL;
+
+-- 16. Campaign summary (campaign board)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_campaigns AS
+SELECT plant_code AS plant_id, warehouse_number AS warehouse_id,
+  campaign_reference AS campaign_id, tr_count, complete_trs, in_progress_trs, parked_trs,
+  no_stock_trs, order_count, operator_count, work_area, required_qty, open_qty,
+  CAST(earliest_planned_datetime AS TIMESTAMP) AS earliest_planned_ts,
+  CAST(earliest_created_datetime AS TIMESTAMP) AS earliest_created_ts
+FROM connected_plant_prod.gold_io_reporting.gold_wm_campaign_summary_secured
+WHERE plant_code IS NOT NULL;
+
+-- 17. Daily activity (trend facts)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_daily_activity AS
+SELECT plant_code AS plant_id, CAST(activity_date AS DATE) AS activity_date,
+  to_items_confirmed, active_operators, trs_created, goods_receipt_lines, goods_issue_lines
+FROM connected_plant_prod.gold_io_reporting.gold_wm_daily_activity_secured
+WHERE plant_code IS NOT NULL;
+
+-- 18. Physical inventory reconciliation (handover section)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_physical_inventory AS
+SELECT plant_code AS plant_id, physical_inventory_document_number AS pi_document_id,
+  fiscal_year, item_number, storage_location_code AS storage_location_id,
+  material_code AS material_id, batch_number AS batch_id,
+  CAST(planned_count_date AS DATE) AS planned_count_date, CAST(count_date AS DATE) AS count_date,
+  book_quantity AS book_qty, counted_quantity AS counted_qty, delta_quantity AS delta_qty,
+  delta_value, is_counted, is_recount_required, is_difference_posted, physical_inventory_status
+FROM connected_plant_prod.gold_io_reporting.gold_physical_inventory_recon_secured
 WHERE plant_code IS NOT NULL;
