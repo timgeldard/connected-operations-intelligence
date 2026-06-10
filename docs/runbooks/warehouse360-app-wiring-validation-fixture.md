@@ -29,7 +29,7 @@ group — that is expected and harmless, RLS does not depend on them):
 ```
 data-products/io-reporting/resources/sql/gold_security_uat_validation_fixture.sql      -- *_secured views, predicate → local fixture
 data-products/io-reporting/resources/sql/gold_serving_views_uat.sql                    -- *_live views
-data-products/io-reporting/resources/sql/warehouse360_consumption_views_uat.sql        -- the 7 vw_consumption_* views
+data-products/io-reporting/resources/sql/warehouse360_consumption_views_uat.sql        -- the vw_consumption_warehouse360_* views
 ```
 The fixture **table** must exist before the secured views are created (its name is referenced in the
 predicate). Seed it first (next step).
@@ -46,7 +46,7 @@ placeholders). Current seeded identities (both `full view`, all onboarded plants
 `tim.geldard@kerry.com`, `david.burke@kerry.ie`.
 
 ### 3. Grant the identities on the consumption views
-Each end-user queries as themselves (identity passthrough), so each needs `SELECT` on the 7
+Each end-user queries as themselves (identity passthrough), so each needs `SELECT` on the 11
 `vw_consumption_warehouse360_*` views + `USE CATALOG`/`USE SCHEMA`. Underlying `*_live`/`*_secured`/Gold +
 the fixture table are covered by **ownership chaining** (all owned by the deployer) — do NOT grant base
 objects to consumers. The `warehouse360-fixture-add-user.sql` template includes these grants. No dependency
@@ -71,15 +71,15 @@ Activation flips the **live** UAT app from legacy `wh360.*` to the governed view
 npm run prepare:databricks
 databricks bundle deploy -t uat        # deploys the Databricks App with the new app.yaml
 ```
-Smoke test each Wave-1 route (`overview`, `inbound_backlog`, `outbound_backlog`, `staging_workload`,
-`im_wm_reconciliation`):
+Smoke test each route (`overview`, `inbound_backlog`, `outbound_backlog`, `staging_workload`,
+`im_wm_reconciliation`, `open-holds`, `pick-tasks`, `move-requests`, `goods-movements`):
 - response carries `X-Contract-Id` + `X-Adapter-Mode: databricks-api`;
 - a `full view` user (tim / david) sees C061 + P817;
 - a `filter ['C061']` user sees only C061; a no-row user sees nothing.
 
 ## Proven (data-layer, 2026-06-09)
 Gate-B RLS matrix run against the live UAT views as a real identity (`tim.geldard@kerry.com`), flipping the
-fixture row through states — **the predicate enforces per-user plant scope on all 7 views including the fixed
+fixture row through states — **the predicate enforces per-user plant scope on all 7 original views including the fixed
 `im_wm_reconciliation`**:
 
 | fixture state | result |

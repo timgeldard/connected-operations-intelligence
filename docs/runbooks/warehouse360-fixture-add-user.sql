@@ -32,6 +32,10 @@ GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.vw_consumption_wareho
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_stock_exceptions    TO `REPLACE_EMAIL`;
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_shortfalls          TO `REPLACE_EMAIL`;
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_im_wm_reconciliation TO `REPLACE_EMAIL`;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_open_holds           TO `REPLACE_EMAIL`;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_pick_tasks           TO `REPLACE_EMAIL`;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_move_requests        TO `REPLACE_EMAIL`;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_goods_movements      TO `REPLACE_EMAIL`;
 
 -- 3. Verify (run AS that user, or check the row):
 -- SELECT email, access_type, filter_plant, enabled FROM connected_plant_uat.gold_io_reporting.security_model_fixture WHERE email='REPLACE_EMAIL';
