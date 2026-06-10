@@ -213,19 +213,25 @@ describe('ProductionStagingAdapter', () => {
     expect(result.data.confidence).toBeLessThanOrEqual(1)
   })
 
-  it('mock context shows at-risk status', async () => {
+  it('context derives blocked risk status from the live readiness summary', async () => {
     const result = await adapter.getProductionStagingContext(request)
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.data.riskStatus).toBe('at-risk')
+    // readiness stub has blocked=1 -> riskStatus 'blocked' wins over at-risk.
+    expect(result.data.riskStatus).toBe('blocked')
+    expect(result.source).toBe('databricks-api')
+    // warehouseName is a documented data gap — never invented.
+    expect(result.data.warehouseName).toBeUndefined()
   })
 
-  it('mock context reports 18 total orders', async () => {
+  it('context reports the live readiness totals', async () => {
     const result = await adapter.getProductionStagingContext(request)
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
     expect(result.data.totalOrders).toBe(18)
+    expect(result.data.stagedOrders).toBe(12)
+    expect(result.data.openShortfalls).toBe(2)
   })
 })

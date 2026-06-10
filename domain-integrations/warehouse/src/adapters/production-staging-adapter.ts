@@ -9,14 +9,7 @@ import type {
   StagingPickingWave,
   StagingAlert,
 } from '@connectio/data-contracts'
-import type { AdapterResult, AdapterError, AdapterSource } from '@connectio/source-adapters'
-import {
-  mockProductionStagingContext,
-  mockStagingOrders,
-  mockZoneCapacity,
-  mockShortfalls,
-  mockStagingAlerts,
-} from './production-staging-mock-data.js'
+import type { AdapterResult, AdapterSource } from '@connectio/source-adapters'
 
 export interface ProductionStagingAdapterRequest {
   readonly plantId?: string
@@ -27,14 +20,6 @@ export interface ProductionStagingAdapterRequest {
 export type NowFn = () => string
 
 const defaultNow: NowFn = () => new Date().toISOString()
-
-function ok<T>(data: T, now: NowFn = defaultNow): AdapterResult<T> {
-  return { ok: true, data, fetchedAt: now(), source: 'mock' }
-}
-
-function err<T>(code: AdapterError['code'], message: string, retryable = false): AdapterResult<T> {
-  return { ok: false, error: { code, message, retryable }, displayState: 'error', source: 'mock' }
-}
 
 export interface ProductionStagingAdapterOptions {
   readonly baseUrl?: string
@@ -51,9 +36,35 @@ export class ProductionStagingAdapter {
   }
 
   async getProductionStagingContext(
-    _request: ProductionStagingAdapterRequest,
+    request: ProductionStagingAdapterRequest,
   ): Promise<AdapterResult<ProductionStagingContext>> {
-    return ok(mockProductionStagingContext, this.now)
+    const readiness = await this.getStagingReadinessSummary(request)
+    if (!readiness.ok) {
+      return {
+        ok: false,
+        error: readiness.error,
+        displayState: readiness.displayState,
+        source: 'databricks-api',
+      }
+    }
+    const r = readiness.data
+    const context: ProductionStagingContext = {
+      plantId: request.plantId ?? '',
+      warehouseId: r.warehouseId,
+      // No warehouse-name source is replicated — documented data gap.
+      warehouseName: undefined,
+      planDate: r.planDate,
+      totalOrders: r.totalOrders,
+      stagedOrders: r.fullyStaged,
+      partialOrders: r.partiallyStaged,
+      blockedOrders: r.blocked,
+      openShortfalls: r.openShortfalls,
+      openMoveRequests: r.openMoveRequests,
+      overallReadinessPercent: r.percentReady,
+      riskStatus: r.riskStatus,
+      lastUpdatedAt: this.now(),
+    }
+    return { ok: true, data: context, fetchedAt: this.now(), source: 'databricks-api' }
   }
 
   async getStagingReadinessSummary(
@@ -101,9 +112,25 @@ export class ProductionStagingAdapter {
       const fullyStaged = Number(readinessData.fullyStaged ?? 0)
       const percentReady = totalOrders > 0 ? (fullyStaged / totalOrders) * 100 : 0.0
 
-      // pendingPickTasks and openMoveRequests are 0 until Category C tables built in PR 6
-      const pendingPickTasks = 0
-      const openMoveRequests = 0
+      // Category C open-items endpoints (PR 6) supply the live pick-task / move-request counts.
+      let pendingPickTasks = 0
+      let openMoveRequests = 0
+      try {
+        const [pickRes, moveRes] = await Promise.all([
+          fetch(this.openItemsUrl('/api/warehouse360/pick-tasks', request), { method: 'GET', credentials: 'include' }),
+          fetch(this.openItemsUrl('/api/warehouse360/move-requests', request), { method: 'GET', credentials: 'include' }),
+        ])
+        if (pickRes.ok) {
+          const pickData = await pickRes.json()
+          if (Array.isArray(pickData)) pendingPickTasks = pickData.length
+        }
+        if (moveRes.ok) {
+          const moveData = await moveRes.json()
+          if (Array.isArray(moveData)) openMoveRequests = moveData.length
+        }
+      } catch {
+        // Counts stay 0 if the open-items endpoints are unavailable; the summary itself still renders.
+      }
 
       // riskStatus heuristic
       let riskStatus: 'ready' | 'at-risk' | 'blocked' | 'unknown' = 'ready'
@@ -170,9 +197,61 @@ export class ProductionStagingAdapter {
   }
 
   async getStagingOrderSummaries(
-    _request: ProductionStagingAdapterRequest,
+    request: ProductionStagingAdapterRequest,
   ): Promise<AdapterResult<StagingOrderSummary[]>> {
-    return ok(mockStagingOrders, this.now)
+    const warehouseId = request.warehouseId ?? 'WH01'
+    try {
+      const params = new URLSearchParams()
+      params.set('warehouse_id', warehouseId)
+      if (request.plantId) params.set('plant_id', request.plantId)
+      const path = `/api/warehouse360/staging?${params.toString()}`
+      const url = this.baseUrl ? `${this.baseUrl}${path}` : path
+      const res = await fetch(url, { method: 'GET', credentials: 'include' })
+      if (!res.ok) {
+        return this.handleHttpError<StagingOrderSummary[]>(res, 'databricks-api')
+      }
+      const raw = await res.json()
+      if (!Array.isArray(raw)) {
+        throw new Error('Response was not an array')
+      }
+      const orders: StagingOrderSummary[] = raw.map((item: any) => {
+        const requiredQuantity = Number(item.requiredQuantity ?? 0)
+        const stagedQuantity = Number(item.stagedQuantity ?? 0)
+        const statusStr = String(item.stagingStatus ?? '').toLowerCase()
+        const status: StagingOrderSummary['status'] =
+          statusStr === 'staged' ? 'staged'
+          : statusStr === 'blocked' ? 'blocked'
+          : statusStr === 'not-required' ? 'not-required'
+          : stagedQuantity > 0 ? 'partial'
+          : 'not-staged'
+        const urgency: StagingOrderSummary['urgency'] =
+          status === 'blocked' ? 'critical'
+          : status === 'not-staged' ? 'high'
+          : status === 'partial' ? 'medium'
+          : 'low'
+        return {
+          processOrderId: String(item.processOrderId ?? ''),
+          materialId: String(item.materialId ?? ''),
+          materialDescription: item.materialDescription ?? undefined,
+          batchId: undefined,
+          plantId: request.plantId ?? '',
+          lineOrResource: undefined,
+          plannedStart: item.requirementDate ?? undefined,
+          requiredQuantity,
+          stagedQuantity,
+          shortfallQuantity: Math.max(0, Number(item.openQuantity ?? requiredQuantity - stagedQuantity)),
+          uom: item.unitOfMeasure ?? undefined,
+          stagingArea: undefined,
+          status,
+          urgency,
+          pickTaskIds: undefined,
+          blockerReason: item.exceptionReason ?? undefined,
+        }
+      })
+      return { ok: true, data: orders, fetchedAt: this.now(), source: 'databricks-api' }
+    } catch (e) {
+      return this.handleCatchError<StagingOrderSummary[]>(e, 'databricks-api')
+    }
   }
 
 
@@ -233,15 +312,108 @@ export class ProductionStagingAdapter {
   }
 
   async getStagingZoneCapacity(
-    _request: ProductionStagingAdapterRequest,
+    request: ProductionStagingAdapterRequest,
   ): Promise<AdapterResult<StagingZoneCapacity[]>> {
-    return ok(mockZoneCapacity, this.now)
+    const warehouseId = request.warehouseId ?? 'WH01'
+    try {
+      const params = new URLSearchParams()
+      params.set('warehouse_id', warehouseId)
+      if (request.plantId) params.set('plant_id', request.plantId)
+      const path = `/api/warehouse360/stock-zones?${params.toString()}`
+      const url = this.baseUrl ? `${this.baseUrl}${path}` : path
+      const res = await fetch(url, { method: 'GET', credentials: 'include' })
+      if (!res.ok) {
+        return this.handleHttpError<StagingZoneCapacity[]>(res, 'databricks-api')
+      }
+      const raw = await res.json()
+      if (!Array.isArray(raw)) {
+        throw new Error('Response was not an array')
+      }
+      // Aggregate bin_type rows up to storage-type grain (zone = storage type).
+      const byType = new Map<string, { total: number; occupied: number; empty: number; blocked: number }>()
+      for (const row of raw as any[]) {
+        const key = String(row.storageType ?? '')
+        const agg = byType.get(key) ?? { total: 0, occupied: 0, empty: 0, blocked: 0 }
+        agg.total += Number(row.binRecordCount ?? 0)
+        agg.occupied += Number(row.occupiedBinCount ?? 0)
+        agg.empty += Number(row.emptyBinCount ?? 0)
+        agg.blocked += Number(row.blockedBinCount ?? 0)
+        byType.set(key, agg)
+      }
+      const zones: StagingZoneCapacity[] = [...byType.entries()].map(([storageType, agg]) => {
+        const capacityPercent = agg.total > 0 ? Math.min(100, (agg.occupied / agg.total) * 100) : 0
+        const status: StagingZoneCapacity['status'] =
+          agg.blocked > 0 && agg.blocked >= agg.total ? 'blocked'
+          : capacityPercent >= 98 ? 'full'
+          : capacityPercent >= 85 ? 'high-utilisation'
+          : 'available'
+        return {
+          zoneId: storageType,
+          zoneName: storageType,
+          warehouseId,
+          capacityPercent,
+          occupiedBins: agg.occupied,
+          emptyBins: agg.empty,
+          blockedBins: agg.blocked,
+          status,
+          overflowRisk: capacityPercent >= 90,
+        }
+      })
+      return { ok: true, data: zones, fetchedAt: this.now(), source: 'databricks-api' }
+    } catch (e) {
+      return this.handleCatchError<StagingZoneCapacity[]>(e, 'databricks-api')
+    }
   }
 
   async getStagingShortfalls(
-    _request: ProductionStagingAdapterRequest,
+    request: ProductionStagingAdapterRequest,
   ): Promise<AdapterResult<StagingShortfall[]>> {
-    return ok(mockShortfalls, this.now)
+    const warehouseId = request.warehouseId ?? 'WH01'
+    try {
+      const params = new URLSearchParams()
+      params.set('warehouse_id', warehouseId)
+      if (request.plantId) params.set('plant_id', request.plantId)
+      const path = `/api/warehouse360/shortfalls?${params.toString()}`
+      const url = this.baseUrl ? `${this.baseUrl}${path}` : path
+      const res = await fetch(url, { method: 'GET', credentials: 'include' })
+      if (!res.ok) {
+        return this.handleHttpError<StagingShortfall[]>(res, 'databricks-api')
+      }
+      const raw = await res.json()
+      if (!Array.isArray(raw)) {
+        throw new Error('Response was not an array')
+      }
+      const shortfalls: StagingShortfall[] = (raw as any[]).map((r) => ({
+        shortfallId: `${r.plantId ?? ''}-${r.materialId ?? ''}`,
+        materialId: String(r.materialId ?? ''),
+        materialDescription: undefined,
+        plantId: String(r.plantId ?? ''),
+        warehouseId: undefined,
+        requiredQuantity: Number(r.shortfallQty ?? 0),
+        availableQuantity: undefined,
+        shortfallQuantity: Number(r.shortfallQty ?? 0),
+        uom: undefined,
+        affectedOrders: undefined,
+        urgency: this.trAgeUrgency(r.oldestTrDate),
+        procurementStatus: 'unknown',
+        expectedArrival: undefined,
+        canBeSubstituted: undefined,
+      }))
+      return { ok: true, data: shortfalls, fetchedAt: this.now(), source: 'databricks-api' }
+    } catch (e) {
+      return this.handleCatchError<StagingShortfall[]>(e, 'databricks-api')
+    }
+  }
+
+  // TR-age urgency heuristic shared with the Warehouse360 replenishment mapping.
+  private trAgeUrgency(oldestTrDate: unknown): 'low' | 'medium' | 'high' | 'critical' {
+    if (!oldestTrDate) return 'low'
+    const ageMs = new Date(this.now()).getTime() - new Date(String(oldestTrDate)).getTime()
+    const ageHours = ageMs / (1000 * 60 * 60)
+    if (ageHours > 48) return 'critical'
+    if (ageHours > 24) return 'high'
+    if (ageHours > 8) return 'medium'
+    return 'low'
   }
 
   async getStagingMoveRequests(
@@ -299,9 +471,62 @@ export class ProductionStagingAdapter {
   }
 
   async getStagingAlerts(
-    _request: ProductionStagingAdapterRequest,
+    request: ProductionStagingAdapterRequest,
   ): Promise<AdapterResult<StagingAlert[]>> {
-    return ok(mockStagingAlerts, this.now)
+    const warehouseId = request.warehouseId ?? 'WH01'
+    // Synthesized in the adapter from other live governed datasets (plan section 4):
+    // shortfalls -> 'shortfall' alerts, blocked staging orders -> 'blocked-order' alerts.
+    const [shortfalls, orders] = await Promise.all([
+      this.getStagingShortfalls(request),
+      this.getStagingOrderSummaries(request),
+    ])
+    if (!shortfalls.ok) {
+      return {
+        ok: false,
+        error: shortfalls.error,
+        displayState: shortfalls.displayState,
+        source: 'databricks-api',
+      }
+    }
+    if (!orders.ok) {
+      return {
+        ok: false,
+        error: orders.error,
+        displayState: orders.displayState,
+        source: 'databricks-api',
+      }
+    }
+    const alerts: StagingAlert[] = []
+    for (const sf of shortfalls.data) {
+      alerts.push({
+        alertId: `shortfall-${sf.shortfallId}`,
+        warehouseId,
+        alertType: 'shortfall',
+        severity: sf.urgency,
+        materialId: sf.materialId,
+        description: `Open transfer-requirement shortfall of ${sf.shortfallQuantity} for ${sf.materialId}`,
+        recommendedAction: 'Review open transfer requirements and replenish the material',
+        raisedAt: this.now(),
+        status: 'open',
+      })
+    }
+    for (const order of orders.data) {
+      if (order.status === 'blocked') {
+        alerts.push({
+          alertId: `blocked-order-${order.processOrderId}`,
+          warehouseId,
+          alertType: 'blocked-order',
+          severity: 'critical',
+          processOrderId: order.processOrderId,
+          materialId: order.materialId,
+          description: `Staging blocked for process order ${order.processOrderId}`,
+          recommendedAction: 'Investigate the staging blocker for this order',
+          raisedAt: order.plannedStart ?? this.now(),
+          status: 'open',
+        })
+      }
+    }
+    return { ok: true, data: alerts, fetchedAt: this.now(), source: 'databricks-api' }
   }
 }
 
@@ -309,5 +534,10 @@ export const productionStagingAdapter = new ProductionStagingAdapter()
 
 export function toProductionStagingAdapterError<T>(thrown: unknown): AdapterResult<T> {
   const message = thrown instanceof Error ? thrown.message : 'Unknown error'
-  return err<T>('unknown', message, true)
+  return {
+    ok: false,
+    error: { code: 'unknown', message, retryable: true },
+    displayState: 'error',
+    source: 'databricks-api',
+  }
 }

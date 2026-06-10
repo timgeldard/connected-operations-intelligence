@@ -220,7 +220,7 @@ export function Warehouse360ActionsPanel({ context }: Warehouse360ActionsPanelPr
         <ActionButton 
           label={activeAction === 'copy-success' ? 'Copied Evidence!' : activeAction === 'copy-failed' ? 'Copy Failed!' : 'Copy Warehouse UAT Evidence'} 
           onClick={() => {
-            const mode = (import.meta.env.VITE_ADAPTER_MODE as 'mock' | 'legacy-api' | 'databricks-api') || 'mock'
+            const mode = (import.meta.env.VITE_ADAPTER_MODE as 'mock' | 'legacy-api' | 'databricks-api') || 'databricks-api'
             const overallSource = mode
             const overallStatus = mode === 'mock' ? 'mock-only' : 'loaded'
 

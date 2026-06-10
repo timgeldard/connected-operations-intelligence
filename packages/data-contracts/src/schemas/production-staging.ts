@@ -9,7 +9,7 @@ const SeveritySchema = z.enum(['low', 'medium', 'high', 'critical'])
 export const ProductionStagingContextSchema = z.object({
   plantId: z.string().describe('[classification: source-field]'),
   warehouseId: z.string().describe('[classification: source-field]'),
-  warehouseName: z.string().describe('[classification: source-field]'),
+  warehouseName: z.string().optional().describe('[classification: data-gap — no warehouse-name source replicated]'),
   planDate: z.string().date().describe('[classification: source-field]'),
   totalOrders: z.number().int().min(0).describe('[classification: source-derived]'),
   stagedOrders: z.number().int().min(0).describe('[classification: source-derived]'),
@@ -28,22 +28,24 @@ export type ProductionStagingContext = z.infer<typeof ProductionStagingContextSc
 // StagingOrderSummary
 // ---------------------------------------------------------------------------
 
+// SAP-truthful shape (governed staging-workload dataset, gold_process_order_staging_live):
+// batch / line / staging-area / pick-task linkage are first-wave gaps at this grain.
 export const StagingOrderSummarySchema = z.object({
   processOrderId: z.string().describe('[classification: source-field]'),
   materialId: z.string().describe('[classification: source-field]'),
-  materialDescription: z.string().describe('[classification: source-field]'),
-  batchId: z.string().describe('[classification: source-field]'),
+  materialDescription: z.string().optional().describe('[classification: source-field]'),
+  batchId: z.string().optional().describe('[classification: data-gap — order batch not at this grain]'),
   plantId: z.string().describe('[classification: source-field]'),
-  lineOrResource: z.string().describe('[classification: source-field]'),
-  plannedStart: z.string().datetime().describe('[classification: source-field]'),
+  lineOrResource: z.string().optional().describe('[classification: data-gap — production line join deferred]'),
+  plannedStart: z.string().optional().describe('[classification: source-field — sched_start]'),
   requiredQuantity: z.number().describe('[classification: source-field]'),
-  stagedQuantity: z.number().describe('[classification: source-field]'),
+  stagedQuantity: z.number().describe('[classification: application-derived — order_qty * staging_pct]'),
   shortfallQuantity: z.number().describe('[classification: source-derived]'),
-  uom: z.string().describe('[classification: source-field]'),
-  stagingArea: z.string().describe('[classification: source-field]'),
-  status: z.enum(['not-staged', 'partial', 'staged', 'blocked', 'not-required']).describe('[classification: source-field]'),
+  uom: z.string().optional().describe('[classification: source-field]'),
+  stagingArea: z.string().optional().describe('[classification: data-gap — storage location absent]'),
+  status: z.enum(['not-staged', 'partial', 'staged', 'blocked', 'not-required']).describe('[classification: application-heuristic]'),
   urgency: SeveritySchema.describe('[classification: source-derived]'),
-  pickTaskIds: z.array(z.string()).describe('[classification: source-field]'),
+  pickTaskIds: z.array(z.string()).optional().describe('[classification: data-gap — TO linkage via pick-tasks dataset]'),
   blockerReason: z.string().optional().describe('[classification: source-field]'),
 })
 
@@ -81,14 +83,16 @@ export type StagingPickTask = z.infer<typeof StagingPickTaskSchema>
 // StagingZoneCapacity
 // ---------------------------------------------------------------------------
 
+// SAP-truthful shape (governed stock-zones dataset over gold_bin_occupancy): zone =
+// storage type; counts are BIN counts (order counts are not derivable from bin occupancy).
 export const StagingZoneCapacitySchema = z.object({
-  zoneId: z.string().describe('[classification: source-field]'),
-  zoneName: z.string().describe('[classification: source-field]'),
+  zoneId: z.string().describe('[classification: source-field — storage type]'),
+  zoneName: z.string().describe('[classification: source-field — storage type]'),
   warehouseId: z.string().describe('[classification: source-field]'),
-  capacityPercent: z.number().min(0).max(100).describe('[classification: source-derived]'),
-  pendingOrders: z.number().int().min(0).describe('[classification: source-derived]'),
-  stagedOrders: z.number().int().min(0).describe('[classification: source-derived]'),
-  blockedOrders: z.number().int().min(0).describe('[classification: source-derived]'),
+  capacityPercent: z.number().min(0).max(100).describe('[classification: source-derived — occupancy rate]'),
+  occupiedBins: z.number().int().min(0).describe('[classification: source-field]'),
+  emptyBins: z.number().int().min(0).describe('[classification: source-field]'),
+  blockedBins: z.number().int().min(0).describe('[classification: source-field]'),
   status: z.enum(['available', 'high-utilisation', 'full', 'blocked']).describe('[classification: application-heuristic]'),
   overflowRisk: z.boolean().describe('[classification: application-heuristic]'),
 })
@@ -99,21 +103,23 @@ export type StagingZoneCapacity = z.infer<typeof StagingZoneCapacitySchema>
 // StagingShortfall
 // ---------------------------------------------------------------------------
 
+// SAP-truthful shape (governed shortfalls dataset, TR material backlog): available qty,
+// affected orders, procurement state, and substitution are first-wave gaps at this grain.
 export const StagingShortfallSchema = z.object({
   shortfallId: z.string().describe('[classification: source-field]'),
   materialId: z.string().describe('[classification: source-field]'),
-  materialDescription: z.string().describe('[classification: source-field]'),
+  materialDescription: z.string().optional().describe('[classification: data-gap — material join deferred]'),
   plantId: z.string().describe('[classification: source-field]'),
-  warehouseId: z.string().describe('[classification: source-field]'),
-  requiredQuantity: z.number().describe('[classification: source-field]'),
-  availableQuantity: z.number().describe('[classification: source-field]'),
+  warehouseId: z.string().optional().describe('[classification: data-gap — material-grain dataset]'),
+  requiredQuantity: z.number().describe('[classification: source-field — open TR qty]'),
+  availableQuantity: z.number().optional().describe('[classification: data-gap — stock join deferred]'),
   shortfallQuantity: z.number().describe('[classification: source-derived]'),
-  uom: z.string().describe('[classification: source-field]'),
-  affectedOrders: z.array(z.string()).describe('[classification: source-field]'),
-  urgency: SeveritySchema.describe('[classification: source-derived]'),
+  uom: z.string().optional().describe('[classification: data-gap — not sourced at material grain]'),
+  affectedOrders: z.array(z.string()).optional().describe('[classification: data-gap — order linkage deferred]'),
+  urgency: SeveritySchema.describe('[classification: application-heuristic — TR age]'),
   procurementStatus: z.enum(['in-stock', 'in-transit', 'ordered', 'delayed', 'out-of-stock', 'unknown']).describe('[classification: application-heuristic]'),
-  expectedArrival: z.string().datetime().optional().describe('[classification: source-field]'),
-  canBeSubstituted: z.boolean().describe('[classification: source-derived]'),
+  expectedArrival: z.string().optional().describe('[classification: data-gap]'),
+  canBeSubstituted: z.boolean().optional().describe('[classification: data-gap]'),
 })
 
 export type StagingShortfall = z.infer<typeof StagingShortfallSchema>
@@ -204,8 +210,8 @@ export const StagingAlertSchema = z.object({
   zoneId: z.string().optional().describe('[classification: source-field]'),
   description: z.string().describe('[classification: source-field]'),
   recommendedAction: z.string().describe('[classification: application-heuristic]'),
-  raisedAt: z.string().datetime().describe('[classification: source-field]'),
-  resolvedAt: z.string().datetime().optional().describe('[classification: source-field]'),
+  raisedAt: z.string().describe('[classification: source-derived — oldest underlying record or fetch time]'),
+  resolvedAt: z.string().optional().describe('[classification: source-field]'),
   status: z.enum(['open', 'acknowledged', 'in-progress', 'resolved']).describe('[classification: source-field]'),
   owner: z.string().optional().describe('[classification: source-field]'),
 })

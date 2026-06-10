@@ -12,35 +12,35 @@ export interface WarehouseInitialStateProps {
 
 export function WarehouseInitialState({ onLoadCandidate, adapterMode }: WarehouseInitialStateProps) {
   const evidenceSlices: EvidenceStatus[] = [
-    { 
-      name: 'Warehouse Summary', 
-      status: 'pilot', 
-      description: 'KPI summary via legacy API; full lot reconciliation pending.' 
+    {
+      name: 'Warehouse Summary',
+      status: 'live',
+      description: 'Governed KPI snapshot via gold_warehouse_kpi_snapshot (RLS-filtered).'
     },
-    { 
-      name: 'Stock Overview', 
-      status: 'mock', 
-      description: 'Bin-level stock simulation; live inventory sync pending.' 
+    {
+      name: 'Stock Overview',
+      status: 'live',
+      description: 'Governed bin occupancy at storage-type grain (gold_bin_occupancy).'
     },
-    { 
-      name: 'Holds Management', 
-      status: 'mock', 
-      description: 'Stale hold status simulation; live WMS hold sync pending.' 
+    {
+      name: 'Holds Management',
+      status: 'live',
+      description: 'Governed quant-level holds (gold_stock_holds); hold provenance is a data gap.'
     },
-    { 
-      name: 'Goods Movements', 
-      status: 'mock', 
-      description: 'Activity history simulation; not linked to live movement logs.' 
+    {
+      name: 'Goods Movements',
+      status: 'pilot',
+      description: 'Governed MSEG-line feed with cost-capped windows; UAT load validation pending.'
     },
-    { 
-      name: 'Capacity Analysis', 
-      status: 'mock', 
-      description: 'Zone capacity simulation based on static master data.' 
+    {
+      name: 'Capacity Analysis',
+      status: 'live',
+      description: 'Governed zone capacity from bin occupancy (occupied/empty/blocked bins).'
     },
-    { 
-      name: 'Replenishment', 
-      status: 'mock', 
-      description: 'Requirement simulation; no automated replenishment triggers.' 
+    {
+      name: 'Replenishment',
+      status: 'live',
+      description: 'Governed TR shortfall backlog; no automated replenishment triggers.'
     }
   ]
 
@@ -78,14 +78,15 @@ export function WarehouseInitialState({ onLoadCandidate, adapterMode }: Warehous
           <div style={{ display: 'flex', gap: 8, fontSize: '12px' }}>
              <span style={{ color: 'var(--shell-fg-2)' }}>Mode: <strong>{adapterMode}</strong></span>
              <span style={{ color: 'var(--shell-fg-3)' }}>|</span>
-             <span style={{ color: 'var(--shell-fg-2)' }}>WMS Summary: <span style={{ color: statusColors['pilot'] }}>Pilot (Legacy API)</span></span>
+             <span style={{ color: 'var(--shell-fg-2)' }}>WMS Summary: <span style={{ color: statusColors['live'] }}>Live (Governed)</span></span>
              <span style={{ color: 'var(--shell-fg-3)' }}>|</span>
-             <span style={{ color: 'var(--shell-fg-2)' }}>Inventory: <span style={{ color: statusColors['mock'] }}>Mock Simulation</span></span>
+             <span style={{ color: 'var(--shell-fg-2)' }}>Inventory: <span style={{ color: statusColors['live'] }}>Live (Governed)</span></span>
           </div>
         </div>
         <p style={{ margin: 0, fontSize: '11px', color: 'var(--shell-fg-3)', maxWidth: 400 }}>
-          Warehouse KPIs are driven by the V1 WMS proxy. Detailed stock lines and movement 
-          history are currently high-fidelity simulations.
+          Warehouse KPIs, stock, holds, and staging are served by the governed
+          gold_io_reporting layer (RLS-filtered per user). Remaining field-level gaps
+          render as documented data-gap notices, never simulations.
         </p>
       </div>
 

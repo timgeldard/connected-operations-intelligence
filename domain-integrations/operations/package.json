@@ -15,6 +15,7 @@
     "@connectio/product-model": "workspace:*",
     "@connectio/source-adapters": "workspace:*",
     "@tanstack/react-query": "^5",
-    "react": "^18.3.1"
+    "react": "^18.3.1",
+    "zod": "^3.23.8"
   }
 }

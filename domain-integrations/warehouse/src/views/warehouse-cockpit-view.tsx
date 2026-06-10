@@ -208,7 +208,7 @@ export function WarehouseCockpitView({ request }: WarehouseCockpitViewProps) {
   }
   const uniqueSources = Array.from(new Set(activeSources))
   const displayedSource =
-    uniqueSources.length === 1 ? uniqueSources[0] : uniqueSources.length > 1 ? 'mixed' : 'mock'
+    uniqueSources.length === 1 ? uniqueSources[0] : uniqueSources.length > 1 ? 'mixed' : 'unknown'
 
   const getSourceBadgeColorAndText = () => {
     switch (displayedSource) {
