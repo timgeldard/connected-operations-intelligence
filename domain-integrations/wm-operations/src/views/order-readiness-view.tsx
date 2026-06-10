@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { WmOperationsAdapterRequest } from '../adapters/wm-operations-adapter.js'
 import { OrderDetailOverlay } from '../components/overlays.js'
+import { setWorklistDeepLink } from '../state/deep-link.js'
 import { useWmOrderReadiness } from '../adapters/wm-operations-queries.js'
 import {
   ViewHeader,
@@ -14,6 +15,7 @@ import {
 
 export interface OrderReadinessViewProps {
   readonly request: WmOperationsAdapterRequest
+  readonly onNavigateToView?: (viewId: string) => void
 }
 
 const COVERAGE_LABEL: Record<string, string> = {
@@ -42,7 +44,7 @@ const HORIZONS = [
   { value: '30', label: 'Next 30 days' },
 ] as const
 
-export function OrderReadinessView({ request }: OrderReadinessViewProps) {
+export function OrderReadinessView({ request, onNavigateToView }: OrderReadinessViewProps) {
   const [horizon, setHorizon] = useState('')
   const [drillOrder, setDrillOrder] = useState<{ orderId: string; label?: string } | null>(null)
   const result = useWmOrderReadiness({
@@ -101,6 +103,7 @@ export function OrderReadinessView({ request }: OrderReadinessViewProps) {
                   <th>Qty</th>
                   <th>Start</th>
                   <th>Days</th>
+                  <th></th>
                   <th>PSA</th>
                   <th>WM components</th>
                   <th>TR coverage</th>
@@ -121,6 +124,11 @@ export function OrderReadinessView({ request }: OrderReadinessViewProps) {
                     <td className="kw-num">{formatQty(order.orderQty, order.uom)}</td>
                     <td className="kw-num">{formatDate(order.scheduledStartDate)}</td>
                     <td className="kw-num">{order.daysToStart ?? '—'}</td>
+                    <td>
+                      {onNavigateToView && (order.trCount ?? 0) > 0 && (
+                        <button type="button" className="kw-link" onClick={() => { setWorklistDeepLink({ reference: order.orderId }); onNavigateToView('staging-worklist') }}>TRs</button>
+                      )}
+                    </td>
                     <td className="kw-mono">{order.productionSupplyArea ?? '—'}</td>
                     <td className="kw-num">{order.wmComponentCount ?? 0}</td>
                     <td>

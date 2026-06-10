@@ -99,6 +99,11 @@ export const wmOperationsRegistration: WorkspaceRegistration = {
     { viewId: 'recon', displayName: 'Reconciliation', lifecycle: 'pilot', sortOrder: 9, defaultPanels: [{ panelId: 'wm-recon', defaultVisible: true, defaultOrder: 0 }] },
     { viewId: 'campaigns', displayName: 'Campaigns', lifecycle: 'pilot', sortOrder: 10, defaultPanels: [{ panelId: 'wm-campaigns', defaultVisible: true, defaultOrder: 0 }] },
     { viewId: 'trends', displayName: 'Trends', lifecycle: 'pilot', sortOrder: 11, defaultPanels: [{ panelId: 'wm-trends', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'bin-capacity', displayName: 'Bin Capacity', lifecycle: 'pilot', sortOrder: 12, defaultPanels: [{ panelId: 'wm-bin-capacity', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'movements', displayName: 'Goods Movements', lifecycle: 'pilot', sortOrder: 13, defaultPanels: [{ panelId: 'wm-movements', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'slow-movers', displayName: 'Slow Movers', lifecycle: 'pilot', sortOrder: 14, defaultPanels: [{ panelId: 'wm-slow-movers', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'movement-control', displayName: 'Movement Control', lifecycle: 'pilot', sortOrder: 15, defaultPanels: [{ panelId: 'wm-movement-control', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'staging-pace', displayName: 'Staging Pace', lifecycle: 'pilot', sortOrder: 16, defaultPanels: [{ panelId: 'wm-staging-pace', defaultVisible: true, defaultOrder: 0 }] },
   ],
   defaultPanels: [
     { panelId: 'wm-worklist-summary', defaultVisible: true, defaultOrder: 0 },

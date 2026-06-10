@@ -23,6 +23,10 @@ from adapters.wm_operations.wm_operations_databricks_adapter import (
     WmSimpleRequest,
     SIMPLE_DATASETS,
     map_wm_simple_rows,
+    WmDeliveryPicksRequest,
+    map_wm_delivery_picks_rows,
+    WmMovementsRequest,
+    map_wm_movements_rows,
     WmWorklistRequest,
     WmWorklistSummaryRequest,
     map_wm_batch_movements_rows,
@@ -197,6 +201,7 @@ async def wm_operations_worklist(
     status: str | None = None,
     queue: str | None = None,
     campaign: str | None = None,
+    reference: str | None = None,
     include_complete: bool = False,
     limit: int = 200,
     offset: int = 0,
@@ -216,6 +221,7 @@ async def wm_operations_worklist(
             status=status.strip().upper() if status else None,
             queue=queue.strip() if queue else None,
             campaign=campaign.strip() if campaign else None,
+            reference=reference.strip() if reference else None,
             include_complete=include_complete,
             limit=limit,
             offset=max(0, offset),
@@ -454,6 +460,7 @@ async def wm_operations_operator_activity(
     response: Response,
     plant_id: str | None = None,
     warehouse_id: str | None = None,
+    operator: str | None = None,
     days: int = 14,
     x_forwarded_access_token: str | None = Header(default=None),
     x_forwarded_user: str | None = Header(default=None),
@@ -466,6 +473,7 @@ async def wm_operations_operator_activity(
     req = WmOperatorActivityRequest(
         plant_id=plant_id.strip() if plant_id else None,
         warehouse_id=warehouse_id.strip() if warehouse_id else None,
+        operator=operator.strip() if operator else None,
         days=days,
     )
     repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
@@ -617,3 +625,57 @@ def _make_simple_route(dataset: str, cfg: dict):
 
 for _dataset, _cfg in SIMPLE_DATASETS.items():
     _make_simple_route(_dataset, _cfg)
+
+
+@router.get("/wm-operations/delivery-picks")
+async def wm_operations_delivery_picks(
+    response: Response,
+    plant_id: str,
+    delivery_id: str,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[dict]:
+    """Open pick tasks for one delivery — databricks-api only."""
+    _require_databricks_mode("WM Operations delivery picks")
+    req = WmDeliveryPicksRequest(plant_id=plant_id.strip(), delivery_id=delivery_id.strip())
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_delivery_picks(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_delivery_picks_rows(rows)
+
+
+@router.get("/wm-operations/movements")
+async def wm_operations_movements(
+    response: Response,
+    plant_id: str,
+    days: int = 7,
+    event_category: str | None = None,
+    movement_type: str | None = None,
+    posted_by: str | None = None,
+    order_id: str | None = None,
+    delivery_id: str | None = None,
+    limit: int = 200,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[dict]:
+    """Goods-movement activity feed (bounded window) — databricks-api only."""
+    _require_databricks_mode("WM Operations movements")
+    _validate_limit(limit, 500)
+    if days < 1 or days > 31:
+        raise HTTPException(status_code=422, detail="days must be between 1 and 31")
+    req = WmMovementsRequest(
+        plant_id=plant_id.strip(),
+        days=days,
+        event_category=event_category.strip() if event_category else None,
+        movement_type=movement_type.strip() if movement_type else None,
+        posted_by=posted_by.strip() if posted_by else None,
+        order_id=order_id.strip() if order_id else None,
+        delivery_id=delivery_id.strip() if delivery_id else None,
+        limit=limit,
+    )
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_movements(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_movements_rows(rows)

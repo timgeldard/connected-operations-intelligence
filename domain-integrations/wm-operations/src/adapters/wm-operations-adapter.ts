@@ -143,6 +143,7 @@ export interface WmOperationsAdapterRequest {
   readonly expiringWithinDays?: number
   readonly queue?: string
   readonly campaign?: string
+  readonly reference?: string
   readonly startFromDaysAgo?: number
   readonly startToDaysAhead?: number
   readonly limit?: number
@@ -232,6 +233,7 @@ export class WmOperationsAdapter {
       status: request.status,
       queue: request.queue,
       campaign: request.campaign,
+      reference: request.reference,
       include_complete: request.includeComplete,
       limit: request.limit,
     })

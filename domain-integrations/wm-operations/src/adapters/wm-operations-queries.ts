@@ -78,6 +78,7 @@ export function useWmWorklist(request: WmOperationsAdapterRequest) {
       request.status ?? null,
       request.queue ?? null,
       request.campaign ?? null,
+      request.reference ?? null,
       request.includeComplete ?? false,
       request.limit ?? null,
     ],

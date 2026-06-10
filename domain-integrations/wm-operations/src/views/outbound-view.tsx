@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import type { WmOperationsAdapterRequest } from '../adapters/wm-operations-adapter.js'
 import { useWmOutbound } from '../adapters/wm-operations-queries.js'
+import { DeliveryPicksOverlay } from '../components/overlays.js'
 import { BandDot, EmptyNote, KpiTile, LoadingRows, ViewHeader, formatDate, formatQty } from '../components/kerry.js'
 
 /** Screen 4 — outbound delivery picking board (gold_delivery_pick_status + live bands). */
 export function OutboundView({ request }: { readonly request: WmOperationsAdapterRequest }) {
   const [includeShipped, setIncludeShipped] = useState(false)
+  const [drill, setDrill] = useState<{ deliveryId: string; customer?: string | null } | null>(null)
   const result = useWmOutbound({ ...request, includeShipped })
   const rows = result.data?.ok ? result.data.data : []
   const error = result.data && !result.data.ok ? result.data.error : null
@@ -56,7 +58,9 @@ export function OutboundView({ request }: { readonly request: WmOperationsAdapte
                 {rows.map(d => (
                   <tr key={`${d.plantId}-${d.deliveryId}`}>
                     <td><BandDot band={d.riskBand} /></td>
-                    <td className="kw-mono">{d.deliveryId}</td>
+                    <td className="kw-mono">
+                      <button type="button" className="kw-link" onClick={() => setDrill({ deliveryId: d.deliveryId, customer: d.shipToCustomerName })}>{d.deliveryId}</button>
+                    </td>
                     <td>{d.shipToCustomerName ?? d.shipToCustomerId ?? '—'}</td>
                     <td className="kw-num">{d.lineCount ?? '—'}</td>
                     <td className="kw-num">{formatQty(d.deliveryQty, d.hasMixedBaseUom ? null : undefined)}</td>
@@ -85,6 +89,14 @@ export function OutboundView({ request }: { readonly request: WmOperationsAdapte
           </div>
         )}
       </div>
+      {drill && request.plantId && (
+        <DeliveryPicksOverlay
+          plantId={request.plantId}
+          deliveryId={drill.deliveryId}
+          customer={drill.customer}
+          onClose={() => setDrill(null)}
+        />
+      )}
     </section>
   )
 }

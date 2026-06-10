@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { useWmBatchMovements, useWmOrderComponents } from '../adapters/wm-operations-queries.js'
+import { useWmBatchMovements, useWmList, useWmOrderComponents } from '../adapters/wm-operations-queries.js'
+import type { WmOperatorActivityItem } from '../adapters/wm-operations-adapter.js'
 import { EmptyNote, LoadingRows, formatDate, formatQty } from './kerry.js'
 
 function Overlay({ title, subtitle, onClose, children }: {
@@ -87,6 +88,85 @@ export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose }: {
                       {c.isSupplied ? 'Supplied' : formatQty(c.psaSuppliedQty, c.uom)}
                     </span>
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Overlay>
+  )
+}
+
+/** Outbound drill — open pick tasks for one delivery (confirmed picks age out of the
+ * open-items gold, so shipped deliveries legitimately show none). */
+export function DeliveryPicksOverlay({ plantId, deliveryId, customer, onClose }: {
+  readonly plantId: string
+  readonly deliveryId: string
+  readonly customer?: string | null
+  readonly onClose: () => void
+}) {
+  const result = useWmList<{
+    plantId: string; taskId: string; itemNumber: string; materialId: string | null
+    batchId: string | null; sourceStorageType: string | null; sourceStorageBin: string | null
+    requestedQuantity: number | null; confirmedQuantity: number | null
+    itemStatus: string | null; createdDatetime: string | null; createdByUser: string | null
+  }>('/api/wm-operations/delivery-picks', { plant_id: plantId, delivery_id: deliveryId })
+  const rows = result.data?.ok ? result.data.data : []
+
+  return (
+    <Overlay title={`Delivery ${deliveryId}`} subtitle={customer ?? 'Open pick tasks'} onClose={onClose}>
+      {result.isLoading ? <LoadingRows rows={4} /> : rows.length === 0 ? (
+        <EmptyNote>No open pick tasks — picking is complete or not yet created.</EmptyNote>
+      ) : (
+        <div className="kw-table-wrap">
+          <table className="kw-table">
+            <thead><tr><th>TO</th><th>Item</th><th>Material</th><th>Batch</th><th>From</th><th>Requested</th><th>Confirmed</th><th>Status</th></tr></thead>
+            <tbody>
+              {rows.map(t => (
+                <tr key={`${t.taskId}-${t.itemNumber}`}>
+                  <td className="kw-mono">{t.taskId}</td>
+                  <td className="kw-mono">{t.itemNumber}</td>
+                  <td className="kw-mono">{t.materialId ?? String.fromCharCode(8212)}</td>
+                  <td className="kw-mono">{t.batchId ?? String.fromCharCode(8212)}</td>
+                  <td className="kw-mono">{t.sourceStorageType}/{t.sourceStorageBin}</td>
+                  <td className="kw-num">{formatQty(t.requestedQuantity)}</td>
+                  <td className="kw-num">{formatQty(t.confirmedQuantity)}</td>
+                  <td><span className={`kw-chip ${t.itemStatus === 'Open' ? 'kw-chip--open' : 'kw-chip--in-progress'}`}>{t.itemStatus}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Overlay>
+  )
+}
+
+/** Operators drill — one operator's daily activity (client-side over loaded rows). */
+export function OperatorDetailOverlay({ operator, rows, onClose }: {
+  readonly operator: string
+  readonly rows: WmOperatorActivityItem[]
+  readonly onClose: () => void
+}) {
+  const mine = rows
+    .filter(r => r.operator === operator)
+    .sort((a, b) => b.activityDate.localeCompare(a.activityDate))
+  return (
+    <Overlay title={operator} subtitle="Daily pick activity (window)" onClose={onClose}>
+      {mine.length === 0 ? <EmptyNote>No activity in the window.</EmptyNote> : (
+        <div className="kw-table-wrap">
+          <table className="kw-table">
+            <thead><tr><th>Date</th><th>Shift</th><th>Items</th><th>TOs</th><th>TRs</th><th>Materials</th></tr></thead>
+            <tbody>
+              {mine.map((r, i) => (
+                <tr key={`${r.activityDate}-${i}`}>
+                  <td className="kw-num">{formatDate(r.activityDate)}</td>
+                  <td>{(r as { shift?: string | null }).shift ?? String.fromCharCode(8212)}</td>
+                  <td className="kw-num">{(r.itemsConfirmed ?? 0).toLocaleString()}</td>
+                  <td className="kw-num">{(r.transferOrders ?? 0).toLocaleString()}</td>
+                  <td className="kw-num">{(r.transferRequirements ?? 0).toLocaleString()}</td>
+                  <td className="kw-num">{(r.materials ?? 0).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>

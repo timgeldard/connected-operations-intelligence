@@ -331,6 +331,13 @@
   background: var(--kw-slate-10);
 }
 
+.kerry-wm .kw-viewnav-group {
+  font-family: var(--kw-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .kerry-wm .kw-viewnav-tab--active {
   background: var(--kw-valentia-slate);
   border-color: var(--kw-valentia-slate);

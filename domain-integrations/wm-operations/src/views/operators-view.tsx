@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import type { WmOperationsAdapterRequest } from '../adapters/wm-operations-adapter.js'
+import { OperatorDetailOverlay } from '../components/overlays.js'
 import { useWmOperatorActivity, useWmQueueWorkload } from '../adapters/wm-operations-queries.js'
 import { EmptyNote, KpiTile, LoadingRows, ViewHeader, formatDate, formatTs } from '../components/kerry.js'
 
@@ -10,6 +12,7 @@ const WORK_AREA_SHORT: Record<string, string> = {
 }
 
 export function OperatorsView({ request }: { readonly request: WmOperationsAdapterRequest }) {
+  const [drillOperator, setDrillOperator] = useState<string | null>(null)
   const activityResult = useWmOperatorActivity({ ...request, days: 14 })
   const queueResult = useWmQueueWorkload(request)
 
@@ -93,7 +96,7 @@ export function OperatorsView({ request }: { readonly request: WmOperationsAdapt
               <tbody>
                 {operatorRows.map(([op, s]) => (
                   <tr key={op}>
-                    <td className="kw-mono">{op}</td>
+                    <td className="kw-mono"><button type="button" className="kw-link" onClick={() => setDrillOperator(op)}>{op}</button></td>
                     <td className="kw-num">{s.items.toLocaleString()}</td>
                     <td className="kw-num">{s.tos.toLocaleString()}</td>
                     <td className="kw-num">{s.trs.toLocaleString()}</td>
@@ -107,6 +110,9 @@ export function OperatorsView({ request }: { readonly request: WmOperationsAdapt
           </div>
         )}
       </div>
+      {drillOperator && (
+        <OperatorDetailOverlay operator={drillOperator} rows={activity} onClose={() => setDrillOperator(null)} />
+      )}
     </section>
   )
 }

@@ -34,6 +34,7 @@ class WmWorklistRequest:
     status: Optional[str] = None
     queue: Optional[str] = None
     campaign: Optional[str] = None
+    reference: Optional[str] = None
     include_complete: bool = False
     limit: int = 200
     offset: int = 0
@@ -123,6 +124,9 @@ def get_wm_worklist_spec(request: WmWorklistRequest) -> QuerySpec:
     if request.campaign:
         clauses.append("campaign_id = :campaign")
         params["campaign"] = request.campaign
+    if request.reference:
+        clauses.append("reference_id = :reference")
+        params["reference"] = request.reference
     where_str = _scope_where(request, params, clauses)
     sql = f"""
     SELECT
@@ -546,6 +550,7 @@ def map_wm_order_components_rows(rows: list[dict]) -> list[dict]:
 class WmOperatorActivityRequest:
     plant_id: Optional[str] = None
     warehouse_id: Optional[str] = None
+    operator: Optional[str] = None
     days: int = 14
 
 
@@ -553,6 +558,9 @@ def get_wm_operator_activity_spec(request: WmOperatorActivityRequest) -> QuerySp
     view = resolve_contract_object("wm_operations.operator_activity", "wh360")
     params: dict[str, object] = {"days": int(request.days)}
     clauses = ["activity_date >= date_sub(current_date(), :days)"]
+    if request.operator:
+        clauses.append("operator = :operator")
+        params["operator"] = request.operator
     where_str = _scope_where(request, params, clauses)
     sql = f"""
     SELECT
@@ -819,6 +827,105 @@ def map_wm_batch_movements_rows(rows: list[dict]) -> list[dict]:
     } for r in rows]
 
 
+@dataclass
+class WmDeliveryPicksRequest:
+    plant_id: str
+    delivery_id: str
+
+
+def get_wm_delivery_picks_spec(request: WmDeliveryPicksRequest) -> QuerySpec:
+    # Open pick tasks for one delivery (reuses the contracted wh360 pick-tasks view;
+    # confirmed/closed TOs are not in the open-items gold, so shipped deliveries show none).
+    view = resolve_contract_object("warehouse360.pick_tasks", "wh360")
+    sql = f"""
+    SELECT plant_id, warehouse_number, task_id, item_number, material_id, batch_id,
+        source_storage_type, source_storage_bin, destination_storage_type,
+        destination_storage_bin, requested_quantity, confirmed_quantity, item_status,
+        created_datetime, delivery_number, created_by_user
+    FROM {view}
+    WHERE plant_id = :plant_id AND delivery_number = :delivery_id
+    ORDER BY task_id, item_number
+    LIMIT 500
+    """
+    return QuerySpec(
+        name="wm_operations.get_delivery_picks",
+        module="wh360",
+        endpoint="/api/wm-operations/delivery-picks",
+        sql=sql,
+        params={"plant_id": request.plant_id, "delivery_id": request.delivery_id},
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "outbound"],
+        contract_id="warehouse360.pick_tasks",
+    )
+
+
+def map_wm_delivery_picks_rows(rows: list[dict]) -> list[dict]:
+    return map_rows_generic(
+        rows, numeric=("requested_quantity", "confirmed_quantity"), integer=(), boolean=()
+    )
+
+
+@dataclass
+class WmMovementsRequest:
+    plant_id: str
+    days: int = 7
+    event_category: Optional[str] = None
+    movement_type: Optional[str] = None
+    posted_by: Optional[str] = None
+    order_id: Optional[str] = None
+    delivery_id: Optional[str] = None
+    limit: int = 200
+
+
+def get_wm_movements_spec(request: WmMovementsRequest) -> QuerySpec:
+    # General movement-activity feed on the contracted wh360 goods-movements view,
+    # with the same bounded posting-date window as the wh360 route (cost control).
+    view = resolve_contract_object("warehouse360.goods_movements", "wh360")
+    params: dict[str, object] = {"plant_id": request.plant_id, "days": int(request.days)}
+    clauses = [
+        "plant_id = :plant_id",
+        "posting_date >= date_sub(current_date(), :days)",
+    ]
+    for field, col in (
+        ("event_category", "event_category"),
+        ("movement_type", "movement_type_code"),
+        ("posted_by", "posted_by"),
+        ("order_id", "order_number"),
+        ("delivery_id", "delivery_number"),
+    ):
+        value = getattr(request, field)
+        if value:
+            clauses.append(f"{col} = :{field}")
+            params[field] = value
+    sql = f"""
+    SELECT plant_id, document_number, fiscal_year, line_item, material_id, batch_id,
+        movement_type_code, movement_label, event_category, is_goods_receipt, is_goods_issue,
+        is_transfer, is_reversal, quantity, uom, posting_date, order_number, delivery_number,
+        posted_by, transaction_code
+    FROM {view}
+    WHERE {" AND ".join(clauses)}
+    ORDER BY posting_date DESC, document_number DESC
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="wm_operations.get_movements",
+        module="wh360",
+        endpoint="/api/wm-operations/movements",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "movements"],
+        contract_id="warehouse360.goods_movements",
+    )
+
+
+def map_wm_movements_rows(rows: list[dict]) -> list[dict]:
+    return map_rows_generic(
+        rows, numeric=("quantity",), integer=(),
+        boolean=("is_goods_receipt", "is_goods_issue", "is_transfer", "is_reversal"),
+    )
+
+
 class WmOperationsRepository:
     """Repository for the WM Operations read-only manager tools."""
 
@@ -888,6 +995,18 @@ class WmOperationsRepository:
     ) -> tuple[list[dict], QuerySpec]:
         return await self._repository.fetch(
             spec_factory=lambda: get_wm_recon_alerts_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_delivery_picks(self, request: WmDeliveryPicksRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_delivery_picks_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_movements(self, request: WmMovementsRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_movements_spec(request),
             mapper=lambda rows: rows,
         )
 
@@ -1034,6 +1153,52 @@ SIMPLE_DATASETS: dict[str, dict] = {
         integer=(), boolean=("is_counted", "is_recount_required", "is_difference_posted"),
         has_warehouse=False,
         open_only_clause="physical_inventory_status IN ('NOT_COUNTED', 'RECOUNT_REQUIRED', 'DIFFERENCE_NOT_POSTED')",
+    ),
+    "bin_occupancy": dict(
+        contract="wm_operations.bin_occupancy", endpoint="/api/wm-operations/bin-occupancy",
+        columns="plant_id, warehouse_id, storage_type, bin_type, bin_record_count, "
+                "occupied_bin_count, empty_bin_count, blocked_bin_count, "
+                "stock_removal_blocked_bin_count, putaway_blocked_bin_count, occupancy_rate, "
+                "total_stock_qty, available_stock_qty, open_transfer_stock_qty",
+        order_by="occupancy_rate DESC",
+        numeric=("occupancy_rate", "total_stock_qty", "available_stock_qty", "open_transfer_stock_qty"),
+        integer=("bin_record_count", "occupied_bin_count", "empty_bin_count", "blocked_bin_count",
+                 "stock_removal_blocked_bin_count", "putaway_blocked_bin_count"),
+        boolean=(), has_warehouse=True,
+    ),
+    "slow_movers": dict(
+        contract="wm_operations.slow_movers", endpoint="/api/wm-operations/slow-movers",
+        columns="plant_id, warehouse_id, material_id, material_name, batch_id, uom, quant_count, "
+                "total_qty, stock_value, standard_price, last_movement_ts, "
+                "earliest_goods_receipt_date, earliest_expiry_date, days_since_last_movement, age_bucket",
+        order_by="stock_value DESC NULLS LAST",
+        numeric=("total_qty", "stock_value", "standard_price"),
+        integer=("quant_count", "days_since_last_movement"), boolean=(), has_warehouse=True,
+        severity_col="age_bucket",
+    ),
+    "movement_control": dict(
+        contract="wm_operations.movement_control", endpoint="/api/wm-operations/movement-control",
+        columns="plant_id, warehouse_id, posting_date, material_id, batch_id, uom, "
+                "movement_type_code, im_document_line_count, im_qty, im_value, wm_to_line_count, "
+                "wm_qty, delta_qty, abs_delta_qty, movement_reconciliation_status",
+        order_by="abs_delta_qty DESC",
+        numeric=("im_qty", "im_value", "wm_qty", "delta_qty", "abs_delta_qty"),
+        integer=("im_document_line_count", "wm_to_line_count"), boolean=(), has_warehouse=True,
+        days_col="posting_date", severity_col="movement_reconciliation_status",
+    ),
+    "staging_pace": dict(
+        contract="wm_operations.staging_pace", endpoint="/api/wm-operations/staging-pace",
+        columns="plant_id, warehouse_id, destination_zone, activity_hour, items_staged, "
+                "qty_staged, operators",
+        order_by="activity_hour ASC",
+        numeric=("qty_staged",), integer=("items_staged", "operators"), boolean=(),
+        has_warehouse=True, days_col="activity_hour",
+    ),
+    "staging_demand": dict(
+        contract="wm_operations.staging_demand", endpoint="/api/wm-operations/staging-demand",
+        columns="plant_id, warehouse_id, work_area, demand_hour, open_trs, open_qty",
+        order_by="demand_hour ASC",
+        numeric=("open_qty",), integer=("open_trs",), boolean=(), has_warehouse=True,
     ),
 }
 

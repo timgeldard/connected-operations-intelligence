@@ -112,6 +112,14 @@ SELECT
 FROM connected_plant_prod.gold_io_reporting.gold_wm_bin_stock_detail_secured AS b;
 GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_wm_bin_stock_detail_live TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_wm_slow_movers_live AS
+SELECT
+  b.*,
+  CASE WHEN b.last_movement_datetime IS NOT NULL THEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) END AS days_since_last_movement,
+  CASE WHEN b.last_movement_datetime IS NULL THEN 'NO_MOVEMENT_RECORD' WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 365 THEN 'OVER_365D' WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 180 THEN 'D180_365' WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 90 THEN 'D90_180' ELSE 'ACTIVE' END AS age_bucket
+FROM connected_plant_prod.gold_io_reporting.gold_wm_slow_movers_secured AS b;
+GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_wm_slow_movers_live TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_warehouse_exceptions_live AS
 SELECT
   b.*,

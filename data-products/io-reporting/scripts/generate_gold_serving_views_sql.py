@@ -179,6 +179,19 @@ SERVING_VIEWS = {
         ("is_expired",
          "b.expiry_date IS NOT NULL AND b.expiry_date < current_date()"),
     ],
+    # WM slow movers: stock age served live so the base MV stays deterministic.
+    "gold_wm_slow_movers": [
+        ("days_since_last_movement",
+         "CASE WHEN b.last_movement_datetime IS NOT NULL "
+         "THEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) END"),
+        ("age_bucket",
+         "CASE "
+         "WHEN b.last_movement_datetime IS NULL THEN 'NO_MOVEMENT_RECORD' "
+         "WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 365 THEN 'OVER_365D' "
+         "WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 180 THEN 'D180_365' "
+         "WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 90 THEN 'D90_180' "
+         "ELSE 'ACTIVE' END"),
+    ],
     # Warehouse exceptions: the base MV stores ALL aging candidates with their reference date
     # (deterministic, incrementally refreshable); the per-type age thresholds, age_days and
     # detected_date are evaluated here at query time. Consumers must read _live, not _secured —

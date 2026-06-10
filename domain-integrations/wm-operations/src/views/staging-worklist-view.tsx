@@ -8,6 +8,7 @@ import { useWmWorklist, useWmWorklistSummary } from '../adapters/wm-operations-q
 import { ViewHeader, EmptyNote } from '../components/kerry.js'
 import { WorklistTable } from '../panels/worklist-table.js'
 import { OrderDetailOverlay } from '../components/overlays.js'
+import { consumeWorklistDeepLink } from '../state/deep-link.js'
 import { WorklistSummaryStrip } from '../panels/worklist-summary-strip.js'
 
 export interface StagingWorklistViewProps {
@@ -42,6 +43,7 @@ function restoreFilters(): { workArea: string; status: string; queue: string; ca
 }
 
 export function StagingWorklistView({ request }: StagingWorklistViewProps) {
+  const deepLink = consumeWorklistDeepLink()
   const saved = restoreFilters()
   const [workArea, setWorkArea] = useState<WmWorkArea | ''>(saved.workArea as WmWorkArea | '')
   const [status, setStatus] = useState<WmWorklistStatus | ''>(saved.status as WmWorklistStatus | '')
@@ -50,6 +52,7 @@ export function StagingWorklistView({ request }: StagingWorklistViewProps) {
   const [campaign, setCampaign] = useState(saved.campaign)
   const [appliedCampaign, setAppliedCampaign] = useState(saved.campaign)
   const [limit, setLimit] = useState(200)
+  const [reference, setReference] = useState(deepLink?.reference ?? '')
   // Filters persist across sessions (saved-preset behaviour, zero ceremony).
   const persist = (next: Partial<ReturnType<typeof restoreFilters>>) => {
     try { localStorage.setItem(FILTER_STORE, JSON.stringify({ workArea, status, queue: appliedQueue, campaign: appliedCampaign, ...next })) } catch { /* private mode */ }
@@ -63,6 +66,8 @@ export function StagingWorklistView({ request }: StagingWorklistViewProps) {
     status: status || undefined,
     queue: appliedQueue || undefined,
     campaign: appliedCampaign || undefined,
+    reference: reference || undefined,
+    includeComplete: Boolean(reference),
     limit,
   })
 
@@ -118,6 +123,12 @@ export function StagingWorklistView({ request }: StagingWorklistViewProps) {
             onKeyDown={e => { if (e.key === 'Enter') { setAppliedCampaign(campaign.trim()); persist({ campaign: campaign.trim() }) } }}
           />
         </div>
+        {reference && (
+          <div style={{ marginBottom: 8 }}>
+            <span className="kw-chip kw-chip--open">Order {reference}</span>
+            <button type="button" className="kw-link" style={{ marginLeft: 8 }} onClick={() => setReference('')}>clear</button>
+          </div>
+        )}
         {error ? (
           <EmptyNote>Could not load the worklist — {error.message}</EmptyNote>
         ) : (

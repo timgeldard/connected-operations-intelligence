@@ -331,3 +331,51 @@ SELECT plant_code AS plant_id, physical_inventory_document_number AS pi_document
   delta_value, is_counted, is_recount_required, is_difference_posted, physical_inventory_status
 FROM connected_plant_uat.gold_io_reporting.gold_physical_inventory_recon_secured
 WHERE plant_code IS NOT NULL;
+
+
+-- 19. Bin occupancy & capacity (putaway planning)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_bin_occupancy AS
+SELECT plant_code AS plant_id, warehouse_number AS warehouse_id, storage_type, bin_type,
+  bin_record_count, occupied_bin_count, empty_bin_count, blocked_bin_count,
+  stock_removal_blocked_bin_count, putaway_blocked_bin_count, occupancy_rate,
+  total_stock_qty, available_stock_qty, open_transfer_stock_qty
+FROM connected_plant_uat.gold_io_reporting.gold_bin_occupancy_secured
+WHERE plant_code IS NOT NULL;
+
+-- 20. Slow movers / dead stock (query-time aging)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_slow_movers AS
+SELECT plant_code AS plant_id, warehouse_number AS warehouse_id, material_code AS material_id,
+  material_description AS material_name, batch_number AS batch_id, base_uom AS uom,
+  quant_count, total_qty, stock_value, standard_price,
+  CAST(last_movement_datetime AS TIMESTAMP) AS last_movement_ts,
+  CAST(earliest_goods_receipt_date AS DATE) AS earliest_goods_receipt_date,
+  CAST(earliest_expiry_date AS DATE) AS earliest_expiry_date,
+  days_since_last_movement, age_bucket
+FROM connected_plant_uat.gold_io_reporting.gold_wm_slow_movers_live
+WHERE plant_code IS NOT NULL;
+
+-- 21. Movement control (IM postings vs WM confirmations)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_movement_control AS
+SELECT plant_code AS plant_id, warehouse_number AS warehouse_id,
+  CAST(posting_date AS DATE) AS posting_date, material_code AS material_id,
+  batch_number AS batch_id, base_uom AS uom, movement_type_code,
+  im_document_line_count, im_movement_quantity AS im_qty, im_movement_value AS im_value,
+  wm_to_line_count, wm_confirmed_quantity AS wm_qty,
+  delta_quantity AS delta_qty, abs_delta_quantity AS abs_delta_qty,
+  movement_reconciliation_status
+FROM connected_plant_uat.gold_io_reporting.gold_movement_reconciliation_secured
+WHERE plant_code IS NOT NULL;
+
+-- 22. Staging pace (hourly staged-in throughput — derived from TO flows; bulk-drop log not replicated)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_staging_pace AS
+SELECT plant_code AS plant_id, warehouse_number AS warehouse_id, destination_zone,
+  CAST(activity_hour AS TIMESTAMP) AS activity_hour, items_staged, qty_staged, operators
+FROM connected_plant_uat.gold_io_reporting.gold_wm_staging_pace_hourly_secured
+WHERE plant_code IS NOT NULL;
+
+-- 23. Staging demand wave (open TR qty by planned execution hour)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_staging_demand AS
+SELECT plant_code AS plant_id, warehouse_number AS warehouse_id, work_area,
+  CAST(demand_hour AS TIMESTAMP) AS demand_hour, open_trs, open_qty
+FROM connected_plant_uat.gold_io_reporting.gold_wm_staging_demand_hourly_secured
+WHERE plant_code IS NOT NULL;

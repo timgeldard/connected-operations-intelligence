@@ -1711,6 +1711,208 @@ export const WmOperationsPhysicalInventoryContract = {
   },
 } as const;
 
+/**
+ * Bin occupancy and capacity by storage type and bin type (putaway planning). Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_bin_occupancy
+ * Version: 0.1.0
+ */
+export interface WmOperationsBinOccupancy {
+  plant_id: string;
+  warehouse_id: string;
+  storage_type: string;
+  bin_type: string;
+  bin_record_count?: number;
+  occupied_bin_count?: number;
+  empty_bin_count?: number;
+  blocked_bin_count?: number;
+  stock_removal_blocked_bin_count?: number;
+  putaway_blocked_bin_count?: number;
+  occupancy_rate?: number;
+  total_stock_qty?: number;
+  available_stock_qty?: number;
+  open_transfer_stock_qty?: number;
+}
+
+export const WmOperationsBinOccupancyContract = {
+  id: "wm_operations.bin_occupancy",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_bin_occupancy",
+  grain: "one row per plant_id, warehouse_id, storage_type and bin_type",
+  primaryKey: ["plant_id", "warehouse_id", "storage_type", "bin_type"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Value-weighted stock aging by material and batch with query-time age buckets. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_slow_movers
+ * Version: 0.1.0
+ */
+export interface WmOperationsSlowMovers {
+  plant_id: string;
+  warehouse_id: string;
+  material_id: string;
+  material_name?: string;
+  batch_id?: string;
+  uom?: string;
+  quant_count?: number;
+  total_qty?: number;
+  stock_value?: number;
+  standard_price?: number;
+  last_movement_ts?: string;
+  earliest_goods_receipt_date?: string;
+  earliest_expiry_date?: string;
+  days_since_last_movement?: number;
+  age_bucket?: string;
+}
+
+export const WmOperationsSlowMoversContract = {
+  id: "wm_operations.slow_movers",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_slow_movers",
+  grain: "one row per plant_id, warehouse_id, material_id and batch_id",
+  primaryKey: ["plant_id", "warehouse_id", "material_id", "batch_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * IM goods-movement postings reconciled to WM confirmed-TO activity per posting date. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_movement_control
+ * Version: 0.1.0
+ */
+export interface WmOperationsMovementControl {
+  plant_id: string;
+  warehouse_id: string;
+  posting_date?: string;
+  material_id: string;
+  batch_id?: string;
+  uom?: string;
+  movement_type_code: string;
+  im_document_line_count?: number;
+  im_qty?: number;
+  im_value?: number;
+  wm_to_line_count?: number;
+  wm_qty?: number;
+  delta_qty?: number;
+  abs_delta_qty?: number;
+  movement_reconciliation_status?: string;
+}
+
+export const WmOperationsMovementControlContract = {
+  id: "wm_operations.movement_control",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_movement_control",
+  grain: "one row per plant_id, warehouse_id, posting_date, material_id, batch_id and movement_type_code",
+  primaryKey: ["plant_id", "warehouse_id", "posting_date", "material_id", "batch_id", "movement_type_code"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Hourly staged-in throughput (confirmed TO items into palletising/production-supply zones) — derived from TO flows pending bulk-drop log replication. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_staging_pace
+ * Version: 0.1.0
+ */
+export interface WmOperationsStagingPace {
+  plant_id: string;
+  warehouse_id: string;
+  destination_zone: string;
+  activity_hour: string;
+  items_staged?: number;
+  qty_staged?: number;
+  operators?: number;
+}
+
+export const WmOperationsStagingPaceContract = {
+  id: "wm_operations.staging_pace",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_staging_pace",
+  grain: "one row per plant_id, warehouse_id, destination_zone and activity_hour",
+  primaryKey: ["plant_id", "warehouse_id", "destination_zone", "activity_hour"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Planned staging demand wave: open TR quantity by planned execution hour and work area. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_staging_demand
+ * Version: 0.1.0
+ */
+export interface WmOperationsStagingDemand {
+  plant_id: string;
+  warehouse_id: string;
+  work_area: string;
+  demand_hour: string;
+  open_trs?: number;
+  open_qty?: number;
+}
+
+export const WmOperationsStagingDemandContract = {
+  id: "wm_operations.staging_demand",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_staging_demand",
+  grain: "one row per plant_id, warehouse_id, work_area and demand_hour",
+  primaryKey: ["plant_id", "warehouse_id", "work_area", "demand_hour"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
 export const ioReportingContracts = {
   contractVersion: "0.1.0",
   product: "connected-operations-intelligence",
@@ -1748,5 +1950,10 @@ export const ioReportingContracts = {
     "wm_operations.campaigns": WmOperationsCampaignsContract,
     "wm_operations.daily_activity": WmOperationsDailyActivityContract,
     "wm_operations.physical_inventory": WmOperationsPhysicalInventoryContract,
+    "wm_operations.bin_occupancy": WmOperationsBinOccupancyContract,
+    "wm_operations.slow_movers": WmOperationsSlowMoversContract,
+    "wm_operations.movement_control": WmOperationsMovementControlContract,
+    "wm_operations.staging_pace": WmOperationsStagingPaceContract,
+    "wm_operations.staging_demand": WmOperationsStagingDemandContract,
   },
 } as const;

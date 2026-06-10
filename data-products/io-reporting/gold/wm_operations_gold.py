@@ -948,3 +948,142 @@ def gold_wm_daily_activity():
         .withColumn("goods_receipt_lines", F.coalesce(F.col("goods_receipt_lines"), F.lit(0)))
         .withColumn("goods_issue_lines", F.coalesce(F.col("goods_issue_lines"), F.lit(0)))
     )
+
+
+# ── 10. SLOW MOVERS / DEAD STOCK ──────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Value-weighted stock aging at plant x warehouse x material x batch grain: quantity, "
+        "standard-price value, and the most recent movement timestamp. Query-time age and "
+        "aging buckets live in the _live view. Interim (9xx) zones excluded."
+    ),
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_wm_slow_movers():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+    storage_bin = spark.read.table(f"{ss}.storage_bin")
+    mapping = _storage_zone_mapping(spark, ss)
+    material = (
+        spark.read.table(f"{ss}.material")
+        .select("plant_code", "material_code", "material_description")
+        .distinct()
+    )
+    price = (
+        spark.read.table(f"{ss}.material_valuation")
+        .groupBy(F.col("valuation_area").alias("plant_code"), "material_code")
+        .agg(
+            F.first("standard_price", ignorenulls=True).alias("standard_price"),
+            F.first("price_unit", ignorenulls=True).alias("price_unit"),
+        )
+    )
+
+    quants = (
+        storage_bin
+        .filter(F.col("quant_number").isNotNull())
+        .join(
+            F.broadcast(mapping.select("plant_code", "warehouse_number", "storage_type", "storage_zone")),
+            ["plant_code", "warehouse_number", "storage_type"],
+            "left",
+        )
+        .withColumn(
+            "storage_zone",
+            F.coalesce(
+                F.col("storage_zone"),
+                F.when(F.col("storage_type").rlike("^9"), F.lit("INTERIM")).otherwise(F.lit("WAREHOUSE")),
+            ),
+        )
+        .filter(F.col("storage_zone") != "INTERIM")
+    )
+
+    return (
+        quants
+        .groupBy("plant_code", "warehouse_number", "material_code", "batch_number", "base_uom")
+        .agg(
+            F.count(F.lit(1)).alias("quant_count"),
+            F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("total_qty"),
+            F.max("last_movement_datetime").alias("last_movement_datetime"),
+            F.min("goods_receipt_date").alias("earliest_goods_receipt_date"),
+            F.min("expiry_date").alias("earliest_expiry_date"),
+        )
+        .join(F.broadcast(material), ["plant_code", "material_code"], "left")
+        .join(price, ["plant_code", "material_code"], "left")
+        .withColumn(
+            "stock_value",
+            F.col("total_qty")
+            * F.coalesce(F.col("standard_price"), F.lit(0.0))
+            / F.when(F.coalesce(F.col("price_unit"), F.lit(0)).cast("double") == 0, F.lit(1.0))
+             .otherwise(F.col("price_unit").cast("double")),
+        )
+    )
+
+
+# ── 11. STAGING PACE (hourly staged-in throughput) ───────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Hourly material-handler throughput INTO staging buffers: confirmed TO items whose "
+        "destination is a PALLETISING or PRODUCTION_SUPPLY zone, bucketed by confirmation "
+        "hour. Derived from TO flows (bulk-drop log ZWMA_BULK_DROP_TO_LOG not yet "
+        "replicated); feeds the staging-pace wave chart and the per-hour-of-day historical "
+        "baselines (avg / best) that define what a good day looks like."
+    ),
+    cluster_by=["plant_code", "activity_hour"],
+))
+def gold_wm_staging_pace_hourly():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+    tos = spark.read.table(f"{ss}.warehouse_transfer_order")
+    mapping = _storage_zone_mapping(spark, ss)
+
+    return (
+        tos
+        .filter(F.col("confirmed_datetime").isNotNull())
+        .join(
+            F.broadcast(
+                mapping.filter(F.col("storage_zone").isin("PALLETISING", "PRODUCTION_SUPPLY"))
+                .select(
+                    "plant_code", "warehouse_number",
+                    F.col("storage_type").alias("destination_storage_type"),
+                    F.col("storage_zone").alias("destination_zone"),
+                )
+            ),
+            ["plant_code", "warehouse_number", "destination_storage_type"],
+            "inner",
+        )
+        .withColumn("activity_hour", F.date_trunc("hour", F.col("confirmed_datetime")))
+        .groupBy("plant_code", "warehouse_number", "destination_zone", "activity_hour")
+        .agg(
+            F.count(F.lit(1)).alias("items_staged"),
+            F.coalesce(F.sum("confirmed_quantity"), F.lit(0.0)).alias("qty_staged"),
+            F.count_distinct("confirmed_by_user").alias("operators"),
+        )
+    )
+
+
+# ── 12. STAGING DEMAND (hourly planned demand wave) ──────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Planned staging demand wave: open TR quantity bucketed by planned execution hour "
+        "and work area. Compared against gold_wm_staging_pace_hourly to show whether "
+        "handlers are running ahead of or behind the wave."
+    ),
+    cluster_by=["plant_code", "demand_hour"],
+))
+def gold_wm_staging_demand_hourly():
+    worklist = dlt.read("gold_wm_staging_worklist")
+    return (
+        worklist
+        .filter(
+            (F.col("worklist_status") != "COMPLETE")
+            & F.col("planned_execution_datetime").isNotNull()
+        )
+        .withColumn("demand_hour", F.date_trunc("hour", F.col("planned_execution_datetime")))
+        .groupBy("plant_code", "warehouse_number", "work_area", "demand_hour")
+        .agg(
+            F.count(F.lit(1)).alias("open_trs"),
+            F.coalesce(F.sum("open_qty"), F.lit(0.0)).alias("open_qty"),
+        )
+    )
