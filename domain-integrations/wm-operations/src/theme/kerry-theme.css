@@ -304,6 +304,39 @@
   border-color: var(--kw-valentia-slate);
 }
 
+/* ── View navigation (Kerry pill tabs) ──────────────────────────────────── */
+
+.kerry-wm .kw-viewnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.kerry-wm .kw-viewnav-tab {
+  font-family: var(--kw-font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--kw-valentia-slate);
+  background: var(--kw-white);
+  border: 1px solid var(--kw-slate-20);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background var(--kw-dur-fast) var(--kw-ease-out),
+    color var(--kw-dur-fast) var(--kw-ease-out);
+}
+
+.kerry-wm .kw-viewnav-tab:hover {
+  background: var(--kw-slate-10);
+}
+
+.kerry-wm .kw-viewnav-tab--active {
+  background: var(--kw-valentia-slate);
+  border-color: var(--kw-valentia-slate);
+  color: var(--kw-white);
+}
+
 /* ── View header ────────────────────────────────────────────────────────── */
 
 .kerry-wm .kw-view-header { margin-bottom: 16px; }

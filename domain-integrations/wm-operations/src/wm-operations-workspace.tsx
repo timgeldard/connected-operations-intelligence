@@ -18,23 +18,52 @@ export type WmOperationsViewId =
 export interface WmOperationsWorkspaceProps {
   readonly scope: ScopeContext
   readonly viewId?: string
+  /** Shell URL-state setter for switching views (useWorkspaceShellState.setView). */
+  readonly onNavigateToView?: (viewId: string) => void
   readonly onNavigateToWorkspace?: (workspaceId: string) => void
 }
 
-const VALID_VIEWS: WmOperationsViewId[] = [
-  'staging-worklist',
-  'order-readiness',
-  'dispensary',
-  'stock-explorer',
+const VALID_VIEWS: Array<{ id: WmOperationsViewId; label: string }> = [
+  { id: 'staging-worklist', label: 'Staging & Picking' },
+  { id: 'order-readiness', label: 'Order Readiness' },
+  { id: 'dispensary', label: 'Dispensary' },
+  { id: 'stock-explorer', label: 'Stock & Bins' },
 ]
 
 function isValidViewId(viewId: string): viewId is WmOperationsViewId {
-  return VALID_VIEWS.includes(viewId as WmOperationsViewId)
+  return VALID_VIEWS.some(v => v.id === viewId)
+}
+
+/** Kerry-styled view switcher — the shell's WorkspaceTabs only update provider-local
+ * state, so content navigation must go through the shell URL setter. */
+function ViewNav({
+  activeViewId,
+  onNavigate,
+}: {
+  readonly activeViewId: string
+  readonly onNavigate?: (viewId: string) => void
+}) {
+  if (!onNavigate) return null
+  return (
+    <nav className="kw-viewnav" aria-label="WM Operations views">
+      {VALID_VIEWS.map(view => (
+        <button
+          key={view.id}
+          type="button"
+          className={`kw-viewnav-tab${view.id === activeViewId ? ' kw-viewnav-tab--active' : ''}`}
+          onClick={() => onNavigate(view.id)}
+        >
+          {view.label}
+        </button>
+      ))}
+    </nav>
+  )
 }
 
 export function WmOperationsWorkspace({
   scope,
   viewId = 'staging-worklist',
+  onNavigateToView,
 }: WmOperationsWorkspaceProps) {
   const request: WmOperationsAdapterRequest = {
     plantId: scope.plantId,
@@ -48,6 +77,7 @@ export function WmOperationsWorkspace({
       defaultViewId={isValidViewId(viewId) ? viewId : 'staging-worklist'}
     >
       <div className="kerry-wm" data-testid="wm-operations-workspace">
+        <ViewNav activeViewId={viewId} onNavigate={onNavigateToView} />
         {scope.plantId || scope.warehouseId ? (
           resolveView(viewId, request)
         ) : (

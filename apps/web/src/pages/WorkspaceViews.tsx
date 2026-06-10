@@ -168,6 +168,7 @@ export default function WorkspaceViews({ workspaceId }: Props) {
         <WmOperationsWorkspace
           scope={activeScope}
           viewId={viewId ?? 'staging-worklist'}
+          onNavigateToView={setView}
           onNavigateToWorkspace={setWorkspace}
         />
       </div>
