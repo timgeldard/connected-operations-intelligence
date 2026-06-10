@@ -1196,9 +1196,23 @@ SIMPLE_DATASETS: dict[str, dict] = {
     ),
     "staging_demand": dict(
         contract="wm_operations.staging_demand", endpoint="/api/wm-operations/staging-demand",
-        columns="plant_id, warehouse_id, work_area, demand_hour, open_trs, open_qty",
+        columns="plant_id, warehouse_id, work_area, production_supply_area, demand_hour, open_trs, open_qty",
         order_by="demand_hour ASC",
         numeric=("open_qty",), integer=("open_trs",), boolean=(), has_warehouse=True,
+    ),
+    "buffer_flow": dict(
+        contract="wm_operations.buffer_flow", endpoint="/api/wm-operations/buffer-flow",
+        columns="plant_id, warehouse_id, activity_hour, items_in, qty_in, items_out, qty_out, net_qty",
+        order_by="activity_hour ASC",
+        numeric=("qty_in", "qty_out", "net_qty"), integer=("items_in", "items_out"), boolean=(),
+        has_warehouse=True, days_col="activity_hour",
+    ),
+    "qm_lots": dict(
+        contract="wm_operations.qm_lots", endpoint="/api/wm-operations/qm-lots",
+        columns="plant_id, material_id, batch_id, lot_count, open_lot_count, latest_lot_number, "
+                "lot_origin_code, oldest_open_start_date, last_usage_decision, last_usage_decision_date",
+        order_by="open_lot_count DESC",
+        numeric=(), integer=("lot_count", "open_lot_count"), boolean=(), has_warehouse=False,
     ),
 }
 

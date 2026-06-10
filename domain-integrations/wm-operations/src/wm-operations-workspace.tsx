@@ -49,6 +49,8 @@ export interface WmOperationsWorkspaceProps {
   /** Shell URL-state setter for switching views (useWorkspaceShellState.setView). */
   readonly onNavigateToView?: (viewId: string) => void
   readonly onNavigateToWorkspace?: (workspaceId: string) => void
+  /** Opens the Process Order Review workspace scoped to one order (shell sets scope + workspace). */
+  readonly onOpenProcessOrder?: (orderId: string) => void
 }
 
 const VIEW_GROUPS: Array<{ label: string; views: Array<{ id: WmOperationsViewId; label: string }> }> = [
@@ -164,6 +166,7 @@ export function WmOperationsWorkspace({
   scope,
   viewId = 'staging-worklist',
   onNavigateToView,
+  onOpenProcessOrder,
 }: WmOperationsWorkspaceProps) {
   const request: WmOperationsAdapterRequest = {
     plantId: scope.plantId,
@@ -192,7 +195,7 @@ export function WmOperationsWorkspace({
       <div className="kerry-wm" data-testid="wm-operations-workspace">
         <ViewNav activeViewId={viewId} onNavigate={onNavigateToView} live={live} onToggleLive={() => setLive(v => !v)} lastRefresh={lastRefresh} />
         {scope.plantId || scope.warehouseId ? (
-          resolveView(viewId, request, onNavigateToView)
+          resolveView(viewId, request, onNavigateToView, onOpenProcessOrder)
         ) : (
           <>
             <ViewHeader
@@ -211,10 +214,10 @@ export function WmOperationsWorkspace({
   )
 }
 
-function resolveView(viewId: string, request: WmOperationsAdapterRequest, onNavigateToView?: (viewId: string) => void) {
+function resolveView(viewId: string, request: WmOperationsAdapterRequest, onNavigateToView?: (viewId: string) => void, onOpenProcessOrder?: (orderId: string) => void) {
   switch (viewId as WmOperationsViewId) {
     case 'order-readiness':
-      return <OrderReadinessView request={request} onNavigateToView={onNavigateToView} />
+      return <OrderReadinessView request={request} onNavigateToView={onNavigateToView} onOpenProcessOrder={onOpenProcessOrder} />
     case 'dispensary':
       return <DispensaryView request={request} />
     case 'stock-explorer':
@@ -247,6 +250,6 @@ function resolveView(viewId: string, request: WmOperationsAdapterRequest, onNavi
       return <StagingPaceView request={request} />
     case 'staging-worklist':
     default:
-      return <StagingWorklistView request={request} />
+      return <StagingWorklistView request={request} onOpenProcessOrder={onOpenProcessOrder} />
   }
 }

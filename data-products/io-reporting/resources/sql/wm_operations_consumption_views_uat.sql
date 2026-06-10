@@ -376,6 +376,25 @@ WHERE plant_code IS NOT NULL;
 -- 23. Staging demand wave (open TR qty by planned execution hour)
 CREATE OR REPLACE VIEW vw_consumption_wm_operations_staging_demand AS
 SELECT plant_code AS plant_id, warehouse_number AS warehouse_id, work_area,
+  production_supply_area,
   CAST(demand_hour AS TIMESTAMP) AS demand_hour, open_trs, open_qty
 FROM connected_plant_uat.gold_io_reporting.gold_wm_staging_demand_hourly_secured
+WHERE plant_code IS NOT NULL;
+
+
+-- 24. Staging buffer flow (hourly in/out of palletising — B(t) reconstruction input)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_buffer_flow AS
+SELECT plant_code AS plant_id, warehouse_number AS warehouse_id,
+  CAST(activity_hour AS TIMESTAMP) AS activity_hour,
+  items_in, qty_in, items_out, qty_out, net_qty
+FROM connected_plant_uat.gold_io_reporting.gold_wm_staging_buffer_flow_hourly_secured
+WHERE plant_code IS NOT NULL;
+
+-- 25. QM lot context (held-stock / inbound enrichment)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_qm_lots AS
+SELECT plant_code AS plant_id, material_code AS material_id, batch_number AS batch_id,
+  lot_count, open_lot_count, latest_lot_number, lot_origin_code,
+  CAST(oldest_open_start_date AS DATE) AS oldest_open_start_date,
+  last_usage_decision, last_usage_decision_date
+FROM connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_context_secured
 WHERE plant_code IS NOT NULL;

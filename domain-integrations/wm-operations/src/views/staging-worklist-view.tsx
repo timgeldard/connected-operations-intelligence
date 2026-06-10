@@ -13,6 +13,7 @@ import { WorklistSummaryStrip } from '../panels/worklist-summary-strip.js'
 
 export interface StagingWorklistViewProps {
   readonly request: WmOperationsAdapterRequest
+  readonly onOpenProcessOrder?: (orderId: string) => void
 }
 
 const WORK_AREA_OPTIONS: Array<{ value: WmWorkArea | ''; label: string }> = [
@@ -42,7 +43,7 @@ function restoreFilters(): { workArea: string; status: string; queue: string; ca
   }
 }
 
-export function StagingWorklistView({ request }: StagingWorklistViewProps) {
+export function StagingWorklistView({ request, onOpenProcessOrder }: StagingWorklistViewProps) {
   const deepLink = consumeWorklistDeepLink()
   const saved = restoreFilters()
   const [workArea, setWorkArea] = useState<WmWorkArea | ''>(saved.workArea as WmWorkArea | '')
@@ -151,6 +152,7 @@ export function StagingWorklistView({ request }: StagingWorklistViewProps) {
           plantId={drillOrder.plantId}
           orderId={drillOrder.orderId}
           onClose={() => setDrillOrder(null)}
+          onOpenProcessOrder={onOpenProcessOrder}
         />
       )}
     </section>

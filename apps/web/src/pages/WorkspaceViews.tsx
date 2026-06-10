@@ -33,7 +33,7 @@ interface Props {
 export default function WorkspaceViews({ workspaceId }: Props) {
   const { investigationId, releaseCaseId, planDate, viewId, setReleaseCaseId, navigateToBatchRelease, setView, setWorkspace } =
     useWorkspaceShellState()
-  const { activeScope } = useAuthScope()
+  const { activeScope, setActiveScope } = useAuthScope()
 
   if (workspaceId === 'trace-investigation') {
     return (
@@ -170,6 +170,10 @@ export default function WorkspaceViews({ workspaceId }: Props) {
           viewId={viewId ?? 'staging-worklist'}
           onNavigateToView={setView}
           onNavigateToWorkspace={setWorkspace}
+          onOpenProcessOrder={orderId => {
+            setActiveScope({ processOrderId: orderId })
+            setWorkspace('process-order-review')
+          }}
         />
       </div>
     )

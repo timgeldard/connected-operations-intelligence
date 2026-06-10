@@ -1888,6 +1888,7 @@ export interface WmOperationsStagingDemand {
   plant_id: string;
   warehouse_id: string;
   work_area: string;
+  production_supply_area?: string;
   demand_hour: string;
   open_trs?: number;
   open_qty?: number;
@@ -1900,12 +1901,88 @@ export const WmOperationsStagingDemandContract = {
   owner: "warehouse-operations",
   lifecycle: "draft",
   sourceView: "vw_consumption_wm_operations_staging_demand",
-  grain: "one row per plant_id, warehouse_id, work_area and demand_hour",
+  grain: "one row per plant_id, warehouse_id, work_area, production_supply_area and demand_hour",
   primaryKey: ["plant_id", "warehouse_id", "work_area", "demand_hour"],
   freshness: {
     expectedMinutes: 30,
     warningMinutes: 60,
     criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Hourly flows in/out of the palletising (bulk-drop) buffer from confirmed TO items — input for client-side B(t) buffer reconstruction. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_buffer_flow
+ * Version: 0.1.0
+ */
+export interface WmOperationsBufferFlow {
+  plant_id: string;
+  warehouse_id: string;
+  activity_hour: string;
+  items_in?: number;
+  qty_in?: number;
+  items_out?: number;
+  qty_out?: number;
+  net_qty?: number;
+}
+
+export const WmOperationsBufferFlowContract = {
+  id: "wm_operations.buffer_flow",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_buffer_flow",
+  grain: "one row per plant_id, warehouse_id and activity_hour",
+  primaryKey: ["plant_id", "warehouse_id", "activity_hour"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Quality inspection-lot context per material and batch (open lots, latest usage decision) for held-stock and inbound enrichment. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_qm_lots
+ * Version: 0.1.0
+ */
+export interface WmOperationsQmLots {
+  plant_id: string;
+  material_id: string;
+  batch_id?: string;
+  lot_count?: number;
+  open_lot_count?: number;
+  latest_lot_number?: string;
+  lot_origin_code?: string;
+  oldest_open_start_date?: string;
+  last_usage_decision?: string;
+  last_usage_decision_date?: string;
+}
+
+export const WmOperationsQmLotsContract = {
+  id: "wm_operations.qm_lots",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_qm_lots",
+  grain: "one row per plant_id, material_id and batch_id",
+  primaryKey: ["plant_id", "material_id", "batch_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
   },
   accessPolicy: {
     rowLevelKey: "plant_id",
@@ -1955,5 +2032,7 @@ export const ioReportingContracts = {
     "wm_operations.movement_control": WmOperationsMovementControlContract,
     "wm_operations.staging_pace": WmOperationsStagingPaceContract,
     "wm_operations.staging_demand": WmOperationsStagingDemandContract,
+    "wm_operations.buffer_flow": WmOperationsBufferFlowContract,
+    "wm_operations.qm_lots": WmOperationsQmLotsContract,
   },
 } as const;

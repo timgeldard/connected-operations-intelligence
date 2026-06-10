@@ -22,6 +22,7 @@ export function InboundView({ request }: { readonly request: WmOperationsAdapter
   const scope = { plant_id: request.plantId, warehouse_id: request.warehouseId }
   const backlog = useWmList<InboundLine>('/api/wm-operations/inbound', { plant_id: request.plantId, limit: 200 })
   const hus = useWmList<HuSummary>('/api/wm-operations/handling-units', scope)
+  const qm = useWmList<{ openLotCount: number | null; lotOriginCode: string | null }>('/api/wm-operations/qm-lots', { plant_id: request.plantId, limit: 1000 })
 
   const lines = backlog.data?.ok ? backlog.data.data : []
   const huRows = hus.data?.ok ? hus.data.data : []
@@ -30,6 +31,8 @@ export function InboundView({ request }: { readonly request: WmOperationsAdapter
   const aged = lines.filter(l => l.inboundBacklogRiskBand === 'red').length
   const watch = lines.filter(l => l.inboundBacklogRiskBand === 'amber').length
   const ssccTotal = huRows.reduce((s, h) => s + (h.distinctSsccCount ?? 0), 0)
+  const qmRows = qm.data?.ok ? qm.data.data : []
+  const openGrLots = qmRows.filter(l => l.lotOriginCode === '01' && (l.openLotCount ?? 0) > 0).length
 
   return (
     <section>
@@ -43,6 +46,7 @@ export function InboundView({ request }: { readonly request: WmOperationsAdapter
         <KpiTile label="Aged ≥30d" value={aged} tone={aged > 0 ? 'alert' : 'none'} />
         <KpiTile label="Aged 14-30d" value={watch} tone={watch > 0 ? 'warn' : 'none'} />
         <KpiTile label="SSCCs on site" value={ssccTotal.toLocaleString()} />
+        <KpiTile label="Open GR inspection lots" value={openGrLots} tone={openGrLots > 0 ? 'warn' : 'none'} />
       </div>
 
       <div className="kw-card">

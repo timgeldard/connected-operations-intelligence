@@ -1073,17 +1073,130 @@ def gold_wm_staging_pace_hourly():
     cluster_by=["plant_code", "demand_hour"],
 ))
 def gold_wm_staging_demand_hourly():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
     worklist = dlt.read("gold_wm_staging_worklist")
+    # Order-level PSA (first non-null component PRVBE) — the hyper-local "area within
+    # plant" axis; TRs without an order reference keep a null area.
+    psa_by_order = (
+        spark.read.table(f"{ss}.reservation_requirement")
+        .filter(F.col("production_supply_area").isNotNull())
+        .groupBy("order_number")
+        .agg(F.first("production_supply_area", ignorenulls=True).alias("production_supply_area"))
+    )
     return (
         worklist
         .filter(
             (F.col("worklist_status") != "COMPLETE")
             & F.col("planned_execution_datetime").isNotNull()
         )
+        .join(
+            psa_by_order,
+            (worklist["source_reference_type"] == TR_ORDER_REFERENCE_TYPE)
+            & (worklist["source_reference_number"] == psa_by_order["order_number"]),
+            "left",
+        )
         .withColumn("demand_hour", F.date_trunc("hour", F.col("planned_execution_datetime")))
-        .groupBy("plant_code", "warehouse_number", "work_area", "demand_hour")
+        .groupBy("plant_code", "warehouse_number", "work_area", "production_supply_area", "demand_hour")
         .agg(
             F.count(F.lit(1)).alias("open_trs"),
             F.coalesce(F.sum("open_qty"), F.lit(0.0)).alias("open_qty"),
+        )
+    )
+
+
+# ── 13. STAGING BUFFER FLOW (hourly in/out of palletising) ────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Hourly flows in and out of the palletising (bulk-drop) buffer from confirmed TO "
+        "items: in = destination zone PALLETISING, out = source zone PALLETISING. The app "
+        "reconstructs the buffer level B(t) by cumulating net flow and anchoring the latest "
+        "point to current palletising-zone stock."
+    ),
+    cluster_by=["plant_code", "activity_hour"],
+))
+def gold_wm_staging_buffer_flow_hourly():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+    tos = spark.read.table(f"{ss}.warehouse_transfer_order").filter(
+        F.col("confirmed_datetime").isNotNull()
+    )
+    mapping = _storage_zone_mapping(spark, ss)
+    pall = mapping.filter(F.col("storage_zone") == "PALLETISING").select(
+        "plant_code", "warehouse_number", "storage_type"
+    )
+
+    inflow = (
+        tos.join(
+            F.broadcast(pall.withColumnRenamed("storage_type", "destination_storage_type")),
+            ["plant_code", "warehouse_number", "destination_storage_type"],
+            "inner",
+        )
+        .withColumn("activity_hour", F.date_trunc("hour", F.col("confirmed_datetime")))
+        .groupBy("plant_code", "warehouse_number", "activity_hour")
+        .agg(
+            F.count(F.lit(1)).alias("items_in"),
+            F.coalesce(F.sum("confirmed_quantity"), F.lit(0.0)).alias("qty_in"),
+        )
+    )
+    outflow = (
+        tos.join(
+            F.broadcast(pall.withColumnRenamed("storage_type", "source_storage_type")),
+            ["plant_code", "warehouse_number", "source_storage_type"],
+            "inner",
+        )
+        .withColumn("activity_hour", F.date_trunc("hour", F.col("confirmed_datetime")))
+        .groupBy("plant_code", "warehouse_number", "activity_hour")
+        .agg(
+            F.count(F.lit(1)).alias("items_out"),
+            F.coalesce(F.sum("confirmed_quantity"), F.lit(0.0)).alias("qty_out"),
+        )
+    )
+
+    keys = ["plant_code", "warehouse_number", "activity_hour"]
+    return (
+        inflow.join(outflow, keys, "full")
+        .withColumn("items_in", F.coalesce(F.col("items_in"), F.lit(0)))
+        .withColumn("qty_in", F.coalesce(F.col("qty_in"), F.lit(0.0)))
+        .withColumn("items_out", F.coalesce(F.col("items_out"), F.lit(0)))
+        .withColumn("qty_out", F.coalesce(F.col("qty_out"), F.lit(0.0)))
+        .withColumn("net_qty", F.col("qty_in") - F.col("qty_out"))
+    )
+
+
+# ── 14. QM LOT CONTEXT (held-stock enrichment) ────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Quality inspection-lot context per plant x material x batch: open (pending usage "
+        "decision) lot counts and the latest decision. Joined client-side onto Stock Health "
+        "held stock and Inbound to answer 'why is this batch in QI and when is the UD due'."
+    ),
+    cluster_by=["plant_code", "material_code"],
+))
+def gold_wm_qm_lot_context():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+    lots = spark.read.table(f"{ss}.quality_inspection_lot").filter(
+        ~F.coalesce(F.col("is_deletion_flagged"), F.lit(False))
+    )
+
+    return (
+        lots
+        .withColumn("_is_open", (F.col("usage_decision") == "Pending").cast("int"))
+        .groupBy("plant_code", "material_code", "batch_number")
+        .agg(
+            F.count(F.lit(1)).alias("lot_count"),
+            F.sum("_is_open").alias("open_lot_count"),
+            F.max("inspection_lot_number").alias("latest_lot_number"),
+            F.first("inspection_lot_origin_code", ignorenulls=True).alias("lot_origin_code"),
+            F.min(
+                F.when(F.col("_is_open") == 1, F.col("inspection_start_date"))
+            ).alias("oldest_open_start_date"),
+            F.expr(
+                "max_by(usage_decision, coalesce(usage_decision_date, ''))"
+            ).alias("last_usage_decision"),
+            F.max("usage_decision_date").alias("last_usage_decision_date"),
         )
     )

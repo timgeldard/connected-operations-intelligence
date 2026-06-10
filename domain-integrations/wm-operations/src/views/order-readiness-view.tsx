@@ -16,6 +16,7 @@ import {
 export interface OrderReadinessViewProps {
   readonly request: WmOperationsAdapterRequest
   readonly onNavigateToView?: (viewId: string) => void
+  readonly onOpenProcessOrder?: (orderId: string) => void
 }
 
 const COVERAGE_LABEL: Record<string, string> = {
@@ -44,7 +45,7 @@ const HORIZONS = [
   { value: '30', label: 'Next 30 days' },
 ] as const
 
-export function OrderReadinessView({ request, onNavigateToView }: OrderReadinessViewProps) {
+export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrder }: OrderReadinessViewProps) {
   const [horizon, setHorizon] = useState('')
   const [drillOrder, setDrillOrder] = useState<{ orderId: string; label?: string } | null>(null)
   const result = useWmOrderReadiness({
@@ -155,6 +156,7 @@ export function OrderReadinessView({ request, onNavigateToView }: OrderReadiness
           orderId={drillOrder.orderId}
           orderLabel={drillOrder.label}
           onClose={() => setDrillOrder(null)}
+          onOpenProcessOrder={onOpenProcessOrder}
         />
       )}
     </section>

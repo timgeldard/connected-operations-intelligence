@@ -13,6 +13,11 @@ interface HoldLine {
   quantId: string; materialId: string | null; batchId: string | null; holdType: string
   qty: number | null; uom: string | null; goodsReceiptDate: string | null; ageHours: number | null
 }
+interface QmLot {
+  plantId: string; materialId: string; batchId: string | null
+  openLotCount: number | null; latestLotNumber: string | null
+  lastUsageDecision: string | null; oldestOpenStartDate: string | null
+}
 interface ExceptionLine {
   plantId: string; warehouseId: string | null; exceptionType: string; severity: string | null
   materialId: string | null; batchId: string | null; referenceId: string; qty: number | null
@@ -29,10 +34,13 @@ export function StockHealthView({ request }: { readonly request: WmOperationsAda
   const expiry = useWmList<ExpiryLine>('/api/wm-operations/expiry-risk', { plant_id: request.plantId, limit: 300 })
   const holds = useWmList<HoldLine>('/api/wm-operations/stock-holds', { plant_id: request.plantId, warehouse_id: request.warehouseId, limit: 200 })
   const exceptions = useWmList<ExceptionLine>('/api/wm-operations/exceptions', { plant_id: request.plantId, warehouse_id: request.warehouseId, limit: 200 })
+  const qm = useWmList<QmLot>('/api/wm-operations/qm-lots', { plant_id: request.plantId, limit: 1000 })
 
   const expiryRows = expiry.data?.ok ? expiry.data.data : []
   const holdRows = holds.data?.ok ? holds.data.data : []
   const exceptionRows = exceptions.data?.ok ? exceptions.data.data : []
+  const qmRows = qm.data?.ok ? qm.data.data : []
+  const qmByKey = new Map(qmRows.map(l => [`${l.materialId}|${l.batchId ?? ''}`, l]))
 
   const expired = expiryRows.filter(r => r.highestExpiryRiskBucket === 'EXPIRED').length
   const next7 = expiryRows.filter(r => r.highestExpiryRiskBucket === 'LT_7_DAYS').length
@@ -80,7 +88,7 @@ export function StockHealthView({ request }: { readonly request: WmOperationsAda
         {holds.isLoading ? <LoadingRows rows={4} /> : holdRows.length === 0 ? <EmptyNote>No held stock.</EmptyNote> : (
           <div className="kw-table-wrap">
             <table className="kw-table">
-              <thead><tr><th>Hold</th><th>ST</th><th>Bin</th><th>Material</th><th>Batch</th><th>Qty</th><th>GR date</th><th>Age</th></tr></thead>
+              <thead><tr><th>Hold</th><th>ST</th><th>Bin</th><th>Material</th><th>Batch</th><th>Qty</th><th>GR date</th><th>Age</th><th>QM lot</th><th>UD</th></tr></thead>
               <tbody>
                 {holdRows.slice(0, 40).map(h => (
                   <tr key={`${h.warehouseId}-${h.quantId}`}>
@@ -92,6 +100,10 @@ export function StockHealthView({ request }: { readonly request: WmOperationsAda
                     <td className="kw-num">{formatQty(h.qty, h.uom)}</td>
                     <td className="kw-num">{formatDate(h.goodsReceiptDate)}</td>
                     <td className="kw-num">{h.ageHours != null ? `${Math.round(h.ageHours / 24)}d` : '—'}</td>
+                    {(() => { const lot = qmByKey.get(`${h.materialId}|${h.batchId ?? ''}`); return (<>
+                      <td className="kw-mono">{lot?.latestLotNumber ?? '—'}</td>
+                      <td>{lot ? <span className={`kw-chip ${(lot.openLotCount ?? 0) > 0 ? 'kw-chip--parked' : 'kw-chip--complete'}`}>{(lot.openLotCount ?? 0) > 0 ? `Pending since ${lot.oldestOpenStartDate ?? '?'}` : lot.lastUsageDecision ?? '—'}</span> : '—'}</td>
+                    </>) })()}
                   </tr>
                 ))}
               </tbody>

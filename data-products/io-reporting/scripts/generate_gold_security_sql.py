@@ -142,6 +142,8 @@ GOLD_TABLES = [
     "gold_wm_slow_movers",
     "gold_wm_staging_pace_hourly",
     "gold_wm_staging_demand_hourly",
+    "gold_wm_staging_buffer_flow_hourly",
+    "gold_wm_qm_lot_context",
 ]
 
 TEMPLATE = """-- Unity Catalog Gold row-level security — secured serving views ({env_upper}).

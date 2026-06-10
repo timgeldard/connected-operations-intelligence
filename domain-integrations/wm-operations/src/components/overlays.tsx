@@ -26,11 +26,12 @@ function Overlay({ title, subtitle, onClose, children }: {
 }
 
 /** Screen 1 — component-level "why isn't this order ready?" drill-through. */
-export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose }: {
+export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose, onOpenProcessOrder }: {
   readonly plantId: string
   readonly orderId: string
   readonly orderLabel?: string
   readonly onClose: () => void
+  readonly onOpenProcessOrder?: (orderId: string) => void
 }) {
   const result = useWmOrderComponents({ plantId, orderId })
   const rows = result.data?.ok ? result.data.data : []
@@ -38,6 +39,13 @@ export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose }: {
 
   return (
     <Overlay title={`Order ${orderId}`} subtitle={orderLabel ?? 'Component staging detail'} onClose={onClose}>
+      {onOpenProcessOrder && (
+        <div style={{ marginBottom: 10 }}>
+          <button type="button" className="kw-viewnav-tab" onClick={() => onOpenProcessOrder(orderId)}>
+            Open in Process Order Review →
+          </button>
+        </div>
+      )}
       {error ? (
         <EmptyNote>Could not load components — {error.message}</EmptyNote>
       ) : result.isLoading ? (

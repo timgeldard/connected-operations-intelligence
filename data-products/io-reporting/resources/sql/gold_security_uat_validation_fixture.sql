@@ -952,6 +952,42 @@ CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_dem
   );
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_demand_hourly_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_buffer_flow_hourly_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_staging_buffer_flow_hourly
+  WHERE EXISTS (
+    SELECT 1 FROM connected_plant_uat.gold_io_reporting.security_model_fixture
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+      AND COALESCE(enabled, true)
+    UNION ALL
+    SELECT 1 FROM connected_plant_uat.gold_io_reporting.security_model_fixture
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+      AND COALESCE(enabled, true)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_buffer_flow_hourly_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_context_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_context
+  WHERE EXISTS (
+    SELECT 1 FROM connected_plant_uat.gold_io_reporting.security_model_fixture
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+      AND COALESCE(enabled, true)
+    UNION ALL
+    SELECT 1 FROM connected_plant_uat.gold_io_reporting.security_model_fixture
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+      AND COALESCE(enabled, true)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_context_secured TO `users`;
+
 -- ── Base-table access hardening ──
 -- The actual REVOKE statements are generated as a SEPARATE admin script
 -- (resources/sql/gold_security_harden_uat.sql). Apply it AFTER this script so plant-scoped users

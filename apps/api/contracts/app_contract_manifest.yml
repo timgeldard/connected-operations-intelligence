@@ -2741,7 +2741,7 @@ contracts:
     description: >
       Planned staging demand wave: open TR quantity by planned execution hour and work area. Candidate contract pending DEV profiling.
     source_view: vw_consumption_wm_operations_staging_demand
-    grain: one row per plant_id, warehouse_id, work_area and demand_hour
+    grain: one row per plant_id, warehouse_id, work_area, production_supply_area and demand_hour
     primary_key:
       - plant_id
       - warehouse_id
@@ -2764,6 +2764,9 @@ contracts:
       - name: work_area
         type: string
         required: true
+      - name: production_supply_area
+        type: string
+        required: false
       - name: demand_hour
         type: timestamp
         required: true
@@ -2772,4 +2775,104 @@ contracts:
         required: false
       - name: open_qty
         type: double
+        required: false
+
+  - id: wm_operations.buffer_flow
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Hourly flows in/out of the palletising (bulk-drop) buffer from confirmed TO items —
+      input for client-side B(t) buffer reconstruction. Candidate contract pending DEV profiling.
+    source_view: vw_consumption_wm_operations_buffer_flow
+    grain: one row per plant_id, warehouse_id and activity_hour
+    primary_key:
+      - plant_id
+      - warehouse_id
+      - activity_hour
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: warehouse_id
+        type: string
+        required: true
+      - name: activity_hour
+        type: timestamp
+        required: true
+      - name: items_in
+        type: long
+        required: false
+      - name: qty_in
+        type: double
+        required: false
+      - name: items_out
+        type: long
+        required: false
+      - name: qty_out
+        type: double
+        required: false
+      - name: net_qty
+        type: double
+        required: false
+
+  - id: wm_operations.qm_lots
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Quality inspection-lot context per material and batch (open lots, latest usage
+      decision) for held-stock and inbound enrichment. Candidate contract pending DEV profiling.
+    source_view: vw_consumption_wm_operations_qm_lots
+    grain: one row per plant_id, material_id and batch_id
+    primary_key:
+      - plant_id
+      - material_id
+      - batch_id
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: material_id
+        type: string
+        required: true
+      - name: batch_id
+        type: string
+        required: false
+      - name: lot_count
+        type: long
+        required: false
+      - name: open_lot_count
+        type: long
+        required: false
+      - name: latest_lot_number
+        type: string
+        required: false
+      - name: lot_origin_code
+        type: string
+        required: false
+      - name: oldest_open_start_date
+        type: date
+        required: false
+      - name: last_usage_decision
+        type: string
+        required: false
+      - name: last_usage_decision_date
+        type: string
         required: false

@@ -9,7 +9,13 @@ interface PaceRow {
 }
 interface DemandRow {
   plantId: string; warehouseId: string; workArea: string
+  productionSupplyArea?: string | null
   demandHour: string; openTrs: number | null; openQty: number | null
+}
+interface FlowRow {
+  plantId: string; warehouseId: string; activityHour: string
+  itemsIn: number | null; qtyIn: number | null; itemsOut: number | null
+  qtyOut: number | null; netQty: number | null
 }
 
 const hourKey = (ts: string) => ts.slice(0, 13) // YYYY-MM-DDTHH
@@ -28,10 +34,12 @@ export function StagingPaceView({ request }: { readonly request: WmOperationsAda
   const pace = useWmList<PaceRow>('/api/wm-operations/staging-pace', { ...scope, days: 366, limit: 1000 })
   const demand = useWmList<DemandRow>('/api/wm-operations/staging-demand', { ...scope, limit: 1000 })
   const buffer = useWmBinStock({ ...request, storageZone: 'PALLETISING', limit: 1000 })
+  const flow = useWmList<FlowRow>('/api/wm-operations/buffer-flow', { ...scope, days: 366, limit: 1000 })
 
   const paceRows = pace.data?.ok ? pace.data.data : []
   const demandRows = demand.data?.ok ? demand.data.data : []
   const bufferRows = buffer.data?.ok ? buffer.data.data : []
+  const flowRows = (flow.data?.ok ? flow.data.data : []).slice().sort((a, b) => a.activityHour.localeCompare(b.activityHour))
 
   // Anchor the wave on the latest activity in the data (works on frozen snapshots too).
   const maxHour = paceRows.reduce((m, r) => (r.activityHour > m ? r.activityHour : m), '')
@@ -74,6 +82,28 @@ export function StagingPaceView({ request }: { readonly request: WmOperationsAda
 
   const maxBar = Math.max(1, ...windowKeys.map(k => Math.max(stagedByHour.get(k) ?? 0, demandByHour.get(k) ?? 0)))
 
+  // B(t): cumulate net flow, anchor the final point to the live palletising stock.
+  const flowInWindow = flowRows.filter(r => windowKeys.includes(hourKey(r.activityHour)))
+  let running = 0
+  const bSeries = flowInWindow.map(r => ({ k: hourKey(r.activityHour), b: (running += r.netQty ?? 0) }))
+  const bOffset = bSeries.length ? bufferQty - bSeries[bSeries.length - 1].b : 0
+  const bByHour = new Map(bSeries.map(p => [p.k, p.b + bOffset]))
+  const maxB = Math.max(1, ...[...bByHour.values()].map(v => Math.abs(v)))
+
+  // Hours of cover: live buffer vs average hourly out-flow over the active window.
+  const activeOutHours = flowInWindow.filter(r => (r.qtyOut ?? 0) > 0)
+  const avgOutPerHour = activeOutHours.length
+    ? activeOutHours.reduce((s, r) => s + (r.qtyOut ?? 0), 0) / activeOutHours.length
+    : 0
+  const hoursOfCover = avgOutPerHour > 0 ? bufferQty / avgOutPerHour : null
+
+  // Demand by production supply area (the hyper-local axis).
+  const demandByPsa = new Map<string, number>()
+  for (const r of demandRows) {
+    const k = r.productionSupplyArea ?? '(no area)'
+    demandByPsa.set(k, (demandByPsa.get(k) ?? 0) + (r.openTrs ?? 0))
+  }
+
   return (
     <section>
       <ViewHeader
@@ -85,6 +115,11 @@ export function StagingPaceView({ request }: { readonly request: WmOperationsAda
         <KpiTile label="Buffer in palletising" value={bufferQty.toLocaleString(undefined, { maximumFractionDigits: 0 })} />
         <KpiTile label="Open demand (TRs)" value={openDemandTotal.toLocaleString()} tone={openDemandTotal > 0 ? 'warn' : 'ok'} />
         <KpiTile label="Staged last hour" value={lastHourStaged} />
+        <KpiTile
+          label="Hours of cover"
+          value={hoursOfCover != null ? hoursOfCover.toFixed(1) : '—'}
+          tone={hoursOfCover == null ? 'none' : hoursOfCover >= 4 ? 'ok' : hoursOfCover >= 2 ? 'warn' : 'alert'}
+        />
         <KpiTile
           label="Pace vs hourly avg"
           value={paceVsAvg != null ? `${paceVsAvg}%` : '—'}
@@ -122,6 +157,42 @@ export function StagingPaceView({ request }: { readonly request: WmOperationsAda
       </div>
 
       <div className="kw-card">
+        <div className="kw-card-title">Buffer level B(t) — reconstructed from flows, anchored to live stock</div>
+        {flow.isLoading ? <LoadingRows rows={3} /> : bByHour.size === 0 ? (
+          <EmptyNote>No buffer flow recorded in the window.</EmptyNote>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 100 }}>
+            {windowKeys.map(k => {
+              const b = bByHour.get(k)
+              return (
+                <div key={k} title={`${k}:00 — buffer ${b != null ? Math.round(b).toLocaleString() : 'n/a'}`}
+                     style={{ flex: 1, minWidth: 4,
+                       height: b != null ? `${Math.max(2, (Math.abs(b) / maxB) * 100)}%` : '2px',
+                       background: b != null && b < 0 ? 'var(--kw-sunset)' : 'var(--kw-sage)',
+                       borderRadius: '2px 2px 0 0', opacity: b == null ? 0.2 : 1 }} />
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="kw-card">
+        <div className="kw-card-title">Open demand by production supply area</div>
+        {demandByPsa.size === 0 ? <EmptyNote>No open demand.</EmptyNote> : (
+          <div className="kw-table-wrap">
+            <table className="kw-table">
+              <thead><tr><th>Area</th><th>Open TRs</th></tr></thead>
+              <tbody>
+                {[...demandByPsa.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([area, trs]) => (
+                  <tr key={area}><td className="kw-mono">{area}</td><td className="kw-num">{trs}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="kw-card">
         <div className="kw-card-title">What good looks like — items staged per hour of day (history)</div>
         {pace.isLoading ? <LoadingRows rows={3} /> : byHourOfDay.size === 0 ? (
           <EmptyNote>Not enough history to baseline yet.</EmptyNote>
@@ -135,6 +206,16 @@ export function StagingPaceView({ request }: { readonly request: WmOperationsAda
                   {[...Array(24).keys()].map(h => {
                     const b = byHourOfDay.get(h)
                     return <td key={h} className="kw-num">{b && b.days ? Math.round(b.total / b.days) : '—'}</td>
+                  })}
+                </tr>
+                <tr>
+                  <td className="kw-eyebrow">Avg / operator</td>
+                  {[...Array(24).keys()].map(h => {
+                    const rowsAtHour = paceRows.filter(r => hourOfDay(r.activityHour) === h && (r.operators ?? 0) > 0)
+                    const perOp = rowsAtHour.length
+                      ? rowsAtHour.reduce((s, r) => s + (r.itemsStaged ?? 0) / (r.operators ?? 1), 0) / rowsAtHour.length
+                      : null
+                    return <td key={h} className="kw-num">{perOp != null ? Math.round(perOp) : '—'}</td>
                   })}
                 </tr>
                 <tr>
