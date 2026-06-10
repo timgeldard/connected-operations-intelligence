@@ -37,7 +37,7 @@ vi.mock('../adapters/warehouse-360-queries.js', () => ({
         {
           movementId: 'TO-2024-001923',
           timestamp: '2026-05-14T09:15:00.000Z',
-          movementType: 'transfer-order',
+          movementType: 'transfer',
           materialId: 'MAT-RM-RAW-MILK',
           materialDescription: 'Raw Milk',
           quantity: 5000,

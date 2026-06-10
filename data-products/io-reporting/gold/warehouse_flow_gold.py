@@ -1413,3 +1413,59 @@ def gold_transfer_requirement_open_items():
         )
     )
 
+@dlt.table(**gold_table_args(
+    comment=(
+        "Goods-movement activity feed at MSEG-line grain (IM postings joined to the "
+        "movement-type classification). High-volume table: consumers MUST filter on a bounded "
+        "posting_date window — the serving route enforces a default 1-day window and a hard "
+        "31-day maximum (see plan section 5, cost controls)."
+    ),
+    cluster_by=["plant_code", "posting_date"],
+))
+def gold_goods_movement_activity():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    goods = spark.read.table(f"{silver_schema}.goods_movement")
+    classification = spark.read.table(f"{silver_schema}.movement_type_classification").select(
+        "movement_type_code",
+        "movement_label",
+        "event_category",
+        "is_goods_receipt",
+        "is_goods_issue",
+        "is_transfer",
+        "is_reversal",
+    )
+
+    return (
+        goods
+        .join(F.broadcast(classification), ["movement_type_code"], "left")
+        .select(
+            "plant_code",
+            "storage_location_code",
+            "material_document_number",
+            "fiscal_year",
+            "document_line_item",
+            "material_code",
+            "batch_number",
+            "movement_type_code",
+            "movement_label",
+            "event_category",
+            F.coalesce(F.col("is_goods_receipt"), F.lit(False)).alias("is_goods_receipt"),
+            F.coalesce(F.col("is_goods_issue"), F.lit(False)).alias("is_goods_issue"),
+            F.coalesce(F.col("is_transfer"), F.lit(False)).alias("is_transfer"),
+            F.coalesce(F.col("is_reversal"), F.lit(False)).alias("is_reversal"),
+            "debit_credit_indicator",
+            "quantity",
+            "base_uom",
+            "amount_local_currency",
+            "currency",
+            "posting_date",
+            "document_date",
+            "order_number",
+            "purchase_order_number",
+            "delivery_number",
+            "sales_order_number",
+            "posted_by_user",
+            "transaction_code",
+        )
+    )

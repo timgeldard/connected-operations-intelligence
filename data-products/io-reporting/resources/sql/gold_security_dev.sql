@@ -141,6 +141,10 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_transfer_requi
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_transfer_requirement_open_items;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_transfer_requirement_open_items_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_goods_movement_activity_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_goods_movement_activity;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_goods_movement_activity_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_inbound_po_backlog_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_inbound_po_backlog;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_inbound_po_backlog_secured TO `users`;

@@ -1094,3 +1094,59 @@ def test_gold_transfer_requirement_open_items(spark):
     assert results[0]["plant_code"] == "PL10"
     assert results[0]["open_quantity"] == 10.0
 
+def test_gold_goods_movement_activity(spark):
+    from gold.warehouse_flow_gold import gold_goods_movement_activity
+    from datetime import date
+
+    _save(spark, [
+        Row(plant_code="PL10", storage_location_code="0001", material_document_number="5000000001",
+            fiscal_year="2026", document_line_item="1", material_code="M1", batch_number="B1",
+            movement_type_code="101", debit_credit_indicator="S", quantity=10.0, base_uom="KG",
+            amount_local_currency=100.0, currency="EUR", posting_date=date(2026, 6, 9),
+            document_date=date(2026, 6, 9), order_number=None, purchase_order_number="PO01",
+            delivery_number=None, sales_order_number=None, posted_by_user="USER1",
+            transaction_code="MIGO"),
+        Row(plant_code="PL10", storage_location_code="0001", material_document_number="5000000002",
+            fiscal_year="2026", document_line_item="1", material_code="M1", batch_number="B1",
+            movement_type_code="261", debit_credit_indicator="H", quantity=4.0, base_uom="KG",
+            amount_local_currency=40.0, currency="EUR", posting_date=date(2026, 6, 9),
+            document_date=date(2026, 6, 9), order_number="700001", purchase_order_number=None,
+            delivery_number=None, sales_order_number=None, posted_by_user="USER2",
+            transaction_code="MB1A"),
+        # Movement type with no classification row: flags must default to False, not null.
+        Row(plant_code="PL10", storage_location_code="0001", material_document_number="5000000003",
+            fiscal_year="2026", document_line_item="1", material_code="M2", batch_number=None,
+            movement_type_code="999", debit_credit_indicator="S", quantity=1.0, base_uom="EA",
+            amount_local_currency=None, currency=None, posting_date=date(2026, 6, 8),
+            document_date=date(2026, 6, 8), order_number=None, purchase_order_number=None,
+            delivery_number=None, sales_order_number=None, posted_by_user=None,
+            transaction_code=None),
+    ], "goods_movement")
+
+    _save(spark, [
+        Row(movement_type_code="101", movement_label="GR_PO", event_category="RECEIPT",
+            is_goods_receipt=True, is_goods_issue=False, is_transfer=False, is_reversal=False),
+        Row(movement_type_code="261", movement_label="GI_ORDER", event_category="ISSUE",
+            is_goods_receipt=False, is_goods_issue=True, is_transfer=False, is_reversal=False),
+    ], "movement_type_classification")
+
+    results = all_rows(gold_goods_movement_activity())
+    assert len(results) == 3
+    by_doc = {r["material_document_number"]: r for r in results}
+
+    receipt = by_doc["5000000001"]
+    assert receipt["is_goods_receipt"] is True
+    assert receipt["event_category"] == "RECEIPT"
+    assert receipt["purchase_order_number"] == "PO01"
+    assert receipt["posted_by_user"] == "USER1"
+
+    issue = by_doc["5000000002"]
+    assert issue["is_goods_issue"] is True
+    assert issue["order_number"] == "700001"
+
+    unclassified = by_doc["5000000003"]
+    assert unclassified["is_goods_receipt"] is False
+    assert unclassified["is_goods_issue"] is False
+    assert unclassified["is_transfer"] is False
+    assert unclassified["event_category"] is None
+

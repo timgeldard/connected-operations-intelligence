@@ -988,3 +988,136 @@ contracts:
         type: decimal
         required: false
         description: Query-time age in hours since TR creation
+
+  - id: warehouse360.goods_movements
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Goods-movement activity feed at material-document-line (MSEG) grain with movement-type
+      classification flags. HIGH-VOLUME dataset under mandatory cost controls: the route enforces
+      a default 1-day posting_date window, a hard 31-day maximum window, and limit <= 500.
+      UAT performance/cost validation is required before frontend consumption ships.
+    source_view: vw_consumption_warehouse360_goods_movements
+    grain: one row per document_number, fiscal_year, and line_item
+    primary_key:
+      - document_number
+      - fiscal_year
+      - line_item
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: storage_location_id
+        type: string
+        required: false
+        description: Storage location
+      - name: document_number
+        type: string
+        required: true
+        description: Material document number (MBLNR)
+      - name: fiscal_year
+        type: string
+        required: true
+        description: Material document fiscal year (MJAHR)
+      - name: line_item
+        type: string
+        required: true
+        description: Material document line (ZEILE)
+      - name: material_id
+        type: string
+        required: true
+        description: Material code
+      - name: batch_id
+        type: string
+        required: false
+        description: Batch number
+      - name: movement_type_code
+        type: string
+        required: true
+        description: SAP movement type (BWART)
+      - name: movement_label
+        type: string
+        required: false
+        description: Conformed movement label
+      - name: event_category
+        type: string
+        required: false
+        description: Conformed event category (RECEIPT/ISSUE/TRANSFER/...)
+      - name: is_goods_receipt
+        type: boolean
+        required: true
+        description: Movement classified as goods receipt
+      - name: is_goods_issue
+        type: boolean
+        required: true
+        description: Movement classified as goods issue
+      - name: is_transfer
+        type: boolean
+        required: true
+        description: Movement classified as transfer
+      - name: is_reversal
+        type: boolean
+        required: true
+        description: Movement classified as reversal
+      - name: debit_credit_indicator
+        type: string
+        required: false
+        description: Debit/credit indicator (SHKZG)
+      - name: quantity
+        type: decimal
+        required: false
+        description: Movement quantity in base UoM
+      - name: uom
+        type: string
+        required: false
+        description: Base unit of measure
+      - name: amount_local_currency
+        type: decimal
+        required: false
+        description: Movement value in local currency
+      - name: currency
+        type: string
+        required: false
+        description: Local currency
+      - name: posting_date
+        type: date
+        required: false
+        description: Posting date (clustering / window key)
+      - name: document_date
+        type: date
+        required: false
+        description: Document date
+      - name: order_number
+        type: string
+        required: false
+        description: Linked order (AUFNR)
+      - name: purchase_order_number
+        type: string
+        required: false
+        description: Linked purchase order (EBELN)
+      - name: delivery_number
+        type: string
+        required: false
+        description: Linked IM delivery (VBELN_IM)
+      - name: sales_order_number
+        type: string
+        required: false
+        description: Linked sales order (KDAUF)
+      - name: posted_by
+        type: string
+        required: false
+        description: Posting user (USNAM)
+      - name: transaction_code
+        type: string
+        required: false
+        description: SAP transaction code

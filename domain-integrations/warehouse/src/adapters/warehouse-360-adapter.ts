@@ -248,13 +248,49 @@ export class Warehouse360Adapter {
   }
 
   async getGoodsMovements(
-    _request: Warehouse360AdapterRequest
+    request: Warehouse360AdapterRequest
   ): Promise<AdapterResult<GoodsMovementEvent[]>> {
-    return {
-      ok: true,
-      data: [],
-      fetchedAt: this.now(),
-      source: 'databricks-api',
+    try {
+      // The movements route enforces the cost controls (default 1-day window, 31-day max);
+      // the adapter only ever narrows further — no unbounded query path exists client-side.
+      const params = new URLSearchParams()
+      if (request.plantId) params.set('plant_id', request.plantId)
+      if (request.dateFrom) params.set('date_from', request.dateFrom)
+      if (request.dateTo) params.set('date_to', request.dateTo)
+      if (request.limit !== undefined) params.set('limit', String(request.limit))
+      const path = `/api/warehouse360/goods-movements?${params.toString()}`
+      const url = this.baseUrl ? `${this.baseUrl}${path}` : path
+      const res = await fetch(url, { method: 'GET', credentials: 'include' })
+      if (!res.ok) {
+        return this.handleHttpError<GoodsMovementEvent[]>(res, 'databricks-api')
+      }
+      const raw = await res.json()
+      if (!Array.isArray(raw)) {
+        throw new Error('Response was not an array')
+      }
+      const events: GoodsMovementEvent[] = raw.map((r: any) => ({
+        movementId: `${r.documentNumber ?? ''}/${r.fiscalYear ?? ''}/${r.lineItem ?? ''}`,
+        timestamp: r.postingDate ?? '',
+        // Reversal wins so 102-style receipt reversals are not rendered as receipts.
+        movementType: r.isReversal ? 'reversal'
+          : r.isGoodsReceipt ? 'goods-receipt'
+          : r.isGoodsIssue ? 'goods-issue'
+          : r.isTransfer ? 'transfer'
+          : 'other',
+        movementTypeCode: r.movementTypeCode ?? undefined,
+        materialId: String(r.materialId ?? ''),
+        materialDescription: undefined,
+        batchId: r.batchId ?? undefined,
+        quantity: Number(r.quantity ?? 0),
+        uom: r.uom ?? undefined,
+        sourceLocation: r.storageLocationId ?? undefined,
+        destinationLocation: undefined,
+        referenceDocument: r.purchaseOrderNumber ?? r.orderNumber ?? r.deliveryNumber ?? undefined,
+        postedBy: r.postedBy ?? undefined,
+      }))
+      return { ok: true, data: events, fetchedAt: this.now(), source: 'databricks-api' }
+    } catch (e) {
+      return this.handleCatchError<GoodsMovementEvent[]>(e, 'databricks-api')
     }
   }
 

@@ -115,6 +115,19 @@ class WarehouseMoveRequestsRequest:
     limit: int = 200
 
 
+@dataclass
+class WarehouseGoodsMovementsRequest:
+    """date_from/date_to are MANDATORY (ISO dates) — the movements feed is never unbounded."""
+    date_from: str
+    date_to: str
+    plant_id: Optional[str] = None
+    material_id: Optional[str] = None
+    limit: int = 200
+
+
+GOODS_MOVEMENTS_MAX_WINDOW_DAYS = 31
+
+
 # ---------------------------------------------------------------------------
 # Utility Mapping & Formatting Helpers
 # ---------------------------------------------------------------------------
@@ -1109,6 +1122,86 @@ def get_warehouse_move_requests_spec(request: WarehouseMoveRequestsRequest) -> Q
     )
 
 
+def get_warehouse_goods_movements_spec(request: WarehouseGoodsMovementsRequest) -> QuerySpec:
+    """Movements-feed spec under mandatory cost controls (plan section 5).
+
+    The posting_date window is always bound (default 1 day at the route) and may never
+    exceed GOODS_MOVEMENTS_MAX_WINDOW_DAYS — enforced here as well as at the route so no
+    caller can construct an unbounded scan of the MSEG-grain table.
+    """
+    from datetime import date as _date
+
+    d_from = _date.fromisoformat(request.date_from)
+    d_to = _date.fromisoformat(request.date_to)
+    if d_to < d_from:
+        raise ValueError("date_to must not be before date_from")
+    if (d_to - d_from).days > GOODS_MOVEMENTS_MAX_WINDOW_DAYS:
+        raise ValueError(
+            f"posting_date window exceeds the hard maximum of {GOODS_MOVEMENTS_MAX_WINDOW_DAYS} days"
+        )
+    if request.limit < 1 or request.limit > 500:
+        raise ValueError("limit must be between 1 and 500")
+
+    view = resolve_contract_object("warehouse360.goods_movements", "wh360")
+    contract_id = "warehouse360.goods_movements"
+    params: dict[str, object] = {"date_from": request.date_from, "date_to": request.date_to}
+    where_clauses = [
+        "posting_date >= CAST(:date_from AS DATE)",
+        "posting_date <= CAST(:date_to AS DATE)",
+    ]
+    if request.plant_id:
+        where_clauses.append("plant_id = :plant_id")
+        params["plant_id"] = request.plant_id
+    if request.material_id:
+        where_clauses.append("material_id = :material_id")
+        params["material_id"] = request.material_id
+    where_str = " WHERE " + " AND ".join(where_clauses)
+    sql = f"""
+    SELECT
+        plant_id,
+        storage_location_id,
+        document_number,
+        fiscal_year,
+        line_item,
+        material_id,
+        batch_id,
+        movement_type_code,
+        movement_label,
+        event_category,
+        is_goods_receipt,
+        is_goods_issue,
+        is_transfer,
+        is_reversal,
+        debit_credit_indicator,
+        quantity,
+        uom,
+        amount_local_currency,
+        currency,
+        posting_date,
+        document_date,
+        order_number,
+        purchase_order_number,
+        delivery_number,
+        sales_order_number,
+        posted_by,
+        transaction_code
+    FROM {view}
+    {where_str}
+    ORDER BY posting_date DESC, document_number DESC
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="warehouse360.get_goods_movements",
+        module="wh360",
+        endpoint="/api/warehouse360/goods-movements",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "movements", "activity"],
+        contract_id=contract_id,
+    )
+
+
 def map_warehouse_stock_exceptions_rows(rows: list[dict]) -> list[dict]:
     """Map raw stock exceptions rows to Warehouse360StockExceptionItem."""
     result = []
@@ -1238,6 +1331,42 @@ def map_warehouse_move_requests_rows(rows: list[dict]) -> list[dict]:
     return result
 
 
+def map_warehouse_goods_movements_rows(rows: list[dict]) -> list[dict]:
+    """Map raw goods-movement rows (MSEG-line grain) with classification flags."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "storageLocationId": str(row["storage_location_id"]) if row.get("storage_location_id") else None,
+            "documentNumber": str(row["document_number"]) if row.get("document_number") else None,
+            "fiscalYear": str(row["fiscal_year"]) if row.get("fiscal_year") else None,
+            "lineItem": str(row["line_item"]) if row.get("line_item") else None,
+            "materialId": str(row["material_id"]) if row.get("material_id") else None,
+            "batchId": str(row["batch_id"]) if row.get("batch_id") else None,
+            "movementTypeCode": str(row["movement_type_code"]) if row.get("movement_type_code") else None,
+            "movementLabel": str(row["movement_label"]) if row.get("movement_label") else None,
+            "eventCategory": str(row["event_category"]) if row.get("event_category") else None,
+            "isGoodsReceipt": bool(row.get("is_goods_receipt", False)),
+            "isGoodsIssue": bool(row.get("is_goods_issue", False)),
+            "isTransfer": bool(row.get("is_transfer", False)),
+            "isReversal": bool(row.get("is_reversal", False)),
+            "debitCreditIndicator": str(row["debit_credit_indicator"]) if row.get("debit_credit_indicator") else None,
+            "quantity": _safe_float(row.get("quantity")) if row.get("quantity") is not None else None,
+            "uom": str(row["uom"]) if row.get("uom") else None,
+            "amountLocalCurrency": _safe_float(row.get("amount_local_currency")) if row.get("amount_local_currency") is not None else None,
+            "currency": str(row["currency"]) if row.get("currency") else None,
+            "postingDate": str(row["posting_date"]) if row.get("posting_date") else None,
+            "documentDate": str(row["document_date"]) if row.get("document_date") else None,
+            "orderNumber": str(row["order_number"]) if row.get("order_number") else None,
+            "purchaseOrderNumber": str(row["purchase_order_number"]) if row.get("purchase_order_number") else None,
+            "deliveryNumber": str(row["delivery_number"]) if row.get("delivery_number") else None,
+            "salesOrderNumber": str(row["sales_order_number"]) if row.get("sales_order_number") else None,
+            "postedBy": str(row["posted_by"]) if row.get("posted_by") else None,
+            "transactionCode": str(row["transaction_code"]) if row.get("transaction_code") else None,
+        })
+    return result
+
+
 def map_warehouse_batch_hold_status_rows(rows: list[dict]) -> list[dict]:
     """Map raw batch hold status rows."""
     result = []
@@ -1356,5 +1485,11 @@ class Warehouse360Repository:
     async def fetch_warehouse_move_requests(self, request: WarehouseMoveRequestsRequest) -> tuple[list[dict], QuerySpec]:
         return await self._repository.fetch(
             spec_factory=lambda: get_warehouse_move_requests_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_goods_movements(self, request: WarehouseGoodsMovementsRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_goods_movements_spec(request),
             mapper=lambda rows: rows,
         )

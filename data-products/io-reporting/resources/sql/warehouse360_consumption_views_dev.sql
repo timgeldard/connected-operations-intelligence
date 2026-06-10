@@ -319,3 +319,43 @@ FROM connected_plant_dev.gold_io_reporting.gold_transfer_requirement_open_items_
 -- TODO_SECURITY: replace with approved group.
 -- GRANT SELECT ON VIEW vw_consumption_warehouse360_move_requests TO `warehouse360_app_users`;
 -- GRANT SELECT ON VIEW vw_consumption_warehouse360_move_requests TO `warehouse360_dashboard_users`;
+
+
+-- 15. Goods Movements Feed
+-- Grain: 1 row per material document line (MSEG). HIGH-VOLUME source: the serving route
+-- enforces a default 1-day posting_date window and a hard 31-day maximum — never query
+-- this view unbounded.
+CREATE OR REPLACE VIEW vw_consumption_warehouse360_goods_movements AS
+SELECT
+  plant_code AS plant_id,
+  storage_location_code AS storage_location_id,
+  material_document_number AS document_number,
+  fiscal_year,
+  document_line_item AS line_item,
+  material_code AS material_id,
+  batch_number AS batch_id,
+  movement_type_code,
+  movement_label,
+  event_category,
+  is_goods_receipt,
+  is_goods_issue,
+  is_transfer,
+  is_reversal,
+  debit_credit_indicator,
+  quantity,
+  base_uom AS uom,
+  amount_local_currency,
+  currency,
+  posting_date,
+  document_date,
+  order_number,
+  purchase_order_number,
+  delivery_number,
+  sales_order_number,
+  posted_by_user AS posted_by,
+  transaction_code
+FROM connected_plant_dev.gold_io_reporting.gold_goods_movement_activity_secured;
+
+-- TODO_SECURITY: replace with approved group.
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_goods_movements TO `warehouse360_app_users`;
+-- GRANT SELECT ON VIEW vw_consumption_warehouse360_goods_movements TO `warehouse360_dashboard_users`;

@@ -8,6 +8,7 @@ Missing config → HTTP 503. No silent fallback to legacy-api or mock.
 from __future__ import annotations
 
 import os
+from datetime import date, timedelta
 from typing import Optional
 
 from adapters.warehouse360.warehouse360_databricks_adapter import (
@@ -25,6 +26,8 @@ from adapters.warehouse360.warehouse360_databricks_adapter import (
     WarehouseOpenHoldsRequest,
     WarehousePickTasksRequest,
     WarehouseMoveRequestsRequest,
+    WarehouseGoodsMovementsRequest,
+    GOODS_MOVEMENTS_MAX_WINDOW_DAYS,
     map_warehouse_exceptions_rows,
     map_warehouse_inbound_rows,
     map_warehouse_outbound_rows,
@@ -36,6 +39,7 @@ from adapters.warehouse360.warehouse360_databricks_adapter import (
     map_warehouse_open_holds_rows,
     map_warehouse_pick_tasks_rows,
     map_warehouse_move_requests_rows,
+    map_warehouse_goods_movements_rows,
     map_warehouse_batch_hold_status_rows,
     map_warehouse_staging_readiness_rows,
 )
@@ -211,6 +215,40 @@ class Warehouse360MoveRequestItem(BaseModel):
     # Assignee is a documented data gap (LTBK carries none) — always null.
     assigned_to: Optional[str] = Field(None, alias='assignedTo')
     age_hours: Optional[float] = Field(None, alias='ageHours')
+
+
+class Warehouse360GoodsMovementItem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    plant_id: str = Field(..., alias='plantId')
+    storage_location_id: Optional[str] = Field(None, alias='storageLocationId')
+    document_number: str = Field(..., alias='documentNumber')
+    fiscal_year: str = Field(..., alias='fiscalYear')
+    line_item: str = Field(..., alias='lineItem')
+    material_id: Optional[str] = Field(None, alias='materialId')
+    batch_id: Optional[str] = Field(None, alias='batchId')
+    movement_type_code: str = Field(..., alias='movementTypeCode')
+    movement_label: Optional[str] = Field(None, alias='movementLabel')
+    event_category: Optional[str] = Field(None, alias='eventCategory')
+    is_goods_receipt: bool = Field(..., alias='isGoodsReceipt')
+    is_goods_issue: bool = Field(..., alias='isGoodsIssue')
+    is_transfer: bool = Field(..., alias='isTransfer')
+    is_reversal: bool = Field(..., alias='isReversal')
+    debit_credit_indicator: Optional[str] = Field(None, alias='debitCreditIndicator')
+    quantity: Optional[float] = None
+    uom: Optional[str] = None
+    amount_local_currency: Optional[float] = Field(None, alias='amountLocalCurrency')
+    currency: Optional[str] = None
+    posting_date: Optional[str] = Field(None, alias='postingDate')
+    document_date: Optional[str] = Field(None, alias='documentDate')
+    order_number: Optional[str] = Field(None, alias='orderNumber')
+    purchase_order_number: Optional[str] = Field(None, alias='purchaseOrderNumber')
+    delivery_number: Optional[str] = Field(None, alias='deliveryNumber')
+    sales_order_number: Optional[str] = Field(None, alias='salesOrderNumber')
+    posted_by: Optional[str] = Field(None, alias='postedBy')
+    transaction_code: Optional[str] = Field(None, alias='transactionCode')
 
 
 @router.get("/warehouse360/overview")
@@ -730,6 +768,68 @@ async def warehouse_move_requests(
     )
     set_databricks_response_headers(response, spec)
     return map_warehouse_move_requests_rows(rows)
+
+
+@router.get("/warehouse360/goods-movements", response_model=list[Warehouse360GoodsMovementItem])
+async def warehouse_goods_movements(
+    response: Response,
+    plant_id: str | None = None,
+    material_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 200,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[Warehouse360GoodsMovementItem]:
+    """Goods-movement activity feed — databricks-api only.
+
+    Mandatory cost controls (high-volume MSEG-grain source): the posting_date window
+    defaults to yesterday..today, may never exceed GOODS_MOVEMENTS_MAX_WINDOW_DAYS,
+    and limit is capped at 500. Unbounded queries are impossible by construction.
+    """
+    backend_mode = os.getenv("BACKEND_ADAPTER_MODE", "legacy-api")
+    if backend_mode != "databricks-api":
+        raise HTTPException(
+            status_code=503,
+            detail="Warehouse goods movements requires BACKEND_ADAPTER_MODE=databricks-api",
+        )
+
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+
+    today = date.today()
+    try:
+        d_to = date.fromisoformat(date_to) if date_to else today
+        d_from = date.fromisoformat(date_from) if date_from else d_to - timedelta(days=1)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="date_from/date_to must be ISO dates (YYYY-MM-DD)")
+
+    if d_to < d_from:
+        raise HTTPException(status_code=400, detail="date_to must not be before date_from")
+    if (d_to - d_from).days > GOODS_MOVEMENTS_MAX_WINDOW_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"posting_date window must not exceed {GOODS_MOVEMENTS_MAX_WINDOW_DAYS} days",
+        )
+
+    req = WarehouseGoodsMovementsRequest(
+        date_from=d_from.isoformat(),
+        date_to=d_to.isoformat(),
+        plant_id=plant_id.strip() if plant_id else None,
+        material_id=material_id.strip() if material_id else None,
+        limit=limit,
+    )
+
+    host, db_warehouse_id = require_databricks_config()
+    identity = build_user_identity(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    repository = build_databricks_repository(identity, host, db_warehouse_id)
+    wh_repo = Warehouse360Repository(repository)
+    rows, spec = await run_repository_fetch(
+        lambda: wh_repo.fetch_warehouse_goods_movements(req)
+    )
+    set_databricks_response_headers(response, spec)
+    return map_warehouse_goods_movements_rows(rows)
 
 
 @router.get("/warehouse360/batch/{batchId}/hold-status", response_model=Warehouse360BatchHoldStatus)

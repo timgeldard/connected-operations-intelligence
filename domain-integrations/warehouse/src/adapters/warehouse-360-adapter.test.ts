@@ -30,6 +30,34 @@ beforeAll(() => {
         ],
       } as Response
     }
+    if (url.includes('/api/warehouse360/goods-movements')) {
+      return {
+        ok: true,
+        json: async () => [
+          {
+            plantId: 'IE10',
+            storageLocationId: '0001',
+            documentNumber: '5000000001',
+            fiscalYear: '2026',
+            lineItem: '1',
+            materialId: 'MAT-RM-RENNET',
+            batchId: 'RM-240301-0021',
+            movementTypeCode: '102',
+            movementLabel: 'GR_PO_REVERSAL',
+            eventCategory: 'RECEIPT',
+            isGoodsReceipt: true,
+            isGoodsIssue: false,
+            isTransfer: false,
+            isReversal: true,
+            quantity: 10,
+            uom: 'KG',
+            postingDate: '2024-03-07',
+            purchaseOrderNumber: 'PO-240301-0007',
+            postedBy: 'USER1',
+          },
+        ],
+      } as Response
+    }
     if (url.includes('/api/warehouse360/stock-exceptions')) {
       return {
         ok: true,
@@ -161,12 +189,22 @@ describe('Warehouse360Adapter', () => {
   })
 
   describe('getGoodsMovements', () => {
-    it('returns ok result with empty array', async () => {
+    it('maps governed MSEG-line rows; reversal flag wins over receipt', async () => {
       const result = await adapter.getGoodsMovements(request)
       expect(result.ok).toBe(true)
       if (!result.ok) throw new Error('Expected ok result')
-      expect(Array.isArray(result.data)).toBe(true)
-      expect(result.data.length).toBe(0)
+      expect(result.source).toBe('databricks-api')
+      expect(result.data.length).toBe(1)
+      const ev = result.data[0]
+      expect(ev.movementId).toBe('5000000001/2026/1')
+      expect(ev.movementType).toBe('reversal') // isReversal=true beats isGoodsReceipt=true (102)
+      expect(ev.movementTypeCode).toBe('102')
+      expect(ev.timestamp).toBe('2024-03-07')
+      expect(ev.referenceDocument).toBe('PO-240301-0007')
+      expect(ev.sourceLocation).toBe('0001')
+      // Documented data gaps stay undefined — never invented.
+      expect(ev.materialDescription).toBeUndefined()
+      expect(ev.destinationLocation).toBeUndefined()
     })
   })
 

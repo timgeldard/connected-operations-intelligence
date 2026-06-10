@@ -556,3 +556,82 @@ views:
       - plant_id_nullability
       - type_compatibility
       - row_count
+
+  - name: vw_consumption_warehouse360_goods_movements
+    contract_id: warehouse360.goods_movements
+    expected_grain: one row per document_number + fiscal_year + line_item (MSEG line)
+    primary_key:
+      - document_number
+      - fiscal_year
+      - line_item
+    row_level_key: plant_id
+    must_not_be_null:
+      - plant_id
+      - document_number
+      - fiscal_year
+      - line_item
+      - movement_type_code
+    expected_columns:
+      - name: plant_id
+        type: string
+      - name: storage_location_id
+        type: string
+      - name: document_number
+        type: string
+      - name: fiscal_year
+        type: string
+      - name: line_item
+        type: string
+      - name: material_id
+        type: string
+      - name: batch_id
+        type: string
+      - name: movement_type_code
+        type: string
+      - name: movement_label
+        type: string
+      - name: event_category
+        type: string
+      - name: is_goods_receipt
+        type: boolean
+      - name: is_goods_issue
+        type: boolean
+      - name: is_transfer
+        type: boolean
+      - name: is_reversal
+        type: boolean
+      - name: debit_credit_indicator
+        type: string
+      - name: quantity
+        type: decimal
+      - name: uom
+        type: string
+      - name: amount_local_currency
+        type: decimal
+      - name: currency
+        type: string
+      - name: posting_date
+        type: date
+      - name: document_date
+        type: date
+      - name: order_number
+        type: string
+      - name: purchase_order_number
+        type: string
+      - name: delivery_number
+        type: string
+      - name: sales_order_number
+        type: string
+      - name: posted_by
+        type: string
+      - name: transaction_code
+        type: string
+    freshness_column: posting_date
+    runtime_route_exists: true
+    dashboard_consumption_expected: false
+    live_validation_required:
+      - primary_key_uniqueness
+      - plant_id_nullability
+      - type_compatibility
+      - row_count
+      - query_window_performance

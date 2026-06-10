@@ -92,18 +92,24 @@ export type OpenHoldItem = z.infer<typeof OpenHoldItemSchema>
 // GoodsMovementEvent
 // ---------------------------------------------------------------------------
 
+// SAP-truthful shape (governed goods-movements dataset = MSEG lines + movement-type
+// classification): movementType derives from the conformed classification flags
+// (reversal wins over receipt/issue so 102-style reversals are not shown as receipts).
+// timestamp carries the posting DATE (MKPF has no time at this grain);
+// materialDescription is a first-wave data gap (no material join).
 export const GoodsMovementEventSchema = z.object({
-  movementId: z.string().describe('[classification: source-field]'),
-  timestamp: z.string().datetime().describe('[classification: source-field]'),
-  movementType: z.enum(['goods-receipt', 'goods-issue', 'transfer-order', 'stock-transfer', 'return', 'adjustment']).describe('[classification: source-field]'),
+  movementId: z.string().describe('[classification: source-field — document/year/line]'),
+  timestamp: z.string().describe('[classification: source-field — posting date]'),
+  movementType: z.enum(['goods-receipt', 'goods-issue', 'transfer', 'reversal', 'other']).describe('[classification: source-derived — classification flags]'),
+  movementTypeCode: z.string().optional().describe('[classification: source-field — BWART]'),
   materialId: z.string().describe('[classification: source-field]'),
-  materialDescription: z.string().describe('[classification: source-field]'),
+  materialDescription: z.string().optional().describe('[classification: data-gap — material join deferred]'),
   batchId: z.string().optional().describe('[classification: source-field]'),
   quantity: z.number().describe('[classification: source-field]'),
-  uom: z.string().describe('[classification: source-field]'),
-  sourceLocation: z.string().optional().describe('[classification: source-field]'),
-  destinationLocation: z.string().optional().describe('[classification: source-field]'),
-  referenceDocument: z.string().optional().describe('[classification: source-field]'),
+  uom: z.string().optional().describe('[classification: source-field]'),
+  sourceLocation: z.string().optional().describe('[classification: source-field — IM storage location]'),
+  destinationLocation: z.string().optional().describe('[classification: data-gap — not modelled at IM grain]'),
+  referenceDocument: z.string().optional().describe('[classification: source-field — PO/order/delivery]'),
   postedBy: z.string().optional().describe('[classification: source-field]'),
 })
 

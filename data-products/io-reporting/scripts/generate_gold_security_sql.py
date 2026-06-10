@@ -119,6 +119,7 @@ GOLD_TABLES = [
     "gold_stock_holds",
     "gold_transfer_order_open_items",
     "gold_transfer_requirement_open_items",
+    "gold_goods_movement_activity",
     # warehouse_inbound_gold.py
     "gold_inbound_po_backlog",
     "gold_inbound_po_backlog_enhanced",
