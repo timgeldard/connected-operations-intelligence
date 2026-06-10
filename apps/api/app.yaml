@@ -99,6 +99,12 @@ env:
   # Re-enable by adding: - name: ENABLE_AUTH_DIAGNOSTICS / value: "true"
   # GET /api/diagnostics/auth-headers returns token_present/user_header_present (never raw token).
 
+  # Contract manifest path — the deployed app only contains apps/api/, so the resolver's
+  # repo-root walk-up finds no .git marker and falls back to a wrong absolute path.
+  # This env var points it at the copy bundled alongside the app source.
+  - name: APP_MANIFEST_PATH
+    value: /app/python/source_code/contracts/app_contract_manifest.yml
+
   # Python runtime
   - name: PYTHONUNBUFFERED
     value: "1"
