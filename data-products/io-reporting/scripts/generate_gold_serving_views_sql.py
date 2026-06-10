@@ -48,6 +48,21 @@ _EXCEPTION_AGE_HOURS = (
 # the base candidates at query time (age-threshold exceptions). Mirrors the pre-Phase-2 test-mode
 # logic exactly so behaviour is unchanged — only the location moves (MV -> serving view).
 SERVING_VIEWS = {
+    "gold_stock_holds": [
+        ("age_hours",
+         "CASE WHEN b.goods_receipt_date IS NOT NULL "
+         "THEN (unix_timestamp(current_timestamp()) - unix_timestamp(b.goods_receipt_date)) / 3600.0 END"),
+    ],
+    "gold_transfer_order_open_items": [
+        ("age_hours",
+         "CASE WHEN b.created_datetime IS NOT NULL "
+         "THEN (unix_timestamp(current_timestamp()) - unix_timestamp(b.created_datetime)) / 3600.0 END"),
+    ],
+    "gold_transfer_requirement_open_items": [
+        ("age_hours",
+         "CASE WHEN b.created_datetime IS NOT NULL "
+         "THEN (unix_timestamp(current_timestamp()) - unix_timestamp(b.created_datetime)) / 3600.0 END"),
+    ],
     "gold_lineside_stock": [
         ("min_days_to_expiry",
          "CASE WHEN b.earliest_expiry_date IS NOT NULL "

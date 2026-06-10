@@ -33,6 +33,9 @@ REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_reconciliation
 REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_stock_reconciliation_exceptions_v2 FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_stock_reconciliation_summary_v2 FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_stock_reconciliation_summary FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_stock_holds FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_transfer_order_open_items FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_transfer_requirement_open_items FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_inbound_po_backlog FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_inbound_po_backlog_enhanced FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_inbound_po_line_backlog FROM `users`;

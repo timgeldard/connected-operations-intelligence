@@ -1281,3 +1281,135 @@ def gold_stock_reconciliation_summary():
             .alias("reconciliation_status"),
         )
     )
+
+
+# ── 18. WAREHOUSE COCKPIT CATEGORY C TABLES ───────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment="Current quant-level holds (Quality, Blocked, Restricted) in WM.",
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_stock_holds():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    storage_bin = spark.read.table(f"{silver_schema}.storage_bin")
+    batch_stock = spark.read.table(f"{silver_schema}.batch_stock")
+
+    batch_restricted = (
+        batch_stock.groupBy("plant_code", "material_code", "batch_number")
+        .agg(F.sum("restricted_use_quantity").alias("total_restricted_qty"))
+        .filter(F.col("total_restricted_qty") > 0)
+        .select("plant_code", "material_code", "batch_number", "total_restricted_qty")
+        .distinct()
+    )
+
+    return (
+        storage_bin.filter(F.col("quant_number").isNotNull())
+        .join(
+            batch_restricted,
+            ["plant_code", "material_code", "batch_number"],
+            "left"
+        )
+        .withColumn(
+            "hold_type",
+            F.when(F.col("stock_category_code") == "Q", F.lit("quality"))
+            .when(F.col("stock_category_code") == "S", F.lit("blocked"))
+            .when(F.col("total_restricted_qty").isNotNull(), F.lit("restricted"))
+            .otherwise(F.lit(None))
+        )
+        .filter(F.col("hold_type").isNotNull())
+        .select(
+            "plant_code",
+            "warehouse_number",
+            "storage_type",
+            F.col("bin_code").alias("storage_bin"),
+            "quant_number",
+            "material_code",
+            "batch_number",
+            "hold_type",
+            F.col("total_quantity").alias("quantity"),
+            "base_uom",
+            "goods_receipt_date"
+        )
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment="Current open transfer-order items (pick tasks).",
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_transfer_order_open_items():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    transfer_orders = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.warehouse_transfer_order"),
+        silver_schema,
+        "warehouse_transfer_order_header_delete",
+        ["warehouse_number", "transfer_order_number"],
+    )
+
+    return (
+        transfer_orders
+        .filter(F.col("item_status") == "Open")
+        .select(
+            F.col("plant_id").alias("plant_code"),
+            "warehouse_number",
+            "transfer_order_number",
+            "item_number",
+            "material_code",
+            "batch_number",
+            "source_storage_type",
+            F.col("source_bin").alias("source_storage_bin"),
+            "destination_storage_type",
+            F.col("destination_bin").alias("destination_storage_bin"),
+            "requested_quantity",
+            "confirmed_quantity",
+            "item_status",
+            "created_datetime",
+            "confirmed_date",
+            F.col("source_reference_type").alias("order_reference_type"),
+            F.col("source_reference_number").alias("order_reference_number"),
+            "transfer_priority",
+            "delivery_number",
+            "created_by_user",
+            "confirmed_by_user",
+        )
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment="Current open transfer-requirement items (move requests).",
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_transfer_requirement_open_items():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    transfer_requirements = spark.read.table(f"{silver_schema}.warehouse_transfer_requirement")
+
+    return (
+        transfer_requirements.filter(
+            (~F.coalesce(F.col("is_processing_complete"), F.lit(False)))
+            & (F.coalesce(F.col("open_quantity"), F.lit(0.0)) > 0)
+        )
+        .select(
+            F.col("plant_id").alias("plant_code"),
+            "warehouse_number",
+            "transfer_requirement_number",
+            "item_number",
+            "material_code",
+            "batch_number",
+            "source_storage_type",
+            F.col("source_bin").alias("source_storage_bin"),
+            "destination_storage_type",
+            F.col("destination_bin").alias("destination_storage_bin"),
+            "required_quantity",
+            "open_quantity",
+            "created_datetime",
+            "planned_execution_datetime",
+            F.col("source_reference_type").alias("order_reference_type"),
+            F.col("source_reference_number").alias("order_reference_number"),
+            "queue",
+            "transfer_priority",
+        )
+    )
+
