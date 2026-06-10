@@ -8,6 +8,28 @@ const request = { warehouseId: 'WH-IE10-MAIN', plantId: 'IE10' }
 
 beforeAll(() => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.includes('/api/warehouse360/open-holds')) {
+      return {
+        ok: true,
+        json: async () => [
+          {
+            plantId: 'IE10',
+            warehouseNumber: '104',
+            storageType: '100',
+            storageBin: 'BIN-01',
+            quantNumber: 'Q100',
+            materialId: 'MAT-START-CULTURE-B10',
+            batchId: 'SC-240308-0003',
+            holdType: 'quality',
+            quantity: 12.5,
+            uom: 'KG',
+            goodsReceiptDate: '2024-03-01',
+            ageHours: 48.5,
+            raisedBy: null,
+          },
+        ],
+      } as Response
+    }
     if (url.includes('/api/warehouse360/stock-exceptions')) {
       return {
         ok: true,
@@ -119,12 +141,22 @@ describe('Warehouse360Adapter', () => {
   })
 
   describe('getOpenHolds', () => {
-    it('returns ok result with empty array', async () => {
+    it('maps governed open-holds rows to SAP-truthful OpenHoldItem', async () => {
       const result = await adapter.getOpenHolds(request)
       expect(result.ok).toBe(true)
       if (!result.ok) throw new Error('Expected ok result')
-      expect(Array.isArray(result.data)).toBe(true)
-      expect(result.data.length).toBe(0)
+      expect(result.source).toBe('databricks-api')
+      expect(result.data.length).toBe(1)
+      const hold = result.data[0]
+      expect(hold.holdId).toBe('104-Q100')
+      expect(hold.holdReason).toBe('quality')
+      expect(hold.storageLocationId).toBe('100/BIN-01')
+      expect(hold.holdQuantity).toBe(12.5)
+      expect(hold.ageHours).toBeCloseTo(48.5)
+      expect(hold.raisedAt).toBe('2024-03-01')
+      // Documented data gaps stay null — never invented.
+      expect(hold.raisedBy).toBeUndefined()
+      expect(hold.materialDescription).toBeUndefined()
     })
   })
 

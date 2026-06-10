@@ -53,22 +53,25 @@ export type StagingOrderSummary = z.infer<typeof StagingOrderSummarySchema>
 // StagingPickTask
 // ---------------------------------------------------------------------------
 
+// SAP-truthful shape (governed pick-tasks dataset = open LTAP transfer-order items):
+// processOrderId only when BETYP='F'; materialDescription/uom are first-wave data gaps;
+// assignee maps to the confirming user; createdAt is the SAP TO creation timestamp string.
 export const StagingPickTaskSchema = z.object({
   taskId: z.string().describe('[classification: source-field]'),
-  processOrderId: z.string().describe('[classification: source-field]'),
+  processOrderId: z.string().optional().describe('[classification: source-field — BENUM when BETYP=F]'),
   materialId: z.string().describe('[classification: source-field]'),
-  materialDescription: z.string().describe('[classification: source-field]'),
+  materialDescription: z.string().optional().describe('[classification: data-gap — material join deferred]'),
   warehouseId: z.string().describe('[classification: source-field]'),
   storageLocation: z.string().describe('[classification: source-field]'),
   destinationLocation: z.string().describe('[classification: source-field]'),
   requiredQuantity: z.number().describe('[classification: source-field]'),
   pickedQuantity: z.number().describe('[classification: source-field]'),
-  uom: z.string().describe('[classification: source-field]'),
-  assignee: z.string().optional().describe('[classification: source-field]'),
+  uom: z.string().optional().describe('[classification: data-gap — not sourced at TO-item grain]'),
+  assignee: z.string().optional().describe('[classification: source-field — confirming user]'),
   status: z.enum(['open', 'in-progress', 'picked', 'staged', 'cancelled']).describe('[classification: source-field]'),
-  priority: SeveritySchema.describe('[classification: source-field]'),
-  createdAt: z.string().datetime().describe('[classification: source-field]'),
-  completedAt: z.string().datetime().optional().describe('[classification: source-field]'),
+  priority: SeveritySchema.describe('[classification: application-heuristic]'),
+  createdAt: z.string().optional().describe('[classification: source-field]'),
+  completedAt: z.string().optional().describe('[classification: source-field]'),
   batchId: z.string().optional().describe('[classification: source-field]'),
 })
 
@@ -119,23 +122,26 @@ export type StagingShortfall = z.infer<typeof StagingShortfallSchema>
 // StagingMoveRequest
 // ---------------------------------------------------------------------------
 
+// SAP-truthful shape (governed move-requests dataset = open LTBP transfer-requirement
+// items): requestedBy/assignedTo are data gaps (LTBK carries neither); reason maps to the
+// WM queue; materialDescription/uom are first-wave gaps; createdAt is the SAP timestamp.
 export const StagingMoveRequestSchema = z.object({
   requestId: z.string().describe('[classification: source-field]'),
   warehouseId: z.string().describe('[classification: source-field]'),
   fromLocation: z.string().describe('[classification: source-field]'),
   toLocation: z.string().describe('[classification: source-field]'),
   materialId: z.string().describe('[classification: source-field]'),
-  materialDescription: z.string().describe('[classification: source-field]'),
+  materialDescription: z.string().optional().describe('[classification: data-gap — material join deferred]'),
   quantity: z.number().describe('[classification: source-field]'),
-  uom: z.string().describe('[classification: source-field]'),
-  processOrderId: z.string().optional().describe('[classification: source-field]'),
-  requestedBy: z.string().describe('[classification: source-field]'),
-  assignedTo: z.string().optional().describe('[classification: source-field]'),
+  uom: z.string().optional().describe('[classification: data-gap — not sourced at TR-item grain]'),
+  processOrderId: z.string().optional().describe('[classification: source-field — BENUM when BETYP=F]'),
+  requestedBy: z.string().optional().describe('[classification: data-gap — LTBK carries no requester]'),
+  assignedTo: z.string().optional().describe('[classification: data-gap — LTBK carries no assignee]'),
   status: z.enum(['open', 'assigned', 'in-transit', 'completed', 'cancelled']).describe('[classification: source-field]'),
-  priority: SeveritySchema.describe('[classification: source-field]'),
-  createdAt: z.string().datetime().describe('[classification: source-field]'),
-  completedAt: z.string().datetime().optional().describe('[classification: source-field]'),
-  reason: z.string().describe('[classification: source-field]'),
+  priority: SeveritySchema.describe('[classification: application-heuristic]'),
+  createdAt: z.string().optional().describe('[classification: source-field]'),
+  completedAt: z.string().optional().describe('[classification: source-field]'),
+  reason: z.string().optional().describe('[classification: source-field — WM queue]'),
 })
 
 export type StagingMoveRequest = z.infer<typeof StagingMoveRequestSchema>

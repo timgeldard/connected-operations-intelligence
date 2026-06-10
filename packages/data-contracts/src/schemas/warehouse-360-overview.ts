@@ -66,17 +66,22 @@ export type StockOverview = z.infer<typeof StockOverviewSchema>
 // OpenHoldItem
 // ---------------------------------------------------------------------------
 
+// SAP-truthful shape (governed open-holds dataset): holdReason mirrors the WM stock
+// category / batch-restriction classification exactly — quality (Q), blocked (S), or
+// restricted (MCHB restricted-use stock). Hold provenance (raisedBy) and material
+// description are documented data gaps (no QM hold log / material join in first wave).
+// raisedAt carries the goods-receipt DATE (age basis), not a hold-placement timestamp.
 export const OpenHoldItemSchema = z.object({
   holdId: z.string().describe('[classification: source-field]'),
   batchId: z.string().optional().describe('[classification: source-field]'),
   materialId: z.string().describe('[classification: source-field]'),
-  materialDescription: z.string().describe('[classification: source-field]'),
-  storageLocationId: z.string().describe('[classification: source-field]'),
-  holdReason: z.enum(['quality-hold', 'customer-hold', 'production-hold', 'regulatory-hold', 'damaged', 'expired', 'investigation']).describe('[classification: source-field]'),
-  holdQuantity: z.number().min(0).describe('[classification: source-field]'),
-  uom: z.string().describe('[classification: source-field]'),
-  raisedAt: z.string().datetime().describe('[classification: source-field]'),
-  raisedBy: z.string().optional().describe('[classification: source-field]'),
+  materialDescription: z.string().optional().describe('[classification: data-gap — material join deferred]'),
+  storageLocationId: z.string().describe('[classification: source-field — storage_type/bin composite]'),
+  holdReason: z.enum(['quality', 'blocked', 'restricted']).describe('[classification: source-field — SAP stock category]'),
+  holdQuantity: z.number().describe('[classification: source-field]'),
+  uom: z.string().optional().describe('[classification: source-field]'),
+  raisedAt: z.string().optional().describe('[classification: source-field — goods receipt date (age basis)]'),
+  raisedBy: z.string().optional().describe('[classification: data-gap — no QM hold log replicated]'),
   ageHours: z.number().min(0).describe('[classification: application-derived]'),
   linkedWorkspaceId: z.string().optional().describe('[classification: application-derived]'),
 })

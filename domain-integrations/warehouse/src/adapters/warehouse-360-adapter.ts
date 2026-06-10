@@ -207,13 +207,43 @@ export class Warehouse360Adapter {
   }
 
   async getOpenHolds(
-    _request: Warehouse360AdapterRequest
+    request: Warehouse360AdapterRequest
   ): Promise<AdapterResult<OpenHoldItem[]>> {
-    return {
-      ok: true,
-      data: [],
-      fetchedAt: this.now(),
-      source: 'databricks-api',
+    try {
+      const params = new URLSearchParams()
+      if (request.warehouseId) params.set('warehouse_id', request.warehouseId)
+      if (request.plantId) params.set('plant_id', request.plantId)
+      if (request.limit !== undefined) params.set('limit', String(request.limit))
+      const path = `/api/warehouse360/open-holds?${params.toString()}`
+      const url = this.baseUrl ? `${this.baseUrl}${path}` : path
+      const res = await fetch(url, { method: 'GET', credentials: 'include' })
+      if (!res.ok) {
+        return this.handleHttpError<OpenHoldItem[]>(res, 'databricks-api')
+      }
+      const raw = await res.json()
+      if (!Array.isArray(raw)) {
+        throw new Error('Response was not an array')
+      }
+      const holds: OpenHoldItem[] = raw.map((r: any) => ({
+        holdId: `${r.warehouseNumber ?? ''}-${r.quantNumber ?? ''}`,
+        batchId: r.batchId ?? undefined,
+        materialId: String(r.materialId ?? ''),
+        // materialDescription is a documented data gap (no material join in first wave).
+        materialDescription: undefined,
+        storageLocationId: [r.storageType, r.storageBin].filter(Boolean).join('/') || '',
+        holdReason: r.holdType === 'quality' ? 'quality' : r.holdType === 'blocked' ? 'blocked' : 'restricted',
+        holdQuantity: Number(r.quantity ?? 0),
+        uom: r.uom ?? undefined,
+        // Goods-receipt date is the age basis — NOT a hold-placement timestamp.
+        raisedAt: r.goodsReceiptDate ?? undefined,
+        // Hold provenance is a documented data gap (no QM hold log replicated).
+        raisedBy: undefined,
+        ageHours: Math.max(0, Number(r.ageHours ?? 0)),
+        linkedWorkspaceId: undefined,
+      }))
+      return { ok: true, data: holds, fetchedAt: this.now(), source: 'databricks-api' }
+    } catch (e) {
+      return this.handleCatchError<OpenHoldItem[]>(e, 'databricks-api')
     }
   }
 

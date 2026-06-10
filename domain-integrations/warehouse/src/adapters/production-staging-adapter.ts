@@ -12,12 +12,9 @@ import type {
 import type { AdapterResult, AdapterError, AdapterSource } from '@connectio/source-adapters'
 import {
   mockProductionStagingContext,
-  mockStagingReadiness,
   mockStagingOrders,
-  mockPickTasks,
   mockZoneCapacity,
   mockShortfalls,
-  mockMoveRequests,
   mockStagingAlerts,
 } from './production-staging-mock-data.js'
 
@@ -178,10 +175,61 @@ export class ProductionStagingAdapter {
     return ok(mockStagingOrders, this.now)
   }
 
+
+  private openItemsUrl(path: string, request: ProductionStagingAdapterRequest): string {
+    const params = new URLSearchParams()
+    if (request.plantId) params.set('plant_id', request.plantId)
+    if (request.warehouseId) params.set('warehouse_id', request.warehouseId)
+    const withQuery = `${path}?${params.toString()}`
+    return this.baseUrl ? `${this.baseUrl}${withQuery}` : withQuery
+  }
+
+  // SAP transfer priority is 1 (highest) .. 9; map to the app severity scale (heuristic).
+  private static mapPriority(transferPriority: unknown): 'low' | 'medium' | 'high' | 'critical' {
+    const p = Number(transferPriority)
+    if (!Number.isFinite(p) || p <= 0) return 'medium'
+    if (p <= 1) return 'critical'
+    if (p <= 3) return 'high'
+    if (p <= 6) return 'medium'
+    return 'low'
+  }
+
   async getStagingPickTasks(
-    _request: ProductionStagingAdapterRequest,
+    request: ProductionStagingAdapterRequest,
   ): Promise<AdapterResult<StagingPickTask[]>> {
-    return ok(mockPickTasks, this.now)
+    try {
+      const url = this.openItemsUrl('/api/warehouse360/pick-tasks', request)
+      const res = await fetch(url, { method: 'GET', credentials: 'include' })
+      if (!res.ok) {
+        return this.handleHttpError<StagingPickTask[]>(res, 'databricks-api')
+      }
+      const raw = await res.json()
+      if (!Array.isArray(raw)) {
+        throw new Error('Response was not an array')
+      }
+      const tasks: StagingPickTask[] = raw.map((r: any) => ({
+        taskId: `${r.taskId ?? ''}/${r.itemNumber ?? ''}`,
+        // BENUM carries the process order only for BETYP='F' references.
+        processOrderId: r.orderReferenceType === 'F' ? (r.orderReferenceNumber ?? undefined) : undefined,
+        materialId: String(r.materialId ?? ''),
+        materialDescription: undefined,
+        warehouseId: String(r.warehouseNumber ?? ''),
+        storageLocation: [r.sourceStorageType, r.sourceStorageBin].filter(Boolean).join('/') || '',
+        destinationLocation: [r.destinationStorageType, r.destinationStorageBin].filter(Boolean).join('/') || '',
+        requiredQuantity: Number(r.requestedQuantity ?? 0),
+        pickedQuantity: Number(r.confirmedQuantity ?? 0),
+        uom: undefined,
+        assignee: r.assignee ?? undefined,
+        status: r.itemStatus === 'Partially Confirmed' ? 'in-progress' : 'open',
+        priority: ProductionStagingAdapter.mapPriority(r.transferPriority),
+        createdAt: r.createdDatetime ?? undefined,
+        completedAt: undefined,
+        batchId: r.batchId ?? undefined,
+      }))
+      return { ok: true, data: tasks, fetchedAt: this.now(), source: 'databricks-api' }
+    } catch (e) {
+      return this.handleCatchError<StagingPickTask[]>(e, 'databricks-api')
+    }
   }
 
   async getStagingZoneCapacity(
@@ -197,9 +245,42 @@ export class ProductionStagingAdapter {
   }
 
   async getStagingMoveRequests(
-    _request: ProductionStagingAdapterRequest,
+    request: ProductionStagingAdapterRequest,
   ): Promise<AdapterResult<StagingMoveRequest[]>> {
-    return ok(mockMoveRequests, this.now)
+    try {
+      const url = this.openItemsUrl('/api/warehouse360/move-requests', request)
+      const res = await fetch(url, { method: 'GET', credentials: 'include' })
+      if (!res.ok) {
+        return this.handleHttpError<StagingMoveRequest[]>(res, 'databricks-api')
+      }
+      const raw = await res.json()
+      if (!Array.isArray(raw)) {
+        throw new Error('Response was not an array')
+      }
+      const requests: StagingMoveRequest[] = raw.map((r: any) => ({
+        requestId: `${r.requestId ?? ''}/${r.itemNumber ?? ''}`,
+        warehouseId: String(r.warehouseNumber ?? ''),
+        fromLocation: [r.sourceStorageType, r.sourceStorageBin].filter(Boolean).join('/') || '',
+        toLocation: [r.destinationStorageType, r.destinationStorageBin].filter(Boolean).join('/') || '',
+        materialId: String(r.materialId ?? ''),
+        materialDescription: undefined,
+        quantity: Number(r.openQuantity ?? r.requiredQuantity ?? 0),
+        uom: undefined,
+        processOrderId: r.orderReferenceType === 'F' ? (r.orderReferenceNumber ?? undefined) : undefined,
+        // LTBK carries no requester/assignee — documented data gaps.
+        requestedBy: undefined,
+        assignedTo: undefined,
+        status: 'open',
+        priority: ProductionStagingAdapter.mapPriority(r.transferPriority),
+        createdAt: r.createdDatetime ?? undefined,
+        completedAt: undefined,
+        // The WM queue is the closest source-truthful "reason" classifier.
+        reason: r.queue ?? undefined,
+      }))
+      return { ok: true, data: requests, fetchedAt: this.now(), source: 'databricks-api' }
+    } catch (e) {
+      return this.handleCatchError<StagingMoveRequest[]>(e, 'databricks-api')
+    }
   }
 
   async getStagingPickingWaves(
