@@ -129,6 +129,11 @@ GOLD_TABLES = [
     "gold_warehouse_exceptions",
     # warehouse_kpi_snapshot.py
     "gold_warehouse_kpi_snapshot",
+    # wm_operations_gold.py
+    "gold_wm_staging_worklist",
+    "gold_wm_worklist_summary",
+    "gold_wm_order_readiness",
+    "gold_wm_bin_stock_detail",
 ]
 
 TEMPLATE = """-- Unity Catalog Gold row-level security — secured serving views ({env_upper}).

@@ -810,6 +810,316 @@ export const Warehouse360GoodsMovementsContract = {
   },
 } as const;
 
+/**
+ * Supervisor staging/picking worklist at transfer-requirement (job) grain for the WM Operations workspace — read-only mirror of the SAP WM Cockpit (WMA-E-19) Job Assignment grid: work area, RF pick status, assigned operator, queue, campaign and pick progress from linked transfer orders. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_worklist
+ * Version: 0.1.0
+ */
+export interface WmOperationsWorklist {
+  /** SAP plant ID */
+  plant_id: string;
+  /** SAP warehouse number (LGNUM) */
+  warehouse_id: string;
+  /** Transfer requirement number (LTBK TBNUM) */
+  tr_id: string;
+  /** PRODUCTION_STAGING | DISPENSARY_REPLENISHMENT | DISPENSARY_PICKING | WAREHOUSE_OTHER */
+  work_area: string;
+  /** OPEN | IN_PROGRESS | PARKED | NO_STOCK | COMPLETE (from site RF pick-status fields) */
+  worklist_status: string;
+  /** Source reference type (LTBK BETYP; 'P' = process order) */
+  reference_type?: string;
+  /** Source reference number (process order for BETYP='P') */
+  reference_id?: string;
+  /** Finished-good material of the referenced process order */
+  order_material_id?: string;
+  /** Scheduled start of the referenced process order */
+  order_scheduled_start_date?: string;
+  /** Source storage type (LTBK VLTYP) */
+  source_storage_type?: string;
+  /** Storage zone of the source storage type */
+  source_zone?: string;
+  /** Destination storage type (LTBK NLTYP) */
+  destination_storage_type?: string;
+  /** Storage zone of the destination storage type */
+  destination_zone?: string;
+  /** Destination bin (LTBK NLPLA) */
+  destination_bin?: string;
+  /** RF queue (ZZQUEUE) */
+  queue?: string;
+  /** Campaign reference (ZZ_CAMPAIGN) */
+  campaign_id?: string;
+  /** Assigned RF operator ('~' park prefix stripped) */
+  assigned_operator?: string;
+  /** Supervisor-assigned job sequence */
+  job_sequence?: string;
+  /** Transfer priority (TBPRI) */
+  transfer_priority?: string;
+  /** TR creator (BNAME) */
+  created_by_user?: string;
+  /** TR creation timestamp */
+  created_ts?: string;
+  /** Planned execution timestamp (PDATU/PZEIT) */
+  planned_execution_ts?: string;
+  /** TR item count */
+  item_count?: number;
+  /** Items still open (not ELIKZ, open qty > 0) */
+  open_item_count?: number;
+  /** Distinct materials on the TR */
+  material_count?: number;
+  /** Material (single-material TRs only) */
+  material_id?: string;
+  /** Material description (single-material TRs only) */
+  material_name?: string;
+  /** Total required quantity (MENGE) */
+  required_qty?: number;
+  /** Total open quantity (MENGE - TAMEN, clamped >= 0) */
+  open_qty?: number;
+  /** Base unit of measure (first item) */
+  uom?: string;
+  /** True when items mix base UoMs (quantity totals approximate) */
+  has_mixed_base_uom?: boolean;
+  /** Linked transfer-order items (LTAK TBNUM) */
+  to_item_count?: number;
+  /** Linked TO items fully confirmed */
+  to_items_confirmed?: number;
+  /** Confirmed (picked) quantity across linked TOs */
+  to_confirmed_qty?: number;
+  /** Latest TO confirmation date */
+  latest_to_confirmed_date?: string;
+  /** Confirmed TO qty / required qty (0..1; null for mixed-UoM TRs) */
+  pick_progress_fraction?: number;
+  /** Hours since TR creation (query-time, _live view) */
+  age_hours?: number;
+  /** Planned execution time passed and job not complete (query-time) */
+  is_overdue?: boolean;
+}
+
+export const WmOperationsWorklistContract = {
+  id: "wm_operations.worklist",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_worklist",
+  grain: "one row per plant_id, warehouse_id and transfer requirement",
+  primaryKey: ["plant_id", "warehouse_id", "tr_id"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * WM worklist rolled up by plant, warehouse, work area and status — the WM Operations manager KPI strip. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_worklist_summary
+ * Version: 0.1.0
+ */
+export interface WmOperationsWorklistSummary {
+  /** SAP plant ID */
+  plant_id: string;
+  /** SAP warehouse number (LGNUM) */
+  warehouse_id: string;
+  /** PRODUCTION_STAGING | DISPENSARY_REPLENISHMENT | DISPENSARY_PICKING | WAREHOUSE_OTHER */
+  work_area: string;
+  /** OPEN | IN_PROGRESS | PARKED | NO_STOCK | COMPLETE */
+  worklist_status: string;
+  /** Transfer requirements in this bucket */
+  tr_count?: number;
+  /** Sum of open quantity */
+  total_open_qty?: number;
+  /** Sum of required quantity */
+  total_required_qty?: number;
+  /** Distinct assigned operators */
+  operator_count?: number;
+  /** Earliest planned execution timestamp in the bucket */
+  earliest_planned_ts?: string;
+  /** Earliest TR creation timestamp in the bucket */
+  earliest_created_ts?: string;
+}
+
+export const WmOperationsWorklistSummaryContract = {
+  id: "wm_operations.worklist_summary",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_worklist_summary",
+  grain: "one row per plant_id, warehouse_id, work_area and worklist_status",
+  primaryKey: ["plant_id", "warehouse_id", "work_area", "worklist_status"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Released process orders with derived TR coverage (component demand converted to TRs — the WM Cockpit 'TR' status) and PSA supply status (stock in order-keyed Production Supply bins — the cockpit 'ST' status), plus a query-time readiness band. Coverage denominators use WM-managed components only; quantity comparisons assume base-UoM consistency. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_order_readiness
+ * Version: 0.1.0
+ */
+export interface WmOperationsOrderReadiness {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Process order number (AUFNR) */
+  order_id: string;
+  /** Warehouse serving the order's WM components */
+  warehouse_id?: string;
+  /** Finished-good material */
+  material_id?: string;
+  /** Finished-good material description */
+  material_name?: string;
+  /** Order quantity (GAMNG) */
+  order_qty?: number;
+  /** Order quantity UoM */
+  uom?: string;
+  /** Scheduled start (GSTRS) */
+  scheduled_start_date?: string;
+  /** Scheduled finish */
+  scheduled_finish_date?: string;
+  /** Production supply area (RESB PRVBE, first non-null) */
+  production_supply_area?: string;
+  /** Production-consumption component reservations */
+  component_count?: number;
+  /** Components carrying a WM warehouse number */
+  wm_component_count?: number;
+  /** Required quantity across WM-managed components */
+  wm_component_required_qty?: number;
+  /** Open (unissued) component quantity */
+  component_open_qty?: number;
+  /** Transfer requirements created for the order */
+  tr_count?: number;
+  /** Quantity covered by TRs */
+  tr_required_qty?: number;
+  /** TR quantity not yet converted to TOs */
+  tr_open_qty?: number;
+  /** NONE | PARTIAL | FULL (cockpit 'TR' status) */
+  tr_coverage_status: string;
+  /** Stock in order-keyed Production Supply bins */
+  psa_supplied_qty?: number;
+  /** NOT_SUPPLIED | PARTIAL | SUPPLIED (cockpit 'ST' status) */
+  supply_status: string;
+  /** SUPPLIED | STAGING_PLANNED | PARTIALLY_PLANNED | NOT_STARTED | NO_WM_DEMAND */
+  readiness_status: string;
+  /** Days until scheduled start (query-time, _live view) */
+  days_to_start?: number;
+  /** red | amber | green | grey (query-time traffic light) */
+  readiness_band?: string;
+}
+
+export const WmOperationsOrderReadinessContract = {
+  id: "wm_operations.order_readiness",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_order_readiness",
+  grain: "one row per plant_id and process order",
+  primaryKey: ["plant_id", "order_id"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Quant-grain stock & bin explorer with storage-zone classification (dispensary / production supply / palletising / interim / warehouse), stock category, block flags and expiry. The dispensary stock-health view is this contract filtered to storage_zone = 'DISPENSARY'. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_bin_stock
+ * Version: 0.1.0
+ */
+export interface WmOperationsBinStock {
+  /** SAP plant ID */
+  plant_id: string;
+  /** SAP warehouse number (LGNUM) */
+  warehouse_id: string;
+  /** WM storage type (LGTYP) */
+  storage_type?: string;
+  /** DISPENSARY | PRODUCTION_SUPPLY | PALLETISING | INTERIM | WAREHOUSE */
+  storage_zone?: string;
+  /** Storage bin (LGPLA) */
+  bin_id?: string;
+  /** Picking area (KOBER) */
+  picking_area?: string;
+  /** Quant number (LQNUM) */
+  quant_id: string;
+  /** Material */
+  material_id?: string;
+  /** Material description */
+  material_name?: string;
+  /** Batch (CHARG, exact SAP identifier) */
+  batch_id?: string;
+  /** UNRESTRICTED | QUALITY | BLOCKED | OTHER (from BESTQ) */
+  stock_category?: string;
+  /** Total quant quantity (GESME) */
+  total_qty?: number;
+  /** Available quantity (VERME) */
+  available_qty?: number;
+  /** Open putaway quantity (EINME) */
+  putaway_qty?: number;
+  /** Open pick quantity (AUSME) */
+  pick_qty?: number;
+  /** Open transfer quantity (TRAME) */
+  open_transfer_qty?: number;
+  /** Base unit of measure */
+  uom?: string;
+  /** Goods receipt date (WDATU) */
+  goods_receipt_date?: string;
+  /** Shelf-life expiry date (VFDAT) */
+  expiry_date?: string;
+  /** Last movement timestamp */
+  last_movement_ts?: string;
+  /** Quant blocked for stock removal (SKZUA) */
+  is_blocked_for_stock_removal?: boolean;
+  /** Quant blocked for putaway (SKZUE) */
+  is_blocked_for_putaway?: boolean;
+  /** Bin carries a blocking reason (SPGRU) */
+  is_bin_blocked?: boolean;
+  /** Bin blocking reason code */
+  blocking_reason_code?: string;
+  /** Days until expiry (query-time, _live view) */
+  days_to_expiry?: number;
+  /** Expiry date in the past (query-time) */
+  is_expired?: boolean;
+}
+
+export const WmOperationsBinStockContract = {
+  id: "wm_operations.bin_stock",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_bin_stock",
+  grain: "one row per plant_id, warehouse_id and quant",
+  primaryKey: ["plant_id", "warehouse_id", "quant_id"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
 export const ioReportingContracts = {
   contractVersion: "0.1.0",
   product: "connected-operations-intelligence",
@@ -829,5 +1139,9 @@ export const ioReportingContracts = {
     "warehouse360.pick_tasks": Warehouse360PickTasksContract,
     "warehouse360.move_requests": Warehouse360MoveRequestsContract,
     "warehouse360.goods_movements": Warehouse360GoodsMovementsContract,
+    "wm_operations.worklist": WmOperationsWorklistContract,
+    "wm_operations.worklist_summary": WmOperationsWorklistSummaryContract,
+    "wm_operations.order_readiness": WmOperationsOrderReadinessContract,
+    "wm_operations.bin_stock": WmOperationsBinStockContract,
   },
 } as const;

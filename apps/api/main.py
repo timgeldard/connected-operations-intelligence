@@ -16,6 +16,7 @@ from routes.quality import router as quality_router
 from routes.spc import router as spc_router
 from routes.trace2 import router as trace2_router
 from routes.warehouse360 import router as warehouse360_router
+from routes.wm_operations import router as wm_operations_router
 from routes.workspaces import router as workspaces_router
 from shared.proxy_client import close_proxy_client
 from shared.query_service.databricks_client import databricks_http_client_pool
@@ -60,6 +61,7 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(auth_diagnostics_router, prefix="/api")
 app.include_router(trace2_router, prefix="/api")
 app.include_router(warehouse360_router, prefix="/api")
+app.include_router(wm_operations_router, prefix="/api")
 app.include_router(process_order_router, prefix="/api")
 app.include_router(connected_quality_lab_router, prefix="/api")
 app.include_router(envmon_router, prefix="/api")

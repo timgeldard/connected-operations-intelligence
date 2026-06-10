@@ -1,0 +1,159 @@
+import { useState } from 'react'
+import type {
+  WmOperationsAdapterRequest,
+  WmStorageZone,
+} from '../adapters/wm-operations-adapter.js'
+import { useWmBinStock } from '../adapters/wm-operations-queries.js'
+import {
+  ViewHeader,
+  EmptyNote,
+  LoadingRows,
+  formatQty,
+  formatDate,
+} from '../components/kerry.js'
+
+export interface StockExplorerViewProps {
+  readonly request: WmOperationsAdapterRequest
+}
+
+const ZONE_OPTIONS: Array<{ value: WmStorageZone | ''; label: string }> = [
+  { value: '', label: 'All zones' },
+  { value: 'WAREHOUSE', label: 'Warehouse' },
+  { value: 'DISPENSARY', label: 'Dispensary' },
+  { value: 'PRODUCTION_SUPPLY', label: 'Production supply' },
+  { value: 'PALLETISING', label: 'Palletising' },
+  { value: 'INTERIM', label: 'Interim (9xx)' },
+]
+
+export function StockExplorerView({ request }: StockExplorerViewProps) {
+  const [zone, setZone] = useState<WmStorageZone | ''>('')
+  const [material, setMaterial] = useState('')
+  const [bin, setBin] = useState('')
+  const [expiringOnly, setExpiringOnly] = useState(false)
+  // Applied (committed) text filters — only sent on Enter/blur to avoid a query per keystroke.
+  const [applied, setApplied] = useState<{ material?: string; bin?: string }>({})
+
+  const result = useWmBinStock({
+    ...request,
+    storageZone: zone || undefined,
+    materialId: applied.material || undefined,
+    binId: applied.bin || undefined,
+    expiringWithinDays: expiringOnly ? 90 : undefined,
+  })
+
+  const lines = result.data?.ok ? result.data.data : []
+  const error = result.data && !result.data.ok ? result.data.error : null
+
+  const applyTextFilters = () => setApplied({ material: material.trim(), bin: bin.trim() })
+
+  return (
+    <section>
+      <ViewHeader
+        eyebrow="WM Operations · Inventory"
+        title="Stock & Bins"
+        subtitle="Bin-level stock with zone, category, blocks, and shelf life — the answer to “where is it, and can I use it?”"
+      />
+
+      <div className="kw-card">
+        <div className="kw-card-title">Stock explorer</div>
+        <div className="kw-filters">
+          <select aria-label="Filter by zone" value={zone} onChange={e => setZone(e.target.value as WmStorageZone | '')}>
+            {ZONE_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <input
+            aria-label="Filter by material"
+            placeholder="Material…"
+            value={material}
+            onChange={e => setMaterial(e.target.value)}
+            onBlur={applyTextFilters}
+            onKeyDown={e => e.key === 'Enter' && applyTextFilters()}
+          />
+          <input
+            aria-label="Filter by bin"
+            placeholder="Bin…"
+            value={bin}
+            onChange={e => setBin(e.target.value)}
+            onBlur={applyTextFilters}
+            onKeyDown={e => e.key === 'Enter' && applyTextFilters()}
+          />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={expiringOnly}
+              onChange={e => setExpiringOnly(e.target.checked)}
+            />
+            Expiring ≤ 90d
+          </label>
+          <span className="kw-eyebrow" style={{ marginLeft: 'auto' }}>
+            {lines.length} quants
+          </span>
+        </div>
+
+        {error ? (
+          <EmptyNote>Could not load stock — {error.message}</EmptyNote>
+        ) : result.isLoading ? (
+          <LoadingRows rows={8} />
+        ) : lines.length === 0 ? (
+          <EmptyNote>No stock matches these filters.</EmptyNote>
+        ) : (
+          <div className="kw-table-wrap">
+            <table className="kw-table">
+              <thead>
+                <tr>
+                  <th>Zone</th>
+                  <th>ST</th>
+                  <th>Bin</th>
+                  <th>Material</th>
+                  <th>Batch</th>
+                  <th>Total</th>
+                  <th>Available</th>
+                  <th>Category</th>
+                  <th>GR date</th>
+                  <th>Expiry</th>
+                  <th>Flags</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map(line => (
+                  <tr key={`${line.warehouseId}-${line.quantId}`}>
+                    <td style={{ fontSize: 11, color: 'var(--kw-forest-60)' }}>{line.storageZone ?? '—'}</td>
+                    <td className="kw-mono">{line.storageType}</td>
+                    <td className="kw-mono">{line.binId}</td>
+                    <td title={line.materialId ?? undefined}>
+                      {line.materialName ?? line.materialId ?? '—'}
+                    </td>
+                    <td className="kw-mono">{line.batchId ?? '—'}</td>
+                    <td className="kw-num">{formatQty(line.totalQty, line.uom)}</td>
+                    <td className="kw-num">{formatQty(line.availableQty, line.uom)}</td>
+                    <td>
+                      <span className={`kw-chip ${line.stockCategory === 'UNRESTRICTED' ? 'kw-chip--complete' : line.stockCategory === 'QUALITY' ? 'kw-chip--parked' : line.stockCategory ? 'kw-chip--no-stock' : 'kw-chip--neutral'}`}>
+                        {line.stockCategory ?? '—'}
+                      </span>
+                    </td>
+                    <td className="kw-num">{formatDate(line.goodsReceiptDate)}</td>
+                    <td className="kw-num" style={line.isExpired ? { color: 'var(--kw-sunset)', fontWeight: 600 } : undefined}>
+                      {formatDate(line.expiryDate)}
+                      {line.daysToExpiry != null && ` (${line.daysToExpiry}d)`}
+                    </td>
+                    <td style={{ fontSize: 11, color: 'var(--kw-forest-60)' }}>
+                      {[
+                        line.isExpired ? 'Expired' : null,
+                        line.isBlockedForStockRemoval ? 'Removal blocked' : null,
+                        line.isBlockedForPutaway ? 'Putaway blocked' : null,
+                        line.isBinBlocked ? `Bin blocked${line.blockingReasonCode ? ` (${line.blockingReasonCode})` : ''}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}

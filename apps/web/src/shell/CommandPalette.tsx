@@ -125,6 +125,28 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       },
     },
     {
+      id: 'wm-ops-c061',
+      label: 'Open WM Operations — 104 · Portbury [MFG]',
+      description: 'Staging & dispensary manager tools · Plant C061 · Warehouse 104',
+      category: 'Recent Investigations',
+      action: () => {
+        setActiveScope({ warehouseId: '104', plantId: 'C061' })
+        setWorkspace('wm-operations')
+        onClose()
+      },
+    },
+    {
+      id: 'wm-ops-p817',
+      label: 'Open WM Operations — 208 · Jackson [MFG]',
+      description: 'Staging & dispensary manager tools · Plant P817 · Warehouse 208',
+      category: 'Recent Investigations',
+      action: () => {
+        setActiveScope({ warehouseId: '208', plantId: 'P817' })
+        setWorkspace('wm-operations')
+        onClose()
+      },
+    },
+    {
       id: 'por-mock',
       label: 'Open Process Order — PO-240308-3847',
       description: 'EMMENTAL BLOCK NATURAL 100KG · Batch CH-240308-0047 · Kerry Listowel',

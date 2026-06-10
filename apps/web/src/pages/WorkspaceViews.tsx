@@ -3,6 +3,7 @@ import { BatchReleaseWorkspace, ConnectedQualityLabBoardStandaloneApp } from '@c
 import { OperationsPlanRiskWorkspace, ProcessOrderReviewWorkspace, ProcessOrderConsumerWorkspace } from '@connectio/di-operations'
 import { EnvMonWorkspace, EnvMonConsumerWorkspace } from '@connectio/di-envmon'
 import { ProductionStagingWorkspace, Warehouse360Workspace } from '@connectio/di-warehouse'
+import { WmOperationsWorkspace } from '@connectio/di-wm-operations'
 import { SPCMonitoringWorkspace, SPCConsumerWorkspace } from '@connectio/di-spc'
 import { MaintenanceReliabilityWorkspace } from '@connectio/di-maintenance'
 import { useWorkspaceShellState } from '../shell/useWorkspaceShellState.js'
@@ -155,6 +156,18 @@ export default function WorkspaceViews({ workspaceId }: Props) {
         <Warehouse360Workspace
           scope={activeScope}
           viewId={viewId ?? 'warehouse-overview'}
+          onNavigateToWorkspace={setWorkspace}
+        />
+      </div>
+    )
+  }
+
+  if (workspaceId === 'wm-operations') {
+    return (
+      <div className="connectio-page" data-testid="workspace-view-wm-operations">
+        <WmOperationsWorkspace
+          scope={activeScope}
+          viewId={viewId ?? 'staging-worklist'}
           onNavigateToWorkspace={setWorkspace}
         />
       </div>
