@@ -51,9 +51,6 @@ def stg_reservation_requirement():
         # ── Movement / demand
         F.col("BWART").alias("movement_type_code"),
         sap_date("BDTER").alias("requirement_date"),
-        # Operation/phase (VORNR) — RF picking sequences by phase (WMA-E-50); drives the
-        # order-detail component->operation mapping.
-        F.col("VORNR").alias("operation_number"),
         F.col("BDMNG").alias("required_quantity"),
         F.col("ENMNG").alias("withdrawn_quantity"),
         (F.coalesce(F.col("BDMNG"), F.lit(0.0)) - F.coalesce(F.col("ENMNG"), F.lit(0.0))).alias(
