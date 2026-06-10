@@ -32,6 +32,7 @@ from gold._shared import (
     get_silver_schema,
     get_spark_session,
     gold_table_args,
+    table_exists,
 )
 
 # LTBK BETYP value identifying process-order-sourced transfer requirements (the WM Cockpit
@@ -1167,36 +1168,41 @@ def gold_wm_staging_buffer_flow_hourly():
 
 # ── 14. QM LOT CONTEXT (held-stock enrichment) ────────────────────────────────
 
-@dlt.table(**gold_table_args(
-    comment=(
-        "Quality inspection-lot context per plant x material x batch: open (pending usage "
-        "decision) lot counts and the latest decision. Joined client-side onto Stock Health "
-        "held stock and Inbound to answer 'why is this batch in QI and when is the UD due'."
-    ),
-    cluster_by=["plant_code", "material_code"],
-))
-def gold_wm_qm_lot_context():
-    spark = get_spark_session()
-    ss = get_silver_schema(spark)
-    lots = spark.read.table(f"{ss}.quality_inspection_lot").filter(
-        ~F.coalesce(F.col("is_deletion_flagged"), F.lit(False))
-    )
+# Source-guarded: silver quality_inspection_lot only materialises where the QM source is
+# replicated (it is NOT in UAT/dev today — see silver/tables/quality.py). The app handles
+# the absent dataset gracefully (QM columns show as em-dashes).
+if table_exists(get_spark_session(), f"{get_silver_schema(get_spark_session())}.quality_inspection_lot"):
 
-    return (
-        lots
-        .withColumn("_is_open", (F.col("usage_decision") == "Pending").cast("int"))
-        .groupBy("plant_code", "material_code", "batch_number")
-        .agg(
-            F.count(F.lit(1)).alias("lot_count"),
-            F.sum("_is_open").alias("open_lot_count"),
-            F.max("inspection_lot_number").alias("latest_lot_number"),
-            F.first("inspection_lot_origin_code", ignorenulls=True).alias("lot_origin_code"),
-            F.min(
-                F.when(F.col("_is_open") == 1, F.col("inspection_start_date"))
-            ).alias("oldest_open_start_date"),
-            F.expr(
-                "max_by(usage_decision, coalesce(usage_decision_date, ''))"
-            ).alias("last_usage_decision"),
-            F.max("usage_decision_date").alias("last_usage_decision_date"),
+    @dlt.table(**gold_table_args(
+        comment=(
+            "Quality inspection-lot context per plant x material x batch: open (pending usage "
+            "decision) lot counts and the latest decision. Joined client-side onto Stock Health "
+            "held stock and Inbound to answer 'why is this batch in QI and when is the UD due'."
+        ),
+        cluster_by=["plant_code", "material_code"],
+    ))
+    def gold_wm_qm_lot_context():
+        spark = get_spark_session()
+        ss = get_silver_schema(spark)
+        lots = spark.read.table(f"{ss}.quality_inspection_lot").filter(
+            ~F.coalesce(F.col("is_deletion_flagged"), F.lit(False))
         )
-    )
+
+        return (
+            lots
+            .withColumn("_is_open", (F.col("usage_decision") == "Pending").cast("int"))
+            .groupBy("plant_code", "material_code", "batch_number")
+            .agg(
+                F.count(F.lit(1)).alias("lot_count"),
+                F.sum("_is_open").alias("open_lot_count"),
+                F.max("inspection_lot_number").alias("latest_lot_number"),
+                F.first("inspection_lot_origin_code", ignorenulls=True).alias("lot_origin_code"),
+                F.min(
+                    F.when(F.col("_is_open") == 1, F.col("inspection_start_date"))
+                ).alias("oldest_open_start_date"),
+                F.expr(
+                    "max_by(usage_decision, coalesce(usage_decision_date, ''))"
+                ).alias("last_usage_decision"),
+                F.max("usage_decision_date").alias("last_usage_decision_date"),
+            )
+        )
