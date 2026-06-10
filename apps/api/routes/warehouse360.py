@@ -22,6 +22,9 @@ from adapters.warehouse360.warehouse360_databricks_adapter import (
     WarehouseStockZonesRequest,
     WarehouseBatchHoldStatusRequest,
     WarehouseStagingReadinessRequest,
+    WarehouseOpenHoldsRequest,
+    WarehousePickTasksRequest,
+    WarehouseMoveRequestsRequest,
     map_warehouse_exceptions_rows,
     map_warehouse_inbound_rows,
     map_warehouse_outbound_rows,
@@ -30,6 +33,9 @@ from adapters.warehouse360.warehouse360_databricks_adapter import (
     map_warehouse_stock_exceptions_rows,
     map_warehouse_shortfalls_rows,
     map_warehouse_stock_zones_rows,
+    map_warehouse_open_holds_rows,
+    map_warehouse_pick_tasks_rows,
+    map_warehouse_move_requests_rows,
     map_warehouse_batch_hold_status_rows,
     map_warehouse_staging_readiness_rows,
 )
@@ -128,6 +134,83 @@ class Warehouse360StagingReadiness(BaseModel):
     partially_staged: int = Field(..., alias='partiallyStaged')
     not_staged: int = Field(..., alias='notStaged')
     blocked: int = Field(..., alias='blocked')
+
+
+class Warehouse360OpenHoldItem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    plant_id: str = Field(..., alias='plantId')
+    warehouse_number: str = Field(..., alias='warehouseNumber')
+    storage_type: Optional[str] = Field(None, alias='storageType')
+    storage_bin: Optional[str] = Field(None, alias='storageBin')
+    quant_number: str = Field(..., alias='quantNumber')
+    material_id: str = Field(..., alias='materialId')
+    batch_id: Optional[str] = Field(None, alias='batchId')
+    hold_type: str = Field(..., alias='holdType')
+    quantity: Optional[float] = None
+    uom: Optional[str] = None
+    goods_receipt_date: Optional[str] = Field(None, alias='goodsReceiptDate')
+    age_hours: Optional[float] = Field(None, alias='ageHours')
+    # Hold provenance is a documented data gap (no QM hold log replicated) — always null.
+    raised_by: Optional[str] = Field(None, alias='raisedBy')
+
+
+class Warehouse360PickTaskItem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    plant_id: str = Field(..., alias='plantId')
+    warehouse_number: str = Field(..., alias='warehouseNumber')
+    task_id: str = Field(..., alias='taskId')
+    item_number: str = Field(..., alias='itemNumber')
+    material_id: Optional[str] = Field(None, alias='materialId')
+    batch_id: Optional[str] = Field(None, alias='batchId')
+    source_storage_type: Optional[str] = Field(None, alias='sourceStorageType')
+    source_storage_bin: Optional[str] = Field(None, alias='sourceStorageBin')
+    destination_storage_type: Optional[str] = Field(None, alias='destinationStorageType')
+    destination_storage_bin: Optional[str] = Field(None, alias='destinationStorageBin')
+    requested_quantity: Optional[float] = Field(None, alias='requestedQuantity')
+    confirmed_quantity: Optional[float] = Field(None, alias='confirmedQuantity')
+    item_status: str = Field(..., alias='itemStatus')
+    created_datetime: Optional[str] = Field(None, alias='createdDatetime')
+    order_reference_type: Optional[str] = Field(None, alias='orderReferenceType')
+    order_reference_number: Optional[str] = Field(None, alias='orderReferenceNumber')
+    transfer_priority: Optional[str] = Field(None, alias='transferPriority')
+    delivery_number: Optional[str] = Field(None, alias='deliveryNumber')
+    created_by_user: Optional[str] = Field(None, alias='createdByUser')
+    assignee: Optional[str] = None
+    age_hours: Optional[float] = Field(None, alias='ageHours')
+
+
+class Warehouse360MoveRequestItem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    plant_id: str = Field(..., alias='plantId')
+    warehouse_number: str = Field(..., alias='warehouseNumber')
+    request_id: str = Field(..., alias='requestId')
+    item_number: str = Field(..., alias='itemNumber')
+    material_id: Optional[str] = Field(None, alias='materialId')
+    batch_id: Optional[str] = Field(None, alias='batchId')
+    source_storage_type: Optional[str] = Field(None, alias='sourceStorageType')
+    source_storage_bin: Optional[str] = Field(None, alias='sourceStorageBin')
+    destination_storage_type: Optional[str] = Field(None, alias='destinationStorageType')
+    destination_storage_bin: Optional[str] = Field(None, alias='destinationStorageBin')
+    required_quantity: Optional[float] = Field(None, alias='requiredQuantity')
+    open_quantity: Optional[float] = Field(None, alias='openQuantity')
+    created_datetime: Optional[str] = Field(None, alias='createdDatetime')
+    planned_execution_datetime: Optional[str] = Field(None, alias='plannedExecutionDatetime')
+    queue: Optional[str] = None
+    transfer_priority: Optional[str] = Field(None, alias='transferPriority')
+    order_reference_type: Optional[str] = Field(None, alias='orderReferenceType')
+    order_reference_number: Optional[str] = Field(None, alias='orderReferenceNumber')
+    # Assignee is a documented data gap (LTBK carries none) — always null.
+    assigned_to: Optional[str] = Field(None, alias='assignedTo')
+    age_hours: Optional[float] = Field(None, alias='ageHours')
 
 
 @router.get("/warehouse360/overview")
@@ -533,6 +616,120 @@ async def warehouse_stock_zones(
     )
     set_databricks_response_headers(response, spec)
     return map_warehouse_stock_zones_rows(rows)
+
+
+@router.get("/warehouse360/open-holds", response_model=list[Warehouse360OpenHoldItem])
+async def warehouse_open_holds(
+    response: Response,
+    plant_id: str | None = None,
+    warehouse_id: str | None = None,
+    limit: int = 200,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[Warehouse360OpenHoldItem]:
+    """Get open stock holds (quality / blocked / restricted quants) — databricks-api only."""
+    backend_mode = os.getenv("BACKEND_ADAPTER_MODE", "legacy-api")
+    if backend_mode != "databricks-api":
+        raise HTTPException(
+            status_code=503,
+            detail="Warehouse open holds requires BACKEND_ADAPTER_MODE=databricks-api",
+        )
+
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+
+    req = WarehouseOpenHoldsRequest(
+        plant_id=plant_id.strip() if plant_id else None,
+        warehouse_id=warehouse_id.strip() if warehouse_id else None,
+        limit=limit,
+    )
+
+    host, db_warehouse_id = require_databricks_config()
+    identity = build_user_identity(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    repository = build_databricks_repository(identity, host, db_warehouse_id)
+    wh_repo = Warehouse360Repository(repository)
+    rows, spec = await run_repository_fetch(
+        lambda: wh_repo.fetch_warehouse_open_holds(req)
+    )
+    set_databricks_response_headers(response, spec)
+    return map_warehouse_open_holds_rows(rows)
+
+
+@router.get("/warehouse360/pick-tasks", response_model=list[Warehouse360PickTaskItem])
+async def warehouse_pick_tasks(
+    response: Response,
+    plant_id: str | None = None,
+    warehouse_id: str | None = None,
+    limit: int = 200,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[Warehouse360PickTaskItem]:
+    """Get open staging pick tasks (open transfer-order items) — databricks-api only."""
+    backend_mode = os.getenv("BACKEND_ADAPTER_MODE", "legacy-api")
+    if backend_mode != "databricks-api":
+        raise HTTPException(
+            status_code=503,
+            detail="Warehouse pick tasks requires BACKEND_ADAPTER_MODE=databricks-api",
+        )
+
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+
+    req = WarehousePickTasksRequest(
+        plant_id=plant_id.strip() if plant_id else None,
+        warehouse_id=warehouse_id.strip() if warehouse_id else None,
+        limit=limit,
+    )
+
+    host, db_warehouse_id = require_databricks_config()
+    identity = build_user_identity(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    repository = build_databricks_repository(identity, host, db_warehouse_id)
+    wh_repo = Warehouse360Repository(repository)
+    rows, spec = await run_repository_fetch(
+        lambda: wh_repo.fetch_warehouse_pick_tasks(req)
+    )
+    set_databricks_response_headers(response, spec)
+    return map_warehouse_pick_tasks_rows(rows)
+
+
+@router.get("/warehouse360/move-requests", response_model=list[Warehouse360MoveRequestItem])
+async def warehouse_move_requests(
+    response: Response,
+    plant_id: str | None = None,
+    warehouse_id: str | None = None,
+    limit: int = 200,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[Warehouse360MoveRequestItem]:
+    """Get open warehouse move requests (open transfer-requirement items) — databricks-api only."""
+    backend_mode = os.getenv("BACKEND_ADAPTER_MODE", "legacy-api")
+    if backend_mode != "databricks-api":
+        raise HTTPException(
+            status_code=503,
+            detail="Warehouse move requests requires BACKEND_ADAPTER_MODE=databricks-api",
+        )
+
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
+
+    req = WarehouseMoveRequestsRequest(
+        plant_id=plant_id.strip() if plant_id else None,
+        warehouse_id=warehouse_id.strip() if warehouse_id else None,
+        limit=limit,
+    )
+
+    host, db_warehouse_id = require_databricks_config()
+    identity = build_user_identity(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    repository = build_databricks_repository(identity, host, db_warehouse_id)
+    wh_repo = Warehouse360Repository(repository)
+    rows, spec = await run_repository_fetch(
+        lambda: wh_repo.fetch_warehouse_move_requests(req)
+    )
+    set_databricks_response_headers(response, spec)
+    return map_warehouse_move_requests_rows(rows)
 
 
 @router.get("/warehouse360/batch/{batchId}/hold-status", response_model=Warehouse360BatchHoldStatus)

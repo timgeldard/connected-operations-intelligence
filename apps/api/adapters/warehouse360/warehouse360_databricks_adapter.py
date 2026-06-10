@@ -94,6 +94,27 @@ class WarehouseStagingReadinessRequest:
     plan_date: str
 
 
+@dataclass
+class WarehouseOpenHoldsRequest:
+    plant_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    limit: int = 200
+
+
+@dataclass
+class WarehousePickTasksRequest:
+    plant_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    limit: int = 200
+
+
+@dataclass
+class WarehouseMoveRequestsRequest:
+    plant_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    limit: int = 200
+
+
 # ---------------------------------------------------------------------------
 # Utility Mapping & Formatting Helpers
 # ---------------------------------------------------------------------------
@@ -952,6 +973,142 @@ def get_warehouse_staging_readiness_spec(request: WarehouseStagingReadinessReque
     )
 
 
+def _open_items_where(request, params: dict) -> str:
+    """Shared optional plant/warehouse predicate for the open-items datasets."""
+    where_clauses: list[str] = []
+    if request.plant_id:
+        where_clauses.append("plant_id = :plant_id")
+        params["plant_id"] = request.plant_id
+    if request.warehouse_id:
+        where_clauses.append("warehouse_number = :warehouse_id")
+        params["warehouse_id"] = request.warehouse_id
+    return (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+
+def get_warehouse_open_holds_spec(request: WarehouseOpenHoldsRequest) -> QuerySpec:
+    view = resolve_contract_object("warehouse360.open_holds", "wh360")
+    contract_id = "warehouse360.open_holds"
+    params: dict[str, object] = {}
+    where_str = _open_items_where(request, params)
+    sql = f"""
+    SELECT
+        plant_id,
+        warehouse_number,
+        storage_type,
+        storage_bin,
+        quant_number,
+        material_id,
+        batch_id,
+        hold_type,
+        quantity,
+        uom,
+        goods_receipt_date,
+        age_hours
+    FROM {view}
+    {where_str}
+    ORDER BY age_hours DESC
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="warehouse360.get_open_holds",
+        module="wh360",
+        endpoint="/api/warehouse360/open-holds",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "stock", "holds"],
+        contract_id=contract_id,
+    )
+
+
+def get_warehouse_pick_tasks_spec(request: WarehousePickTasksRequest) -> QuerySpec:
+    view = resolve_contract_object("warehouse360.pick_tasks", "wh360")
+    contract_id = "warehouse360.pick_tasks"
+    params: dict[str, object] = {}
+    where_str = _open_items_where(request, params)
+    sql = f"""
+    SELECT
+        plant_id,
+        warehouse_number,
+        task_id,
+        item_number,
+        material_id,
+        batch_id,
+        source_storage_type,
+        source_storage_bin,
+        destination_storage_type,
+        destination_storage_bin,
+        requested_quantity,
+        confirmed_quantity,
+        item_status,
+        created_datetime,
+        order_reference_type,
+        order_reference_number,
+        transfer_priority,
+        delivery_number,
+        created_by_user,
+        confirmed_by_user,
+        age_hours
+    FROM {view}
+    {where_str}
+    ORDER BY created_datetime ASC
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="warehouse360.get_pick_tasks",
+        module="wh360",
+        endpoint="/api/warehouse360/pick-tasks",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "staging", "pick_tasks"],
+        contract_id=contract_id,
+    )
+
+
+def get_warehouse_move_requests_spec(request: WarehouseMoveRequestsRequest) -> QuerySpec:
+    view = resolve_contract_object("warehouse360.move_requests", "wh360")
+    contract_id = "warehouse360.move_requests"
+    params: dict[str, object] = {}
+    where_str = _open_items_where(request, params)
+    sql = f"""
+    SELECT
+        plant_id,
+        warehouse_number,
+        request_id,
+        item_number,
+        material_id,
+        batch_id,
+        source_storage_type,
+        source_storage_bin,
+        destination_storage_type,
+        destination_storage_bin,
+        required_quantity,
+        open_quantity,
+        created_datetime,
+        planned_execution_datetime,
+        queue,
+        transfer_priority,
+        order_reference_type,
+        order_reference_number,
+        age_hours
+    FROM {view}
+    {where_str}
+    ORDER BY created_datetime ASC
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="warehouse360.get_move_requests",
+        module="wh360",
+        endpoint="/api/warehouse360/move-requests",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "staging", "move_requests"],
+        contract_id=contract_id,
+    )
+
+
 def map_warehouse_stock_exceptions_rows(rows: list[dict]) -> list[dict]:
     """Map raw stock exceptions rows to Warehouse360StockExceptionItem."""
     result = []
@@ -996,6 +1153,87 @@ def map_warehouse_stock_zones_rows(rows: list[dict]) -> list[dict]:
             "emptyBinCount": _safe_int(row.get("empty_bin_count")),
             "blockedBinCount": _safe_int(row.get("blocked_bin_count")),
             "occupancyRate": _safe_float(row.get("occupancy_rate")),
+        })
+    return result
+
+
+def map_warehouse_open_holds_rows(rows: list[dict]) -> list[dict]:
+    """Map raw open-holds rows. raisedBy is a documented data gap (no QM hold log replicated)."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "warehouseNumber": str(row["warehouse_number"]) if row.get("warehouse_number") else None,
+            "storageType": str(row["storage_type"]) if row.get("storage_type") else None,
+            "storageBin": str(row["storage_bin"]) if row.get("storage_bin") else None,
+            "quantNumber": str(row["quant_number"]) if row.get("quant_number") else None,
+            "materialId": str(row["material_id"]) if row.get("material_id") else None,
+            "batchId": str(row["batch_id"]) if row.get("batch_id") else None,
+            "holdType": str(row["hold_type"]) if row.get("hold_type") else None,
+            "quantity": _safe_float(row.get("quantity")) if row.get("quantity") is not None else None,
+            "uom": str(row["uom"]) if row.get("uom") else None,
+            "goodsReceiptDate": str(row["goods_receipt_date"]) if row.get("goods_receipt_date") else None,
+            "ageHours": _safe_float(row.get("age_hours")) if row.get("age_hours") is not None else None,
+            "raisedBy": None,
+        })
+    return result
+
+
+def map_warehouse_pick_tasks_rows(rows: list[dict]) -> list[dict]:
+    """Map raw pick-task rows (open TO items). assignee maps to confirmed_by_user when present."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "warehouseNumber": str(row["warehouse_number"]) if row.get("warehouse_number") else None,
+            "taskId": str(row["task_id"]) if row.get("task_id") else None,
+            "itemNumber": str(row["item_number"]) if row.get("item_number") else None,
+            "materialId": str(row["material_id"]) if row.get("material_id") else None,
+            "batchId": str(row["batch_id"]) if row.get("batch_id") else None,
+            "sourceStorageType": str(row["source_storage_type"]) if row.get("source_storage_type") else None,
+            "sourceStorageBin": str(row["source_storage_bin"]) if row.get("source_storage_bin") else None,
+            "destinationStorageType": str(row["destination_storage_type"]) if row.get("destination_storage_type") else None,
+            "destinationStorageBin": str(row["destination_storage_bin"]) if row.get("destination_storage_bin") else None,
+            "requestedQuantity": _safe_float(row.get("requested_quantity")) if row.get("requested_quantity") is not None else None,
+            "confirmedQuantity": _safe_float(row.get("confirmed_quantity")) if row.get("confirmed_quantity") is not None else None,
+            "itemStatus": str(row["item_status"]) if row.get("item_status") else None,
+            "createdDatetime": str(row["created_datetime"]) if row.get("created_datetime") else None,
+            "orderReferenceType": str(row["order_reference_type"]) if row.get("order_reference_type") else None,
+            "orderReferenceNumber": str(row["order_reference_number"]) if row.get("order_reference_number") else None,
+            "transferPriority": str(row["transfer_priority"]) if row.get("transfer_priority") else None,
+            "deliveryNumber": str(row["delivery_number"]) if row.get("delivery_number") else None,
+            "createdByUser": str(row["created_by_user"]) if row.get("created_by_user") else None,
+            "assignee": str(row["confirmed_by_user"]) if row.get("confirmed_by_user") else None,
+            "ageHours": _safe_float(row.get("age_hours")) if row.get("age_hours") is not None else None,
+        })
+    return result
+
+
+def map_warehouse_move_requests_rows(rows: list[dict]) -> list[dict]:
+    """Map raw move-request rows (open TR items). assignedTo is a documented data gap."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "warehouseNumber": str(row["warehouse_number"]) if row.get("warehouse_number") else None,
+            "requestId": str(row["request_id"]) if row.get("request_id") else None,
+            "itemNumber": str(row["item_number"]) if row.get("item_number") else None,
+            "materialId": str(row["material_id"]) if row.get("material_id") else None,
+            "batchId": str(row["batch_id"]) if row.get("batch_id") else None,
+            "sourceStorageType": str(row["source_storage_type"]) if row.get("source_storage_type") else None,
+            "sourceStorageBin": str(row["source_storage_bin"]) if row.get("source_storage_bin") else None,
+            "destinationStorageType": str(row["destination_storage_type"]) if row.get("destination_storage_type") else None,
+            "destinationStorageBin": str(row["destination_storage_bin"]) if row.get("destination_storage_bin") else None,
+            "requiredQuantity": _safe_float(row.get("required_quantity")) if row.get("required_quantity") is not None else None,
+            "openQuantity": _safe_float(row.get("open_quantity")) if row.get("open_quantity") is not None else None,
+            "createdDatetime": str(row["created_datetime"]) if row.get("created_datetime") else None,
+            "plannedExecutionDatetime": str(row["planned_execution_datetime"]) if row.get("planned_execution_datetime") else None,
+            "queue": str(row["queue"]) if row.get("queue") else None,
+            "transferPriority": str(row["transfer_priority"]) if row.get("transfer_priority") else None,
+            "orderReferenceType": str(row["order_reference_type"]) if row.get("order_reference_type") else None,
+            "orderReferenceNumber": str(row["order_reference_number"]) if row.get("order_reference_number") else None,
+            "assignedTo": None,
+            "ageHours": _safe_float(row.get("age_hours")) if row.get("age_hours") is not None else None,
         })
     return result
 
@@ -1100,5 +1338,23 @@ class Warehouse360Repository:
     async def fetch_warehouse_staging_readiness(self, request: WarehouseStagingReadinessRequest) -> tuple[list[dict], QuerySpec]:
         return await self._repository.fetch(
             spec_factory=lambda: get_warehouse_staging_readiness_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_open_holds(self, request: WarehouseOpenHoldsRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_open_holds_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_pick_tasks(self, request: WarehousePickTasksRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_pick_tasks_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_move_requests(self, request: WarehouseMoveRequestsRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_move_requests_spec(request),
             mapper=lambda rows: rows,
         )

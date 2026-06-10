@@ -34,6 +34,9 @@ try:
         WarehouseStockZonesRequest,
         WarehouseBatchHoldStatusRequest,
         WarehouseStagingReadinessRequest,
+        WarehouseOpenHoldsRequest,
+        WarehousePickTasksRequest,
+        WarehouseMoveRequestsRequest,
         get_warehouse_exceptions_spec,
         get_warehouse_inbound_spec,
         get_warehouse_outbound_spec,
@@ -44,6 +47,9 @@ try:
         get_warehouse_stock_zones_spec,
         get_warehouse_batch_hold_status_spec,
         get_warehouse_staging_readiness_spec,
+        get_warehouse_open_holds_spec,
+        get_warehouse_pick_tasks_spec,
+        get_warehouse_move_requests_spec,
     )
 except ImportError as err:
     print(f"Error importing adapter: {err}")
@@ -94,6 +100,9 @@ def run_contract_coverage() -> None:
         ("stock_zones", lambda: get_warehouse_stock_zones_spec(WarehouseStockZonesRequest("WH01"))),
         ("batch_hold_status", lambda: get_warehouse_batch_hold_status_spec(WarehouseBatchHoldStatusRequest("B001"))),
         ("staging_readiness", lambda: get_warehouse_staging_readiness_spec(WarehouseStagingReadinessRequest("P001", "2026-06-10"))),
+        ("open_holds", lambda: get_warehouse_open_holds_spec(WarehouseOpenHoldsRequest())),
+        ("pick_tasks", lambda: get_warehouse_pick_tasks_spec(WarehousePickTasksRequest())),
+        ("move_requests", lambda: get_warehouse_move_requests_spec(WarehouseMoveRequestsRequest())),
     ]
 
     errors: list[str] = []
@@ -152,6 +161,9 @@ def run_contract_coverage() -> None:
         "warehouse360.shortfalls": "route-covered",
         "warehouse360.stock_zones": "route-covered",
         "warehouse360.batch_hold_status": "route-covered",
+        "warehouse360.open_holds": "route-covered",
+        "warehouse360.pick_tasks": "route-covered",
+        "warehouse360.move_requests": "route-covered",
         "warehouse360.staging_readiness": "route-covered",
         "warehouse360.dispensary_queue": "placeholder / not runtime-ready",
     }
