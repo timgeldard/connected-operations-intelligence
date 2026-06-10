@@ -1,6 +1,56 @@
 import { useQuery } from '@tanstack/react-query'
 import { wmOperationsAdapter } from './wm-operations-adapter.js'
-import type { WmOperationsAdapterRequest } from './wm-operations-adapter.js'
+import type { WmDrillRequest, WmOperationsAdapterRequest } from './wm-operations-adapter.js'
+
+export function useWmOrderComponents(request: WmDrillRequest, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-order-components', request.plantId ?? null, request.orderId ?? null],
+    queryFn: () => wmOperationsAdapter.getOrderComponents(request),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(request.plantId && request.orderId),
+  })
+}
+
+export function useWmOperatorActivity(request: WmDrillRequest) {
+  return useQuery({
+    queryKey: ['wm-ops-operator-activity', request.plantId ?? null, request.warehouseId ?? null, request.days ?? 14],
+    queryFn: () => wmOperationsAdapter.getOperatorActivity(request),
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useWmQueueWorkload(request: WmDrillRequest) {
+  return useQuery({
+    queryKey: ['wm-ops-queue-workload', request.plantId ?? null, request.warehouseId ?? null],
+    queryFn: () => wmOperationsAdapter.getQueueWorkload(request),
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useWmOutbound(request: WmDrillRequest) {
+  return useQuery({
+    queryKey: ['wm-ops-outbound', request.plantId ?? null, request.warehouseId ?? null, request.includeShipped ?? false],
+    queryFn: () => wmOperationsAdapter.getOutbound(request),
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useWmReconAlerts(request: WmDrillRequest) {
+  return useQuery({
+    queryKey: ['wm-ops-recon-alerts', request.plantId ?? null, request.warehouseId ?? null],
+    queryFn: () => wmOperationsAdapter.getReconAlerts(request),
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useWmBatchMovements(request: WmDrillRequest, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-batch-movements', request.plantId ?? null, request.materialId ?? null, request.batchId ?? null],
+    queryFn: () => wmOperationsAdapter.getBatchMovements(request),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(request.plantId && request.materialId),
+  })
+}
 
 const STALE = 60 * 1000 // worklists move fast — 1-minute stale time (PER_USER_60S server cache)
 
@@ -12,6 +62,7 @@ export function useWmWorklist(request: WmOperationsAdapterRequest) {
       request.warehouseId ?? null,
       request.workArea ?? null,
       request.status ?? null,
+      request.queue ?? null,
       request.includeComplete ?? false,
     ],
     queryFn: () => wmOperationsAdapter.getWorklist(request),
@@ -29,7 +80,7 @@ export function useWmWorklistSummary(request: WmOperationsAdapterRequest) {
 
 export function useWmOrderReadiness(request: WmOperationsAdapterRequest) {
   return useQuery({
-    queryKey: ['wm-ops-order-readiness', request.plantId ?? null, request.warehouseId ?? null],
+    queryKey: ['wm-ops-order-readiness', request.plantId ?? null, request.warehouseId ?? null, request.startFromDaysAgo ?? null, request.startToDaysAhead ?? null],
     queryFn: () => wmOperationsAdapter.getOrderReadiness(request),
     staleTime: STALE,
   })

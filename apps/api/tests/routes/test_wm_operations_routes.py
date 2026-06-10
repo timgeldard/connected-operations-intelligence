@@ -322,3 +322,189 @@ class TestBinStockRoute:
                 headers=_HEADERS_WITH_TOKEN,
             )
         assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Screen 1-4 endpoints
+# ---------------------------------------------------------------------------
+
+NEW_ENDPOINTS = [
+    ("/api/wm-operations/order-components", {"plant_id": "C061", "order_id": "900001"}),
+    ("/api/wm-operations/operator-activity", {"plant_id": "C061"}),
+    ("/api/wm-operations/queue-workload", {"plant_id": "C061"}),
+    ("/api/wm-operations/outbound", {"plant_id": "C061"}),
+    ("/api/wm-operations/recon-alerts", {"plant_id": "C061"}),
+    ("/api/wm-operations/batch-movements", {"plant_id": "C061", "material_id": "RM1"}),
+]
+
+
+class TestNewEndpointGuards:
+    @pytest.mark.parametrize("endpoint,params", NEW_ENDPOINTS)
+    async def test_returns_401_when_unauthenticated(self, wm_ops_databricks_env, endpoint, params) -> None:
+        async with _make_client() as client:
+            response = await client.get(endpoint, params=params)
+        assert response.status_code == 401
+
+    @pytest.mark.parametrize("endpoint,params", NEW_ENDPOINTS)
+    async def test_returns_503_in_legacy_mode(self, monkeypatch, endpoint, params) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get(endpoint, params=params, headers=_HEADERS_WITH_TOKEN)
+        assert response.status_code == 503
+
+    async def test_batch_movements_caps_window(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/batch-movements",
+                params={"plant_id": "C061", "material_id": "RM1", "days": 90},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 422
+
+
+class TestOrderComponentsRoute:
+    async def test_returns_mapped_components(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061", "order_id": "900001", "reservation_id": "555",
+            "reservation_item": "0001", "warehouse_id": "104", "material_id": "RM1",
+            "material_name": "Raw Material One", "batch_id": None, "required_qty": 60.0,
+            "open_qty": 60.0, "uom": "KG", "production_supply_area": "PSA1",
+            "requirement_date": "2026-06-11", "material_component_count": 1,
+            "tr_count": 1, "tr_required_qty": 60.0, "tr_open_qty": 0.0,
+            "tr_coverage_status": "FULL", "to_item_count": 2, "to_items_confirmed": 2,
+            "to_confirmed_qty": 60.0, "pick_progress_fraction": 1.0,
+            "psa_supplied_qty": 60.0, "is_supplied": True,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/order-components",
+                    params={"plant_id": "C061", "order_id": "900001"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        row = response.json()[0]
+        assert row["trCoverageStatus"] == "FULL"
+        assert row["isSupplied"] is True
+        assert response.headers.get("x-contract-id") == "wm_operations.order_components"
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "order_id = :order_id" in executed_sql
+
+
+class TestOperatorAndQueueRoutes:
+    async def test_operator_activity_mapped(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "P817", "warehouse_id": "208", "operator": "OPC81700238",
+            "activity_date": "2026-06-09", "items_confirmed": 42, "transfer_orders": 12,
+            "materials": 9, "transfer_requirements": 8, "confirmed_qty": 1234.5,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/operator-activity",
+                    params={"plant_id": "P817", "days": 7},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        assert response.json()[0]["itemsConfirmed"] == 42
+        assert response.headers.get("x-contract-id") == "wm_operations.operator_activity"
+
+    async def test_queue_workload_mapped(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "P817", "warehouse_id": "208", "queue": "PKD800",
+            "work_area": "DISPENSARY_PICKING", "open_jobs": 5, "in_progress_jobs": 1,
+            "parked_jobs": 2, "no_stock_jobs": 0, "operator_count": 2,
+            "earliest_planned_ts": "2026-06-09T22:00:00Z", "earliest_created_ts": None,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/queue-workload",
+                    params={"plant_id": "P817"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        assert response.json()[0]["queue"] == "PKD800"
+        assert response.headers.get("x-contract-id") == "wm_operations.queue_workload"
+
+
+class TestOutboundAndAlertsRoutes:
+    async def test_outbound_excludes_shipped_by_default(self, wm_ops_databricks_env) -> None:
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/outbound",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "NOT coalesce(is_shipped, false)" in executed_sql
+        assert response.headers.get("x-contract-id") == "wm_operations.outbound"
+
+    async def test_recon_alerts_mapped(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061", "warehouse_id": "104", "alert_key": "STOCK|abc",
+            "alert_type": "STOCK_RECONCILIATION", "alert_priority": "P1",
+            "material_id": "RM1", "batch_id": "B1", "reason_code": "TRUE_VARIANCE",
+            "delta_qty": -10.0, "delta_value": -1234.0,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/recon-alerts",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        assert response.json()[0]["alertPriority"] == "P1"
+        assert response.headers.get("x-contract-id") == "wm_operations.recon_alerts"
+
+
+class TestExtendedFilters:
+    async def test_worklist_queue_filter_binds_param(self, wm_ops_databricks_env) -> None:
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/worklist",
+                    params={"plant_id": "C061", "queue": "PKD800"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "queue = :queue" in executed_sql
+
+    async def test_readiness_horizon_params(self, wm_ops_databricks_env) -> None:
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/order-readiness",
+                    params={"plant_id": "C061", "start_from_days_ago": 2, "start_to_days_ahead": 7},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "date_sub(current_date(), :start_from_days_ago)" in executed_sql
+        assert "date_add(current_date(), :start_to_days_ahead)" in executed_sql
+
+    async def test_batch_movements_mapped(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061", "document_number": "490001", "fiscal_year": "2026",
+            "line_item": "1", "material_id": "RM1", "batch_id": "B1",
+            "movement_type_code": "261", "movement_label": "GI to order",
+            "event_category": "consumption", "quantity": -25.0, "uom": "KG",
+            "posting_date": "2026-06-09", "order_number": "900001",
+            "delivery_number": None, "posted_by": "OPC06100034",
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/batch-movements",
+                    params={"plant_id": "C061", "material_id": "RM1", "batch_id": "B1"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        row = response.json()[0]
+        assert row["movementType"] == "261"
+        assert row["orderId"] == "900001"
+        assert response.headers.get("x-contract-id") == "warehouse360.goods_movements"

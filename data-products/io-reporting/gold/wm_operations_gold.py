@@ -25,7 +25,7 @@ by the *_live views (scripts/generate_gold_serving_views_sql.py). See ADR 012.
 """
 
 import dlt
-from pyspark.sql import DataFrame, functions as F
+from pyspark.sql import DataFrame, Window, functions as F
 
 from gold._shared import (
     anti_join_optional_deleted_headers,
@@ -605,5 +605,235 @@ def gold_wm_bin_stock_detail():
             ),
             F.coalesce(F.col("is_blocked"), F.lit(False)).alias("is_bin_blocked"),
             "blocking_reason_code",
+        )
+    )
+
+
+# ── 5. ORDER COMPONENT DETAIL (drill-through) ─────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Component-level staging detail for active process orders — the drill-through "
+        "behind Order Readiness. One row per component reservation with material-level "
+        "TR coverage (LTBK BETYP='P'), staging-TO pick progress (LTAK BETYP='F'), and "
+        "order-keyed PSA bin supply. TR/TO/PSA rollups are at order x material grain "
+        "(silver TR items do not carry RSPOS), so components sharing a material show the "
+        "same pool — flagged via material_component_count."
+    ),
+    cluster_by=["plant_code", "order_number"],
+))
+def gold_wm_order_component_detail():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    orders = spark.read.table(f"{ss}.process_order")
+    reservations = spark.read.table(f"{ss}.reservation_requirement")
+    classification = spark.read.table(f"{ss}.movement_type_classification").select(
+        "movement_type_code", "is_production_consumption"
+    )
+    trs = spark.read.table(f"{ss}.warehouse_transfer_requirement")
+    tos = anti_join_optional_deleted_headers(
+        spark.read.table(f"{ss}.warehouse_transfer_order"),
+        ss,
+        "warehouse_transfer_order_header_delete",
+        ["warehouse_number", "transfer_order_number"],
+    )
+    storage_bin = spark.read.table(f"{ss}.storage_bin")
+    mapping = _storage_zone_mapping(spark, ss)
+    material = (
+        spark.read.table(f"{ss}.material")
+        .select("plant_code", "material_code", "material_description")
+        .distinct()
+    )
+
+    # Same activity filter as gold_wm_order_readiness (PHAS flags blank in replication).
+    active_orders = orders.filter(
+        (
+            F.coalesce(F.col("is_released"), F.lit(False))
+            | F.col("actual_release_date").isNotNull()
+        )
+        & (~F.coalesce(F.col("is_closed"), F.lit(False)))
+        & F.col("actual_finish_date").isNull()
+    ).select("order_number", "plant_code")
+
+    components = (
+        reservations
+        .join(F.broadcast(classification), "movement_type_code", "inner")
+        .filter(
+            F.coalesce(F.col("is_production_consumption"), F.lit(False))
+            & (~F.coalesce(F.col("is_deletion_flagged"), F.lit(False)))
+            & (F.coalesce(F.col("required_quantity"), F.lit(0.0)) > 0)
+        )
+        .join(active_orders.withColumnRenamed("plant_code", "_order_plant"), "order_number", "inner")
+        .withColumn("plant_code", F.coalesce(F.col("plant_code"), F.col("_order_plant")))
+        .drop("_order_plant")
+    )
+
+    tr_by_material = (
+        trs.filter(F.col("source_reference_type") == TR_ORDER_REFERENCE_TYPE)
+        .groupBy(
+            F.col("source_reference_number").alias("order_number"),
+            F.col("material_code"),
+        )
+        .agg(
+            F.count_distinct("transfer_requirement_number").alias("tr_count"),
+            F.coalesce(F.sum("required_quantity"), F.lit(0.0)).alias("tr_required_qty"),
+            F.coalesce(F.sum("open_quantity"), F.lit(0.0)).alias("tr_open_qty"),
+        )
+    )
+
+    to_by_material = (
+        tos.filter(F.col("source_reference_type") == "F")
+        .groupBy(
+            F.col("source_reference_number").alias("order_number"),
+            F.col("material_code"),
+        )
+        .agg(
+            F.count(F.lit(1)).alias("to_item_count"),
+            F.sum(
+                F.when(F.col("item_status") == "Fully Confirmed", F.lit(1)).otherwise(F.lit(0))
+            ).alias("to_items_confirmed"),
+            F.coalesce(F.sum("confirmed_quantity"), F.lit(0.0)).alias("to_confirmed_qty"),
+        )
+    )
+
+    psa_by_material = (
+        storage_bin
+        .filter(F.col("quant_number").isNotNull())
+        .join(
+            F.broadcast(
+                mapping.filter(F.col("storage_zone") == "PRODUCTION_SUPPLY").select(
+                    "plant_code", "warehouse_number", "storage_type"
+                )
+            ),
+            ["plant_code", "warehouse_number", "storage_type"],
+            "inner",
+        )
+        .withColumn("order_number", F.regexp_replace(F.col("bin_code"), "^0+", ""))
+        .groupBy("plant_code", "order_number", "material_code")
+        .agg(F.coalesce(F.sum("total_quantity"), F.lit(0.0)).alias("psa_supplied_qty"))
+    )
+
+    full_threshold = F.col("required_quantity") * F.lit(_COVERAGE_FULL_FRACTION)
+    material_window = Window.partitionBy("order_number", "material_code")
+
+    return (
+        components
+        .join(tr_by_material, ["order_number", "material_code"], "left")
+        .join(psa_by_material, ["plant_code", "order_number", "material_code"], "left")
+        .join(to_by_material, ["order_number", "material_code"], "left")
+        .join(F.broadcast(material), ["plant_code", "material_code"], "left")
+        .withColumn("material_component_count", F.count(F.lit(1)).over(material_window))
+        .withColumn("tr_count", F.coalesce(F.col("tr_count"), F.lit(0)))
+        .withColumn("tr_required_qty", F.coalesce(F.col("tr_required_qty"), F.lit(0.0)))
+        .withColumn("tr_open_qty", F.coalesce(F.col("tr_open_qty"), F.lit(0.0)))
+        .withColumn("to_item_count", F.coalesce(F.col("to_item_count"), F.lit(0)))
+        .withColumn("to_items_confirmed", F.coalesce(F.col("to_items_confirmed"), F.lit(0)))
+        .withColumn("to_confirmed_qty", F.coalesce(F.col("to_confirmed_qty"), F.lit(0.0)))
+        .withColumn("psa_supplied_qty", F.coalesce(F.col("psa_supplied_qty"), F.lit(0.0)))
+        .withColumn(
+            "tr_coverage_status",
+            F.when(F.col("tr_count") == 0, F.lit("NONE"))
+            .when(F.col("tr_required_qty") >= full_threshold, F.lit("FULL"))
+            .otherwise(F.lit("PARTIAL")),
+        )
+        .withColumn(
+            "pick_progress_fraction",
+            F.when(
+                F.col("required_quantity") > 0,
+                F.least(F.col("to_confirmed_qty") / F.col("required_quantity"), F.lit(1.0)),
+            ).otherwise(F.lit(None).cast("double")),
+        )
+        .withColumn("is_supplied", F.col("psa_supplied_qty") >= full_threshold)
+        .select(
+            "plant_code",
+            "order_number",
+            "reservation_number",
+            "reservation_item",
+            "warehouse_number",
+            "material_code",
+            "material_description",
+            "batch_number",
+            "required_quantity",
+            "open_quantity",
+            F.col("base_uom").alias("uom"),
+            "production_supply_area",
+            "requirement_date",
+            "material_component_count",
+            "tr_count",
+            "tr_required_qty",
+            "tr_open_qty",
+            "tr_coverage_status",
+            "to_item_count",
+            "to_items_confirmed",
+            "to_confirmed_qty",
+            "pick_progress_fraction",
+            "psa_supplied_qty",
+            "is_supplied",
+        )
+    )
+
+
+# ── 6. OPERATOR ACTIVITY ──────────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "RF operator pick activity at plant x warehouse x operator x confirmation-date "
+        "grain, from confirmed transfer-order items (LTAP QNAME/QDATU). Quantity totals "
+        "mix base UoMs — item counts are the comparable measure."
+    ),
+    cluster_by=["plant_code", "activity_date"],
+))
+def gold_wm_operator_activity():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+    tos = spark.read.table(f"{ss}.warehouse_transfer_order")
+
+    return (
+        tos.filter(
+            F.col("confirmed_by_user").isNotNull()
+            & (F.col("confirmed_by_user") != "")
+            & F.col("confirmed_date").isNotNull()
+        )
+        .groupBy(
+            "plant_code",
+            "warehouse_number",
+            F.col("confirmed_by_user").alias("operator"),
+            F.col("confirmed_date").alias("activity_date"),
+        )
+        .agg(
+            F.count(F.lit(1)).alias("items_confirmed"),
+            F.count_distinct("transfer_order_number").alias("transfer_orders"),
+            F.count_distinct("material_code").alias("materials"),
+            F.count_distinct("transfer_requirement_number").alias("transfer_requirements"),
+            F.coalesce(F.sum("confirmed_quantity"), F.lit(0.0)).alias("confirmed_qty"),
+        )
+    )
+
+
+# ── 7. QUEUE WORKLOAD ─────────────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Current open WM workload by plant x warehouse x queue x work area, rolled up "
+        "from the staging worklist (non-complete jobs only)."
+    ),
+    cluster_by=["plant_code", "warehouse_number"],
+))
+def gold_wm_queue_workload():
+    worklist = dlt.read("gold_wm_staging_worklist")
+    return (
+        worklist
+        .filter(F.col("worklist_status") != "COMPLETE")
+        .withColumn("queue", F.coalesce(F.col("queue"), F.lit("")))
+        .groupBy("plant_code", "warehouse_number", "queue", "work_area")
+        .agg(
+            F.count(F.lit(1)).alias("open_jobs"),
+            F.sum(F.when(F.col("worklist_status") == "IN_PROGRESS", F.lit(1)).otherwise(F.lit(0))).alias("in_progress_jobs"),
+            F.sum(F.when(F.col("worklist_status") == "PARKED", F.lit(1)).otherwise(F.lit(0))).alias("parked_jobs"),
+            F.sum(F.when(F.col("worklist_status") == "NO_STOCK", F.lit(1)).otherwise(F.lit(0))).alias("no_stock_jobs"),
+            F.count_distinct("assigned_operator").alias("operator_count"),
+            F.min("planned_execution_datetime").alias("earliest_planned_datetime"),
+            F.min("created_datetime").alias("earliest_created_datetime"),
         )
     )

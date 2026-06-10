@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import type { WmOperationsAdapterRequest } from '../adapters/wm-operations-adapter.js'
+import { OrderDetailOverlay } from '../components/overlays.js'
 import { useWmOrderReadiness } from '../adapters/wm-operations-queries.js'
 import {
   ViewHeader,
@@ -34,8 +36,20 @@ const READINESS_LABEL: Record<string, string> = {
   NO_WM_DEMAND: 'No WM demand',
 }
 
+const HORIZONS = [
+  { value: '', label: 'All scheduled dates' },
+  { value: '7', label: 'Next 7 days' },
+  { value: '30', label: 'Next 30 days' },
+] as const
+
 export function OrderReadinessView({ request }: OrderReadinessViewProps) {
-  const result = useWmOrderReadiness(request)
+  const [horizon, setHorizon] = useState('')
+  const [drillOrder, setDrillOrder] = useState<{ orderId: string; label?: string } | null>(null)
+  const result = useWmOrderReadiness({
+    ...request,
+    startFromDaysAgo: horizon ? 2 : undefined,
+    startToDaysAhead: horizon ? Number(horizon) : undefined,
+  })
   const orders = result.data?.ok ? result.data.data : []
   const error = result.data && !result.data.ok ? result.data.error : null
 
@@ -59,7 +73,17 @@ export function OrderReadinessView({ request }: OrderReadinessViewProps) {
       </div>
 
       <div className="kw-card">
-        <div className="kw-card-title">Released orders by scheduled start</div>
+        <div className="kw-card-title">
+          Released orders by scheduled start
+          <select
+            aria-label="Schedule horizon"
+            style={{ marginLeft: 'auto', fontWeight: 400, fontSize: 12 }}
+            value={horizon}
+            onChange={e => setHorizon(e.target.value)}
+          >
+            {HORIZONS.map(h => <option key={h.value} value={h.value}>{h.label}</option>)}
+          </select>
+        </div>
         {error ? (
           <EmptyNote>Could not load order readiness — {error.message}</EmptyNote>
         ) : result.isLoading ? (
@@ -88,7 +112,9 @@ export function OrderReadinessView({ request }: OrderReadinessViewProps) {
                 {orders.map(order => (
                   <tr key={`${order.plantId}-${order.orderId}`}>
                     <td><BandDot band={order.readinessBand} /></td>
-                    <td className="kw-mono">{order.orderId}</td>
+                    <td className="kw-mono">
+                      <button type="button" className="kw-link" onClick={() => setDrillOrder({ orderId: order.orderId, label: order.materialName ?? undefined })}>{order.orderId}</button>
+                    </td>
                     <td title={order.materialId ?? undefined}>
                       {order.materialName ?? order.materialId ?? '—'}
                     </td>
@@ -115,6 +141,14 @@ export function OrderReadinessView({ request }: OrderReadinessViewProps) {
           </div>
         )}
       </div>
+      {drillOrder && request.plantId && (
+        <OrderDetailOverlay
+          plantId={request.plantId}
+          orderId={drillOrder.orderId}
+          orderLabel={drillOrder.label}
+          onClose={() => setDrillOrder(null)}
+        />
+      )}
     </section>
   )
 }

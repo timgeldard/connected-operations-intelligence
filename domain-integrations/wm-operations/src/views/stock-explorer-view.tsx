@@ -4,6 +4,7 @@ import type {
   WmStorageZone,
 } from '../adapters/wm-operations-adapter.js'
 import { useWmBinStock } from '../adapters/wm-operations-queries.js'
+import { BatchHistoryOverlay } from '../components/overlays.js'
 import {
   ViewHeader,
   EmptyNote,
@@ -32,6 +33,7 @@ export function StockExplorerView({ request }: StockExplorerViewProps) {
   const [expiringOnly, setExpiringOnly] = useState(false)
   // Applied (committed) text filters — only sent on Enter/blur to avoid a query per keystroke.
   const [applied, setApplied] = useState<{ material?: string; bin?: string }>({})
+  const [drill, setDrill] = useState<{ materialId: string; materialName?: string | null; batchId?: string | null } | null>(null)
 
   const result = useWmBinStock({
     ...request,
@@ -89,6 +91,22 @@ export function StockExplorerView({ request }: StockExplorerViewProps) {
           <span className="kw-eyebrow" style={{ marginLeft: 'auto' }}>
             {lines.length} quants
           </span>
+          <button
+            type="button"
+            className="kw-viewnav-tab"
+            disabled={lines.length === 0}
+            onClick={() => {
+              const cols = ['plantId', 'warehouseId', 'storageType', 'storageZone', 'binId', 'quantId', 'materialId', 'materialName', 'batchId', 'stockCategory', 'totalQty', 'availableQty', 'uom', 'goodsReceiptDate', 'expiryDate'] as const
+              const csv = [cols.join(','), ...lines.map(l => cols.map(c => JSON.stringify((l as unknown as Record<string, unknown>)[c] ?? '')).join(','))].join('\n')
+              const a = document.createElement('a')
+              a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+              a.download = 'wm-bin-stock.csv'
+              a.click()
+              URL.revokeObjectURL(a.href)
+            }}
+          >
+            Export CSV
+          </button>
         </div>
 
         {error ? (
@@ -122,7 +140,11 @@ export function StockExplorerView({ request }: StockExplorerViewProps) {
                     <td className="kw-mono">{line.storageType}</td>
                     <td className="kw-mono">{line.binId}</td>
                     <td title={line.materialId ?? undefined}>
-                      {line.materialName ?? line.materialId ?? '—'}
+                      {line.materialId ? (
+                        <button type="button" className="kw-link" onClick={() => setDrill({ materialId: line.materialId as string, materialName: line.materialName, batchId: line.batchId })}>
+                          {line.materialName ?? line.materialId}
+                        </button>
+                      ) : '—'}
                     </td>
                     <td className="kw-mono">{line.batchId ?? '—'}</td>
                     <td className="kw-num">{formatQty(line.totalQty, line.uom)}</td>
@@ -154,6 +176,15 @@ export function StockExplorerView({ request }: StockExplorerViewProps) {
           </div>
         )}
       </div>
+      {drill && request.plantId && (
+        <BatchHistoryOverlay
+          plantId={request.plantId}
+          materialId={drill.materialId}
+          materialName={drill.materialName}
+          batchId={drill.batchId}
+          onClose={() => setDrill(null)}
+        />
+      )}
     </section>
   )
 }

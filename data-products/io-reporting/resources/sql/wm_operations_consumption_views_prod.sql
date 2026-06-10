@@ -140,3 +140,109 @@ WHERE plant_code IS NOT NULL;
 -- GRANT SELECT ON VIEW vw_consumption_wm_operations_worklist_summary TO `warehouse360_app_users`;
 -- GRANT SELECT ON VIEW vw_consumption_wm_operations_order_readiness TO `warehouse360_app_users`;
 -- GRANT SELECT ON VIEW vw_consumption_wm_operations_bin_stock TO `warehouse360_app_users`;
+
+
+-- 5. Order component detail (drill-through behind Order Readiness)
+-- Grain: 1 row per plant_id + order_id + reservation_id + reservation_item.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_order_components AS
+SELECT
+  plant_code AS plant_id,
+  order_number AS order_id,
+  reservation_number AS reservation_id,
+  reservation_item,
+  warehouse_number AS warehouse_id,
+  material_code AS material_id,
+  material_description AS material_name,
+  batch_number AS batch_id,
+  required_quantity AS required_qty,
+  open_quantity AS open_qty,
+  uom,
+  production_supply_area,
+  CAST(requirement_date AS DATE) AS requirement_date,
+  material_component_count,
+  tr_count,
+  tr_required_qty,
+  tr_open_qty,
+  tr_coverage_status,
+  to_item_count,
+  to_items_confirmed,
+  to_confirmed_qty,
+  pick_progress_fraction,
+  psa_supplied_qty,
+  is_supplied
+FROM connected_plant_prod.gold_io_reporting.gold_wm_order_component_detail_secured
+WHERE plant_code IS NOT NULL;
+
+-- 6. Operator activity (pick performance history)
+-- Grain: 1 row per plant_id + warehouse_id + operator + activity_date.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_operator_activity AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number AS warehouse_id,
+  operator,
+  CAST(activity_date AS DATE) AS activity_date,
+  items_confirmed,
+  transfer_orders,
+  materials,
+  transfer_requirements,
+  confirmed_qty
+FROM connected_plant_prod.gold_io_reporting.gold_wm_operator_activity_secured
+WHERE plant_code IS NOT NULL;
+
+-- 7. Queue workload (current open jobs by queue and work area)
+-- Grain: 1 row per plant_id + warehouse_id + queue + work_area.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_queue_workload AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number AS warehouse_id,
+  queue,
+  work_area,
+  open_jobs,
+  in_progress_jobs,
+  parked_jobs,
+  no_stock_jobs,
+  operator_count,
+  CAST(earliest_planned_datetime AS TIMESTAMP) AS earliest_planned_ts,
+  CAST(earliest_created_datetime AS TIMESTAMP) AS earliest_created_ts
+FROM connected_plant_prod.gold_io_reporting.gold_wm_queue_workload_secured
+WHERE plant_code IS NOT NULL;
+
+-- 8. Outbound delivery picking board (reuses the existing delivery-pick gold + live bands)
+-- Grain: 1 row per plant_id + delivery_id.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_outbound AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number AS warehouse_id,
+  delivery_number AS delivery_id,
+  delivery_type,
+  ship_to_customer AS ship_to_customer_id,
+  ship_to_customer_name,
+  line_count,
+  delivery_qty,
+  picked_qty,
+  pick_fraction,
+  has_mixed_base_uom,
+  CAST(planned_goods_issue_date AS DATE) AS planned_goods_issue_date,
+  CAST(actual_goods_issue_date AS DATE) AS actual_goods_issue_date,
+  is_shipped,
+  days_to_goods_issue,
+  risk_band
+FROM connected_plant_prod.gold_io_reporting.gold_delivery_pick_status_live
+WHERE plant_code IS NOT NULL;
+
+-- 9. Reconciliation alerts (shift-handover digest input; severe IM<->WM / PI variances)
+-- Grain: 1 row per alert_key.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_recon_alerts AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number AS warehouse_id,
+  alert_key,
+  alert_type,
+  alert_priority,
+  material_code AS material_id,
+  batch_number AS batch_id,
+  reason_code,
+  delta_quantity AS delta_qty,
+  delta_value
+FROM connected_plant_prod.gold_io_reporting.gold_reconciliation_alerts_secured
+WHERE plant_code IS NOT NULL;

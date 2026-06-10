@@ -11,6 +11,8 @@ const WORK_AREA_LABEL: Record<string, string> = {
 export interface WorklistTableProps {
   readonly items: WmWorklistItem[]
   readonly isLoading: boolean
+  /** When set, order-sourced rows (BETYP='P') render the reference as a drill-through. */
+  readonly onOrderClick?: (item: WmWorklistItem) => void
   readonly emptyMessage?: string
   /** Hide the work-area column when the table is already scoped to one area. */
   readonly showWorkArea?: boolean
@@ -21,6 +23,7 @@ export function WorklistTable({
   isLoading,
   emptyMessage = 'No open jobs for this scope.',
   showWorkArea = true,
+  onOrderClick,
 }: WorklistTableProps) {
   if (isLoading) return <LoadingRows rows={6} />
   if (items.length === 0) return <EmptyNote>{emptyMessage}</EmptyNote>
@@ -62,7 +65,11 @@ export function WorklistTable({
               </td>
               <td className="kw-mono">{item.trId}</td>
               {showWorkArea && <td>{WORK_AREA_LABEL[item.workArea] ?? item.workArea}</td>}
-              <td className="kw-mono">{item.referenceId ?? '—'}</td>
+              <td className="kw-mono">
+                {item.referenceId && item.referenceType === 'P' && onOrderClick ? (
+                  <button type="button" className="kw-link" onClick={() => onOrderClick(item)}>{item.referenceId}</button>
+                ) : (item.referenceId ?? '—')}
+              </td>
               <td>
                 {item.materialCount != null && item.materialCount > 1 ? (
                   <span style={{ color: 'var(--kw-forest-60)' }}>

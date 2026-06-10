@@ -1120,6 +1120,221 @@ export const WmOperationsBinStockContract = {
   },
 } as const;
 
+/**
+ * Component-level staging detail for active process orders — the drill-through behind Order Readiness. TR/TO/PSA rollups are at order x material grain; components sharing a material are flagged via material_component_count. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_order_components
+ * Version: 0.1.0
+ */
+export interface WmOperationsOrderComponents {
+  plant_id: string;
+  order_id: string;
+  reservation_id: string;
+  reservation_item: string;
+  warehouse_id?: string;
+  material_id?: string;
+  material_name?: string;
+  batch_id?: string;
+  required_qty?: number;
+  open_qty?: number;
+  uom?: string;
+  production_supply_area?: string;
+  requirement_date?: string;
+  material_component_count?: number;
+  tr_count?: number;
+  tr_required_qty?: number;
+  tr_open_qty?: number;
+  tr_coverage_status: string;
+  to_item_count?: number;
+  to_items_confirmed?: number;
+  to_confirmed_qty?: number;
+  pick_progress_fraction?: number;
+  psa_supplied_qty?: number;
+  is_supplied?: boolean;
+}
+
+export const WmOperationsOrderComponentsContract = {
+  id: "wm_operations.order_components",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_order_components",
+  grain: "one row per plant_id, order_id, reservation_id and reservation_item",
+  primaryKey: ["plant_id", "order_id", "reservation_id", "reservation_item"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * RF operator pick activity per day from confirmed transfer-order items. Quantity totals mix base UoMs — item counts are the comparable measure. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_operator_activity
+ * Version: 0.1.0
+ */
+export interface WmOperationsOperatorActivity {
+  plant_id: string;
+  warehouse_id: string;
+  operator: string;
+  activity_date: string;
+  items_confirmed?: number;
+  transfer_orders?: number;
+  materials?: number;
+  transfer_requirements?: number;
+  confirmed_qty?: number;
+}
+
+export const WmOperationsOperatorActivityContract = {
+  id: "wm_operations.operator_activity",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_operator_activity",
+  grain: "one row per plant_id, warehouse_id, operator and activity_date",
+  primaryKey: ["plant_id", "warehouse_id", "operator", "activity_date"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Current open WM workload by queue and work area (non-complete worklist jobs). Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_queue_workload
+ * Version: 0.1.0
+ */
+export interface WmOperationsQueueWorkload {
+  plant_id: string;
+  warehouse_id: string;
+  queue: string;
+  work_area: string;
+  open_jobs?: number;
+  in_progress_jobs?: number;
+  parked_jobs?: number;
+  no_stock_jobs?: number;
+  operator_count?: number;
+  earliest_planned_ts?: string;
+  earliest_created_ts?: string;
+}
+
+export const WmOperationsQueueWorkloadContract = {
+  id: "wm_operations.queue_workload",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_queue_workload",
+  grain: "one row per plant_id, warehouse_id, queue and work_area",
+  primaryKey: ["plant_id", "warehouse_id", "queue", "work_area"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Outbound delivery picking board — pick progress and goods-issue risk per open delivery (reuses gold_delivery_pick_status with query-time risk bands). Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_outbound
+ * Version: 0.1.0
+ */
+export interface WmOperationsOutbound {
+  plant_id: string;
+  warehouse_id?: string;
+  delivery_id: string;
+  delivery_type?: string;
+  ship_to_customer_id?: string;
+  ship_to_customer_name?: string;
+  line_count?: number;
+  delivery_qty?: number;
+  picked_qty?: number;
+  pick_fraction?: number;
+  has_mixed_base_uom?: boolean;
+  planned_goods_issue_date?: string;
+  actual_goods_issue_date?: string;
+  is_shipped?: boolean;
+  days_to_goods_issue?: number;
+  risk_band?: string;
+}
+
+export const WmOperationsOutboundContract = {
+  id: "wm_operations.outbound",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_outbound",
+  grain: "one row per plant_id and delivery_id",
+  primaryKey: ["plant_id", "delivery_id"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Severe reconciliation alerts (IM-WM stock, HU, physical inventory) for the shift-handover digest. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_recon_alerts
+ * Version: 0.1.0
+ */
+export interface WmOperationsReconAlerts {
+  plant_id: string;
+  warehouse_id?: string;
+  alert_key: string;
+  alert_type: string;
+  alert_priority?: string;
+  material_id?: string;
+  batch_id?: string;
+  reason_code?: string;
+  delta_qty?: number;
+  delta_value?: number;
+}
+
+export const WmOperationsReconAlertsContract = {
+  id: "wm_operations.recon_alerts",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_recon_alerts",
+  grain: "one row per alert_key",
+  primaryKey: ["alert_key"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
 export const ioReportingContracts = {
   contractVersion: "0.1.0",
   product: "connected-operations-intelligence",
@@ -1143,5 +1358,10 @@ export const ioReportingContracts = {
     "wm_operations.worklist_summary": WmOperationsWorklistSummaryContract,
     "wm_operations.order_readiness": WmOperationsOrderReadinessContract,
     "wm_operations.bin_stock": WmOperationsBinStockContract,
+    "wm_operations.order_components": WmOperationsOrderComponentsContract,
+    "wm_operations.operator_activity": WmOperationsOperatorActivityContract,
+    "wm_operations.queue_workload": WmOperationsQueueWorkloadContract,
+    "wm_operations.outbound": WmOperationsOutboundContract,
+    "wm_operations.recon_alerts": WmOperationsReconAlertsContract,
   },
 } as const;

@@ -11,13 +11,25 @@ import os
 from typing import Optional
 
 from adapters.wm_operations.wm_operations_databricks_adapter import (
+    WmBatchMovementsRequest,
     WmBinStockRequest,
     WmOperationsRepository,
+    WmOperatorActivityRequest,
+    WmOrderComponentsRequest,
     WmOrderReadinessRequest,
+    WmOutboundRequest,
+    WmQueueWorkloadRequest,
+    WmReconAlertsRequest,
     WmWorklistRequest,
     WmWorklistSummaryRequest,
+    map_wm_batch_movements_rows,
     map_wm_bin_stock_rows,
+    map_wm_operator_activity_rows,
+    map_wm_order_components_rows,
     map_wm_order_readiness_rows,
+    map_wm_outbound_rows,
+    map_wm_queue_workload_rows,
+    map_wm_recon_alerts_rows,
     map_wm_worklist_rows,
     map_wm_worklist_summary_rows,
 )
@@ -178,6 +190,7 @@ async def wm_operations_worklist(
     warehouse_id: str | None = None,
     work_area: str | None = None,
     status: str | None = None,
+    queue: str | None = None,
     include_complete: bool = False,
     limit: int = 200,
     x_forwarded_access_token: str | None = Header(default=None),
@@ -194,6 +207,7 @@ async def wm_operations_worklist(
             warehouse_id=warehouse_id.strip() if warehouse_id else None,
             work_area=work_area.strip().upper() if work_area else None,
             status=status.strip().upper() if status else None,
+            queue=queue.strip() if queue else None,
             include_complete=include_complete,
             limit=limit,
         )
@@ -232,6 +246,8 @@ async def wm_operations_order_readiness(
     response: Response,
     plant_id: str | None = None,
     warehouse_id: str | None = None,
+    start_from_days_ago: int | None = None,
+    start_to_days_ahead: int | None = None,
     limit: int = 200,
     x_forwarded_access_token: str | None = Header(default=None),
     x_forwarded_user: str | None = Header(default=None),
@@ -241,9 +257,14 @@ async def wm_operations_order_readiness(
     _require_databricks_mode("WM Operations order readiness")
     _validate_limit(limit, 500)
 
+    for bound in (start_from_days_ago, start_to_days_ahead):
+        if bound is not None and (bound < 0 or bound > 3650):
+            raise HTTPException(status_code=422, detail="day bounds must be between 0 and 3650")
     req = WmOrderReadinessRequest(
         plant_id=plant_id.strip() if plant_id else None,
         warehouse_id=warehouse_id.strip() if warehouse_id else None,
+        start_from_days_ago=start_from_days_ago,
+        start_to_days_ahead=start_to_days_ahead,
         limit=limit,
     )
     repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
@@ -288,3 +309,256 @@ async def wm_operations_bin_stock(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     set_databricks_response_headers(response, spec)
     return map_wm_bin_stock_rows(rows)
+
+
+class WmOrderComponentItem(BaseModel):
+    model_config = ConfigDict(extra='forbid', populate_by_name=True)
+    plant_id: str = Field(..., alias='plantId')
+    order_id: str = Field(..., alias='orderId')
+    reservation_id: Optional[str] = Field(None, alias='reservationId')
+    reservation_item: Optional[str] = Field(None, alias='reservationItem')
+    warehouse_id: Optional[str] = Field(None, alias='warehouseId')
+    material_id: Optional[str] = Field(None, alias='materialId')
+    material_name: Optional[str] = Field(None, alias='materialName')
+    batch_id: Optional[str] = Field(None, alias='batchId')
+    required_qty: Optional[float] = Field(None, alias='requiredQty')
+    open_qty: Optional[float] = Field(None, alias='openQty')
+    uom: Optional[str] = None
+    production_supply_area: Optional[str] = Field(None, alias='productionSupplyArea')
+    requirement_date: Optional[str] = Field(None, alias='requirementDate')
+    material_component_count: Optional[int] = Field(None, alias='materialComponentCount')
+    tr_count: Optional[int] = Field(None, alias='trCount')
+    tr_required_qty: Optional[float] = Field(None, alias='trRequiredQty')
+    tr_open_qty: Optional[float] = Field(None, alias='trOpenQty')
+    tr_coverage_status: Optional[str] = Field(None, alias='trCoverageStatus')
+    to_item_count: Optional[int] = Field(None, alias='toItemCount')
+    to_items_confirmed: Optional[int] = Field(None, alias='toItemsConfirmed')
+    to_confirmed_qty: Optional[float] = Field(None, alias='toConfirmedQty')
+    pick_progress_fraction: Optional[float] = Field(None, alias='pickProgressFraction')
+    psa_supplied_qty: Optional[float] = Field(None, alias='psaSuppliedQty')
+    is_supplied: Optional[bool] = Field(None, alias='isSupplied')
+
+
+class WmOperatorActivityItem(BaseModel):
+    model_config = ConfigDict(extra='forbid', populate_by_name=True)
+    plant_id: str = Field(..., alias='plantId')
+    warehouse_id: str = Field(..., alias='warehouseId')
+    operator: str
+    activity_date: str = Field(..., alias='activityDate')
+    items_confirmed: Optional[int] = Field(None, alias='itemsConfirmed')
+    transfer_orders: Optional[int] = Field(None, alias='transferOrders')
+    materials: Optional[int] = None
+    transfer_requirements: Optional[int] = Field(None, alias='transferRequirements')
+    confirmed_qty: Optional[float] = Field(None, alias='confirmedQty')
+
+
+class WmQueueWorkloadItem(BaseModel):
+    model_config = ConfigDict(extra='forbid', populate_by_name=True)
+    plant_id: str = Field(..., alias='plantId')
+    warehouse_id: str = Field(..., alias='warehouseId')
+    queue: str
+    work_area: str = Field(..., alias='workArea')
+    open_jobs: Optional[int] = Field(None, alias='openJobs')
+    in_progress_jobs: Optional[int] = Field(None, alias='inProgressJobs')
+    parked_jobs: Optional[int] = Field(None, alias='parkedJobs')
+    no_stock_jobs: Optional[int] = Field(None, alias='noStockJobs')
+    operator_count: Optional[int] = Field(None, alias='operatorCount')
+    earliest_planned_ts: Optional[str] = Field(None, alias='earliestPlannedTs')
+    earliest_created_ts: Optional[str] = Field(None, alias='earliestCreatedTs')
+
+
+class WmOutboundItem(BaseModel):
+    model_config = ConfigDict(extra='forbid', populate_by_name=True)
+    plant_id: str = Field(..., alias='plantId')
+    warehouse_id: Optional[str] = Field(None, alias='warehouseId')
+    delivery_id: str = Field(..., alias='deliveryId')
+    delivery_type: Optional[str] = Field(None, alias='deliveryType')
+    ship_to_customer_id: Optional[str] = Field(None, alias='shipToCustomerId')
+    ship_to_customer_name: Optional[str] = Field(None, alias='shipToCustomerName')
+    line_count: Optional[int] = Field(None, alias='lineCount')
+    delivery_qty: Optional[float] = Field(None, alias='deliveryQty')
+    picked_qty: Optional[float] = Field(None, alias='pickedQty')
+    pick_fraction: Optional[float] = Field(None, alias='pickFraction')
+    has_mixed_base_uom: Optional[bool] = Field(None, alias='hasMixedBaseUom')
+    planned_goods_issue_date: Optional[str] = Field(None, alias='plannedGoodsIssueDate')
+    actual_goods_issue_date: Optional[str] = Field(None, alias='actualGoodsIssueDate')
+    is_shipped: Optional[bool] = Field(None, alias='isShipped')
+    days_to_goods_issue: Optional[int] = Field(None, alias='daysToGoodsIssue')
+    risk_band: Optional[str] = Field(None, alias='riskBand')
+
+
+class WmReconAlertItem(BaseModel):
+    model_config = ConfigDict(extra='forbid', populate_by_name=True)
+    plant_id: str = Field(..., alias='plantId')
+    warehouse_id: Optional[str] = Field(None, alias='warehouseId')
+    alert_key: str = Field(..., alias='alertKey')
+    alert_type: str = Field(..., alias='alertType')
+    alert_priority: Optional[str] = Field(None, alias='alertPriority')
+    material_id: Optional[str] = Field(None, alias='materialId')
+    batch_id: Optional[str] = Field(None, alias='batchId')
+    reason_code: Optional[str] = Field(None, alias='reasonCode')
+    delta_qty: Optional[float] = Field(None, alias='deltaQty')
+    delta_value: Optional[float] = Field(None, alias='deltaValue')
+
+
+class WmBatchMovementItem(BaseModel):
+    model_config = ConfigDict(extra='forbid', populate_by_name=True)
+    plant_id: str = Field(..., alias='plantId')
+    document_id: Optional[str] = Field(None, alias='documentId')
+    document_year: Optional[str] = Field(None, alias='documentYear')
+    document_item: Optional[str] = Field(None, alias='documentItem')
+    material_id: Optional[str] = Field(None, alias='materialId')
+    batch_id: Optional[str] = Field(None, alias='batchId')
+    movement_type: Optional[str] = Field(None, alias='movementType')
+    movement_label: Optional[str] = Field(None, alias='movementLabel')
+    event_category: Optional[str] = Field(None, alias='eventCategory')
+    quantity: Optional[float] = None
+    uom: Optional[str] = None
+    posting_date: Optional[str] = Field(None, alias='postingDate')
+    order_id: Optional[str] = Field(None, alias='orderId')
+    delivery_id: Optional[str] = Field(None, alias='deliveryId')
+    posted_by: Optional[str] = Field(None, alias='postedBy')
+
+
+@router.get("/wm-operations/order-components", response_model=list[WmOrderComponentItem])
+async def wm_operations_order_components(
+    response: Response,
+    plant_id: str,
+    order_id: str,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[WmOrderComponentItem]:
+    """Component-level staging detail for one process order — databricks-api only."""
+    _require_databricks_mode("WM Operations order components")
+    req = WmOrderComponentsRequest(plant_id=plant_id.strip(), order_id=order_id.strip())
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_order_components(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_order_components_rows(rows)
+
+
+@router.get("/wm-operations/operator-activity", response_model=list[WmOperatorActivityItem])
+async def wm_operations_operator_activity(
+    response: Response,
+    plant_id: str | None = None,
+    warehouse_id: str | None = None,
+    days: int = 14,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[WmOperatorActivityItem]:
+    """RF operator pick activity per day — databricks-api only."""
+    _require_databricks_mode("WM Operations operator activity")
+    if days < 1 or days > 92:
+        raise HTTPException(status_code=422, detail="days must be between 1 and 92")
+    req = WmOperatorActivityRequest(
+        plant_id=plant_id.strip() if plant_id else None,
+        warehouse_id=warehouse_id.strip() if warehouse_id else None,
+        days=days,
+    )
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_operator_activity(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_operator_activity_rows(rows)
+
+
+@router.get("/wm-operations/queue-workload", response_model=list[WmQueueWorkloadItem])
+async def wm_operations_queue_workload(
+    response: Response,
+    plant_id: str | None = None,
+    warehouse_id: str | None = None,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[WmQueueWorkloadItem]:
+    """Current open workload by queue and work area — databricks-api only."""
+    _require_databricks_mode("WM Operations queue workload")
+    req = WmQueueWorkloadRequest(
+        plant_id=plant_id.strip() if plant_id else None,
+        warehouse_id=warehouse_id.strip() if warehouse_id else None,
+    )
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_queue_workload(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_queue_workload_rows(rows)
+
+
+@router.get("/wm-operations/outbound", response_model=list[WmOutboundItem])
+async def wm_operations_outbound(
+    response: Response,
+    plant_id: str | None = None,
+    warehouse_id: str | None = None,
+    include_shipped: bool = False,
+    limit: int = 200,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[WmOutboundItem]:
+    """Outbound delivery picking board — databricks-api only."""
+    _require_databricks_mode("WM Operations outbound")
+    _validate_limit(limit, 500)
+    req = WmOutboundRequest(
+        plant_id=plant_id.strip() if plant_id else None,
+        warehouse_id=warehouse_id.strip() if warehouse_id else None,
+        include_shipped=include_shipped,
+        limit=limit,
+    )
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_outbound(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_outbound_rows(rows)
+
+
+@router.get("/wm-operations/recon-alerts", response_model=list[WmReconAlertItem])
+async def wm_operations_recon_alerts(
+    response: Response,
+    plant_id: str | None = None,
+    warehouse_id: str | None = None,
+    limit: int = 200,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[WmReconAlertItem]:
+    """Severe reconciliation alerts for the shift-handover digest — databricks-api only."""
+    _require_databricks_mode("WM Operations recon alerts")
+    _validate_limit(limit, 500)
+    req = WmReconAlertsRequest(
+        plant_id=plant_id.strip() if plant_id else None,
+        warehouse_id=warehouse_id.strip() if warehouse_id else None,
+        limit=limit,
+    )
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_recon_alerts(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_recon_alerts_rows(rows)
+
+
+@router.get("/wm-operations/batch-movements", response_model=list[WmBatchMovementItem])
+async def wm_operations_batch_movements(
+    response: Response,
+    plant_id: str,
+    material_id: str,
+    batch_id: str | None = None,
+    days: int = 31,
+    limit: int = 200,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[WmBatchMovementItem]:
+    """Goods-movement history for a material/batch (bounded window) — databricks-api only."""
+    _require_databricks_mode("WM Operations batch movements")
+    _validate_limit(limit, 500)
+    if days < 1 or days > 31:
+        raise HTTPException(status_code=422, detail="days must be between 1 and 31")
+    req = WmBatchMovementsRequest(
+        plant_id=plant_id.strip(),
+        material_id=material_id.strip(),
+        batch_id=batch_id.strip() if batch_id else None,
+        days=days,
+        limit=limit,
+    )
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_batch_movements(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_batch_movements_rows(rows)

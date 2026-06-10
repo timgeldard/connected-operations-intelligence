@@ -47,3 +47,6 @@ REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_staging_wo
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_worklist_summary FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_order_readiness FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_bin_stock_detail FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_order_component_detail FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_operator_activity FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_queue_workload FROM `users`;

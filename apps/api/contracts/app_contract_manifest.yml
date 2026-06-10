@@ -1611,3 +1611,330 @@ contracts:
         type: boolean
         required: false
         description: Expiry date in the past (query-time)
+
+  - id: wm_operations.order_components
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Component-level staging detail for active process orders — the drill-through behind
+      Order Readiness. TR/TO/PSA rollups are at order x material grain; components sharing
+      a material are flagged via material_component_count. Candidate contract pending DEV profiling.
+    source_view: vw_consumption_wm_operations_order_components
+    grain: one row per plant_id, order_id, reservation_id and reservation_item
+    primary_key:
+      - plant_id
+      - order_id
+      - reservation_id
+      - reservation_item
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: order_id
+        type: string
+        required: true
+      - name: reservation_id
+        type: string
+        required: true
+      - name: reservation_item
+        type: string
+        required: true
+      - name: warehouse_id
+        type: string
+        required: false
+      - name: material_id
+        type: string
+        required: false
+      - name: material_name
+        type: string
+        required: false
+      - name: batch_id
+        type: string
+        required: false
+      - name: required_qty
+        type: double
+        required: false
+      - name: open_qty
+        type: double
+        required: false
+      - name: uom
+        type: string
+        required: false
+      - name: production_supply_area
+        type: string
+        required: false
+      - name: requirement_date
+        type: date
+        required: false
+      - name: material_component_count
+        type: long
+        required: false
+      - name: tr_count
+        type: long
+        required: false
+      - name: tr_required_qty
+        type: double
+        required: false
+      - name: tr_open_qty
+        type: double
+        required: false
+      - name: tr_coverage_status
+        type: string
+        required: true
+      - name: to_item_count
+        type: long
+        required: false
+      - name: to_items_confirmed
+        type: long
+        required: false
+      - name: to_confirmed_qty
+        type: double
+        required: false
+      - name: pick_progress_fraction
+        type: double
+        required: false
+      - name: psa_supplied_qty
+        type: double
+        required: false
+      - name: is_supplied
+        type: boolean
+        required: false
+
+  - id: wm_operations.operator_activity
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      RF operator pick activity per day from confirmed transfer-order items. Quantity totals
+      mix base UoMs — item counts are the comparable measure. Candidate contract pending DEV profiling.
+    source_view: vw_consumption_wm_operations_operator_activity
+    grain: one row per plant_id, warehouse_id, operator and activity_date
+    primary_key:
+      - plant_id
+      - warehouse_id
+      - operator
+      - activity_date
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: warehouse_id
+        type: string
+        required: true
+      - name: operator
+        type: string
+        required: true
+      - name: activity_date
+        type: date
+        required: true
+      - name: items_confirmed
+        type: long
+        required: false
+      - name: transfer_orders
+        type: long
+        required: false
+      - name: materials
+        type: long
+        required: false
+      - name: transfer_requirements
+        type: long
+        required: false
+      - name: confirmed_qty
+        type: double
+        required: false
+
+  - id: wm_operations.queue_workload
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Current open WM workload by queue and work area (non-complete worklist jobs).
+      Candidate contract pending DEV profiling.
+    source_view: vw_consumption_wm_operations_queue_workload
+    grain: one row per plant_id, warehouse_id, queue and work_area
+    primary_key:
+      - plant_id
+      - warehouse_id
+      - queue
+      - work_area
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: warehouse_id
+        type: string
+        required: true
+      - name: queue
+        type: string
+        required: true
+      - name: work_area
+        type: string
+        required: true
+      - name: open_jobs
+        type: long
+        required: false
+      - name: in_progress_jobs
+        type: long
+        required: false
+      - name: parked_jobs
+        type: long
+        required: false
+      - name: no_stock_jobs
+        type: long
+        required: false
+      - name: operator_count
+        type: long
+        required: false
+      - name: earliest_planned_ts
+        type: timestamp
+        required: false
+      - name: earliest_created_ts
+        type: timestamp
+        required: false
+
+  - id: wm_operations.outbound
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Outbound delivery picking board — pick progress and goods-issue risk per open delivery
+      (reuses gold_delivery_pick_status with query-time risk bands). Candidate contract pending
+      DEV profiling.
+    source_view: vw_consumption_wm_operations_outbound
+    grain: one row per plant_id and delivery_id
+    primary_key:
+      - plant_id
+      - delivery_id
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: warehouse_id
+        type: string
+        required: false
+      - name: delivery_id
+        type: string
+        required: true
+      - name: delivery_type
+        type: string
+        required: false
+      - name: ship_to_customer_id
+        type: string
+        required: false
+      - name: ship_to_customer_name
+        type: string
+        required: false
+      - name: line_count
+        type: long
+        required: false
+      - name: delivery_qty
+        type: double
+        required: false
+      - name: picked_qty
+        type: double
+        required: false
+      - name: pick_fraction
+        type: double
+        required: false
+      - name: has_mixed_base_uom
+        type: boolean
+        required: false
+      - name: planned_goods_issue_date
+        type: date
+        required: false
+      - name: actual_goods_issue_date
+        type: date
+        required: false
+      - name: is_shipped
+        type: boolean
+        required: false
+      - name: days_to_goods_issue
+        type: long
+        required: false
+      - name: risk_band
+        type: string
+        required: false
+
+  - id: wm_operations.recon_alerts
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Severe reconciliation alerts (IM-WM stock, HU, physical inventory) for the shift-handover
+      digest. Candidate contract pending DEV profiling.
+    source_view: vw_consumption_wm_operations_recon_alerts
+    grain: one row per alert_key
+    primary_key:
+      - alert_key
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: warehouse_id
+        type: string
+        required: false
+      - name: alert_key
+        type: string
+        required: true
+      - name: alert_type
+        type: string
+        required: true
+      - name: alert_priority
+        type: string
+        required: false
+      - name: material_id
+        type: string
+        required: false
+      - name: batch_id
+        type: string
+        required: false
+      - name: reason_code
+        type: string
+        required: false
+      - name: delta_qty
+        type: double
+        required: false
+      - name: delta_value
+        type: double
+        required: false

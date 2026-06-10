@@ -32,6 +32,7 @@ class WmWorklistRequest:
     warehouse_id: Optional[str] = None
     work_area: Optional[str] = None
     status: Optional[str] = None
+    queue: Optional[str] = None
     include_complete: bool = False
     limit: int = 200
 
@@ -46,6 +47,10 @@ class WmWorklistSummaryRequest:
 class WmOrderReadinessRequest:
     plant_id: Optional[str] = None
     warehouse_id: Optional[str] = None
+    # Optional schedule horizon: keep orders whose scheduled start falls within
+    # [today - start_from_days_ago, today + start_to_days_ahead].
+    start_from_days_ago: Optional[int] = None
+    start_to_days_ahead: Optional[int] = None
     limit: int = 200
 
 
@@ -110,6 +115,9 @@ def get_wm_worklist_spec(request: WmWorklistRequest) -> QuerySpec:
         params["status"] = request.status
     elif not request.include_complete:
         clauses.append("worklist_status <> 'COMPLETE'")
+    if request.queue:
+        clauses.append("queue = :queue")
+        params["queue"] = request.queue
     where_str = _scope_where(request, params, clauses)
     sql = f"""
     SELECT
@@ -269,7 +277,18 @@ def map_wm_worklist_summary_rows(rows: list[dict]) -> list[dict]:
 def get_wm_order_readiness_spec(request: WmOrderReadinessRequest) -> QuerySpec:
     view = resolve_contract_object("wm_operations.order_readiness", "wh360")
     params: dict[str, object] = {}
-    where_str = _scope_where(request, params)
+    clauses: list[str] = []
+    if request.start_from_days_ago is not None:
+        clauses.append(
+            "scheduled_start_date >= date_sub(current_date(), :start_from_days_ago)"
+        )
+        params["start_from_days_ago"] = int(request.start_from_days_ago)
+    if request.start_to_days_ahead is not None:
+        clauses.append(
+            "scheduled_start_date <= date_add(current_date(), :start_to_days_ahead)"
+        )
+        params["start_to_days_ahead"] = int(request.start_to_days_ahead)
+    where_str = _scope_where(request, params, clauses)
     sql = f"""
     SELECT
         plant_id,
@@ -447,6 +466,348 @@ def map_wm_bin_stock_rows(rows: list[dict]) -> list[dict]:
     return result
 
 
+# ── Order component detail (drill-through) ───────────────────────────────────
+
+@dataclass
+class WmOrderComponentsRequest:
+    plant_id: str
+    order_id: str
+
+
+def get_wm_order_components_spec(request: WmOrderComponentsRequest) -> QuerySpec:
+    view = resolve_contract_object("wm_operations.order_components", "wh360")
+    sql = f"""
+    SELECT
+        plant_id, order_id, reservation_id, reservation_item, warehouse_id,
+        material_id, material_name, batch_id, required_qty, open_qty, uom,
+        production_supply_area, requirement_date, material_component_count,
+        tr_count, tr_required_qty, tr_open_qty, tr_coverage_status,
+        to_item_count, to_items_confirmed, to_confirmed_qty,
+        pick_progress_fraction, psa_supplied_qty, is_supplied
+    FROM {view}
+    WHERE plant_id = :plant_id AND order_id = :order_id
+    ORDER BY reservation_item ASC
+    LIMIT 500
+    """
+    return QuerySpec(
+        name="wm_operations.get_order_components",
+        module="wh360",
+        endpoint="/api/wm-operations/order-components",
+        sql=sql,
+        params={"plant_id": request.plant_id, "order_id": request.order_id},
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "staging", "order_detail"],
+        contract_id="wm_operations.order_components",
+    )
+
+
+def map_wm_order_components_rows(rows: list[dict]) -> list[dict]:
+    return [{
+        "plantId": _opt_str(r, "plant_id"),
+        "orderId": _opt_str(r, "order_id"),
+        "reservationId": _opt_str(r, "reservation_id"),
+        "reservationItem": _opt_str(r, "reservation_item"),
+        "warehouseId": _opt_str(r, "warehouse_id"),
+        "materialId": _opt_str(r, "material_id"),
+        "materialName": _opt_str(r, "material_name"),
+        "batchId": _opt_str(r, "batch_id"),
+        "requiredQty": _safe_float(r.get("required_qty")),
+        "openQty": _safe_float(r.get("open_qty")),
+        "uom": _opt_str(r, "uom"),
+        "productionSupplyArea": _opt_str(r, "production_supply_area"),
+        "requirementDate": _opt_str(r, "requirement_date"),
+        "materialComponentCount": _safe_int(r.get("material_component_count")),
+        "trCount": _safe_int(r.get("tr_count")),
+        "trRequiredQty": _safe_float(r.get("tr_required_qty")),
+        "trOpenQty": _safe_float(r.get("tr_open_qty")),
+        "trCoverageStatus": _opt_str(r, "tr_coverage_status"),
+        "toItemCount": _safe_int(r.get("to_item_count")),
+        "toItemsConfirmed": _safe_int(r.get("to_items_confirmed")),
+        "toConfirmedQty": _safe_float(r.get("to_confirmed_qty")),
+        "pickProgressFraction": _safe_float(r.get("pick_progress_fraction")),
+        "psaSuppliedQty": _safe_float(r.get("psa_supplied_qty")),
+        "isSupplied": bool(r.get("is_supplied")) if r.get("is_supplied") is not None else None,
+    } for r in rows]
+
+
+# ── Operator activity ─────────────────────────────────────────────────────────
+
+@dataclass
+class WmOperatorActivityRequest:
+    plant_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    days: int = 14
+
+
+def get_wm_operator_activity_spec(request: WmOperatorActivityRequest) -> QuerySpec:
+    view = resolve_contract_object("wm_operations.operator_activity", "wh360")
+    params: dict[str, object] = {"days": int(request.days)}
+    clauses = ["activity_date >= date_sub(current_date(), :days)"]
+    where_str = _scope_where(request, params, clauses)
+    sql = f"""
+    SELECT
+        plant_id, warehouse_id, operator, activity_date,
+        items_confirmed, transfer_orders, materials, transfer_requirements, confirmed_qty
+    FROM {view}
+    {where_str}
+    ORDER BY activity_date DESC, items_confirmed DESC
+    LIMIT 1000
+    """
+    return QuerySpec(
+        name="wm_operations.get_operator_activity",
+        module="wh360",
+        endpoint="/api/wm-operations/operator-activity",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "operators"],
+        contract_id="wm_operations.operator_activity",
+    )
+
+
+def map_wm_operator_activity_rows(rows: list[dict]) -> list[dict]:
+    return [{
+        "plantId": _opt_str(r, "plant_id"),
+        "warehouseId": _opt_str(r, "warehouse_id"),
+        "operator": _opt_str(r, "operator"),
+        "activityDate": _opt_str(r, "activity_date"),
+        "itemsConfirmed": _safe_int(r.get("items_confirmed")),
+        "transferOrders": _safe_int(r.get("transfer_orders")),
+        "materials": _safe_int(r.get("materials")),
+        "transferRequirements": _safe_int(r.get("transfer_requirements")),
+        "confirmedQty": _safe_float(r.get("confirmed_qty")),
+    } for r in rows]
+
+
+# ── Queue workload ────────────────────────────────────────────────────────────
+
+@dataclass
+class WmQueueWorkloadRequest:
+    plant_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+
+
+def get_wm_queue_workload_spec(request: WmQueueWorkloadRequest) -> QuerySpec:
+    view = resolve_contract_object("wm_operations.queue_workload", "wh360")
+    params: dict[str, object] = {}
+    where_str = _scope_where(request, params)
+    sql = f"""
+    SELECT
+        plant_id, warehouse_id, queue, work_area, open_jobs, in_progress_jobs,
+        parked_jobs, no_stock_jobs, operator_count, earliest_planned_ts, earliest_created_ts
+    FROM {view}
+    {where_str}
+    ORDER BY open_jobs DESC
+    LIMIT 500
+    """
+    return QuerySpec(
+        name="wm_operations.get_queue_workload",
+        module="wh360",
+        endpoint="/api/wm-operations/queue-workload",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "operators", "queues"],
+        contract_id="wm_operations.queue_workload",
+    )
+
+
+def map_wm_queue_workload_rows(rows: list[dict]) -> list[dict]:
+    return [{
+        "plantId": _opt_str(r, "plant_id"),
+        "warehouseId": _opt_str(r, "warehouse_id"),
+        "queue": r.get("queue") if r.get("queue") is not None else "",
+        "workArea": _opt_str(r, "work_area"),
+        "openJobs": _safe_int(r.get("open_jobs")),
+        "inProgressJobs": _safe_int(r.get("in_progress_jobs")),
+        "parkedJobs": _safe_int(r.get("parked_jobs")),
+        "noStockJobs": _safe_int(r.get("no_stock_jobs")),
+        "operatorCount": _safe_int(r.get("operator_count")),
+        "earliestPlannedTs": _opt_str(r, "earliest_planned_ts"),
+        "earliestCreatedTs": _opt_str(r, "earliest_created_ts"),
+    } for r in rows]
+
+
+# ── Outbound picking board ────────────────────────────────────────────────────
+
+@dataclass
+class WmOutboundRequest:
+    plant_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    include_shipped: bool = False
+    limit: int = 200
+
+
+def get_wm_outbound_spec(request: WmOutboundRequest) -> QuerySpec:
+    view = resolve_contract_object("wm_operations.outbound", "wh360")
+    params: dict[str, object] = {}
+    clauses: list[str] = []
+    if not request.include_shipped:
+        clauses.append("NOT coalesce(is_shipped, false)")
+    where_str = _scope_where(request, params, clauses)
+    sql = f"""
+    SELECT
+        plant_id, warehouse_id, delivery_id, delivery_type, ship_to_customer_id,
+        ship_to_customer_name, line_count, delivery_qty, picked_qty, pick_fraction,
+        has_mixed_base_uom, planned_goods_issue_date, actual_goods_issue_date,
+        is_shipped, days_to_goods_issue, risk_band
+    FROM {view}
+    {where_str}
+    ORDER BY planned_goods_issue_date ASC NULLS LAST, delivery_id ASC
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="wm_operations.get_outbound",
+        module="wh360",
+        endpoint="/api/wm-operations/outbound",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "outbound"],
+        contract_id="wm_operations.outbound",
+    )
+
+
+def map_wm_outbound_rows(rows: list[dict]) -> list[dict]:
+    return [{
+        "plantId": _opt_str(r, "plant_id"),
+        "warehouseId": _opt_str(r, "warehouse_id"),
+        "deliveryId": _opt_str(r, "delivery_id"),
+        "deliveryType": _opt_str(r, "delivery_type"),
+        "shipToCustomerId": _opt_str(r, "ship_to_customer_id"),
+        "shipToCustomerName": _opt_str(r, "ship_to_customer_name"),
+        "lineCount": _safe_int(r.get("line_count")),
+        "deliveryQty": _safe_float(r.get("delivery_qty")),
+        "pickedQty": _safe_float(r.get("picked_qty")),
+        "pickFraction": _safe_float(r.get("pick_fraction")),
+        "hasMixedBaseUom": bool(r.get("has_mixed_base_uom"))
+        if r.get("has_mixed_base_uom") is not None else None,
+        "plannedGoodsIssueDate": _opt_str(r, "planned_goods_issue_date"),
+        "actualGoodsIssueDate": _opt_str(r, "actual_goods_issue_date"),
+        "isShipped": bool(r.get("is_shipped")) if r.get("is_shipped") is not None else None,
+        "daysToGoodsIssue": _safe_int(r.get("days_to_goods_issue")),
+        "riskBand": _opt_str(r, "risk_band"),
+    } for r in rows]
+
+
+# ── Reconciliation alerts (handover digest) ───────────────────────────────────
+
+@dataclass
+class WmReconAlertsRequest:
+    plant_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    limit: int = 200
+
+
+def get_wm_recon_alerts_spec(request: WmReconAlertsRequest) -> QuerySpec:
+    view = resolve_contract_object("wm_operations.recon_alerts", "wh360")
+    params: dict[str, object] = {}
+    where_str = _scope_where(request, params)
+    sql = f"""
+    SELECT
+        plant_id, warehouse_id, alert_key, alert_type, alert_priority,
+        material_id, batch_id, reason_code, delta_qty, delta_value
+    FROM {view}
+    {where_str}
+    ORDER BY alert_priority ASC, delta_value DESC NULLS LAST
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="wm_operations.get_recon_alerts",
+        module="wh360",
+        endpoint="/api/wm-operations/recon-alerts",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "reconciliation"],
+        contract_id="wm_operations.recon_alerts",
+    )
+
+
+def map_wm_recon_alerts_rows(rows: list[dict]) -> list[dict]:
+    return [{
+        "plantId": _opt_str(r, "plant_id"),
+        "warehouseId": _opt_str(r, "warehouse_id"),
+        "alertKey": _opt_str(r, "alert_key"),
+        "alertType": _opt_str(r, "alert_type"),
+        "alertPriority": _opt_str(r, "alert_priority"),
+        "materialId": _opt_str(r, "material_id"),
+        "batchId": _opt_str(r, "batch_id"),
+        "reasonCode": _opt_str(r, "reason_code"),
+        "deltaQty": _safe_float(r.get("delta_qty")),
+        "deltaValue": _safe_float(r.get("delta_value")),
+    } for r in rows]
+
+
+# ── Batch movement history (stock-explorer drill; reuses the wh360 contract) ──
+
+@dataclass
+class WmBatchMovementsRequest:
+    plant_id: str
+    material_id: str
+    batch_id: Optional[str] = None
+    days: int = 31
+    limit: int = 200
+
+
+def get_wm_batch_movements_spec(request: WmBatchMovementsRequest) -> QuerySpec:
+    # Reuses the contracted warehouse360.goods_movements consumption view (MSEG line
+    # grain) with a bounded posting-date window — same cost control as the wh360 route.
+    view = resolve_contract_object("warehouse360.goods_movements", "wh360")
+    params: dict[str, object] = {
+        "plant_id": request.plant_id,
+        "material_id": request.material_id,
+        "days": int(request.days),
+    }
+    batch_clause = ""
+    if request.batch_id:
+        batch_clause = "AND batch_id = :batch_id"
+        params["batch_id"] = request.batch_id
+    sql = f"""
+    SELECT
+        plant_id, document_number, fiscal_year, line_item, material_id, batch_id,
+        movement_type_code, movement_label, event_category, quantity, uom,
+        posting_date, order_number, delivery_number, posted_by
+    FROM {view}
+    WHERE plant_id = :plant_id
+      AND material_id = :material_id
+      AND posting_date >= date_sub(current_date(), :days)
+      {batch_clause}
+    ORDER BY posting_date DESC
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="wm_operations.get_batch_movements",
+        module="wh360",
+        endpoint="/api/wm-operations/batch-movements",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "stock", "movements"],
+        contract_id="warehouse360.goods_movements",
+    )
+
+
+def map_wm_batch_movements_rows(rows: list[dict]) -> list[dict]:
+    return [{
+        "plantId": _opt_str(r, "plant_id"),
+        "documentId": _opt_str(r, "document_number"),
+        "documentYear": _opt_str(r, "fiscal_year"),
+        "documentItem": _opt_str(r, "line_item"),
+        "materialId": _opt_str(r, "material_id"),
+        "batchId": _opt_str(r, "batch_id"),
+        "movementType": _opt_str(r, "movement_type_code"),
+        "movementLabel": _opt_str(r, "movement_label"),
+        "eventCategory": _opt_str(r, "event_category"),
+        "quantity": _safe_float(r.get("quantity")),
+        "uom": _opt_str(r, "uom"),
+        "postingDate": _opt_str(r, "posting_date"),
+        "orderId": _opt_str(r, "order_number"),
+        "deliveryId": _opt_str(r, "delivery_number"),
+        "postedBy": _opt_str(r, "posted_by"),
+    } for r in rows]
+
+
 class WmOperationsRepository:
     """Repository for the WM Operations read-only manager tools."""
 
@@ -478,5 +839,51 @@ class WmOperationsRepository:
     async def fetch_bin_stock(self, request: WmBinStockRequest) -> tuple[list[dict], QuerySpec]:
         return await self._repository.fetch(
             spec_factory=lambda: get_wm_bin_stock_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_order_components(
+        self, request: WmOrderComponentsRequest
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_order_components_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_operator_activity(
+        self, request: WmOperatorActivityRequest
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_operator_activity_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_queue_workload(
+        self, request: WmQueueWorkloadRequest
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_queue_workload_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_outbound(self, request: WmOutboundRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_outbound_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_recon_alerts(
+        self, request: WmReconAlertsRequest
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_recon_alerts_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_batch_movements(
+        self, request: WmBatchMovementsRequest
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_batch_movements_spec(request),
             mapper=lambda rows: rows,
         )

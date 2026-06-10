@@ -7,6 +7,7 @@ import type {
 import { useWmWorklist, useWmWorklistSummary } from '../adapters/wm-operations-queries.js'
 import { ViewHeader, EmptyNote } from '../components/kerry.js'
 import { WorklistTable } from '../panels/worklist-table.js'
+import { OrderDetailOverlay } from '../components/overlays.js'
 import { WorklistSummaryStrip } from '../panels/worklist-summary-strip.js'
 
 export interface StagingWorklistViewProps {
@@ -33,12 +34,16 @@ const STATUS_OPTIONS: Array<{ value: WmWorklistStatus | ''; label: string }> = [
 export function StagingWorklistView({ request }: StagingWorklistViewProps) {
   const [workArea, setWorkArea] = useState<WmWorkArea | ''>('')
   const [status, setStatus] = useState<WmWorklistStatus | ''>('')
+  const [queue, setQueue] = useState('')
+  const [appliedQueue, setAppliedQueue] = useState('')
+  const [drillOrder, setDrillOrder] = useState<{ plantId: string; orderId: string } | null>(null)
 
   const summaryResult = useWmWorklistSummary(request)
   const worklistResult = useWmWorklist({
     ...request,
     workArea: workArea || undefined,
     status: status || undefined,
+    queue: appliedQueue || undefined,
   })
 
   const summary = summaryResult.data?.ok ? summaryResult.data.data : []
@@ -76,13 +81,32 @@ export function StagingWorklistView({ request }: StagingWorklistViewProps) {
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
+          <input
+            aria-label="Filter by queue"
+            placeholder="Queue"
+            value={queue}
+            onChange={e => setQueue(e.target.value)}
+            onBlur={() => setAppliedQueue(queue.trim())}
+            onKeyDown={e => e.key === 'Enter' && setAppliedQueue(queue.trim())}
+          />
         </div>
         {error ? (
           <EmptyNote>Could not load the worklist — {error.message}</EmptyNote>
         ) : (
-          <WorklistTable items={items} isLoading={worklistResult.isLoading} />
+          <WorklistTable
+            items={items}
+            isLoading={worklistResult.isLoading}
+            onOrderClick={item => item.referenceId && setDrillOrder({ plantId: item.plantId, orderId: item.referenceId })}
+          />
         )}
       </div>
+      {drillOrder && (
+        <OrderDetailOverlay
+          plantId={drillOrder.plantId}
+          orderId={drillOrder.orderId}
+          onClose={() => setDrillOrder(null)}
+        />
+      )}
     </section>
   )
 }

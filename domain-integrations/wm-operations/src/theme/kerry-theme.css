@@ -356,6 +356,43 @@
 }
 .kerry-wm .kw-horizon svg { display: block; }
 
+/* ── Links & overlays ── */
+
+.kerry-wm .kw-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--kw-valentia-slate);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.kerry-wm .kw-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 55, 0, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh 24px 24px;
+  z-index: 60;
+}
+
+.kerry-wm .kw-overlay {
+  background: var(--kw-white);
+  border-radius: var(--kw-r-lg);
+  box-shadow: var(--kw-shadow-md);
+  padding: 20px 24px;
+  max-width: 1080px;
+  width: 100%;
+  max-height: 84vh;
+  overflow: auto;
+  color: var(--kw-forest);
+  font-family: var(--kw-font-sans);
+}
+
 /* ── Empty / loading states ─────────────────────────────────────────────── */
 
 .kerry-wm .kw-empty {

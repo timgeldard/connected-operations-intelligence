@@ -6,6 +6,9 @@ import { StagingWorklistView } from './views/staging-worklist-view.js'
 import { OrderReadinessView } from './views/order-readiness-view.js'
 import { DispensaryView } from './views/dispensary-view.js'
 import { StockExplorerView } from './views/stock-explorer-view.js'
+import { OutboundView } from './views/outbound-view.js'
+import { OperatorsView } from './views/operators-view.js'
+import { HandoverView } from './views/handover-view.js'
 import { EmptyNote, ViewHeader } from './components/kerry.js'
 import './theme/kerry-theme.css'
 
@@ -14,6 +17,9 @@ export type WmOperationsViewId =
   | 'order-readiness'
   | 'dispensary'
   | 'stock-explorer'
+  | 'outbound'
+  | 'operators'
+  | 'handover'
 
 export interface WmOperationsWorkspaceProps {
   readonly scope: ScopeContext
@@ -28,6 +34,9 @@ const VALID_VIEWS: Array<{ id: WmOperationsViewId; label: string }> = [
   { id: 'order-readiness', label: 'Order Readiness' },
   { id: 'dispensary', label: 'Dispensary' },
   { id: 'stock-explorer', label: 'Stock & Bins' },
+  { id: 'outbound', label: 'Outbound' },
+  { id: 'operators', label: 'Operators' },
+  { id: 'handover', label: 'Handover' },
 ]
 
 function isValidViewId(viewId: string): viewId is WmOperationsViewId {
@@ -106,6 +115,12 @@ function resolveView(viewId: string, request: WmOperationsAdapterRequest) {
       return <DispensaryView request={request} />
     case 'stock-explorer':
       return <StockExplorerView request={request} />
+    case 'outbound':
+      return <OutboundView request={request} />
+    case 'operators':
+      return <OperatorsView request={request} />
+    case 'handover':
+      return <HandoverView request={request} />
     case 'staging-worklist':
     default:
       return <StagingWorklistView request={request} />

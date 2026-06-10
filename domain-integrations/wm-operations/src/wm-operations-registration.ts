@@ -67,6 +67,33 @@ export const wmOperationsRegistration: WorkspaceRegistration = {
         { panelId: 'wm-bin-stock', defaultVisible: true, defaultOrder: 0 },
       ],
     },
+    {
+      viewId: 'outbound',
+      displayName: 'Outbound',
+      lifecycle: 'pilot',
+      sortOrder: 4,
+      defaultPanels: [
+        { panelId: 'wm-outbound', defaultVisible: true, defaultOrder: 0 },
+      ],
+    },
+    {
+      viewId: 'operators',
+      displayName: 'Operators',
+      lifecycle: 'pilot',
+      sortOrder: 5,
+      defaultPanels: [
+        { panelId: 'wm-operators', defaultVisible: true, defaultOrder: 0 },
+      ],
+    },
+    {
+      viewId: 'handover',
+      displayName: 'Handover',
+      lifecycle: 'pilot',
+      sortOrder: 6,
+      defaultPanels: [
+        { panelId: 'wm-handover', defaultVisible: true, defaultOrder: 0 },
+      ],
+    },
   ],
   defaultPanels: [
     { panelId: 'wm-worklist-summary', defaultVisible: true, defaultOrder: 0 },

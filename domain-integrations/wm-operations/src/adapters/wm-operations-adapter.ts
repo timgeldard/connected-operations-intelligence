@@ -139,6 +139,9 @@ export interface WmOperationsAdapterRequest {
   readonly materialId?: string
   readonly binId?: string
   readonly expiringWithinDays?: number
+  readonly queue?: string
+  readonly startFromDaysAgo?: number
+  readonly startToDaysAhead?: number
   readonly limit?: number
 }
 
@@ -224,6 +227,7 @@ export class WmOperationsAdapter {
       warehouse_id: request.warehouseId,
       work_area: request.workArea,
       status: request.status,
+      queue: request.queue,
       include_complete: request.includeComplete,
       limit: request.limit,
     })
@@ -246,6 +250,8 @@ export class WmOperationsAdapter {
     const url = this.buildUrl('/api/wm-operations/order-readiness', {
       plant_id: request.plantId,
       warehouse_id: request.warehouseId,
+      start_from_days_ago: request.startFromDaysAgo,
+      start_to_days_ahead: request.startToDaysAhead,
       limit: request.limit,
     })
     return this.fetchList<WmOrderReadinessItem>(url)
@@ -264,6 +270,178 @@ export class WmOperationsAdapter {
     })
     return this.fetchList<WmBinStockItem>(url)
   }
+
+  async getOrderComponents(request: WmDrillRequest): Promise<AdapterResult<WmOrderComponentItem[]>> {
+    const url = this.buildUrl('/api/wm-operations/order-components', {
+      plant_id: request.plantId,
+      order_id: request.orderId,
+    })
+    return this.fetchList<WmOrderComponentItem>(url)
+  }
+
+  async getOperatorActivity(request: WmDrillRequest): Promise<AdapterResult<WmOperatorActivityItem[]>> {
+    const url = this.buildUrl('/api/wm-operations/operator-activity', {
+      plant_id: request.plantId,
+      warehouse_id: request.warehouseId,
+      days: request.days,
+    })
+    return this.fetchList<WmOperatorActivityItem>(url)
+  }
+
+  async getQueueWorkload(request: WmDrillRequest): Promise<AdapterResult<WmQueueWorkloadItem[]>> {
+    const url = this.buildUrl('/api/wm-operations/queue-workload', {
+      plant_id: request.plantId,
+      warehouse_id: request.warehouseId,
+    })
+    return this.fetchList<WmQueueWorkloadItem>(url)
+  }
+
+  async getOutbound(request: WmDrillRequest): Promise<AdapterResult<WmOutboundItem[]>> {
+    const url = this.buildUrl('/api/wm-operations/outbound', {
+      plant_id: request.plantId,
+      warehouse_id: request.warehouseId,
+      include_shipped: request.includeShipped,
+      limit: request.limit,
+    })
+    return this.fetchList<WmOutboundItem>(url)
+  }
+
+  async getReconAlerts(request: WmDrillRequest): Promise<AdapterResult<WmReconAlertItem[]>> {
+    const url = this.buildUrl('/api/wm-operations/recon-alerts', {
+      plant_id: request.plantId,
+      warehouse_id: request.warehouseId,
+      limit: request.limit,
+    })
+    return this.fetchList<WmReconAlertItem>(url)
+  }
+
+  async getBatchMovements(request: WmDrillRequest): Promise<AdapterResult<WmBatchMovementItem[]>> {
+    const url = this.buildUrl('/api/wm-operations/batch-movements', {
+      plant_id: request.plantId,
+      material_id: request.materialId,
+      batch_id: request.batchId,
+      days: request.days,
+      limit: request.limit,
+    })
+    return this.fetchList<WmBatchMovementItem>(url)
+  }
+}
+
+export interface WmOrderComponentItem {
+  readonly plantId: string
+  readonly orderId: string
+  readonly reservationId: string | null
+  readonly reservationItem: string | null
+  readonly warehouseId: string | null
+  readonly materialId: string | null
+  readonly materialName: string | null
+  readonly batchId: string | null
+  readonly requiredQty: number | null
+  readonly openQty: number | null
+  readonly uom: string | null
+  readonly productionSupplyArea: string | null
+  readonly requirementDate: string | null
+  readonly materialComponentCount: number | null
+  readonly trCount: number | null
+  readonly trRequiredQty: number | null
+  readonly trOpenQty: number | null
+  readonly trCoverageStatus: 'NONE' | 'PARTIAL' | 'FULL' | null
+  readonly toItemCount: number | null
+  readonly toItemsConfirmed: number | null
+  readonly toConfirmedQty: number | null
+  readonly pickProgressFraction: number | null
+  readonly psaSuppliedQty: number | null
+  readonly isSupplied: boolean | null
+}
+
+export interface WmOperatorActivityItem {
+  readonly plantId: string
+  readonly warehouseId: string
+  readonly operator: string
+  readonly activityDate: string
+  readonly itemsConfirmed: number | null
+  readonly transferOrders: number | null
+  readonly materials: number | null
+  readonly transferRequirements: number | null
+  readonly confirmedQty: number | null
+}
+
+export interface WmQueueWorkloadItem {
+  readonly plantId: string
+  readonly warehouseId: string
+  readonly queue: string
+  readonly workArea: WmWorkArea
+  readonly openJobs: number | null
+  readonly inProgressJobs: number | null
+  readonly parkedJobs: number | null
+  readonly noStockJobs: number | null
+  readonly operatorCount: number | null
+  readonly earliestPlannedTs: string | null
+  readonly earliestCreatedTs: string | null
+}
+
+export interface WmOutboundItem {
+  readonly plantId: string
+  readonly warehouseId: string | null
+  readonly deliveryId: string
+  readonly deliveryType: string | null
+  readonly shipToCustomerId: string | null
+  readonly shipToCustomerName: string | null
+  readonly lineCount: number | null
+  readonly deliveryQty: number | null
+  readonly pickedQty: number | null
+  readonly pickFraction: number | null
+  readonly hasMixedBaseUom: boolean | null
+  readonly plannedGoodsIssueDate: string | null
+  readonly actualGoodsIssueDate: string | null
+  readonly isShipped: boolean | null
+  readonly daysToGoodsIssue: number | null
+  readonly riskBand: 'red' | 'amber' | 'green' | 'grey' | null
+}
+
+export interface WmReconAlertItem {
+  readonly plantId: string
+  readonly warehouseId: string | null
+  readonly alertKey: string
+  readonly alertType: string
+  readonly alertPriority: string | null
+  readonly materialId: string | null
+  readonly batchId: string | null
+  readonly reasonCode: string | null
+  readonly deltaQty: number | null
+  readonly deltaValue: number | null
+}
+
+export interface WmBatchMovementItem {
+  readonly plantId: string
+  readonly documentId: string | null
+  readonly documentYear: string | null
+  readonly documentItem: string | null
+  readonly materialId: string | null
+  readonly batchId: string | null
+  readonly movementType: string | null
+  readonly movementLabel: string | null
+  readonly eventCategory: string | null
+  readonly quantity: number | null
+  readonly uom: string | null
+  readonly postingDate: string | null
+  readonly orderId: string | null
+  readonly deliveryId: string | null
+  readonly postedBy: string | null
+}
+
+export interface WmDrillRequest {
+  readonly plantId?: string
+  readonly warehouseId?: string
+  readonly orderId?: string
+  readonly materialId?: string
+  readonly batchId?: string
+  readonly days?: number
+  readonly includeShipped?: boolean
+  readonly startFromDaysAgo?: number
+  readonly startToDaysAhead?: number
+  readonly queue?: string
+  readonly limit?: number
 }
 
 export const wmOperationsAdapter = new WmOperationsAdapter()
