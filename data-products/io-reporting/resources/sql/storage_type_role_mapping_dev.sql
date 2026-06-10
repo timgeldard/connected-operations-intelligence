@@ -2,7 +2,7 @@
 -- Run once as a UC admin; thereafter maintain rows directly (or re-seed from the CSV).
 -- The silver.storage_type_role_mapping DLT table reads APPROVED, in-window rows from here.
 
-CREATE TABLE IF NOT EXISTS connected_plant_dev.silver_dev.storage_type_role_mapping_config (
+CREATE TABLE IF NOT EXISTS connected_plant_dev.silver_io_reporting.storage_type_role_mapping_config (
   plant_code STRING, plant_name STRING,
   warehouse_number STRING, storage_type STRING,
   storage_type_description STRING,
@@ -10,12 +10,12 @@ CREATE TABLE IF NOT EXISTS connected_plant_dev.silver_dev.storage_type_role_mapp
 ) USING DELTA;
 
 -- Schema evolution: add columns added after initial deploy (idempotent).
-ALTER TABLE connected_plant_dev.silver_dev.storage_type_role_mapping_config ADD COLUMN IF NOT EXISTS plant_name STRING;
-ALTER TABLE connected_plant_dev.silver_dev.storage_type_role_mapping_config ADD COLUMN IF NOT EXISTS storage_type_description STRING;
+ALTER TABLE connected_plant_dev.silver_io_reporting.storage_type_role_mapping_config ADD COLUMN IF NOT EXISTS plant_name STRING;
+ALTER TABLE connected_plant_dev.silver_io_reporting.storage_type_role_mapping_config ADD COLUMN IF NOT EXISTS storage_type_description STRING;
 
 -- Reseed from the CSV (idempotent full refresh of the seeded plant(s)):
-DELETE FROM connected_plant_dev.silver_dev.storage_type_role_mapping_config WHERE owner = 'wm-config-owner';
-INSERT INTO connected_plant_dev.silver_dev.storage_type_role_mapping_config (plant_code, plant_name, warehouse_number, storage_type, storage_type_description, role, valid_from, valid_to, owner, review_status) VALUES
+DELETE FROM connected_plant_dev.silver_io_reporting.storage_type_role_mapping_config WHERE owner = 'wm-config-owner';
+INSERT INTO connected_plant_dev.silver_io_reporting.storage_type_role_mapping_config (plant_code, plant_name, warehouse_number, storage_type, storage_type_description, role, valid_from, valid_to, owner, review_status) VALUES
   ('0001', 'Werk 0001', '001', '100', 'Production Supply', 'LINESIDE', DATE'2026-06-02', NULL, 'wm-config-owner', 'PENDING'),
   ('C012', 'DNU Abingdon [MFG]', '122', '800', 'Dispensary - Dry', 'LINESIDE', DATE'2026-06-02', NULL, 'wm-config-owner', 'PENDING'),
   ('C012', 'DNU Abingdon [MFG]', '122', '810', 'Dispensary - Liquid', 'LINESIDE', DATE'2026-06-02', NULL, 'wm-config-owner', 'PENDING'),
