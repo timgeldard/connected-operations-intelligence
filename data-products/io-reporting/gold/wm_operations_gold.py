@@ -1360,7 +1360,7 @@ if (
                 blocked.alias("bs"),
                 (F.col("l.plant_code") == F.col("bs.plant_code"))
                 & (F.col("l.material_code") == F.col("bs.material_code"))
-                & (F.col("l.batch_number") == F.col("bs.batch_number")),
+                & F.col("l.batch_number").eqNullSafe(F.col("bs.batch_number")),
                 "left",
             )
             .join(price, ["plant_code", "material_code"], "left")

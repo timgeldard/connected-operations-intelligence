@@ -36,14 +36,19 @@ const ORIGIN_OPTIONS = [
   { value: '10', label: '10 Audit' },
 ]
 
-/** ISO week string (yyyy-Www) for a date string. */
+/** ISO week string (yyyy-Www) for a date string.
+ *  Parses 'YYYY-MM-DD' parts manually (Date.UTC) to avoid local-timezone shifts.
+ *  Returns 'Invalid-Week' for malformed input.
+ */
 function isoWeek(dateStr: string): string {
-  const d = new Date(dateStr)
-  const thursday = new Date(d)
-  thursday.setDate(d.getDate() - (d.getDay() + 6) % 7 + 3)
-  const yearStart = new Date(thursday.getFullYear(), 0, 1)
+  const parts = dateStr.split('-').map(Number)
+  if (parts.length !== 3 || parts.some(isNaN)) return 'Invalid-Week'
+  const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]))
+  const thursday = new Date(d.getTime())
+  thursday.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7 + 3)
+  const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1))
   const weekNo = Math.ceil(((thursday.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
-  return `${thursday.getFullYear()}-W${String(weekNo).padStart(2, '0')}`
+  return `${thursday.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
 }
 
 export function QmCommandCentreView({
@@ -72,7 +77,10 @@ export function QmCommandCentreView({
   // ── KPIs ────────────────────────────────────────────────────────────────────
   const openLots = allLots.filter(r => !r.hasUsageDecision).length
   const overdueLots = allLots.filter(r => r.isOverdue).length
-  const decidedLots = allLots.filter(r => r.hasUsageDecision && r.udLeadTimeDays != null)
+  const decidedLots = useMemo(
+    () => allLots.filter(r => r.hasUsageDecision && r.udLeadTimeDays != null),
+    [allLots],
+  )
   const medianUdLeadTime = useMemo(() => {
     if (decidedLots.length === 0) return null
     const sorted = [...decidedLots].map(r => r.udLeadTimeDays as number).sort((a, b) => a - b)
@@ -82,7 +90,10 @@ export function QmCommandCentreView({
   const rejectedCount = allLots.filter(r => r.lastUsageDecision === 'Rejected').length
 
   // ── Open backlog by origin × age bucket ─────────────────────────────────────
-  const openLotsList = allLots.filter(r => !r.hasUsageDecision)
+  const openLotsList = useMemo(
+    () => allLots.filter(r => !r.hasUsageDecision),
+    [allLots],
+  )
   const byOriginAge = useMemo(() => {
     type Bucket = { lt7: number; d7_14: number; d14_30: number; gt30: number; total: number }
     const map = new Map<string, Bucket>()
@@ -107,7 +118,7 @@ export function QmCommandCentreView({
     const map = new Map<string, number[]>()
     for (const r of decidedLots) {
       if (!r.lastUsageDecisionDate) continue
-      const wk = isoWeek(r.lastUsageDecisionDate)
+      const wk = isoWeek(r.lastUsageDecisionDate.slice(0, 10))
       const arr = map.get(wk) ?? []
       arr.push(r.udLeadTimeDays as number)
       map.set(wk, arr)
