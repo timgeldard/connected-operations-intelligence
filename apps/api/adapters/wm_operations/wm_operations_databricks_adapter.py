@@ -179,7 +179,8 @@ def get_wm_worklist_spec(request: WmWorklistRequest) -> QuerySpec:
         age_hours,
         is_overdue,
         short_pick_qty,
-        short_pick_item_count
+        short_pick_item_count,
+        order_production_line
     FROM {view}
     {where_str}
     ORDER BY planned_execution_ts ASC NULLS LAST, created_ts ASC
@@ -241,6 +242,7 @@ def map_wm_worklist_rows(rows: list[dict]) -> list[dict]:
             "isOverdue": _safe_bool(row.get("is_overdue")),
             "shortPickQty": _safe_float(row.get("short_pick_qty")),
             "shortPickItemCount": _safe_int(row.get("short_pick_item_count")),
+            "orderProductionLine": _opt_str(row, "order_production_line"),
         })
     return result
 
@@ -339,7 +341,8 @@ def get_wm_order_readiness_spec(request: WmOrderReadinessRequest) -> QuerySpec:
         supply_status,
         readiness_status,
         days_to_start,
-        readiness_band
+        readiness_band,
+        production_line
     FROM {view}
     {where_str}
     ORDER BY scheduled_start_date ASC NULLS LAST, order_id ASC
@@ -384,6 +387,7 @@ def map_wm_order_readiness_rows(rows: list[dict]) -> list[dict]:
             "readinessStatus": _opt_str(row, "readiness_status"),
             "daysToStart": _safe_int(row.get("days_to_start")),
             "readinessBand": _opt_str(row, "readiness_band"),
+            "productionLine": _opt_str(row, "production_line"),
         })
     return result
 
@@ -1334,6 +1338,19 @@ SIMPLE_DATASETS: dict[str, dict] = {
         order_by="start_datetime DESC",
         numeric=("duration_minutes",), integer=(), boolean=(), has_warehouse=False,
         days_col="start_datetime",
+    ),
+    # Note: "inbound" (above) is the PO backlog (warehouse360.inbound_backlog).
+    # "inbound_deliveries" is the SAP EL/ELST inbound delivery board (wm_operations.inbound_deliveries).
+    "inbound_deliveries": dict(
+        contract="wm_operations.inbound_deliveries", endpoint="/api/wm-operations/inbound-deliveries",
+        columns="plant_id, warehouse_id, delivery_id, delivery_type, shipping_point, "
+                "line_count, delivery_qty, received_qty, receipt_fraction, "
+                "has_mixed_base_uom, wm_status_code, expected_receipt_date, "
+                "actual_receipt_date, is_received, days_until_expected_receipt, receipt_band",
+        order_by="expected_receipt_date ASC NULLS LAST",
+        numeric=("delivery_qty", "received_qty", "receipt_fraction"),
+        integer=("line_count", "days_until_expected_receipt"),
+        boolean=("has_mixed_base_uom", "is_received"), has_warehouse=True,
     ),
     "plants": dict(
         contract="wm_operations.plants", endpoint="/api/wm-operations/plants",

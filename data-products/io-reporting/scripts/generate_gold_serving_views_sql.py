@@ -78,6 +78,20 @@ SERVING_VIEWS = {
          f"WHEN coalesce(b.pick_fraction, 0.0) < 0.8 AND {_DAYS_TO_GI} <= 1 THEN 'amber' "
          "ELSE 'green' END"),
     ],
+    # Inbound deliveries: days until expected receipt served live (base MV stays deterministic).
+    # receipt_band mirrors the outbound risk_band logic: red = overdue + low progress,
+    # amber = due within 1 day + not fully received, green otherwise / already received.
+    "gold_wm_inbound_deliveries": [
+        ("days_until_expected_receipt", "datediff(b.expected_receipt_date, current_date())"),
+        ("receipt_band",
+         "CASE "
+         "WHEN b.is_received THEN 'green' "
+         "WHEN b.expected_receipt_date IS NULL THEN 'grey' "
+         "WHEN datediff(b.expected_receipt_date, current_date()) IS NULL THEN 'grey' "
+         "WHEN coalesce(b.receipt_fraction, 0.0) < 0.5 AND datediff(b.expected_receipt_date, current_date()) <= 0 THEN 'red' "
+         "WHEN coalesce(b.receipt_fraction, 0.0) < 0.8 AND datediff(b.expected_receipt_date, current_date()) <= 1 THEN 'amber' "
+         "ELSE 'green' END"),
+    ],
     "gold_process_order_staging": [
         ("days_to_start", _DAYS_TO_START),
         ("risk_band",

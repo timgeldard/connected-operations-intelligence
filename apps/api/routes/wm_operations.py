@@ -99,6 +99,7 @@ class WmWorklistItem(BaseModel):
     is_overdue: Optional[bool] = Field(None, alias='isOverdue')
     short_pick_qty: Optional[float] = Field(None, alias='shortPickQty')
     short_pick_item_count: Optional[int] = Field(None, alias='shortPickItemCount')
+    order_production_line: Optional[str] = Field(None, alias='orderProductionLine')
 
 
 class WmWorklistSummaryItem(BaseModel):
@@ -140,6 +141,7 @@ class WmOrderReadinessItem(BaseModel):
     readiness_status: str = Field(..., alias='readinessStatus')
     days_to_start: Optional[int] = Field(None, alias='daysToStart')
     readiness_band: Optional[str] = Field(None, alias='readinessBand')
+    production_line: Optional[str] = Field(None, alias='productionLine')
 
 
 class WmBinStockItem(BaseModel):

@@ -104,6 +104,7 @@ GOLD_TABLES = [
     "gold_dispensary_backlog",
     "gold_lineside_stock",
     "gold_delivery_pick_status",
+    "gold_wm_inbound_deliveries",
     "gold_stock_reconciliation",
     "gold_process_order_staging",
     "gold_process_order_staging_validation",
