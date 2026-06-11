@@ -177,7 +177,9 @@ def get_wm_worklist_spec(request: WmWorklistRequest) -> QuerySpec:
         latest_to_confirmed_ts,
         cycle_hours,
         age_hours,
-        is_overdue
+        is_overdue,
+        short_pick_qty,
+        short_pick_item_count
     FROM {view}
     {where_str}
     ORDER BY planned_execution_ts ASC NULLS LAST, created_ts ASC
@@ -237,6 +239,8 @@ def map_wm_worklist_rows(rows: list[dict]) -> list[dict]:
             "cycleHours": _safe_float(row.get("cycle_hours")),
             "ageHours": _safe_float(row.get("age_hours")),
             "isOverdue": _safe_bool(row.get("is_overdue")),
+            "shortPickQty": _safe_float(row.get("short_pick_qty")),
+            "shortPickItemCount": _safe_int(row.get("short_pick_item_count")),
         })
     return result
 

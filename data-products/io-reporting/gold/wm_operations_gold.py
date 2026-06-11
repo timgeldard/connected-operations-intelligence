@@ -182,6 +182,21 @@ def gold_wm_staging_worklist():
             F.coalesce(F.sum("confirmed_quantity"), F.lit(0.0)).alias("to_confirmed_qty"),
             F.max("confirmed_date").alias("latest_to_confirmed_date"),
             F.max("confirmed_datetime").alias("latest_to_confirmed_datetime"),
+            # Short-pick signal: ABS(difference_quantity) summed across items with a non-zero
+            # difference. NULL when all difference_quantity inputs are NULL (additive column —
+            # fills as TO items churn after the LAGP columns land). Do NOT coalesce to 0.
+            F.sum(
+                F.when(
+                    F.col("difference_quantity") != 0,  # NULL != 0 -> NULL -> when() yields NULL (deliberate: chip hides on NULL)
+                    F.abs(F.col("difference_quantity")),
+                )
+            ).alias("short_pick_qty"),
+            F.sum(
+                F.when(
+                    F.col("difference_quantity") != 0,  # NULL != 0 -> NULL -> when() yields NULL (deliberate: chip hides on NULL)
+                    F.lit(1),
+                )
+            ).alias("short_pick_item_count"),
         )
     )
 
@@ -325,6 +340,10 @@ def gold_wm_staging_worklist():
                  - F.unix_timestamp(F.col("created_datetime"))) / 3600.0,
             ).alias("cycle_hours"),
             "pick_progress_fraction",
+            # Short-pick passthrough: NULL when no TO difference_quantity data yet (additive);
+            # non-null only when at least one item carried a non-zero difference.
+            "short_pick_qty",
+            "short_pick_item_count",
         )
     )
 

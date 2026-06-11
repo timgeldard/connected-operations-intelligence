@@ -52,7 +52,9 @@ SELECT
   CAST(latest_to_confirmed_datetime AS TIMESTAMP) AS latest_to_confirmed_ts,
   cycle_hours,
   age_hours,
-  is_overdue
+  is_overdue,
+  short_pick_qty,
+  short_pick_item_count
 FROM connected_plant_prod.gold_io_reporting.gold_wm_staging_worklist_live
 WHERE plant_code IS NOT NULL;
 

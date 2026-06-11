@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useWmBatchMovements, useWmList, useWmOrderComponents, useWmOrderOperations } from '../adapters/wm-operations-queries.js'
-import type { WmOperatorActivityItem } from '../adapters/wm-operations-adapter.js'
+import type { WmOperatorActivityItem, WmWorklistItem } from '../adapters/wm-operations-adapter.js'
 import { EmptyNote, LoadingRows, formatDate, formatQty } from './kerry.js'
 
 function Overlay({ title, subtitle, onClose, children }: {
@@ -39,6 +39,12 @@ export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose, onOp
   const result = useWmOrderComponents({ plantId, orderId })
   const rows = result.data?.ok ? result.data.data : []
   const error = result.data && !result.data.ok ? result.data.error : null
+
+  const worklistResult = useWmList<WmWorklistItem>('/api/wm-operations/worklist', {
+    plant_id: plantId, reference: orderId, include_complete: true, limit: 200,
+  })
+  const worklistRows = worklistResult.data?.ok ? worklistResult.data.data : []
+  const totalShortPickItems = worklistRows.reduce((sum, r) => sum + (typeof r.shortPickItemCount === 'number' ? r.shortPickItemCount : 0), 0)
 
   return (
     <Overlay title={`Order ${orderId}`} subtitle={orderLabel ?? 'Component staging detail'} onClose={onClose}>
@@ -95,6 +101,13 @@ export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose, onOp
       )}
 
       {/* Components card */}
+      {totalShortPickItems > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <span className="kw-chip kw-chip--no-stock" title={`${totalShortPickItems} TO line item(s) with a recorded difference quantity`}>
+            Short picks: {totalShortPickItems}
+          </span>
+        </div>
+      )}
       {error ? (
         <EmptyNote>Could not load components — {error.message}</EmptyNote>
       ) : result.isLoading ? (
@@ -155,6 +168,16 @@ export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose, onOp
   )
 }
 
+interface DeliveryMovementRow {
+  plantId: string; documentNumber: string | null; fiscalYear: string | null
+  lineItem: string | null; materialId: string | null; batchId: string | null
+  movementTypeCode: string | null; movementLabel: string | null; eventCategory: string | null
+  isGoodsReceipt: boolean | null; isGoodsIssue: boolean | null; isTransfer: boolean | null
+  isReversal: boolean | null; quantity: number | null; uom: string | null
+  postingDate: string | null; orderNumber: string | null; deliveryNumber: string | null
+  postedBy: string | null; transactionCode: string | null
+}
+
 /** Outbound drill — open pick tasks for one delivery (confirmed picks age out of the
  * open-items gold, so shipped deliveries legitimately show none). */
 export function DeliveryPicksOverlay({ plantId, deliveryId, customer, onClose }: {
@@ -171,6 +194,12 @@ export function DeliveryPicksOverlay({ plantId, deliveryId, customer, onClose }:
   }>('/api/wm-operations/delivery-picks', { plant_id: plantId, delivery_id: deliveryId })
   const rows = result.data?.ok ? result.data.data : []
   const error = result.data && !result.data.ok ? result.data.error : null
+
+  const giResult = useWmList<DeliveryMovementRow>('/api/wm-operations/movements', {
+    plant_id: plantId, delivery_id: deliveryId, limit: 50,
+  })
+  const giRows = giResult.data?.ok ? giResult.data.data : []
+  const giError = giResult.data && !giResult.data.ok ? giResult.data.error : null
 
   return (
     <Overlay title={`Delivery ${deliveryId}`} subtitle={customer ?? 'Open pick tasks'} onClose={onClose}>
@@ -198,6 +227,40 @@ export function DeliveryPicksOverlay({ plantId, deliveryId, customer, onClose }:
           </table>
         </div>
       )}
+
+      <div className="kw-card" style={{ marginTop: 16 }}>
+        <div className="kw-card-title">Goods issue postings</div>
+        {giError ? (
+          <EmptyNote>Could not load movements — {giError.message}</EmptyNote>
+        ) : giResult.isLoading ? (
+          <LoadingRows rows={3} />
+        ) : giRows.length === 0 ? (
+          <EmptyNote>No movement-level GI evidence for this delivery yet.</EmptyNote>
+        ) : (
+          <div className="kw-table-wrap">
+            <table className="kw-table">
+              <thead>
+                <tr>
+                  <th>Posting date</th><th>Movement</th><th>Material</th><th>Batch</th>
+                  <th>Qty</th><th>Posted by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {giRows.map((m, i) => (
+                  <tr key={`${m.documentNumber}-${m.lineItem}-${i}`}>
+                    <td className="kw-num">{formatDate(m.postingDate)}</td>
+                    <td><span className="kw-mono">{m.movementTypeCode}</span> {m.movementLabel ?? ''}</td>
+                    <td className="kw-mono">{m.materialId ?? '—'}</td>
+                    <td className="kw-mono">{m.batchId ?? '—'}</td>
+                    <td className="kw-num">{formatQty(m.quantity, m.uom)}</td>
+                    <td>{m.postedBy ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </Overlay>
   )
 }

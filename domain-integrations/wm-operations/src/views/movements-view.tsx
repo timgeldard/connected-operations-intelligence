@@ -74,7 +74,7 @@ export function MovementsView({ request }: { readonly request: WmOperationsAdapt
           : rows.length === 0 ? <EmptyNote>No movements in the window.</EmptyNote> : (
           <div className="kw-table-wrap">
             <table className="kw-table">
-              <thead><tr><th>Date</th><th>Movement</th><th>Category</th><th>Material</th><th>Batch</th><th>Qty</th><th>Order / Delivery</th><th>Document</th><th>By</th><th>TCode</th></tr></thead>
+              <thead><tr><th>Date</th><th>Movement</th><th>Category</th><th>Material</th><th>Batch</th><th>Qty</th><th>Order</th><th>Delivery</th><th>Document</th><th>By</th><th>TCode</th></tr></thead>
               <tbody>
                 {rows.map((m, i) => (
                   <tr key={`${m.documentNumber}-${m.lineItem}-${i}`}>
@@ -84,7 +84,8 @@ export function MovementsView({ request }: { readonly request: WmOperationsAdapt
                     <td className="kw-mono">{m.materialId ?? '—'}</td>
                     <td className="kw-mono">{m.batchId ?? '—'}</td>
                     <td className="kw-num">{formatQty(m.quantity, m.uom)}</td>
-                    <td className="kw-mono">{m.orderNumber ?? m.deliveryNumber ?? '—'}</td>
+                    <td className="kw-mono">{m.orderNumber ?? '—'}</td>
+                    <td className="kw-mono">{m.deliveryNumber ?? '—'}</td>
                     <td className="kw-mono">{m.documentNumber ?? '—'}</td>
                     <td>{m.postedBy ?? '—'}</td>
                     <td className="kw-mono">{m.transactionCode ?? '—'}</td>

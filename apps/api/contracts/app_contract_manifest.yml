@@ -1311,6 +1311,14 @@ contracts:
         type: boolean
         required: false
         description: Planned execution time passed and job not complete (query-time)
+      - name: short_pick_qty
+        type: double
+        required: false
+        description: Sum of absolute difference quantities across TO items with a non-zero discrepancy
+      - name: short_pick_item_count
+        type: long
+        required: false
+        description: Count of TO line items with a non-zero difference quantity (short-pick signal)
 
   - id: wm_operations.worklist_summary
     version: 0.1.0
