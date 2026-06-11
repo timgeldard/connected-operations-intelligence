@@ -205,3 +205,27 @@ unresolved_sources:
     affects_uat: true
     status: SOURCE_GUARDED_DATAGAPNOTICE
     tracking_issue: SAP-WAVE-01
+  - id: fabricated_field_names_dd03l_verdict
+    summary: "DD03L verdict 2026-06-11: ALL 20 'missing' field names across LAGP/KAPA/LTAP/LTBP/MSEG
+      are FABRICATIONS — none exist in the SAP data dictionary on those tables (same defect class as
+      the invented QALS fields, #27 lineage). The REAL fields for every functional need are already
+      replicated in bronze — there is NOTHING to request from SAP for these five tables."
+    evidence: "published_uat.central_services.datadictionaryfields_dd03l cross-checked against
+      connected_plant_uat.information_schema.columns, 2026-06-11."
+    verdicts:
+      - {table: LAGP, fabricated: [LGBKT, LGPBE, MAXGW, BRGEW, MAXEI, ANZRE],
+         real_in_bronze: [LGEWI, GEWEI, MGEWI, ANZQU, MAXQU, ANZLE, MAXLE, KZLER, KZVOL, LZONE, SKZUA, SKZUE, SPGRU, LPTYP, KOBER],
+         note: "bin load capacity/weight unit/max weight, quant + storage-unit counts and maxima, empty/full flags, zone, blocks — Bin Capacity screen can be upgraded with NO replication change"}
+      - {table: KAPA, fabricated: [DAFBI, DAFEI, PAUSA, BEGDA, ENDDA, MEINH, OEFFZ, NORMA, RUEZT],
+         real_in_bronze: [DATUB, TAGNR, SCHNR, ANZHL, BEGZT, EINZT, ENDZT, FABTG, KAPAZ, PAUSE, NGRAD, TPROG, WOTAG],
+         note: "shift capacity intervals/breaks/utilisation all replicated — capacity_utilisation needs a functional REMODEL on the real contract (the guard tests fabricated names so it never ran), not a replication request"}
+      - {table: LTAP, fabricated: [ANFME, ENMNG, ISPOS],
+         real_in_bronze: [VSOLM, NSOLM, VISTM, NISTM, RSOLM, RISTM, DMENG, PVQUI, VORGA, KZSUB, POSNR],
+         note: "source/dest target+actual quantities already used post-remap; DMENG (difference qty), PVQUI (pick confirmation) available unused"}
+      - {table: LTBP, fabricated: [ENQTY], real_in_bronze: [MENGE, MENGA, TAMEN, MEINS],
+         note: "requirement/processed/TO-created quantities all replicated"}
+      - {table: MSEG, fabricated: [VBELN],
+         real_in_bronze: [VBELN_IM, VBELP_IM, KDAUF],
+         note: "delivery reference EXISTS as VBELN_IM/VBELP_IM (+ MKPF.LE_VBELN also in bronze) — goods-movement->delivery linkage is wireable today"}
+    status: RESOLVED_NO_REPLICATION_REQUEST_NEEDED
+
