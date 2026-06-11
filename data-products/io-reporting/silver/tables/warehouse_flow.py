@@ -197,6 +197,19 @@ def stg_outbound_delivery():
             strip_zeros("i.VGBEL").alias("source_document_number"),
             F.col("i.VGPOS").alias("source_document_item"),
 
+            # ── Delivery direction (additive — NULL on pre-existing rows until churn/full-refresh).
+            # Source: LIKP.VBTYP (delivery document category). Verified UAT 2026-06-11:
+            # EL=178,632 (VBTYP='7' inbound), ELST=2,651 (inbound stock transport, VBTYP='7'),
+            # NL/ZD*/ZNL*/ZCC* ~99k (VBTYP='J' outbound). Gold MUST NOT rely on this column
+            # until a full-refresh / sufficient churn has backfilled pre-existing rows.
+            F.col("h.VBTYP").alias("document_category"),
+            F.when(F.col("h.VBTYP") == "7", F.lit("INBOUND"))
+            .when(F.col("h.VBTYP") == "J", F.lit("OUTBOUND"))
+            .when(F.col("h.VBTYP") == "T", F.lit("RETURNS"))
+            .when(F.col("h.VBTYP").isNotNull(), F.lit("OTHER"))
+            .otherwise(F.lit(None).cast("string"))
+            .alias("delivery_direction"),
+
             # ── Status / dates (header)
             F.col("h.VLSTK").alias("wm_status_code"),
             sap_date("h.WADAT").alias("planned_goods_issue_date"),

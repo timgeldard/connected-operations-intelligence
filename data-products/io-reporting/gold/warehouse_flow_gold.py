@@ -4,7 +4,8 @@ Lakeflow Spark Declarative Pipeline — Warehouse Flow Gold.
 Tables:
   gold_dispensary_backlog                   — open line-pick (dispensary) demand by plant / supply area
   gold_lineside_stock                       — current stock staged in production / line-side storage types
-  gold_delivery_pick_status                 — outbound delivery pick progress
+  gold_delivery_pick_status                 — OUTBOUND delivery pick progress (EL/ELST filtered out 2026-06-11; row counts dropped ~65%)
+  gold_wm_inbound_deliveries                — inbound deliveries (EL/ELST) with expected receipt date, line counts, qty, status rollup
   gold_stock_reconciliation                 — IM (MARD) vs WM (bins) variance, valuation and ABC class (v1, plant×material, kept for compatibility)
   gold_process_order_staging                — process-order component staging completion
   gold_stock_reconciliation_v2              — detailed IM↔WM reconciliation at plant×warehouse×material×batch×stock_category grain
@@ -127,9 +128,22 @@ def gold_lineside_stock():
 
 
 # ── 3. DELIVERY PICK STATUS ───────────────────────────────────────────────────
+# NOTE: As of 2026-06-11 this table is filtered to OUTBOUND documents only (LFART-based
+# interim direction: delivery_type NOT IN ('EL','ELST')). Previously it included ALL delivery
+# types (EL=178,632 inbound + ELST=2,651 inbound stock transport + ~99k outbound in UAT),
+# making the Outbound screen ~65% inbound documents. Row counts dropped substantially — this
+# is the fix. Inbound deliveries are now served by gold_wm_inbound_deliveries.
+# When silver.outbound_delivery.delivery_direction backfills (after churn/full-refresh), the
+# LFART-based filter can be replaced with delivery_direction = 'OUTBOUND'.
 
 @dlt.table(**gold_table_args(
-    comment="Outbound delivery pick progress (picked vs delivery quantity) by delivery.",
+    comment=(
+        "OUTBOUND delivery pick progress (picked vs delivery quantity) by delivery. "
+        "Filtered to non-inbound document types (delivery_type NOT IN ('EL','ELST')) using "
+        "LFART as an interim direction proxy — verified against UAT type mix 2026-06-11. "
+        "Row counts dropped ~65% vs the prior unfiltered version; that is the fix, not a "
+        "regression. See gold_wm_inbound_deliveries for EL/ELST inbound counterpart."
+    ),
     cluster_by=["plant_code", "planned_goods_issue_date"],
 ))
 @dlt.expect("pick fraction bounded", "pick_fraction IS NULL OR (pick_fraction >= 0.0 AND pick_fraction <= 2.0)")
@@ -142,12 +156,19 @@ def gold_delivery_pick_status():
         "outbound_delivery_header_delete",
         ["delivery_number"],
     )
+    # LFART-based interim direction filter: EL (standard inbound) and ELST (inbound stock
+    # transport) are SAP inbound delivery types (VBTYP '7') — exclude them from the outbound
+    # picking board. Verified against UAT type mix 2026-06-11: EL=178,632 ELST=2,651 are all
+    # inbound; NL/ZD*/ZNL*/ZCC* (~99k) are all outbound (VBTYP 'J').
+    outbound_deliveries = deliveries.filter(
+        ~F.coalesce(F.col("delivery_type"), F.lit("")).isin("EL", "ELST")
+    )
     customers = spark.read.table(f"{silver_schema}.customer").select(
         "customer_code", "customer_name"
     ).distinct()
 
     picks = (
-        deliveries.groupBy(
+        outbound_deliveries.groupBy(
             "delivery_number", "plant_code", "warehouse_number",
             "delivery_type", "ship_to_customer", "sold_to_customer",
         )
@@ -208,6 +229,88 @@ def gold_delivery_pick_status():
     # Deterministic base only; `days_to_goods_issue` / `risk_band` are served live by the
     # gold_delivery_pick_status_live view (current_date() kept out of the MV). See hardening plan.
     return picks
+
+
+# ── 3b. INBOUND DELIVERIES ────────────────────────────────────────────────────
+# Mirror of gold_delivery_pick_status for inbound document types (EL=standard inbound,
+# ELST=inbound stock transport). The "planned goods issue date" on inbound deliveries is
+# the expected receipt date (SAP LIKP.WADAT is the planned GI/GR date depending on
+# direction). Renamed to expected_receipt_date for honest semantics.
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Inbound deliveries (LFART EL=standard inbound, ELST=inbound stock transport) "
+        "with expected receipt date (LIKP.WADAT renamed), line counts, delivery quantity, "
+        "pick/GR progress, and status rollup. Sourced from gold_delivery_pick_status's "
+        "counterpart (the EL/ELST subset of silver.outbound_delivery). Vendor/partner "
+        "columns are not available in silver.outbound_delivery (ship_to/sold_to are SAP "
+        "customer fields on LIKP; inbound deliveries carry the supplier via a different "
+        "field not currently replicated). Verified against UAT type mix 2026-06-11: "
+        "EL=178,632 ELST=2,651."
+    ),
+    cluster_by=["plant_code", "expected_receipt_date"],
+))
+@dlt.expect("pick fraction bounded", "pick_fraction IS NULL OR (pick_fraction >= 0.0 AND pick_fraction <= 2.0)")
+def gold_wm_inbound_deliveries():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    deliveries = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.outbound_delivery"),
+        silver_schema,
+        "outbound_delivery_header_delete",
+        ["delivery_number"],
+    )
+    # Filter to EL/ELST inbound document types only.
+    inbound_deliveries = deliveries.filter(
+        F.coalesce(F.col("delivery_type"), F.lit("")).isin("EL", "ELST")
+    )
+
+    return (
+        inbound_deliveries.groupBy(
+            "delivery_number", "plant_code", "warehouse_number",
+            "delivery_type", "shipping_point",
+        )
+        .agg(
+            F.count(F.lit(1)).alias("line_count"),
+            F.coalesce(F.sum("delivery_quantity_base"), F.lit(0.0)).alias("delivery_qty"),
+            F.coalesce(F.sum("actual_delivered_base_quantity"), F.lit(0.0)).alias("received_qty"),
+            # LIKP.WADAT = planned GI date; on inbound deliveries this is the expected receipt date.
+            F.max("planned_goods_issue_date").alias("expected_receipt_date"),
+            F.max("actual_goods_issue_date").alias("actual_receipt_date"),
+            F.max("delivery_date").alias("delivery_date"),
+            F.first("delivery_gross_weight", ignorenulls=True).alias("delivery_gross_weight"),
+            F.first("delivery_weight_unit", ignorenulls=True).alias("delivery_weight_unit"),
+            F.count_distinct("base_uom").alias("base_uom_count"),
+            F.sum(F.when(F.col("delivery_quantity_base").isNull(), F.lit(1)).otherwise(F.lit(0))).alias(
+                "null_delivery_base_count"
+            ),
+            F.max(F.when(F.col("actual_goods_issue_date").isNotNull(), F.lit(1)).otherwise(F.lit(0))).alias(
+                "_is_received"
+            ),
+            F.first("wm_status_code", ignorenulls=True).alias("wm_status_code"),
+        )
+        .select(
+            "delivery_number", "plant_code", "warehouse_number", "delivery_type",
+            "shipping_point",
+            "expected_receipt_date", "actual_receipt_date", "delivery_date",
+            F.col("delivery_gross_weight").alias("gross_weight"),
+            F.col("delivery_weight_unit").alias("gross_weight_unit"),
+            "wm_status_code",
+            "line_count",
+            "delivery_qty", "received_qty", "base_uom_count", "null_delivery_base_count",
+            (F.col("base_uom_count") > 1).alias("has_mixed_base_uom"),
+            (F.col("null_delivery_base_count") > 0).alias("has_unconverted_delivery_qty"),
+            F.when(
+                (F.col("delivery_qty") != 0)
+                & (F.col("base_uom_count") <= 1)
+                & (F.col("null_delivery_base_count") == 0),
+                F.col("received_qty") / F.col("delivery_qty"),
+            )
+            .otherwise(F.lit(None).cast("double"))
+            .alias("receipt_fraction"),
+            (F.col("_is_received") == 1).alias("is_received"),
+        )
+    )
 
 
 

@@ -77,6 +77,10 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_delivery_pick_
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_delivery_pick_status;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_delivery_pick_status_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_inbound_deliveries_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_inbound_deliveries;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_inbound_deliveries_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_stock_reconciliation_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_stock_reconciliation;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_stock_reconciliation_secured TO `users`;

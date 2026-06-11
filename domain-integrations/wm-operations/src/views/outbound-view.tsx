@@ -21,7 +21,7 @@ export function OutboundView({ request }: { readonly request: WmOperationsAdapte
       <ViewHeader
         eyebrow="WM Operations · Outbound"
         title="Outbound Picking"
-        subtitle="Open deliveries, pick progress, and goods-issue risk — the delivery half of the cockpit job board."
+        subtitle="Open outbound deliveries, pick progress, and goods-issue risk. Inbound (EL/ELST) deliveries were previously included here and are now shown on the Inbound &amp; Putaway screen — KPI counts dropped ~65%, which is the fix."
       />
 
       <div className="kw-kpi-row">

@@ -334,6 +334,7 @@ NEW_ENDPOINTS = [
     ("/api/wm-operations/operator-activity", {"plant_id": "C061"}),
     ("/api/wm-operations/queue-workload", {"plant_id": "C061"}),
     ("/api/wm-operations/outbound", {"plant_id": "C061"}),
+    ("/api/wm-operations/inbound-deliveries", {"plant_id": "C061"}),
     ("/api/wm-operations/recon-alerts", {"plant_id": "C061"}),
     ("/api/wm-operations/batch-movements", {"plant_id": "C061", "material_id": "RM1"}),
     ("/api/wm-operations/downtime-pareto", {"plant_id": "C061"}),
@@ -446,6 +447,33 @@ class TestOutboundAndAlertsRoutes:
         executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
         assert "NOT coalesce(is_shipped, false)" in executed_sql
         assert response.headers.get("x-contract-id") == "wm_operations.outbound"
+
+    async def test_inbound_deliveries_mapped(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061", "warehouse_id": "104", "delivery_id": "0180000001",
+            "delivery_type": "EL", "shipping_point": "C061",
+            "line_count": 3, "delivery_qty": 150.0, "received_qty": 0.0,
+            "receipt_fraction": None, "has_mixed_base_uom": False,
+            "wm_status_code": "A", "expected_receipt_date": "2026-06-15",
+            "actual_receipt_date": None, "is_received": False,
+            "days_until_expected_receipt": 4, "receipt_band": "green",
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/inbound-deliveries",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        row = response.json()[0]
+        assert row["deliveryId"] == "0180000001"
+        assert row["deliveryType"] == "EL"
+        assert row["lineCount"] == 3
+        assert row["daysUntilExpectedReceipt"] == 4
+        assert row["receiptBand"] == "green"
+        assert row["hasMixedBaseUom"] is False
+        assert response.headers.get("x-contract-id") == "wm_operations.inbound_deliveries"
 
     async def test_recon_alerts_mapped(self, wm_ops_databricks_env) -> None:
         fake_row = {

@@ -527,6 +527,35 @@ FROM connected_plant_prod.gold_io_reporting.gold_wm_qm_disposition_queue_live
 WHERE plant_code IS NOT NULL;
 
 -- 31. Onboarded plants (command-palette plant picker)
+
+-- 29. Inbound deliveries (EL/ELST SAP delivery types — expected-receipt board)
+-- Grain: 1 row per plant_id + delivery_number.
+-- Source: gold_wm_inbound_deliveries_live (gold MV filtered to EL/ELST delivery_type, with
+-- days_until_expected_receipt and receipt_band served live so the base MV stays deterministic).
+-- Inbound != outbound: expected_receipt_date is LIKP.WADAT (SAP planned GI/GR date),
+-- renamed for honest semantics. No customer columns (supplier/vendor not replicated on LIKP).
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_inbound_deliveries AS
+SELECT
+  plant_code AS plant_id,
+  warehouse_number AS warehouse_id,
+  delivery_number AS delivery_id,
+  delivery_type,
+  shipping_point,
+  line_count,
+  delivery_qty,
+  received_qty,
+  receipt_fraction,
+  has_mixed_base_uom,
+  wm_status_code,
+  CAST(expected_receipt_date AS DATE) AS expected_receipt_date,
+  CAST(actual_receipt_date AS DATE) AS actual_receipt_date,
+  is_received,
+  days_until_expected_receipt,
+  receipt_band
+FROM connected_plant_prod.gold_io_reporting.gold_wm_inbound_deliveries_live
+WHERE plant_code IS NOT NULL;
+
+-- 30. Onboarded plants (command-palette plant picker)
 -- Grain: 1 row per plant_id + warehouse_id. Derived from the worklist summary secured view
 -- (already RLS-governed); no new gold object. Used by the frontend command palette to
 -- enumerate onboarded plants dynamically without hardcoding.

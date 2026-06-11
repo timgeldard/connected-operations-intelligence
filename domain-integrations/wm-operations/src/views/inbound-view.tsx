@@ -16,17 +16,29 @@ interface HuSummary {
   linkedDeliveryCount: number | null; distinctMaterialCount: number | null
   totalGrossWeight: number | null
 }
+interface InboundDelivery {
+  plantId: string; warehouseId: string | null; deliveryId: string
+  deliveryType: string | null; shippingPoint: string | null
+  lineCount: number | null; deliveryQty: number | null; receivedQty: number | null
+  receiptFraction: number | null; hasMixedBaseUom: boolean | null
+  wmStatusCode: string | null; expectedReceiptDate: string | null
+  actualReceiptDate: string | null; isReceived: boolean | null
+  daysUntilExpectedReceipt: number | null; receiptBand: 'red' | 'amber' | 'green' | 'grey' | null
+}
 
-/** Screen: inbound PO backlog + handling-unit (SSCC) putaway summary. */
+/** Screen: inbound PO backlog + expected SAP deliveries + handling-unit (SSCC) putaway summary. */
 export function InboundView({ request }: { readonly request: WmOperationsAdapterRequest }) {
   const scope = { plant_id: request.plantId, warehouse_id: request.warehouseId }
   const backlog = useWmList<InboundLine>('/api/wm-operations/inbound', { plant_id: request.plantId, limit: 200 })
+  const deliveries = useWmList<InboundDelivery>('/api/wm-operations/inbound-deliveries', { plant_id: request.plantId, warehouse_id: request.warehouseId, limit: 300 })
   const hus = useWmList<HuSummary>('/api/wm-operations/handling-units', scope)
   const qm = useWmList<{ openLotCount: number | null; lotOriginCode: string | null }>('/api/wm-operations/qm-lots', { plant_id: request.plantId, limit: 1000 })
 
   const lines = backlog.data?.ok ? backlog.data.data : []
+  const deliveryRows = deliveries.data?.ok ? deliveries.data.data : []
   const huRows = hus.data?.ok ? hus.data.data : []
   const error = backlog.data && !backlog.data.ok ? backlog.data.error : null
+  const deliveriesError = deliveries.data && !deliveries.data.ok ? deliveries.data.error : null
   const husError = hus.data && !hus.data.ok ? hus.data.error : null
 
   const aged = lines.filter(l => l.inboundBacklogRiskBand === 'red').length
@@ -70,6 +82,57 @@ export function InboundView({ request }: { readonly request: WmOperationsAdapter
                     <td className="kw-mono">{l.storageLoc ?? '—'}</td>
                     <td className="kw-num">{formatDate(l.poDate)}</td>
                     <td className="kw-num">{l.oldestPoAgeDays ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="kw-card">
+        <div className="kw-card-title">Expected deliveries (EL / ELST)</div>
+        {deliveriesError ? (
+          <EmptyNote>Could not load inbound deliveries — {deliveriesError.message}</EmptyNote>
+        ) : deliveries.isLoading ? (
+          <LoadingRows rows={4} />
+        ) : deliveryRows.length === 0 ? (
+          <EmptyNote>No expected inbound deliveries for this scope.</EmptyNote>
+        ) : (
+          <div className="kw-table-wrap">
+            <table className="kw-table">
+              <thead>
+                <tr>
+                  <th></th><th>Delivery</th><th>Type</th><th>Lines</th><th>Qty</th>
+                  <th>Received</th><th>Progress</th><th>Expected receipt</th><th>Days</th><th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deliveryRows.map((d: InboundDelivery) => (
+                  <tr key={`${d.plantId}-${d.deliveryId}`}>
+                    <td><BandDot band={d.receiptBand} /></td>
+                    <td className="kw-mono">{d.deliveryId}</td>
+                    <td><span className="kw-chip kw-chip--open">{d.deliveryType ?? '—'}</span></td>
+                    <td className="kw-num">{d.lineCount ?? '—'}</td>
+                    <td className="kw-num">{formatQty(d.deliveryQty)}</td>
+                    <td className="kw-num">{formatQty(d.receivedQty)}</td>
+                    <td>
+                      {d.receiptFraction != null ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div className="kw-progress" style={{ width: 64 }}>
+                            <span style={{ width: `${Math.min(100, Math.round(d.receiptFraction * 100))}%` }} />
+                          </div>
+                          <span className="kw-num" style={{ fontSize: 10.5 }}>{Math.round(d.receiptFraction * 100)}%</span>
+                        </div>
+                      ) : '—'}
+                    </td>
+                    <td className="kw-num">{formatDate(d.expectedReceiptDate)}</td>
+                    <td className="kw-num">{d.daysUntilExpectedReceipt ?? '—'}</td>
+                    <td>
+                      <span className={`kw-chip ${d.isReceived ? 'kw-chip--complete' : 'kw-chip--open'}`}>
+                        {d.isReceived ? 'Received' : 'Open'}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>

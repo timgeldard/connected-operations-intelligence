@@ -1335,6 +1335,19 @@ SIMPLE_DATASETS: dict[str, dict] = {
         numeric=("duration_minutes",), integer=(), boolean=(), has_warehouse=False,
         days_col="start_datetime",
     ),
+    # Note: "inbound" (above) is the PO backlog (warehouse360.inbound_backlog).
+    # "inbound_deliveries" is the SAP EL/ELST inbound delivery board (wm_operations.inbound_deliveries).
+    "inbound_deliveries": dict(
+        contract="wm_operations.inbound_deliveries", endpoint="/api/wm-operations/inbound-deliveries",
+        columns="plant_id, warehouse_id, delivery_id, delivery_type, shipping_point, "
+                "line_count, delivery_qty, received_qty, receipt_fraction, "
+                "has_mixed_base_uom, wm_status_code, expected_receipt_date, "
+                "actual_receipt_date, is_received, days_until_expected_receipt, receipt_band",
+        order_by="expected_receipt_date ASC NULLS LAST",
+        numeric=("delivery_qty", "received_qty", "receipt_fraction"),
+        integer=("line_count", "days_until_expected_receipt"),
+        boolean=("has_mixed_base_uom", "is_received"), has_warehouse=True,
+    ),
     "plants": dict(
         contract="wm_operations.plants", endpoint="/api/wm-operations/plants",
         columns="plant_id, warehouse_id, worklist_tr_count",
