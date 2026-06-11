@@ -54,7 +54,8 @@ SELECT
   age_hours,
   is_overdue,
   short_pick_qty,
-  short_pick_item_count
+  short_pick_item_count,
+  order_production_line
 FROM connected_plant_prod.gold_io_reporting.gold_wm_staging_worklist_live
 WHERE plant_code IS NOT NULL;
 
@@ -102,7 +103,8 @@ SELECT
   supply_status,
   readiness_status,
   days_to_start,
-  readiness_band
+  readiness_band,
+  production_line
 FROM connected_plant_prod.gold_io_reporting.gold_wm_order_readiness_live
 WHERE plant_code IS NOT NULL;
 

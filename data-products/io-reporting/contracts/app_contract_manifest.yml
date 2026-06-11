@@ -1319,6 +1319,13 @@ contracts:
         type: long
         required: false
         description: Count of TO line items with a non-zero difference quantity (short-pick signal)
+      - name: order_production_line
+        type: string
+        required: false
+        description: >
+          Production line (AUFK CRVER) of the linked process order — 99.99% populated at C061/P817
+          (35 lines / 18-19 lines respectively, verified UAT 2026-06-11). NULL when the TR source
+          is not a process order or the order is not found.
 
   - id: wm_operations.worklist_summary
     version: 0.1.0
@@ -1500,6 +1507,12 @@ contracts:
         type: string
         required: false
         description: red | amber | green | grey (query-time traffic light)
+      - name: production_line
+        type: string
+        required: false
+        description: >
+          Production line (AUFK CRVER) of the process order — 99.99% populated at C061/P817
+          (35 lines / 18-19 lines respectively, verified UAT 2026-06-11).
 
   - id: wm_operations.bin_stock
     version: 0.1.0

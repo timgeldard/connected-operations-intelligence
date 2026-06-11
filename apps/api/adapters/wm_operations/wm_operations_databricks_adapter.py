@@ -179,7 +179,8 @@ def get_wm_worklist_spec(request: WmWorklistRequest) -> QuerySpec:
         age_hours,
         is_overdue,
         short_pick_qty,
-        short_pick_item_count
+        short_pick_item_count,
+        order_production_line
     FROM {view}
     {where_str}
     ORDER BY planned_execution_ts ASC NULLS LAST, created_ts ASC
@@ -241,6 +242,7 @@ def map_wm_worklist_rows(rows: list[dict]) -> list[dict]:
             "isOverdue": _safe_bool(row.get("is_overdue")),
             "shortPickQty": _safe_float(row.get("short_pick_qty")),
             "shortPickItemCount": _safe_int(row.get("short_pick_item_count")),
+            "orderProductionLine": _opt_str(row, "order_production_line"),
         })
     return result
 
@@ -339,7 +341,8 @@ def get_wm_order_readiness_spec(request: WmOrderReadinessRequest) -> QuerySpec:
         supply_status,
         readiness_status,
         days_to_start,
-        readiness_band
+        readiness_band,
+        production_line
     FROM {view}
     {where_str}
     ORDER BY scheduled_start_date ASC NULLS LAST, order_id ASC
@@ -384,6 +387,7 @@ def map_wm_order_readiness_rows(rows: list[dict]) -> list[dict]:
             "readinessStatus": _opt_str(row, "readiness_status"),
             "daysToStart": _safe_int(row.get("days_to_start")),
             "readinessBand": _opt_str(row, "readiness_band"),
+            "productionLine": _opt_str(row, "production_line"),
         })
     return result
 
