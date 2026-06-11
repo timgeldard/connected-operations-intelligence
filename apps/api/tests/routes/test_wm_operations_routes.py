@@ -805,3 +805,189 @@ class TestQmDispositionQueueRoute:
         assert response.status_code == 200
         executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
         assert "plant_id = :plant_id" in executed_sql
+
+
+# ---------------------------------------------------------------------------
+# Order Journey summary (SIMPLE_DATASETS entry)
+# ---------------------------------------------------------------------------
+
+class TestOrderJourneyRoute:
+    async def test_returns_mapped_summary_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "order_id": "900001",
+            "material_code": "FG001",
+            "material_name": "Finished Good One",
+            "order_qty": 500.0,
+            "uom": "KG",
+            "production_line": "LINE01",
+            "order_created_ts": "2026-06-01T08:00:00",
+            "release_date": "2026-06-02",
+            "scheduled_start_date": "2026-06-03",
+            "scheduled_finish_date": "2026-06-04",
+            "first_tr_created_ts": "2026-06-02T10:00:00",
+            "staging_tr_count": 2,
+            "staging_first_confirmed_ts": "2026-06-02T12:00:00",
+            "staging_last_confirmed_ts": "2026-06-02T14:00:00",
+            "staged_item_count": 4,
+            "staged_item_total": 4,
+            "production_first_actual_start": "2026-06-03T06:00:00",
+            "production_last_actual_finish": "2026-06-03T14:00:00",
+            "confirmed_yield_qty": 490.0,
+            "confirmed_scrap_qty": 10.0,
+            "pi_first_start": None,
+            "pi_last_end": None,
+            "first_gr_posting_date": "2026-06-04",
+            "last_gr_posting_date": "2026-06-04",
+            "gr_qty": 490.0,
+            "issue_qty": 500.0,
+            "delivery_count": 1,
+            "qm_lot_count": 1,
+            "qm_open_lot_count": 0,
+            "release_to_first_tr_hours": 2.0,
+            "tr_to_staged_hours": 4.0,
+            "staged_to_production_hours": 16.0,
+            "production_to_gr_hours": 16.0,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/order-journey",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["plantId"] == "C061"
+        assert row["orderId"] == "900001"
+        assert row["materialCode"] == "FG001"
+        assert row["orderQty"] == 500.0
+        assert row["stagedItemCount"] == 4
+        assert row["confirmedYieldQty"] == 490.0
+        assert row["trToStagedHours"] == 4.0
+        assert response.headers.get("x-contract-id") == "wm_operations.order_journey"
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "plant_id = :plant_id" in executed_sql
+
+    async def test_order_journey_limit_applies(self, wm_ops_databricks_env) -> None:
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/order-journey",
+                    params={"plant_id": "C061", "limit": 50},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "LIMIT 50" in executed_sql
+
+    async def test_order_journey_returns_401_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/order-journey", params={"plant_id": "C061"}
+            )
+        assert response.status_code == 401
+
+    async def test_order_journey_returns_503_legacy(self, monkeypatch) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/order-journey",
+                params={"plant_id": "C061"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# Order Journey events (dedicated drill endpoint)
+# ---------------------------------------------------------------------------
+
+class TestOrderJourneyEventsRoute:
+    async def test_returns_mapped_events(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "order_id": "900001",
+            "event_seq": 1,
+            "event_ts": "2026-06-01T08:00:00",
+            "event_type": "ORDER_CREATED",
+            "qty": None,
+            "uom": None,
+            "reference_id": None,
+            "detail": "Order created",
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/order-journey-events",
+                    params={"plant_id": "C061", "order_id": "900001"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["plantId"] == "C061"
+        assert row["orderId"] == "900001"
+        assert row["eventSeq"] == 1
+        assert row["eventType"] == "ORDER_CREATED"
+        assert row["detail"] == "Order created"
+        assert response.headers.get("x-contract-id") == "wm_operations.order_journey_events"
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "plant_id = :plant_id" in executed_sql
+        assert "order_id = :order_id" in executed_sql
+
+    async def test_multiple_event_types_mapped(self, wm_ops_databricks_env) -> None:
+        rows_data = [
+            {"plant_id": "C061", "order_id": "900001", "event_seq": 1,
+             "event_ts": "2026-06-01T08:00:00", "event_type": "ORDER_CREATED",
+             "qty": None, "uom": None, "reference_id": None, "detail": "Order created"},
+            {"plant_id": "C061", "order_id": "900001", "event_seq": 2,
+             "event_ts": "2026-06-02T10:00:00", "event_type": "TR_CREATED",
+             "qty": 500.0, "uom": "KG", "reference_id": "TR001", "detail": "TR TR001"},
+            {"plant_id": "C061", "order_id": "900001", "event_seq": 3,
+             "event_ts": "2026-06-03T14:00:00", "event_type": "GR_POSTED",
+             "qty": 490.0, "uom": "KG", "reference_id": "MAT001", "detail": "Goods receipt (101)"},
+        ]
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=rows_data):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/order-journey-events",
+                    params={"plant_id": "C061", "order_id": "900001"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 3
+        assert rows[1]["eventType"] == "TR_CREATED"
+        assert rows[1]["qty"] == 500.0
+        assert rows[2]["eventType"] == "GR_POSTED"
+
+    async def test_returns_401_when_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/order-journey-events",
+                params={"plant_id": "C061", "order_id": "900001"},
+            )
+        assert response.status_code == 401
+
+    async def test_returns_503_in_legacy_mode(self, monkeypatch) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/order-journey-events",
+                params={"plant_id": "C061", "order_id": "900001"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 503
+
+    async def test_requires_order_id_param(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/order-journey-events",
+                params={"plant_id": "C061"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 422

@@ -1535,3 +1535,546 @@ def gold_wm_downtime_event_detail():
             "comment",
         )
     )
+
+
+# -- 20. ORDER JOURNEY SUMMARY (per-order milestone summary) ------------------
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Per-order milestone summary for the Order Journey Timeline view -- one row per "
+        "plant_code x order_number. Milestones from five sources joined by order_number: "
+        "process_order (created/release/scheduled dates, production_line, material), "
+        "warehouse_transfer_requirement (staging: first TR created ts, first/last staging "
+        "confirmed ts, item counts via TBNUM linkage), process_order_operation (production "
+        "actual start/finish, confirmed yield/scrap), pi_sheet_execution (PI first/last "
+        "activity -- absent at P806; left join, nullable), goods_movement (GR from 101 by "
+        "order_number, GI/issue qty from 261 family, delivery_count from delivery_number "
+        "where present). Derived lag columns only where both endpoints exist. "
+        "Deterministic: no current_date(). cluster_by plant_code x scheduled_start_date."
+    ),
+    cluster_by=["plant_code", "scheduled_start_date"],
+))
+def gold_wm_order_journey_summary():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    orders = spark.read.table(f"{ss}.process_order")
+    trs = spark.read.table(f"{ss}.warehouse_transfer_requirement")
+    tos = anti_join_optional_deleted_headers(
+        spark.read.table(f"{ss}.warehouse_transfer_order"),
+        ss,
+        "warehouse_transfer_order_header_delete",
+        ["warehouse_number", "transfer_order_number"],
+    )
+    material = _material_lookup(spark, ss)
+
+    # -- Staging milestones from TR/TO (same TBNUM linkage as worklist) --------
+    tr_by_order = (
+        trs.filter(F.col("source_reference_type") == TR_ORDER_REFERENCE_TYPE)
+        .groupBy("plant_code", F.col("source_reference_number").alias("order_number"))
+        .agg(
+            F.min("created_datetime").alias("first_tr_created_ts"),
+            F.count_distinct("transfer_requirement_number").alias("tr_count"),
+        )
+    )
+
+    # Single TR↔TO join produces both confirmed-ts fields and item counts in one pass,
+    # grouping on plant_code + order_number to avoid cross-plant fan-out.
+    to_agg = (
+        tos.filter(F.col("transfer_requirement_number").isNotNull())
+        .join(
+            trs.filter(F.col("source_reference_type") == TR_ORDER_REFERENCE_TYPE)
+            .select(
+                F.col("transfer_requirement_number"),
+                F.col("source_reference_number").alias("order_number"),
+                F.col("plant_code"),
+            )
+            .distinct(),
+            "transfer_requirement_number",
+            "inner",
+        )
+        .groupBy("plant_code", "order_number")
+        .agg(
+            F.min(
+                F.when(F.col("item_status") == "Fully Confirmed", F.col("confirmed_datetime"))
+            ).alias("staging_first_confirmed_ts"),
+            F.max(
+                F.when(F.col("item_status") == "Fully Confirmed", F.col("confirmed_datetime"))
+            ).alias("staging_last_confirmed_ts"),
+            F.sum(
+                F.when(F.col("item_status") == "Fully Confirmed", F.lit(1)).otherwise(F.lit(0))
+            ).alias("staging_confirmed_item_count"),
+            F.count(F.lit(1)).alias("staging_total_item_count"),
+        )
+    )
+
+    # -- Production milestones from process_order_operation --------------------
+    ops_agg = (
+        spark.read.table(f"{ss}.process_order_operation")
+        .groupBy("order_number")
+        .agg(
+            F.min("actual_start_datetime").alias("production_first_actual_start"),
+            F.max("actual_finish_date").alias("production_last_actual_finish"),
+            F.coalesce(F.sum("confirmed_yield_quantity"), F.lit(0.0)).alias("confirmed_yield_qty"),
+            F.coalesce(F.sum("confirmed_scrap_quantity"), F.lit(0.0)).alias("confirmed_scrap_qty"),
+        )
+    )
+
+    # -- PI sheet execution milestones (absent at P806 -- left join) -----------
+    pi_agg = None
+    if table_exists(spark, f"{ss}.pi_sheet_execution"):
+        pi_agg = (
+            spark.read.table(f"{ss}.pi_sheet_execution")
+            .groupBy("order_number")
+            .agg(
+                F.min("start_datetime").alias("pi_first_start"),
+                F.max("end_datetime").alias("pi_last_end"),
+            )
+        )
+
+    # -- Goods movement milestones ---------------------------------------------
+    goods = spark.read.table(f"{ss}.goods_movement")
+
+    gr_agg = (
+        goods.filter(
+            (F.col("movement_type_code") == "101")
+            & F.col("order_number").isNotNull()
+            & F.col("posting_date").isNotNull()
+        )
+        .groupBy("order_number")
+        .agg(
+            F.min("posting_date").alias("first_gr_posting_date"),
+            F.max("posting_date").alias("last_gr_posting_date"),
+            F.coalesce(F.sum("quantity"), F.lit(0.0)).alias("gr_qty"),
+        )
+    )
+
+    issue_agg = (
+        goods.filter(
+            F.col("movement_type_code").isin("261", "262")
+            & F.col("order_number").isNotNull()
+        )
+        .groupBy("order_number")
+        .agg(
+            F.coalesce(
+                F.sum(
+                    F.when(F.col("movement_type_code") == "261", F.col("quantity"))
+                    .when(F.col("movement_type_code") == "262", -F.col("quantity"))
+                    .otherwise(F.lit(0.0))
+                ),
+                F.lit(0.0),
+            ).alias("issue_qty")
+        )
+    )
+
+    delivery_agg = (
+        goods.filter(
+            (F.col("movement_type_code") == "101")
+            & F.col("order_number").isNotNull()
+            & F.col("delivery_number").isNotNull()
+        )
+        .groupBy("order_number")
+        .agg(F.count_distinct("delivery_number").alias("delivery_count"))
+    )
+
+    # -- QM lot context (source-guarded) ---------------------------------------
+    qm_agg = None
+    if table_exists(spark, f"{ss}.quality_inspection_lot"):
+        qm_agg = (
+            spark.read.table(f"{ss}.quality_inspection_lot")
+            .filter(F.col("order_number").isNotNull())
+            .groupBy("order_number")
+            .agg(
+                F.count_distinct("inspection_lot_number").alias("qm_lot_count"),
+                F.count_distinct(
+                    F.when(
+                        ~F.coalesce(F.col("usage_decision_taken"), F.lit(False)),
+                        F.col("inspection_lot_number"),
+                    )
+                ).alias("qm_open_lot_count"),
+            )
+        )
+
+    # -- Base: all process orders ---------------------------------------------
+    result = (
+        orders
+        .join(F.broadcast(material), ["plant_code", "material_code"], "left")
+        .join(tr_by_order, ["plant_code", "order_number"], "left")
+        .join(to_agg, ["plant_code", "order_number"], "left")
+        .join(ops_agg, "order_number", "left")
+        .join(gr_agg, "order_number", "left")
+        .join(issue_agg, "order_number", "left")
+        .join(delivery_agg, "order_number", "left")
+    )
+    if pi_agg is not None:
+        result = result.join(pi_agg, "order_number", "left")
+    else:
+        result = result.withColumn("pi_first_start", F.lit(None).cast("timestamp"))
+        result = result.withColumn("pi_last_end", F.lit(None).cast("timestamp"))
+    if qm_agg is not None:
+        result = result.join(qm_agg, "order_number", "left")
+    else:
+        result = (
+            result
+            .withColumn("qm_lot_count", F.lit(None).cast("long"))
+            .withColumn("qm_open_lot_count", F.lit(None).cast("long"))
+        )
+
+    def _lag_hours(ts_start, ts_end):
+        return F.when(
+            ts_start.isNotNull() & ts_end.isNotNull(),
+            (F.unix_timestamp(ts_end) - F.unix_timestamp(ts_start)) / 3600.0,
+        )
+
+    return result.select(
+        "plant_code",
+        "order_number",
+        F.col("material_code"),
+        F.col("material_description").alias("material_name"),
+        F.col("order_quantity").alias("order_qty"),
+        F.col("order_quantity_uom").alias("uom"),
+        "production_line",
+        F.col("created_datetime").alias("order_created_ts"),
+        F.col("actual_release_date").alias("release_date"),
+        F.col("scheduled_start_date"),
+        F.col("scheduled_finish_date"),
+        # Staging milestones
+        "first_tr_created_ts",
+        F.col("tr_count").alias("staging_tr_count"),
+        "staging_first_confirmed_ts",
+        "staging_last_confirmed_ts",
+        F.coalesce(F.col("staging_confirmed_item_count"), F.lit(0)).alias("staged_item_count"),
+        F.coalesce(F.col("staging_total_item_count"), F.lit(0)).alias("staged_item_total"),
+        # Production milestones
+        "production_first_actual_start",
+        F.col("production_last_actual_finish").cast("timestamp").alias("production_last_actual_finish"),
+        F.coalesce(F.col("confirmed_yield_qty"), F.lit(0.0)).alias("confirmed_yield_qty"),
+        F.coalesce(F.col("confirmed_scrap_qty"), F.lit(0.0)).alias("confirmed_scrap_qty"),
+        # PI milestones (nullable -- absent at P806)
+        "pi_first_start",
+        "pi_last_end",
+        # GR / issue milestones
+        "first_gr_posting_date",
+        "last_gr_posting_date",
+        F.coalesce(F.col("gr_qty"), F.lit(0.0)).alias("gr_qty"),
+        F.coalesce(F.col("issue_qty"), F.lit(0.0)).alias("issue_qty"),
+        F.coalesce(F.col("delivery_count"), F.lit(0)).alias("delivery_count"),
+        # QM (nullable -- source-guarded)
+        "qm_lot_count",
+        "qm_open_lot_count",
+        # Derived lag hours (both endpoints must exist)
+        _lag_hours(
+            F.col("actual_release_date").cast("timestamp"),
+            F.col("first_tr_created_ts"),
+        ).alias("release_to_first_tr_hours"),
+        _lag_hours(
+            F.col("first_tr_created_ts"),
+            F.col("staging_last_confirmed_ts"),
+        ).alias("tr_to_staged_hours"),
+        _lag_hours(
+            F.col("staging_last_confirmed_ts"),
+            F.col("production_first_actual_start"),
+        ).alias("staged_to_production_hours"),
+        _lag_hours(
+            F.col("production_first_actual_start"),
+            F.col("first_gr_posting_date").cast("timestamp"),
+        ).alias("production_to_gr_hours"),
+    )
+
+
+# -- 21. ORDER JOURNEY EVENTS (long-format per-order event timeline) -----------
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Long-format per-order event timeline for the Order Journey Timeline view -- one row "
+        "per event, identified by (plant_code, order_number, event_seq). Sources UNION ALL:"
+        "ORDER_CREATED / RELEASED from process_order; TR_CREATED from "
+        "warehouse_transfer_requirement (BETYP='P'); STAGING_CONFIRMED from "
+        "warehouse_transfer_order items (Fully Confirmed, via TBNUM->BETYP='P' TR chain); "
+        "PI_START / PI_END from pi_sheet_execution (left/optional); "
+        "OPERATION_CONFIRMED from process_order_operation (is_confirmed=true); "
+        "GR_POSTED from goods_movement (movement_type 101 by order_number); "
+        "COMPONENT_ISSUED from goods_movement (261 family); "
+        "QM_LOT_CREATED / QM_UD_TAKEN from quality_inspection_lot + usage decision (source-guarded). "
+        "event_seq = row_number over event_ts NULLS LAST within plant_code x order_number. "
+        "Deterministic: no current_date(). cluster_by plant_code x order_number."
+    ),
+    cluster_by=["plant_code", "order_number"],
+))
+@dlt.expect("event_ts present", "event_ts IS NOT NULL OR event_type IS NOT NULL")
+@dlt.expect("order_number present", "order_number IS NOT NULL")
+@dlt.expect("plant_code present", "plant_code IS NOT NULL")
+def gold_wm_order_journey_events():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    orders = spark.read.table(f"{ss}.process_order")
+    trs = spark.read.table(f"{ss}.warehouse_transfer_requirement")
+    tos = anti_join_optional_deleted_headers(
+        spark.read.table(f"{ss}.warehouse_transfer_order"),
+        ss,
+        "warehouse_transfer_order_header_delete",
+        ["warehouse_number", "transfer_order_number"],
+    )
+    goods = spark.read.table(f"{ss}.goods_movement")
+
+    # -- ORDER_CREATED ---------------------------------------------------------
+    ev_created = (
+        orders
+        .filter(F.col("created_datetime").isNotNull())
+        .select(
+            "plant_code",
+            "order_number",
+            F.col("created_datetime").alias("event_ts"),
+            F.lit("ORDER_CREATED").alias("event_type"),
+            F.lit(None).cast("double").alias("qty"),
+            F.lit(None).cast("string").alias("uom"),
+            F.lit(None).cast("string").alias("reference_id"),
+            F.lit("Order created").alias("detail"),
+        )
+    )
+
+    # -- RELEASED --------------------------------------------------------------
+    ev_released = (
+        orders
+        .filter(F.col("actual_release_date").isNotNull())
+        .select(
+            "plant_code",
+            "order_number",
+            F.col("actual_release_date").cast("timestamp").alias("event_ts"),
+            F.lit("RELEASED").alias("event_type"),
+            F.lit(None).cast("double").alias("qty"),
+            F.lit(None).cast("string").alias("uom"),
+            F.lit(None).cast("string").alias("reference_id"),
+            F.lit("Order released").alias("detail"),
+        )
+    )
+
+    # -- TR_CREATED ------------------------------------------------------------
+    ev_tr = (
+        trs.filter(
+            (F.col("source_reference_type") == TR_ORDER_REFERENCE_TYPE)
+            & F.col("created_datetime").isNotNull()
+        )
+        .select(
+            "plant_code",
+            F.col("source_reference_number").alias("order_number"),
+            F.col("created_datetime").alias("event_ts"),
+            F.lit("TR_CREATED").alias("event_type"),
+            F.col("required_quantity").alias("qty"),
+            F.col("base_uom").alias("uom"),
+            F.col("transfer_requirement_number").alias("reference_id"),
+            F.concat_ws(" ", F.lit("TR"), F.col("transfer_requirement_number")).alias("detail"),
+        )
+    )
+
+    # -- STAGING_CONFIRMED (TO item grain, Fully Confirmed, order-linked TRs) --
+    tr_order_map = (
+        trs.filter(F.col("source_reference_type") == TR_ORDER_REFERENCE_TYPE)
+        .select(
+            F.col("transfer_requirement_number"),
+            F.col("source_reference_number").alias("order_number"),
+            F.col("plant_code"),
+        )
+        .distinct()
+    )
+    ev_staging = (
+        tos.filter(
+            F.col("transfer_requirement_number").isNotNull()
+            & (F.col("item_status") == "Fully Confirmed")
+            & F.col("confirmed_datetime").isNotNull()
+        )
+        .join(tr_order_map, "transfer_requirement_number", "inner")
+        .select(
+            "plant_code",
+            "order_number",
+            F.col("confirmed_datetime").alias("event_ts"),
+            F.lit("STAGING_CONFIRMED").alias("event_type"),
+            F.col("confirmed_quantity").alias("qty"),
+            F.col("base_uom").alias("uom"),
+            F.col("transfer_order_number").alias("reference_id"),
+            F.concat_ws(
+                " ",
+                F.lit("TO"),
+                F.col("transfer_order_number"),
+                F.lit("item"),
+                F.col("transfer_order_item").cast("string"),
+            ).alias("detail"),
+        )
+    )
+
+    # -- OPERATION_CONFIRMED ---------------------------------------------------
+    ev_ops = (
+        spark.read.table(f"{ss}.process_order_operation")
+        .filter(
+            F.coalesce(F.col("is_confirmed"), F.lit(False))
+            & F.col("actual_start_datetime").isNotNull()
+        )
+        .join(
+            orders.select("order_number", "plant_code"),
+            "order_number",
+            "inner",
+        )
+        .select(
+            "plant_code",
+            "order_number",
+            F.col("actual_start_datetime").alias("event_ts"),
+            F.lit("OPERATION_CONFIRMED").alias("event_type"),
+            F.col("confirmed_yield_quantity").alias("qty"),
+            F.lit(None).cast("string").alias("uom"),
+            F.col("operation_number").alias("reference_id"),
+            F.coalesce(
+                F.col("operation_description"),
+                F.concat_ws(" ", F.lit("Op"), F.col("operation_number")),
+            ).alias("detail"),
+        )
+    )
+
+    # -- PI_START / PI_END -----------------------------------------------------
+    pi_events: list = []
+    if table_exists(spark, f"{ss}.pi_sheet_execution"):
+        pi = spark.read.table(f"{ss}.pi_sheet_execution")
+        pi_start = (
+            pi.filter(F.col("start_datetime").isNotNull() & F.col("order_number").isNotNull())
+            .join(orders.select("order_number", "plant_code"), "order_number", "inner")
+            .select(
+                "plant_code",
+                "order_number",
+                F.col("start_datetime").alias("event_ts"),
+                F.lit("PI_START").alias("event_type"),
+                F.lit(None).cast("double").alias("qty"),
+                F.lit(None).cast("string").alias("uom"),
+                F.col("pi_sheet_number").alias("reference_id"),
+                F.lit("PI sheet started").alias("detail"),
+            )
+        )
+        pi_end = (
+            pi.filter(F.col("end_datetime").isNotNull() & F.col("order_number").isNotNull())
+            .join(orders.select("order_number", "plant_code"), "order_number", "inner")
+            .select(
+                "plant_code",
+                "order_number",
+                F.col("end_datetime").alias("event_ts"),
+                F.lit("PI_END").alias("event_type"),
+                F.lit(None).cast("double").alias("qty"),
+                F.lit(None).cast("string").alias("uom"),
+                F.col("pi_sheet_number").alias("reference_id"),
+                F.lit("PI sheet ended").alias("detail"),
+            )
+        )
+        pi_events = [pi_start, pi_end]
+
+    # -- GR_POSTED -------------------------------------------------------------
+    ev_gr = (
+        goods.filter(
+            (F.col("movement_type_code") == "101")
+            & F.col("order_number").isNotNull()
+            & F.col("posting_date").isNotNull()
+        )
+        .join(orders.select("order_number", "plant_code"), "order_number", "inner")
+        .select(
+            "plant_code",
+            "order_number",
+            F.col("posting_date").cast("timestamp").alias("event_ts"),
+            F.lit("GR_POSTED").alias("event_type"),
+            F.col("quantity").alias("qty"),
+            F.col("base_uom").alias("uom"),
+            F.col("material_document_number").alias("reference_id"),
+            F.lit("Goods receipt (101)").alias("detail"),
+        )
+    )
+
+    # -- COMPONENT_ISSUED ------------------------------------------------------
+    ev_issue = (
+        goods.filter(
+            F.col("movement_type_code").isin("261", "262")
+            & F.col("order_number").isNotNull()
+            & F.col("posting_date").isNotNull()
+        )
+        .join(orders.select("order_number", "plant_code"), "order_number", "inner")
+        .select(
+            "plant_code",
+            "order_number",
+            F.col("posting_date").cast("timestamp").alias("event_ts"),
+            F.lit("COMPONENT_ISSUED").alias("event_type"),
+            F.col("quantity").alias("qty"),
+            F.col("base_uom").alias("uom"),
+            F.col("material_document_number").alias("reference_id"),
+            F.concat_ws(" ", F.lit("Issue"), F.col("movement_type_code")).alias("detail"),
+        )
+    )
+
+    # -- QM_LOT_CREATED / QM_UD_TAKEN -----------------------------------------
+    qm_events: list = []
+    if table_exists(spark, f"{ss}.quality_inspection_lot"):
+        qml = spark.read.table(f"{ss}.quality_inspection_lot")
+        ev_qm_created = (
+            qml.filter(
+                F.col("order_number").isNotNull()
+                & F.col("lot_created_date").isNotNull()
+            )
+            .join(orders.select("order_number", "plant_code"), "order_number", "inner")
+            .select(
+                "plant_code",
+                "order_number",
+                F.col("lot_created_date").cast("timestamp").alias("event_ts"),
+                F.lit("QM_LOT_CREATED").alias("event_type"),
+                F.col("inspection_lot_quantity").alias("qty"),
+                F.col("inspection_lot_uom").alias("uom"),
+                F.col("inspection_lot_number").alias("reference_id"),
+                F.lit("QM inspection lot created").alias("detail"),
+            )
+        )
+        qm_events.append(ev_qm_created)
+        if table_exists(spark, f"{ss}.quality_inspection_usage_decision"):
+            uds = spark.read.table(f"{ss}.quality_inspection_usage_decision")
+            ev_qm_ud = (
+                uds.filter(F.col("usage_decision_date").isNotNull())
+                .join(
+                    qml.filter(F.col("order_number").isNotNull())
+                    .select("inspection_lot_number", "order_number")
+                    .distinct(),
+                    "inspection_lot_number",
+                    "inner",
+                )
+                .join(orders.select("order_number", "plant_code"), "order_number", "inner")
+                .select(
+                    "plant_code",
+                    "order_number",
+                    F.col("usage_decision_date").cast("timestamp").alias("event_ts"),
+                    F.lit("QM_UD_TAKEN").alias("event_type"),
+                    F.lit(None).cast("double").alias("qty"),
+                    F.lit(None).cast("string").alias("uom"),
+                    F.col("inspection_lot_number").alias("reference_id"),
+                    F.coalesce(
+                        F.col("usage_decision"),
+                        F.lit("Usage decision taken"),
+                    ).alias("detail"),
+                )
+            )
+            qm_events.append(ev_qm_ud)
+
+    # -- UNION ALL -------------------------------------------------------------
+    all_events = [ev_created, ev_released, ev_tr, ev_staging, ev_ops, ev_gr, ev_issue]
+    all_events.extend(pi_events)
+    all_events.extend(qm_events)
+
+    union_df = all_events[0]
+    for df in all_events[1:]:
+        union_df = union_df.unionByName(df, allowMissingColumns=False)
+
+    # event_seq: row_number within (plant_code, order_number) ordered by event_ts NULLS LAST
+    w = Window.partitionBy("plant_code", "order_number").orderBy(
+        F.col("event_ts").asc_nulls_last()
+    )
+    return union_df.withColumn("event_seq", F.row_number().over(w)).select(
+        "plant_code",
+        "order_number",
+        "event_seq",
+        "event_ts",
+        "event_type",
+        "qty",
+        "uom",
+        "reference_id",
+        "detail",
+    )

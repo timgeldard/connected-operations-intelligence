@@ -112,6 +112,24 @@ export function useWmOrderReadiness(request: WmOperationsAdapterRequest) {
   })
 }
 
+export function useWmOrderJourney(request: WmDrillRequest, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-order-journey', request.plantId ?? null, request.limit ?? null],
+    queryFn: () => wmOperationsAdapter.getOrderJourney(request),
+    staleTime: 60 * 1000,
+    enabled,
+  })
+}
+
+export function useWmOrderJourneyEvents(request: WmDrillRequest, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-order-journey-events', request.plantId ?? null, request.orderId ?? null],
+    queryFn: () => wmOperationsAdapter.getOrderJourneyEvents(request),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(request.plantId && request.orderId),
+  })
+}
+
 export function useWmBinStock(request: WmOperationsAdapterRequest) {
   return useQuery({
     queryKey: [

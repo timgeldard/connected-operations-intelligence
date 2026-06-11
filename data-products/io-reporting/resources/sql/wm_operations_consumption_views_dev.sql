@@ -568,3 +568,64 @@ SELECT
   SUM(tr_count) AS worklist_tr_count
 FROM connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_worklist_summary
 GROUP BY plant_id, warehouse_id;
+
+
+-- 31. Order Journey summary (per-order milestone summary -- Order Journey Timeline view)
+-- Grain: 1 row per plant_id + order_id.
+-- Source: gold_wm_order_journey_summary_secured (no date-relative columns -- no _live wrapper needed).
+-- All milestone timestamps nullable; lags computed only when both endpoints exist.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_order_journey AS
+SELECT
+  plant_code AS plant_id,
+  order_number AS order_id,
+  material_code,
+  material_name,
+  order_qty,
+  uom,
+  production_line,
+  CAST(order_created_ts AS TIMESTAMP) AS order_created_ts,
+  CAST(release_date AS DATE) AS release_date,
+  CAST(scheduled_start_date AS DATE) AS scheduled_start_date,
+  CAST(scheduled_finish_date AS DATE) AS scheduled_finish_date,
+  CAST(first_tr_created_ts AS TIMESTAMP) AS first_tr_created_ts,
+  staging_tr_count,
+  CAST(staging_first_confirmed_ts AS TIMESTAMP) AS staging_first_confirmed_ts,
+  CAST(staging_last_confirmed_ts AS TIMESTAMP) AS staging_last_confirmed_ts,
+  staged_item_count,
+  staged_item_total,
+  CAST(production_first_actual_start AS TIMESTAMP) AS production_first_actual_start,
+  CAST(production_last_actual_finish AS TIMESTAMP) AS production_last_actual_finish,
+  confirmed_yield_qty,
+  confirmed_scrap_qty,
+  CAST(pi_first_start AS TIMESTAMP) AS pi_first_start,
+  CAST(pi_last_end AS TIMESTAMP) AS pi_last_end,
+  CAST(first_gr_posting_date AS DATE) AS first_gr_posting_date,
+  CAST(last_gr_posting_date AS DATE) AS last_gr_posting_date,
+  gr_qty,
+  issue_qty,
+  delivery_count,
+  qm_lot_count,
+  qm_open_lot_count,
+  release_to_first_tr_hours,
+  tr_to_staged_hours,
+  staged_to_production_hours,
+  production_to_gr_hours
+FROM connected_plant_dev.gold_io_reporting.gold_wm_order_journey_summary_secured
+WHERE plant_code IS NOT NULL;
+
+-- 32. Order Journey events (long-format per-order event timeline -- Order Journey Timeline view)
+-- Grain: 1 row per plant_id + order_id + event_seq.
+-- Source: gold_wm_order_journey_events_secured (no date-relative columns -- no _live wrapper needed).
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_order_journey_events AS
+SELECT
+  plant_code AS plant_id,
+  order_number AS order_id,
+  event_seq,
+  CAST(event_ts AS TIMESTAMP) AS event_ts,
+  event_type,
+  qty,
+  uom,
+  reference_id,
+  detail
+FROM connected_plant_dev.gold_io_reporting.gold_wm_order_journey_events_secured
+WHERE plant_code IS NOT NULL;
