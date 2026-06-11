@@ -1132,6 +1132,7 @@ class WmSimpleRequest:
     severity: Optional[str] = None
     days: Optional[int] = None
     open_only: bool = True
+    origin: Optional[str] = None
     limit: int = 200
 
 
@@ -1289,6 +1290,31 @@ SIMPLE_DATASETS: dict[str, dict] = {
         order_by="open_lot_count DESC",
         numeric=(), integer=("lot_count", "open_lot_count"), boolean=(), has_warehouse=False,
     ),
+    "qm_lot_status": dict(
+        contract="wm_operations.qm_lot_status", endpoint="/api/wm-operations/qm-lot-status",
+        columns="plant_id, lot_id, inspection_lot_origin_code, inspection_type, material_id, "
+                "material_name, batch_id, order_id, lot_created_date, inspection_start_date, "
+                "inspection_end_date, lot_qty, lot_uom, has_usage_decision, last_usage_decision, "
+                "last_usage_decision_date, last_usage_decision_by, quality_score, "
+                "lot_age_days, ud_lead_time_days, is_overdue",
+        order_by="lot_created_date DESC",
+        numeric=("lot_qty",), integer=("lot_age_days", "ud_lead_time_days"),
+        boolean=("has_usage_decision", "is_overdue"), has_warehouse=False,
+        open_only_clause="NOT coalesce(has_usage_decision, false)",
+        origin_col="inspection_lot_origin_code",
+    ),
+    "qm_disposition_queue": dict(
+        contract="wm_operations.qm_disposition_queue", endpoint="/api/wm-operations/qm-disposition-queue",
+        columns="plant_id, lot_id, inspection_lot_origin_code, inspection_type, material_id, "
+                "material_name, batch_id, order_id, lot_created_date, inspection_start_date, "
+                "inspection_end_date, lot_qty, lot_uom, blocked_qty, blocked_uom, "
+                "est_blocked_value, lot_age_days, is_overdue",
+        order_by="est_blocked_value DESC NULLS LAST",
+        numeric=("lot_qty", "blocked_qty", "est_blocked_value"),
+        integer=("lot_age_days",),
+        boolean=("is_overdue",), has_warehouse=False,
+        origin_col="inspection_lot_origin_code",
+    ),
     "downtime_pareto": dict(
         contract="wm_operations.downtime_pareto", endpoint="/api/wm-operations/downtime-pareto",
         columns="plant_id, week_start, downtime_reason_code, sub_reason_code, work_centre_code, "
@@ -1337,6 +1363,9 @@ def get_wm_simple_spec(dataset: str, request: WmSimpleRequest) -> QuerySpec:
         params["days"] = int(request.days)
     if cfg.get("open_only_clause") and request.open_only:
         clauses.append(cfg["open_only_clause"])
+    if cfg.get("origin_col") and request.origin:
+        clauses.append(f"{cfg['origin_col']} = :origin")
+        params["origin"] = request.origin
     where_str = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     sql = (
         f"\n    SELECT {cfg['columns']}\n    FROM {view}\n    {where_str}\n"

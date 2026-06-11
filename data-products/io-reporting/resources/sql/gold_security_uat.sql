@@ -875,6 +875,38 @@ CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_cont
   );
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_context_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_status_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_status
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_status_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_qm_disposition_queue_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_qm_disposition_queue
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_qm_disposition_queue_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_operations_secured AS
   SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_order_operations
   WHERE EXISTS (

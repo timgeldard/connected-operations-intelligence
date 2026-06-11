@@ -3156,3 +3156,169 @@ contracts:
       - name: comment
         type: string
         required: false
+
+  - id: wm_operations.qm_lot_status
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      QM inspection lot status — one row per plant_id and lot_id (all lots in the silver
+      lookback window). Carries lot header, material name, the latest usage decision, and
+      query-time date-relative columns (lot_age_days, ud_lead_time_days, is_overdue).
+      Source-guarded: view only exists when silver QM tables are present.
+    source_view: vw_consumption_wm_operations_qm_lot_status
+    grain: one row per plant_id and lot_id
+    primary_key:
+      - plant_id
+      - lot_id
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: lot_id
+        type: string
+        required: true
+      - name: inspection_lot_origin_code
+        type: string
+        required: false
+      - name: inspection_type
+        type: string
+        required: false
+      - name: material_id
+        type: string
+        required: false
+      - name: material_name
+        type: string
+        required: false
+      - name: batch_id
+        type: string
+        required: false
+      - name: order_id
+        type: string
+        required: false
+      - name: lot_created_date
+        type: date
+        required: false
+      - name: inspection_start_date
+        type: date
+        required: false
+      - name: inspection_end_date
+        type: date
+        required: false
+      - name: lot_qty
+        type: double
+        required: false
+      - name: lot_uom
+        type: string
+        required: false
+      - name: has_usage_decision
+        type: boolean
+        required: false
+      - name: last_usage_decision
+        type: string
+        required: false
+      - name: last_usage_decision_date
+        type: date
+        required: false
+      - name: last_usage_decision_by
+        type: string
+        required: false
+      - name: quality_score
+        type: string
+        required: false
+      - name: lot_age_days
+        type: integer
+        required: false
+      - name: ud_lead_time_days
+        type: integer
+        required: false
+      - name: is_overdue
+        type: boolean
+        required: false
+
+  - id: wm_operations.qm_disposition_queue
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      QM disposition queue — open lots only (no usage decision), enriched with blocked stock
+      quantity (MCHB.CINSM) and estimated blocked value (blocked_qty × standard_price /
+      price_unit). Grain: plant_id × lot_id. Date-relative columns (lot_age_days, is_overdue)
+      added at query time via the _live serving view.
+      Source-guarded: view only exists when silver QM tables are present.
+    source_view: vw_consumption_wm_operations_qm_disposition_queue
+    grain: one row per plant_id and lot_id (open lots only)
+    primary_key:
+      - plant_id
+      - lot_id
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: lot_id
+        type: string
+        required: true
+      - name: inspection_lot_origin_code
+        type: string
+        required: false
+      - name: inspection_type
+        type: string
+        required: false
+      - name: material_id
+        type: string
+        required: false
+      - name: material_name
+        type: string
+        required: false
+      - name: batch_id
+        type: string
+        required: false
+      - name: order_id
+        type: string
+        required: false
+      - name: lot_created_date
+        type: date
+        required: false
+      - name: inspection_start_date
+        type: date
+        required: false
+      - name: inspection_end_date
+        type: date
+        required: false
+      - name: lot_qty
+        type: double
+        required: false
+      - name: lot_uom
+        type: string
+        required: false
+      - name: blocked_qty
+        type: double
+        required: false
+      - name: blocked_uom
+        type: string
+        required: false
+      - name: est_blocked_value
+        type: double
+        required: false
+      - name: lot_age_days
+        type: integer
+        required: false
+      - name: is_overdue
+        type: boolean
+        required: false

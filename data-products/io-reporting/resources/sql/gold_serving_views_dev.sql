@@ -120,6 +120,23 @@ SELECT
 FROM connected_plant_dev.gold_io_reporting.gold_wm_slow_movers_secured AS b;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_slow_movers_live TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_status_live AS
+SELECT
+  b.*,
+  CASE WHEN b.lot_created_date IS NOT NULL THEN datediff(current_date(), b.lot_created_date) END AS lot_age_days,
+  CASE WHEN b.last_usage_decision_date IS NOT NULL AND b.lot_created_date IS NOT NULL THEN datediff(b.last_usage_decision_date, b.lot_created_date) END AS ud_lead_time_days,
+  NOT coalesce(b.has_usage_decision, false) AND b.inspection_end_date IS NOT NULL AND b.inspection_end_date < current_date() AS is_overdue
+FROM connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_status_secured AS b;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_status_live TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_qm_disposition_queue_live AS
+SELECT
+  b.*,
+  CASE WHEN b.lot_created_date IS NOT NULL THEN datediff(current_date(), b.lot_created_date) END AS lot_age_days,
+  b.inspection_end_date IS NOT NULL AND b.inspection_end_date < current_date() AS is_overdue
+FROM connected_plant_dev.gold_io_reporting.gold_wm_qm_disposition_queue_secured AS b;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_qm_disposition_queue_live TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_warehouse_exceptions_live AS
 SELECT
   b.*,
