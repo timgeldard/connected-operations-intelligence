@@ -230,13 +230,17 @@ if bronze_columns_exist("inspection_qals", _QALS_REQUIRED) and bronze_columns_ex
         spark = get_spark()
         # Gate-via-parent: PRUEFLOS is QALS' PK, so this inner join filters (plant + time window)
         # and enriches the lot's plant without fan-out.
+        # Client-qualified join (PRUEFLOS unique per client; single-client today, robust to multi-client bronze).
         lot_keys = _gated_qals(spark).select(
             F.col("PRUEFLOS").alias("_lot_prueflos"),
+            F.col("MANDANT").alias("_lot_client"),
             F.col("WERK").alias("_lot_plant"),
         )
         qave = spark.read.table(f"{BRONZE}.inspection_qave")
         gated = qave.join(
-            lot_keys, qave["PRUEFLOS"] == F.col("_lot_prueflos"), "inner"
+            lot_keys,
+            (qave["PRUEFLOS"] == F.col("_lot_prueflos")) & (qave["MANDANT"] == F.col("_lot_client")),
+            "inner",
         )
         out = gated.select(
             F.col("MANDANT").alias("client"),
@@ -317,11 +321,14 @@ if (
         # plants, which can differ from the lot's plant (§8a note in the functional model doc).
         lot_keys = _gated_qals(spark, product_area="spc").select(
             F.col("PRUEFLOS").alias("_lot_prueflos"),
+            F.col("MANDANT").alias("_lot_client"),
             F.col("WERK").alias("_lot_plant"),
         )
         qamv = spark.read.table(f"{BRONZE}.inspection_qamv")
         gated = qamv.join(
-            lot_keys, qamv["PRUEFLOS"] == F.col("_lot_prueflos"), "inner"
+            lot_keys,
+            (qamv["PRUEFLOS"] == F.col("_lot_prueflos")) & (qamv["MANDANT"] == F.col("_lot_client")),
+            "inner",
         )
         out = gated.select(
             # QM inspection objects use MANDANT, not MANDT (replicated-source convention, #27).
@@ -383,11 +390,14 @@ if (
         # Gate-via-parent: PRUEFLOS inner join to spc-gated lot set to filter + derive plant_code.
         lot_keys = _gated_qals(spark, product_area="spc").select(
             F.col("PRUEFLOS").alias("_lot_prueflos"),
+            F.col("MANDANT").alias("_lot_client"),
             F.col("WERK").alias("_lot_plant"),
         )
         qamr = spark.read.table(f"{BRONZE}.inspection_qamr")
         gated = qamr.join(
-            lot_keys, qamr["PRUEFLOS"] == F.col("_lot_prueflos"), "inner"
+            lot_keys,
+            (qamr["PRUEFLOS"] == F.col("_lot_prueflos")) & (qamr["MANDANT"] == F.col("_lot_client")),
+            "inner",
         )
         out = gated.select(
             F.col("MANDANT").alias("client"),
@@ -448,11 +458,14 @@ if (
         spark = get_spark()
         lot_keys = _gated_qals(spark, product_area="spc").select(
             F.col("PRUEFLOS").alias("_lot_prueflos"),
+            F.col("MANDANT").alias("_lot_client"),
             F.col("WERK").alias("_lot_plant"),
         )
         qasr = spark.read.table(f"{BRONZE}.inspection_qasr")
         gated = qasr.join(
-            lot_keys, qasr["PRUEFLOS"] == F.col("_lot_prueflos"), "inner"
+            lot_keys,
+            (qasr["PRUEFLOS"] == F.col("_lot_prueflos")) & (qasr["MANDANT"] == F.col("_lot_client")),
+            "inner",
         )
         out = gated.select(
             F.col("MANDANT").alias("client"),
@@ -507,11 +520,14 @@ if (
         spark = get_spark()
         lot_keys = _gated_qals(spark, product_area="spc").select(
             F.col("PRUEFLOS").alias("_lot_prueflos"),
+            F.col("MANDANT").alias("_lot_client"),
             F.col("WERK").alias("_lot_plant"),
         )
         qase = spark.read.table(f"{BRONZE}.inspection_qase")
         gated = qase.join(
-            lot_keys, qase["PRUEFLOS"] == F.col("_lot_prueflos"), "inner"
+            lot_keys,
+            (qase["PRUEFLOS"] == F.col("_lot_prueflos")) & (qase["MANDANT"] == F.col("_lot_client")),
+            "inner",
         )
         out = gated.select(
             F.col("MANDANT").alias("client"),
