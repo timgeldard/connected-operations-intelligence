@@ -17,6 +17,10 @@
 --            TOLERATED — same pattern as storage_type_role_mapping ALTER notes.
 --            Check for the final table name before re-running steps a/c.
 --
+--   For spc_locked_limits ONLY: after a successful first run, step (b) DROP VIEW
+--   fails with AnalysisException (the name is then a TABLE, not a view) and step (c)
+--   fails (source already renamed) — both are EXPECTED/tolerated on re-runs.
+--
 -- NOTE: connected_plant_prod.gold legacy tables may not exist if prod was never
 -- seeded with SPC state. Failures of step (a) due to source-not-found are
 -- EXPECTED and TOLERATED for this environment.
@@ -39,44 +43,23 @@ DROP VIEW IF EXISTS connected_plant_prod.gold_io_reporting.spc_locked_limits;
 ALTER TABLE connected_plant_prod.gold_io_reporting.spc_locked_limits_migrated
   RENAME TO connected_plant_prod.gold_io_reporting.spc_locked_limits;
 
--- ── spc_exclusions ───────────────────────────────────────────────────────────
+-- ── spc_exclusions ───────────────────────────────────────────────────────────────
 
--- (a)
-CREATE TABLE IF NOT EXISTS connected_plant_prod.gold_io_reporting.spc_exclusions_migrated
+-- No bridge view exists for this table: clone directly to the target name (fully idempotent; no orphaned _migrated tables).
+CREATE TABLE IF NOT EXISTS connected_plant_prod.gold_io_reporting.spc_exclusions
   DEEP CLONE connected_plant_prod.gold.spc_exclusions;
 
--- (b) No bridge view exists today; DROP VIEW IF EXISTS is harmless.
-DROP VIEW IF EXISTS connected_plant_prod.gold_io_reporting.spc_exclusions;
+-- ── spc_mic_chart_config ───────────────────────────────────────────────────────────────
 
--- (c) Re-runs after success will fail harmlessly here.
-ALTER TABLE connected_plant_prod.gold_io_reporting.spc_exclusions_migrated
-  RENAME TO connected_plant_prod.gold_io_reporting.spc_exclusions;
-
--- ── spc_mic_chart_config ─────────────────────────────────────────────────────
-
--- (a)
-CREATE TABLE IF NOT EXISTS connected_plant_prod.gold_io_reporting.spc_mic_chart_config_migrated
+-- No bridge view exists for this table: clone directly to the target name (fully idempotent; no orphaned _migrated tables).
+CREATE TABLE IF NOT EXISTS connected_plant_prod.gold_io_reporting.spc_mic_chart_config
   DEEP CLONE connected_plant_prod.gold.spc_mic_chart_config;
 
--- (b) No bridge view exists today; DROP VIEW IF EXISTS is harmless.
-DROP VIEW IF EXISTS connected_plant_prod.gold_io_reporting.spc_mic_chart_config;
+-- ── spc_query_audit ───────────────────────────────────────────────────────────────
 
--- (c) Re-runs after success will fail harmlessly here.
-ALTER TABLE connected_plant_prod.gold_io_reporting.spc_mic_chart_config_migrated
-  RENAME TO connected_plant_prod.gold_io_reporting.spc_mic_chart_config;
-
--- ── spc_query_audit ──────────────────────────────────────────────────────────
-
--- (a)
-CREATE TABLE IF NOT EXISTS connected_plant_prod.gold_io_reporting.spc_query_audit_migrated
+-- No bridge view exists for this table: clone directly to the target name (fully idempotent; no orphaned _migrated tables).
+CREATE TABLE IF NOT EXISTS connected_plant_prod.gold_io_reporting.spc_query_audit
   DEEP CLONE connected_plant_prod.gold.spc_query_audit;
-
--- (b) No bridge view exists today; DROP VIEW IF EXISTS is harmless.
-DROP VIEW IF EXISTS connected_plant_prod.gold_io_reporting.spc_query_audit;
-
--- (c) Re-runs after success will fail harmlessly here.
-ALTER TABLE connected_plant_prod.gold_io_reporting.spc_query_audit_migrated
-  RENAME TO connected_plant_prod.gold_io_reporting.spc_query_audit;
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- EXECUTE ONLY ON EXPLICIT INSTRUCTION — destructive
