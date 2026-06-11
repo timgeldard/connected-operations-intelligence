@@ -1582,6 +1582,9 @@ def gold_wm_order_journey_summary():
     # grouping on plant_code + order_number to avoid cross-plant fan-out.
     to_agg = (
         tos.filter(F.col("transfer_requirement_number").isNotNull())
+        # Drop the TO-side plant_code so the grouping below unambiguously uses the TR
+        # (order demand) plant — the same plant axis tr_by_order groups on.
+        .drop("plant_code")
         .join(
             trs.filter(F.col("source_reference_type") == TR_ORDER_REFERENCE_TYPE)
             .select(
@@ -1884,6 +1887,9 @@ def gold_wm_order_journey_events():
             & (F.col("item_status") == "Fully Confirmed")
             & F.col("confirmed_datetime").isNotNull()
         )
+        # Drop the TO-side plant_code so the select below unambiguously uses the TR
+        # (order demand) plant from tr_order_map.
+        .drop("plant_code")
         .join(tr_order_map, "transfer_requirement_number", "inner")
         .select(
             "plant_code",
