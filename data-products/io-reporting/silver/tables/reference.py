@@ -13,8 +13,9 @@ from silver.helpers import (
     PROCESS_LINE_ATINN,
     bronze_columns_exist,
     bronze_published,
-    bronze_table_exists,
+    col_or_null,
     get_spark,
+    published_columns_exist,
     relation_exists,
     sap_date,
     sap_flag,
@@ -113,18 +114,22 @@ def storage_location():
 
 
 # ── 3. WORK CENTRE ────────────────────────────────────────────────────────────
-# work_centre's source tables (CRHD header + CRTX text) are NOT present in the replicated SAP in
-# EITHER connected_plant_dev.sap OR connected_plant_uat.sap (confirmed 2026-06-07 — zero crhd/crtx
-# tables in both). work_centre has NO downstream pipeline consumers (referenced only in
-# silver/design_spec.md), so it is defined only when its source exists — otherwise it would fail the
-# whole Silver run on an unreplicated source. This is a real source-replication gap that ALSO blocks
-# UAT full_validation; it is flagged by ioreporting_dev_source_schema_preflight.sql. Do NOT fabricate
-# CRHD/CRTX data. The table self-heals (is defined) once the source is replicated.
+# CRHD/CRTX are NOT in connected_plant.sap — they live in the PUBLISHED (central_services) catalog
+# (published_uat.central_services.workcenterheader_crhd / workcentertext_crtx; located by Tim
+# Geldard 2026-06-11, verified live: 7,296 work centres, 43–70 per onboarded plant). Same source
+# pattern as the T320 warehouse mapping. AEDATTM-only (reference master, no CDC) → batch MV.
+# central_services fields can carry SAP fixed-width padding → keys/codes are TRIMmed. KOSTL (cost
+# centre) is NOT in the published projection → col_or_null keeps the column contract. Plant-gated
+# (CRHD.WERKS direct, process_order area) per the stage-gate inventory.
 
-if bronze_table_exists("workcenterheader_crhd"):
+if (
+    published_columns_exist("workcenterheader_crhd", ["OBJID", "OBJTY", "MANDT", "ARBPL", "WERKS", "VERWE", "AEDATTM"])
+    and published_columns_exist("workcentertext_crtx", ["OBJID", "OBJTY", "MANDT", "SPRAS", "KTEXT"])
+):
 
     @dlt.table(
-        comment="Work centres — one row per work centre per plant, with descriptions",
+        comment="Work centres — one row per work centre per plant, with descriptions "
+                "(CRHD/CRTX from the published central_services catalog).",
         table_properties={"delta.enableChangeDataFeed": "true"},
     )
     @dlt.expect_all_or_drop({
@@ -133,23 +138,37 @@ if bronze_table_exists("workcenterheader_crhd"):
     })
     def work_centre():
         spark = get_spark()
-        crhd = spark.read.table(f"{BRONZE}.workcenterheader_crhd")
-        crtx = spark.read.table(f"{BRONZE}.workcentertext_crtx").filter(
-            F.col("SPRAS") == "E"
+        published = bronze_published()
+        # OBJTY 'A' = work-centre objects (CRHD/CRTX are shared HR/logistics object tables).
+        crhd = spark.read.table(f"{published}.workcenterheader_crhd").filter(
+            F.trim(F.col("OBJTY")) == "A"
         )
-        return (
+        crtx = spark.read.table(f"{published}.workcentertext_crtx").filter(
+            (F.trim(F.col("OBJTY")) == "A") & (F.trim(F.col("SPRAS")) == "E")
+        ).select(
+            F.trim(F.col("OBJID")).alias("_t_objid"),
+            F.trim(F.col("MANDT")).alias("_t_mandt"),
+            F.col("KTEXT").alias("_t_ktext"),
+        )
+        out = (
             crhd.alias("w")
-            .join(crtx.alias("t"), ["OBJID", "MANDT"], "left")
+            .join(
+                crtx.alias("t"),
+                (F.trim(F.col("w.OBJID")) == F.col("t._t_objid"))
+                & (F.trim(F.col("w.MANDT")) == F.col("t._t_mandt")),
+                "left",
+            )
             .select(
-                F.col("w.ARBPL").alias("work_centre_code"),
-                F.col("w.WERKS").alias("plant_code"),
-                F.col("t.KTEXT").alias("work_centre_description"),
-                F.col("w.VERWE").alias("work_centre_category"),
-                F.col("w.KOSTL").alias("cost_centre"),
-                F.col("w.OBJID").alias("work_centre_internal_id"),
-                F.col("w.AEDATTM").alias("_replicated_at"),
+                F.trim(F.col("w.ARBPL")).alias("work_centre_code"),
+                F.trim(F.col("w.WERKS")).alias("plant_code"),
+                F.col("t._t_ktext").alias("work_centre_description"),
+                F.trim(F.col("w.VERWE")).alias("work_centre_category"),
+                col_or_null(crhd, "KOSTL", "string").alias("cost_centre"),
+                F.trim(F.col("w.OBJID")).alias("work_centre_internal_id"),
+                F.col("w.AEDATTM").cast("timestamp").alias("_replicated_at"),
             )
         )
+        return apply_plant_gate(out, "plant_code", "process_order", spark=spark)
 
 
 # ── 4. CAPACITY UTILISATION ───────────────────────────────────────────────────

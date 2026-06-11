@@ -61,6 +61,19 @@ def bronze_table_exists(name: str) -> bool:
     return relation_exists(f"{BRONZE}.{name}")
 
 
+def published_columns_exist(name: str, columns) -> bool:
+    """True only if published (central_services) table `name` exists AND carries every column.
+
+    Same lazy-probe rationale as bronze_columns_exist. Defensive on configuration: pipelines that
+    do not set published_catalog/published_schema (e.g. the fast tier) get False rather than a
+    raised error, so a shared module import can never fail on a missing conf."""
+    try:
+        present = set(get_spark().read.table(f"{bronze_published()}.{name}").columns)
+    except Exception:  # noqa: BLE001 - missing source/conf is a normal bootstrap condition
+        return False
+    return all(c in present for c in columns)
+
+
 def bronze_columns_exist(name: str, columns) -> bool:
     """True only if bronze SAP table `name` exists AND contains every column in `columns`.
 

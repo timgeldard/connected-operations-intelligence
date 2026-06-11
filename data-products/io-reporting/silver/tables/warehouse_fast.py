@@ -368,6 +368,13 @@ def stg_warehouse_transfer_order():
                 F.coalesce(F.col("h.TBNUM"), F.lit("")).isin("", "0000000000"), F.lit(None)
             ).otherwise(F.col("h.TBNUM")).alias("transfer_requirement_number"),
             F.col("h.QUEUE").alias("queue"),
+            # LTAK.REFNR — two-step/wave picking group reference. Populated only where wave
+            # picking is configured (UAT: warehouse 190 / P806 only, 2,260 groups over 40.8k TOs,
+            # verified 2026-06-11). Blank elsewhere. NULL on pre-existing rows until the next
+            # full refresh or row churn (additive column).
+            F.when(
+                F.trim(F.coalesce(F.col("h.REFNR"), F.lit(""))) == "", F.lit(None)
+            ).otherwise(F.col("h.REFNR")).alias("wave_group_reference"),
             F.col("h.TBPRI").alias("transfer_priority"),
 
             # ── Users

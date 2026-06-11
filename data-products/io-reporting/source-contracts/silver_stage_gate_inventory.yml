@@ -21,11 +21,11 @@ meta:
   canonical_gate_plant: site_config_plant
   canonical_gate_warehouse: site_config_warehouse
   helper: silver/_plant_gate.py
-  phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; QM lot+UD enforced 2026-06-11
-  enforced_count: 14           # + quality_inspection_lot + quality_inspection_usage_decision (QM hold flipped, plant+time gated)
-  source_guarded_count: 3      # process_order_operation / pi_sheet_execution / downtime_event — gate-ready/CDC-blocked
+  phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; QM lot+UD + PP/PI snapshots enforced 2026-06-11
+  enforced_count: 17           # + QM lot/UD + process_order_operation + downtime_event (snapshot remodels) + work_centre (published CRHD/CRTX)
+  source_guarded_count: 1      # pi_sheet_execution — gate-ready/CDC-blocked
   exempt_count: 17
-  needs_mapping_count: 8
+  needs_mapping_count: 7
   blocked_count: 0
 
 silver_outputs:
@@ -199,8 +199,8 @@ silver_outputs:
     gate_join_path: "ZWERKS (direct)"
     gate_config_table: site_config_plant
     product_area: process_order
-    current_status: SOURCE_GUARDED
-    owner_action_required: "Gate IS applied (apply_plant_gate on the output) — gate-ready. Source-guarded off (no AERUNID/AERECNO CDC metadata). Becomes ENFORCED when CDC is replicated."
+    current_status: ENFORCED
+    owner_action_required: "Remodelled to current-state snapshot MV 2026-06-11 (AFVV is AEDATTM-only; pre-gated on AFVC.WERKS before the 94M-row AFVV join)."
     validation_query_reference: validation/silver_process_order_stage_gate_validation.sql
 
   - table_name: downtime_event
@@ -211,8 +211,9 @@ silver_outputs:
     gate_join_path: "WERKS (direct)"
     gate_config_table: site_config_plant
     product_area: process_order
-    current_status: SOURCE_GUARDED
-    owner_action_required: "Gate IS applied (apply_plant_gate on the output) — gate-ready. Source-guarded off (no AERUNID/AERECNO CDC metadata). Becomes ENFORCED when CDC is replicated."
+    current_status: ENFORCED
+    owner_action_required: none   # remodelled to current-state snapshot MV 2026-06-11 (sign-off: Tim
+                                  # Geldard) — source is AEDATTM-only; reason/sub-reason texts denormalised
     validation_query_reference: validation/silver_process_order_stage_gate_validation.sql
 
   - table_name: capacity_utilisation
@@ -234,8 +235,9 @@ silver_outputs:
     gate_join_path: "CRHD.WERKS (direct)"
     gate_config_table: site_config_plant
     product_area: process_order
-    current_status: NEEDS_MAPPING
-    owner_action_required: "Apply gate. Currently source-guarded off (CRHD/CRTX not replicated)."
+    current_status: ENFORCED
+    owner_action_required: none   # CRHD/CRTX located in the PUBLISHED central_services catalog
+                                  # 2026-06-11 (not connected_plant.sap); gate applied with the rewire
 
   - table_name: storage_bin
     file: silver/tables/warehouse_reference.py

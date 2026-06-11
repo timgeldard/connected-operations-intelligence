@@ -38,7 +38,7 @@ unresolved_sources:
   - id: work_centre_crhd_crtx_absent
     model: work_centre (silver/tables/reference.py)
     expected_source: [connected_plant_dev.sap.workcenterheader_crhd, connected_plant_dev.sap.workcentertext_crtx]
-    evidence: "Live: zero crhd/crtx tables in BOTH dev and uat sap (work-centre master not replicated)."
+    evidence: "Live: zero crhd/crtx tables in BOTH dev and uat sap. RESOLVED 2026-06-11: CRHD/CRTX ARE available in the PUBLISHED catalog (published_uat.central_services.workcenterheader_crhd / workcentertext_crtx — 7,296 work centres; located by Tim Geldard). work_centre rewired to the published source (T320 pattern), plant-gated, ENFORCED."
     warehouse360_dependency: false
     affects_uat: true
     status: source-guarded (bronze_table_exists); not materialised until CRHD/CRTX replicated
@@ -129,7 +129,7 @@ unresolved_sources:
   - id: pp_pi_flows_missing_cdc_metadata
     models: [stg_process_order_operation, stg_pi_sheet_execution, stg_downtime_event]
     file: silver/tables/process_order.py
-    summary: "3 PP/PI silver_fast flows reference AERUNID/AERECNO(/RecordActivity) CDC sequencing metadata that is absent from their replicated source tables. Source-guarded out (not materialised) where the metadata is absent, so silver_fast can complete for the Warehouse360-critical flows."
+    summary: "WAS: 3 PP/PI silver_fast flows blocked on absent AERUNID/AERECNO CDC metadata. UPDATE 2026-06-11: process_order_operation and downtime_event REMODELLED as current-state snapshot MVs (sign-off Tim Geldard; bronze AFVV 94M rows pre-gated via AFVC.WERKS before the join; downtime carries denormalised reason/sub-reason texts + masters downtimereason_zpexpm_dwntrcode / reasonfordowntime_zpexpm_dtsubrcde now in bronze). Only pi_sheet_execution remains source-guarded on CDC metadata."
     # Live information_schema.columns 2026-06-07 (profile TG): which CDC cols each source carries.
     cdc_metadata_by_source:
       - {table: processorderobject_afvc, has: [AEDATTM, AERECNO, AERUNID, RecordActivity], note: "full CDC — fine"}
@@ -200,7 +200,7 @@ unresolved_sources:
   - id: picking_waves_wave_groupings
     model: stg_picking_waves / picking_waves
     summary: "Picking wave schedule and completion status cannot be served by governed data. LTAK/REFNR wave groupings are missing from the replicated SAP source."
-    evidence: "Live SAP: LTAK/REFNR tables and wave metadata are not replicated into bronze/silver."
+    evidence: "Live SAP: T311/T311A wave metadata not replicated. PARTIAL UPDATE 2026-06-11: LTAK.REFNR IS replicated and populated at warehouse 190 / P806 only (40.8k TOs in 2,260 groups; blank at 104/105/208). Passed through to silver warehouse_transfer_order as wave_group_reference (NULL on pre-existing rows until next full refresh/churn). Wave header metadata (T311) still missing."
     warehouse360_dependency: true
     affects_uat: true
     status: SOURCE_GUARDED_DATAGAPNOTICE
