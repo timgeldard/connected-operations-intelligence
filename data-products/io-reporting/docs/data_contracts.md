@@ -14,7 +14,7 @@ This document defines the formal data contracts for the key Silver and Gold laye
 * **Delete Handling**: CDC tracking via Aecorsoft `RecordActivity`. Deletes are applied directly as hard deletes (`apply_as_deletes`).
 * **Sequence / Watermark Column**: `_replicated_at` (derived from `AEDATTM`)
 * **Row-Level Security**: Plant-level filter (`plant_access_filter`) applied to the `plant_code` column.
-* **Freshness Expectation**: Silver operational tables refresh on the scheduled refresh-cadence job (daily at 05:30 Europe/London in UAT; on-demand otherwise), so data freshness is "as of the last cadence run", not near-real-time.
+* **Freshness Expectation**: Silver operational tables refresh on the scheduled refresh-cadence job (daily at 05:30 Europe/London in environments where the schedule is enabled — currently UAT; production inherits the same schedule at cutover. On-demand runs otherwise), so data freshness is "as of the last cadence run", not near-real-time.
 * **Known Caveats**: Due to the stream-static join for recipe enrichment, the `production_line` field reflects the recipe classification at the time the process order last changed (not necessarily today's classification if the recipe is reclassified later for a closed/unchanged order).
 
 ### 2. `silver.goods_movement`
@@ -24,7 +24,7 @@ This document defines the formal data contracts for the key Silver and Gold laye
 * **Delete Handling**: Hard deletes tracked via Aecorsoft `RecordActivity`.
 * **Sequence / Watermark Column**: `_replicated_at`
 * **Row-Level Security**: Enforced via `plant_code`.
-* **Freshness Expectation**: Silver operational tables refresh on the scheduled refresh-cadence job (daily at 05:30 Europe/London in UAT; on-demand otherwise), so data freshness is "as of the last cadence run", not near-real-time.
+* **Freshness Expectation**: Silver operational tables refresh on the scheduled refresh-cadence job (daily at 05:30 Europe/London in environments where the schedule is enabled — currently UAT; production inherits the same schedule at cutover. On-demand runs otherwise), so data freshness is "as of the last cadence run", not near-real-time.
 
 ### 3. `silver.storage_bin`
 * **Grain**: 1 row per occupancy slot — a physical bin plus its occupancy key (`warehouse_number` + `storage_type` + `bin_code` + `_storage_bin_occupancy_key`). An occupied bin yields one row per quant (`LQNUM`); an empty bin yields a single `__EMPTY__` row.
