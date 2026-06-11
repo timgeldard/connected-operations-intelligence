@@ -152,6 +152,8 @@ GOLD_TABLES = [
     "gold_wm_order_operations",
     "gold_wm_downtime_pareto",
     "gold_wm_downtime_event_detail",
+    "gold_wm_order_journey_summary",
+    "gold_wm_order_journey_events",
     # spc_gold.py
     "gold_spc_quality_metric_subgroup",
 ]

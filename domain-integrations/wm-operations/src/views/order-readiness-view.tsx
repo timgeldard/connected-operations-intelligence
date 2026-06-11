@@ -180,6 +180,7 @@ export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrd
           orderLabel={drillOrder.label}
           onClose={() => setDrillOrder(null)}
           onOpenProcessOrder={onOpenProcessOrder}
+          onNavigateToView={onNavigateToView}
         />
       )}
     </section>

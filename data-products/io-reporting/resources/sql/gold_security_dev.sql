@@ -245,6 +245,14 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_downtime_ev
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_downtime_event_detail;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_downtime_event_detail_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_journey_summary_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_order_journey_summary;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_journey_summary_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_journey_events_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_order_journey_events;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_journey_events_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_spc_quality_metric_subgroup_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_spc_quality_metric_subgroup;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_spc_quality_metric_subgroup_secured TO `users`;

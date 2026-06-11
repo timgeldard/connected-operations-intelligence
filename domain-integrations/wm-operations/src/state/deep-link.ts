@@ -21,3 +21,26 @@ export function peekWorklistDeepLink(): WorklistDeepLink | null {
 export function clearWorklistDeepLink(): void {
   pending = null
 }
+
+// ── Order Journey deep link ──────────────────────────────────────────────────
+
+export interface OrderJourneyDeepLink {
+  plantId?: string
+  orderId?: string
+}
+
+let pendingOrderJourney: OrderJourneyDeepLink | null = null
+
+export function setOrderJourneyDeepLink(link: OrderJourneyDeepLink): void {
+  pendingOrderJourney = link
+}
+
+/** Read the pending order journey deep link WITHOUT clearing it — safe to call during render. */
+export function peekOrderJourneyDeepLink(): OrderJourneyDeepLink | null {
+  return pendingOrderJourney
+}
+
+/** Clear the pending order journey deep link. Call from an effect after the consumer has committed. */
+export function clearOrderJourneyDeepLink(): void {
+  pendingOrderJourney = null
+}

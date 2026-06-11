@@ -19,6 +19,7 @@ from adapters.wm_operations.wm_operations_databricks_adapter import (
     WmOperationsRepository,
     WmOperatorActivityRequest,
     WmOrderComponentsRequest,
+    WmOrderJourneyEventsRequest,
     WmOrderOperationsRequest,
     WmOrderReadinessRequest,
     WmOutboundRequest,
@@ -33,6 +34,7 @@ from adapters.wm_operations.wm_operations_databricks_adapter import (
     map_wm_movements_rows,
     map_wm_operator_activity_rows,
     map_wm_order_components_rows,
+    map_wm_order_journey_events_rows,
     map_wm_order_operations_rows,
     map_wm_order_readiness_rows,
     map_wm_outbound_rows,
@@ -406,6 +408,37 @@ async def wm_operations_order_operations(
     rows, spec = await run_repository_fetch(lambda: repo.fetch_order_operations(req))
     set_databricks_response_headers(response, spec)
     return map_wm_order_operations_rows(rows)
+
+
+class WmOrderJourneyEventItem(BaseModel):
+    model_config = ConfigDict(extra='forbid', populate_by_name=True)
+    plant_id: str = Field(..., alias='plantId')
+    order_id: str = Field(..., alias='orderId')
+    event_seq: Optional[int] = Field(None, alias='eventSeq')
+    event_ts: Optional[str] = Field(None, alias='eventTs')
+    event_type: str = Field(..., alias='eventType')
+    qty: Optional[float] = None
+    uom: Optional[str] = None
+    reference_id: Optional[str] = Field(None, alias='referenceId')
+    detail: Optional[str] = None
+
+
+@router.get("/wm-operations/order-journey-events", response_model=list[WmOrderJourneyEventItem])
+async def wm_operations_order_journey_events(
+    response: Response,
+    plant_id: str,
+    order_id: str,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[WmOrderJourneyEventItem]:
+    """Per-order event timeline for the Order Journey Timeline view — databricks-api only."""
+    _require_databricks_mode("WM Operations order journey events")
+    req = WmOrderJourneyEventsRequest(plant_id=plant_id.strip(), order_id=order_id.strip())
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_order_journey_events(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_order_journey_events_rows(rows)
 
 
 class WmOperatorActivityItem(BaseModel):

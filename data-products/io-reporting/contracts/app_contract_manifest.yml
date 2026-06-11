@@ -3408,3 +3408,185 @@ contracts:
       - name: is_overdue
         type: boolean
         required: false
+
+  - id: wm_operations.order_journey
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Order/Batch Journey Timeline summary -- one row per plant_id x order_id. Milestones
+      aggregated from five silver sources (process_order, TR/TO via TBNUM, process_order_operation,
+      pi_sheet_execution, goods_movement) to populate the flagship per-order journey view.
+      All milestone timestamps nullable; PI columns absent at plants without PI data (P806).
+      Derived lag hours (release->staged->produced->GR) only populated when both endpoints exist.
+      No date-relative columns -- no _live wrapper; reads _secured directly.
+    source_view: vw_consumption_wm_operations_order_journey
+    grain: one row per plant_id and order_id
+    primary_key:
+      - plant_id
+      - order_id
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: order_id
+        type: string
+        required: true
+      - name: material_code
+        type: string
+        required: false
+      - name: material_name
+        type: string
+        required: false
+      - name: order_qty
+        type: double
+        required: false
+      - name: uom
+        type: string
+        required: false
+      - name: production_line
+        type: string
+        required: false
+      - name: order_created_ts
+        type: timestamp
+        required: false
+      - name: release_date
+        type: date
+        required: false
+      - name: scheduled_start_date
+        type: date
+        required: false
+      - name: scheduled_finish_date
+        type: date
+        required: false
+      - name: first_tr_created_ts
+        type: timestamp
+        required: false
+      - name: staging_tr_count
+        type: integer
+        required: false
+      - name: staging_first_confirmed_ts
+        type: timestamp
+        required: false
+      - name: staging_last_confirmed_ts
+        type: timestamp
+        required: false
+      - name: staged_item_count
+        type: integer
+        required: false
+      - name: staged_item_total
+        type: integer
+        required: false
+      - name: production_first_actual_start
+        type: timestamp
+        required: false
+      - name: production_last_actual_finish
+        type: timestamp
+        required: false
+      - name: confirmed_yield_qty
+        type: double
+        required: false
+      - name: confirmed_scrap_qty
+        type: double
+        required: false
+      - name: pi_first_start
+        type: timestamp
+        required: false
+      - name: pi_last_end
+        type: timestamp
+        required: false
+      - name: first_gr_posting_date
+        type: date
+        required: false
+      - name: last_gr_posting_date
+        type: date
+        required: false
+      - name: gr_qty
+        type: double
+        required: false
+      - name: issue_qty
+        type: double
+        required: false
+      - name: delivery_count
+        type: integer
+        required: false
+      - name: qm_lot_count
+        type: integer
+        required: false
+      - name: qm_open_lot_count
+        type: integer
+        required: false
+      - name: release_to_first_tr_hours
+        type: double
+        required: false
+      - name: tr_to_staged_hours
+        type: double
+        required: false
+      - name: staged_to_production_hours
+        type: double
+        required: false
+      - name: production_to_gr_hours
+        type: double
+        required: false
+
+  - id: wm_operations.order_journey_events
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Order/Batch Journey Timeline events -- long-format per-order event feed. One row per
+      plant_id x order_id x event_seq. Event types: ORDER_CREATED, RELEASED, TR_CREATED,
+      STAGING_CONFIRMED, PI_START, OPERATION_CONFIRMED, PI_END, GR_POSTED, COMPONENT_ISSUED,
+      QM_LOT_CREATED, QM_UD_TAKEN. PI and QM events absent at plants without those silver tables.
+      event_seq is row_number ordered by event_ts NULLS LAST within the order.
+      No date-relative columns -- no _live wrapper; reads _secured directly.
+    source_view: vw_consumption_wm_operations_order_journey_events
+    grain: one row per plant_id, order_id, and event_seq
+    primary_key:
+      - plant_id
+      - order_id
+      - event_seq
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: order_id
+        type: string
+        required: true
+      - name: event_seq
+        type: integer
+        required: true
+      - name: event_ts
+        type: timestamp
+        required: false
+      - name: event_type
+        type: string
+        required: true
+      - name: qty
+        type: double
+        required: false
+      - name: uom
+        type: string
+        required: false
+      - name: reference_id
+        type: string
+        required: false
+      - name: detail
+        type: string
+        required: false

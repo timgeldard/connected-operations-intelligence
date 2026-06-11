@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useWmBatchMovements, useWmList, useWmOrderComponents, useWmOrderOperations } from '../adapters/wm-operations-queries.js'
 import type { WmOperatorActivityItem, WmWorklistItem } from '../adapters/wm-operations-adapter.js'
+import { setOrderJourneyDeepLink } from '../state/deep-link.js'
 import { EmptyNote, LoadingRows, formatDate, formatQty } from './kerry.js'
 
 function Overlay({ title, subtitle, onClose, children }: {
@@ -26,12 +27,13 @@ function Overlay({ title, subtitle, onClose, children }: {
 }
 
 /** Screen 1 — component-level "why isn't this order ready?" drill-through. */
-export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose, onOpenProcessOrder }: {
+export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose, onOpenProcessOrder, onNavigateToView }: {
   readonly plantId: string
   readonly orderId: string
   readonly orderLabel?: string
   readonly onClose: () => void
   readonly onOpenProcessOrder?: (orderId: string) => void
+  readonly onNavigateToView?: (viewId: string) => void
 }) {
   const opsResult = useWmOrderOperations({ plantId, orderId })
   const opsRows = opsResult.data?.ok ? opsResult.data.data : []
@@ -50,11 +52,25 @@ export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose, onOp
 
   return (
     <Overlay title={`Order ${orderId}`} subtitle={orderLabel ?? 'Component staging detail'} onClose={onClose}>
-      {onOpenProcessOrder && (
-        <div style={{ marginBottom: 10 }}>
-          <button type="button" className="kw-viewnav-tab" onClick={() => onOpenProcessOrder(orderId)}>
-            Open in Process Order Review →
-          </button>
+      {(onOpenProcessOrder || onNavigateToView) && (
+        <div style={{ marginBottom: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {onNavigateToView && (
+            <button
+              type="button"
+              className="kw-viewnav-tab"
+              onClick={() => {
+                setOrderJourneyDeepLink({ plantId, orderId })
+                onNavigateToView('order-journey')
+              }}
+            >
+              Open journey
+            </button>
+          )}
+          {onOpenProcessOrder && (
+            <button type="button" className="kw-viewnav-tab" onClick={() => onOpenProcessOrder(orderId)}>
+              Open in Process Order Review →
+            </button>
+          )}
         </div>
       )}
       {orderProductionLine && (

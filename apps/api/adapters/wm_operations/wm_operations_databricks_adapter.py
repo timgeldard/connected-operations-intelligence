@@ -614,6 +614,51 @@ def map_wm_order_operations_rows(rows: list[dict]) -> list[dict]:
     } for r in rows]
 
 
+# ── Order Journey Events (dedicated drill) ────────────────────────────────────
+
+@dataclass
+class WmOrderJourneyEventsRequest:
+    plant_id: str
+    order_id: str
+
+
+def get_wm_order_journey_events_spec(request: WmOrderJourneyEventsRequest) -> QuerySpec:
+    view = resolve_contract_object("wm_operations.order_journey_events", "wh360")
+    sql = f"""
+    SELECT
+        plant_id, order_id, event_seq, event_ts, event_type,
+        qty, uom, reference_id, detail
+    FROM {view}
+    WHERE plant_id = :plant_id AND order_id = :order_id
+    ORDER BY event_seq ASC
+    LIMIT 500
+    """
+    return QuerySpec(
+        name="wm_operations.get_order_journey_events",
+        module="wh360",
+        endpoint="/api/wm-operations/order-journey-events",
+        sql=sql,
+        params={"plant_id": request.plant_id, "order_id": request.order_id},
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "order_journey", "events"],
+        contract_id="wm_operations.order_journey_events",
+    )
+
+
+def map_wm_order_journey_events_rows(rows: list[dict]) -> list[dict]:
+    return [{
+        "plantId": _opt_str(r, "plant_id"),
+        "orderId": _opt_str(r, "order_id"),
+        "eventSeq": _safe_int(r.get("event_seq")),
+        "eventTs": _opt_str(r, "event_ts"),
+        "eventType": _opt_str(r, "event_type"),
+        "qty": _safe_float(r.get("qty")),
+        "uom": _opt_str(r, "uom"),
+        "referenceId": _opt_str(r, "reference_id"),
+        "detail": _opt_str(r, "detail"),
+    } for r in rows]
+
+
 # ── Operator activity ─────────────────────────────────────────────────────────
 
 @dataclass
@@ -1045,6 +1090,14 @@ class WmOperationsRepository:
             mapper=lambda rows: rows,
         )
 
+    async def fetch_order_journey_events(
+        self, request: WmOrderJourneyEventsRequest
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_order_journey_events_spec(request),
+            mapper=lambda rows: rows,
+        )
+
     async def fetch_operator_activity(
         self, request: WmOperatorActivityRequest
     ) -> tuple[list[dict], QuerySpec]:
@@ -1357,6 +1410,33 @@ SIMPLE_DATASETS: dict[str, dict] = {
         columns="plant_id, warehouse_id, worklist_tr_count",
         order_by="plant_id ASC, warehouse_id ASC",
         numeric=(), integer=("worklist_tr_count",), boolean=(), has_warehouse=False,
+    ),
+    "order_journey": dict(
+        contract="wm_operations.order_journey", endpoint="/api/wm-operations/order-journey",
+        columns=(
+            "plant_id, order_id, material_code, material_name, order_qty, uom, production_line, "
+            "order_created_ts, release_date, scheduled_start_date, scheduled_finish_date, "
+            "first_tr_created_ts, staging_tr_count, staging_first_confirmed_ts, "
+            "staging_last_confirmed_ts, staged_item_count, staged_item_total, "
+            "production_first_actual_start, production_last_actual_finish, "
+            "confirmed_yield_qty, confirmed_scrap_qty, "
+            "pi_first_start, pi_last_end, "
+            "first_gr_posting_date, last_gr_posting_date, gr_qty, issue_qty, delivery_count, "
+            "qm_lot_count, qm_open_lot_count, "
+            "release_to_first_tr_hours, tr_to_staged_hours, "
+            "staged_to_production_hours, production_to_gr_hours"
+        ),
+        order_by="scheduled_start_date DESC NULLS LAST",
+        numeric=(
+            "order_qty", "confirmed_yield_qty", "confirmed_scrap_qty", "gr_qty", "issue_qty",
+            "release_to_first_tr_hours", "tr_to_staged_hours",
+            "staged_to_production_hours", "production_to_gr_hours",
+        ),
+        integer=(
+            "staging_tr_count", "staged_item_count", "staged_item_total",
+            "delivery_count", "qm_lot_count", "qm_open_lot_count",
+        ),
+        boolean=(), has_warehouse=False,
     ),
 }
 

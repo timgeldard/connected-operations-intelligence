@@ -14,6 +14,7 @@ import { WorklistSummaryStrip } from '../panels/worklist-summary-strip.js'
 export interface StagingWorklistViewProps {
   readonly request: WmOperationsAdapterRequest
   readonly onOpenProcessOrder?: (orderId: string) => void
+  readonly onNavigateToView?: (viewId: string) => void
 }
 
 const WORK_AREA_OPTIONS: Array<{ value: WmWorkArea | ''; label: string }> = [
@@ -43,7 +44,7 @@ function restoreFilters(): { workArea: string; status: string; queue: string; ca
   }
 }
 
-export function StagingWorklistView({ request, onOpenProcessOrder }: StagingWorklistViewProps) {
+export function StagingWorklistView({ request, onOpenProcessOrder, onNavigateToView }: StagingWorklistViewProps) {
   // Lazy initialisers: peek (no mutation) is render-safe; localStorage is read once per mount,
   // not on every render. The deep link is cleared in an effect AFTER the mount commits, so
   // concurrent/StrictMode re-renders cannot drop it.
@@ -157,6 +158,7 @@ export function StagingWorklistView({ request, onOpenProcessOrder }: StagingWork
           orderId={drillOrder.orderId}
           onClose={() => setDrillOrder(null)}
           onOpenProcessOrder={onOpenProcessOrder}
+          onNavigateToView={onNavigateToView}
         />
       )}
     </section>

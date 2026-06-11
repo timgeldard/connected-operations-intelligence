@@ -351,6 +351,22 @@ export class WmOperationsAdapter {
     })
     return this.fetchList<WmBatchMovementItem>(url)
   }
+
+  async getOrderJourney(request: WmDrillRequest): Promise<AdapterResult<WmOrderJourneySummaryItem[]>> {
+    const url = this.buildUrl('/api/wm-operations/order-journey', {
+      plant_id: request.plantId,
+      limit: request.limit,
+    })
+    return this.fetchList<WmOrderJourneySummaryItem>(url)
+  }
+
+  async getOrderJourneyEvents(request: WmDrillRequest): Promise<AdapterResult<WmOrderJourneyEventItem[]>> {
+    const url = this.buildUrl('/api/wm-operations/order-journey-events', {
+      plant_id: request.plantId,
+      order_id: request.orderId,
+    })
+    return this.fetchList<WmOrderJourneyEventItem>(url)
+  }
 }
 
 export interface WmOrderComponentItem {
@@ -511,6 +527,55 @@ export interface WmDowntimeEvent {
   readonly durationMinutes: number | null
   readonly reportedByUser: string | null
   readonly comment: string | null
+}
+
+export interface WmOrderJourneySummaryItem {
+  readonly plantId: string
+  readonly orderId: string
+  readonly materialCode: string | null
+  readonly materialName: string | null
+  readonly orderQty: number | null
+  readonly uom: string | null
+  readonly productionLine: string | null
+  readonly orderCreatedTs: string | null
+  readonly releaseDate: string | null
+  readonly scheduledStartDate: string | null
+  readonly scheduledFinishDate: string | null
+  readonly firstTrCreatedTs: string | null
+  readonly stagingTrCount: number | null
+  readonly stagingFirstConfirmedTs: string | null
+  readonly stagingLastConfirmedTs: string | null
+  readonly stagedItemCount: number | null
+  readonly stagedItemTotal: number | null
+  readonly productionFirstActualStart: string | null
+  readonly productionLastActualFinish: string | null
+  readonly confirmedYieldQty: number | null
+  readonly confirmedScrapQty: number | null
+  readonly piFirstStart: string | null
+  readonly piLastEnd: string | null
+  readonly firstGrPostingDate: string | null
+  readonly lastGrPostingDate: string | null
+  readonly grQty: number | null
+  readonly issueQty: number | null
+  readonly deliveryCount: number | null
+  readonly qmLotCount: number | null
+  readonly qmOpenLotCount: number | null
+  readonly releaseToFirstTrHours: number | null
+  readonly trToStagedHours: number | null
+  readonly stagedToProductionHours: number | null
+  readonly productionToGrHours: number | null
+}
+
+export interface WmOrderJourneyEventItem {
+  readonly plantId: string
+  readonly orderId: string
+  readonly eventSeq: number | null
+  readonly eventTs: string | null
+  readonly eventType: string
+  readonly qty: number | null
+  readonly uom: string | null
+  readonly referenceId: string | null
+  readonly detail: string | null
 }
 
 export interface WmDrillRequest {
