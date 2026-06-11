@@ -26,6 +26,7 @@ CONFIG_TABLES = {
             "region": "STRING", "business_unit": "STRING", "timezone": "STRING",
             "sap_system_id": "STRING", "go_live_status": "STRING", "wm_enabled_flag": "BOOLEAN",
             "hu_enabled_flag": "BOOLEAN", "qm_enabled_flag": "BOOLEAN", "spc_enabled_flag": "BOOLEAN",
+            "lifecycle_status": "STRING",
             "batch_managed_flag": "BOOLEAN",
             "process_manufacturing_flag": "BOOLEAN", "default_language_code": "STRING",
             "valid_from": "DATE", "valid_to": "DATE", "is_active": "BOOLEAN",

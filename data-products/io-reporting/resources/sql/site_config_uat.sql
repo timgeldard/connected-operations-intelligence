@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS connected_plant_uat.silver_io_reporting.site_config_p
   hu_enabled_flag BOOLEAN,
   qm_enabled_flag BOOLEAN,
   spc_enabled_flag BOOLEAN,
+  lifecycle_status STRING,
   batch_managed_flag BOOLEAN,
   process_manufacturing_flag BOOLEAN,
   default_language_code STRING,
@@ -27,11 +28,11 @@ CREATE TABLE IF NOT EXISTS connected_plant_uat.silver_io_reporting.site_config_p
 
 BEGIN;
 DELETE FROM connected_plant_uat.silver_io_reporting.site_config_plant WHERE config_owner = 'wm-config-owner';
-INSERT INTO connected_plant_uat.silver_io_reporting.site_config_plant (plant_code, plant_name, country, region, business_unit, timezone, sap_system_id, go_live_status, wm_enabled_flag, hu_enabled_flag, qm_enabled_flag, spc_enabled_flag, batch_managed_flag, process_manufacturing_flag, default_language_code, valid_from, valid_to, is_active, config_owner, last_validated_at) VALUES
-  ('C061', 'Portbury [MFG]', 'GB', 'Europe', 'Operations', 'Europe/London', 'ECC', 'PRODUCTION', true, true, true, true, true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-03'),
-  ('P817', 'Jackson [MFG]', 'US', 'Americas', 'Operations', 'America/Chicago', 'ECC', 'PRODUCTION', true, true, true, true, true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-08'),
-  ('P806', 'Clark North [MFG]', 'US', 'Americas', 'Operations', 'America/New_York', 'ECC', 'PRODUCTION', true, true, true, true, true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-11'),
-  ('C351', 'Olesnica [MFG]', 'PL', 'Europe', 'Operations', 'Europe/Warsaw', 'ECC', 'PRODUCTION', true, true, true, true, true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-11');
+INSERT INTO connected_plant_uat.silver_io_reporting.site_config_plant (plant_code, plant_name, country, region, business_unit, timezone, sap_system_id, go_live_status, wm_enabled_flag, hu_enabled_flag, qm_enabled_flag, spc_enabled_flag, lifecycle_status, batch_managed_flag, process_manufacturing_flag, default_language_code, valid_from, valid_to, is_active, config_owner, last_validated_at) VALUES
+  ('C061', 'Portbury [MFG]', 'GB', 'Europe', 'Operations', 'Europe/London', 'ECC', 'PRODUCTION', true, true, true, true, 'ACTIVE', true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-03'),
+  ('P817', 'Jackson [MFG]', 'US', 'Americas', 'Operations', 'America/Chicago', 'ECC', 'PRODUCTION', true, true, true, true, 'ACTIVE', true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-08'),
+  ('P806', 'Clark North [MFG]', 'US', 'Americas', 'Operations', 'America/New_York', 'ECC', 'PRODUCTION', true, true, true, true, 'ACTIVE', true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-11'),
+  ('C351', 'Olesnica [MFG]', 'PL', 'Europe', 'Operations', 'Europe/Warsaw', 'ECC', 'PRODUCTION', true, true, true, true, 'ACTIVE', true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-11');
 COMMIT;
 
 -- ── site_config_warehouse ──

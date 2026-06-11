@@ -51,6 +51,18 @@ that requires BOTH qm_enabled_flag AND spc_enabled_flag.
 technical_validated / business_validated are NOT yet first-class columns on the config (closest signal
 is the deployment_mode shakedown-vs-full_validation flag + last_validated_at). They are documented in
 the contract as a Phase-2 schema addition and are NOT silently assumed true here.
+
+Estate-wide lifecycle dimension (ADR 016 — trace T2 prerequisite):
+  The `lifecycle_status` column on `site_config_plant` (ACTIVE for all onboarded plants) and the
+  separate silver `site_lifecycle` table (sourced from `site_lifecycle_config`, seeded from the
+  ~550-plant review CSV) serve a DIFFERENT concern from the product-area onboarding flags above.
+  The onboarding flags (is_active, wm_enabled_flag, etc.) govern whether a plant is IN SCOPE for
+  io-reporting pipelines. The lifecycle dimension governs whether a plant is anchorable / visible /
+  excluded for ESTATE-level products such as the trace product (ADR 016: ACTIVE=anchorable+visible,
+  CLOSED=visible-not-anchorable, SOLD/DIVESTED_ON_SAP=excluded). These two axes are deliberately
+  separate: a plant can be lifecycle=ACTIVE (visible in trace) without being onboarded to io-reporting,
+  and vice versa. The `_plant_gate.py` gate semantics do NOT change; site_lifecycle is read directly
+  by the trace product, not via this gate.
 """
 from pyspark.sql import DataFrame, Window
 from pyspark.sql import functions as F
