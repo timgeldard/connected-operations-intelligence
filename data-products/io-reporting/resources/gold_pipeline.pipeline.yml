@@ -60,6 +60,8 @@ resources:
             path: ../gold/wm_operations_gold.py
         - file:
             path: ../gold/spc_gold.py
+        - file:
+            path: ../gold/trace_gold.py
 
       # Editable-install the synced bundle root so the `gold` package is importable at DLT runtime
       # (each gold module does `from gold._shared import ...`). Without this: ModuleNotFoundError.
