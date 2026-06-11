@@ -6,7 +6,6 @@
  * Phase 5: Maintenance & Reliability workspace.
  */
 
-export { maintenanceWorkspaceRegistration } from './registration.js'
 
 export {
   MaintenanceConstraintsAdapter,

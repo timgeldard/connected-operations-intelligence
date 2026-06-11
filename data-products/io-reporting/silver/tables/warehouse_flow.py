@@ -11,6 +11,7 @@ Tables:
 import dlt
 from pyspark.sql import functions as F
 
+from silver._plant_gate import apply_plant_gate
 from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
 
 # ── 1. RESERVATION REQUIREMENT ────────────────────────────────────────────────
@@ -26,7 +27,7 @@ from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, 
 def stg_reservation_requirement():
     spark = get_spark()
     src = spark.readStream.table(f"{BRONZE}.reservationrequirement_resb")
-    return src.select(
+    gated = src.select(
         # ── Natural key
         F.col("RSNUM").alias("reservation_number"),
         F.col("RSPOS").alias("reservation_item"),
@@ -66,6 +67,9 @@ def stg_reservation_requirement():
         F.col("AERUNID").alias("_run_id"),
         F.col("AERECNO").alias("_record_seq"),
     )
+    # Stage gate: scope to onboarded plants before SCD1 (stream-static broadcast join on plant_code).
+    # Delete records ('D') carry WERKS from RESB, so C061/P817 deletes pass the gate.
+    return apply_plant_gate(gated, "plant_code", "ioreporting", spark=spark)
 
 dlt.create_streaming_table(
     name="reservation_requirement",
@@ -111,10 +115,17 @@ def stg_outbound_delivery():
     changed_keys = likp_changes.unionByName(lips_changes)
     likp = spark.read.table(f"{BRONZE}.deliveryobjects_likp")
     lips = spark.read.table(f"{BRONZE}.deliveryobjects_lips")
+    # Pre-gate pushdown: shrink the wide static LIPS to onboarded plants (same plant axis as the final
+    # apply_plant_gate) BEFORE the changed-keys fan-out join. Filter-only (plant gate adds no columns);
+    # row-equivalent to gating at the end, but the join's static side drops from ~15.6M to the
+    # onboarded-plant subset. The final apply_plant_gate is kept (authoritative + coverage-guard).
+    lips = apply_plant_gate(lips, "WERKS", "ioreporting", spark=spark)
 
     delivery_items_to_refresh = (
         changed_keys.alias("c")
-        .join(lips.alias("i"), ["VBELN", "MANDT"], "left")
+        # .hint("merge"): the pre-filtered LIPS is small-but-wide; force sort-merge so it is not
+        # auto-broadcast (which would re-introduce the wide-row OOM the header merge hints prevent).
+        .join(lips.alias("i").hint("merge"), ["VBELN", "MANDT"], "left")
         .select(
             "i.*",
             F.col("c.VBELN").alias("_change_vbeln"),
@@ -125,9 +136,12 @@ def stg_outbound_delivery():
         )
     )
 
-    return (
+    gated = (
         delivery_items_to_refresh.alias("i")
-        .join(likp.alias("h"), ["VBELN", "MANDT"], "left")
+        # .hint("merge"): force sort-merge on the wide LIKP header join — Photon's default broadcast
+        # hash join OOMs/spills on the wide reconstructed item rows (same pattern as
+        # warehouse_transfer_order's LTAK join).
+        .join(likp.alias("h").hint("merge"), ["VBELN", "MANDT"], "left")
         .select(
             # ── Natural key
             strip_zeros(F.coalesce(F.col("i.VBELN"), F.col("i._change_vbeln"))).alias("delivery_number"),
@@ -201,6 +215,10 @@ def stg_outbound_delivery():
             ),
         )
     )
+    # Stage gate: scope to onboarded plants before SCD1 (stream-static broadcast join on plant_code).
+    # Header-only deletes with a purged item carry a null plant_code and are dropped — consistent with
+    # the documented "header-only delete can't cascade" limitation below.
+    return apply_plant_gate(gated, "plant_code", "ioreporting", spark=spark)
 
 dlt.create_streaming_table(
     name="outbound_delivery",

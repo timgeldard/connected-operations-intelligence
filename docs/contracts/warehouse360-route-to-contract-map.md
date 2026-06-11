@@ -5,6 +5,13 @@ This map explains the intended governed runtime path for the Warehouse360 cockpi
 > [!WARNING]
 > The application is **not yet cut over** to governed mode. These mappings define the configuration that will take effect once the system is live-validated and `WAREHOUSE360_SOURCE_MODE` is set to `governed_contracts`.
 
+> [!NOTE]
+> **DEV shape status (2026-06-08):** all 7 first-wave consumption views — including the 5 routed views below
+> — now **create** in DEV (Gold update `73ebef43`); see
+> [DEV live-validation results](../architecture/warehouse360-dev-live-validation-results.md). This is
+> technical-shape only: the `Status` column stays `not-live-validated` because RLS/entitlement is unproven
+> (no representative identities tested) and staging/stock_exceptions are created-empty in the shakedown.
+
 | API route / route family | Adapter Method | QuerySpec Name | Contract ID | Source View | Source Mode | Status |
 |---|---|---|---|---|---|---|
 | `/api/warehouse360/overview` | `get_warehouse_overview_spec` | `warehouse360.get_overview` | `warehouse360.overview` | `vw_consumption_warehouse360_overview` | `governed_contracts` | not-live-validated |

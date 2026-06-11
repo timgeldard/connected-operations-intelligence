@@ -1,0 +1,35 @@
+{
+  "name": "@connectio/di-wm-operations",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src/**/*.{ts,tsx}"
+  },
+  "devDependencies": {
+    "@connectio/test-support": "workspace:*",
+    "@testing-library/jest-dom": "6.6.3",
+    "@testing-library/react": "16.3.0",
+    "@types/react": "18.3.1",
+    "@types/react-dom": "18.3.0",
+    "@vitejs/plugin-react": "4.3.4",
+    "jsdom": "26.1.0",
+    "vitest": "3.2.4"
+  },
+  "dependencies": {
+    "@connectio/data-contracts": "workspace:*",
+    "@connectio/design-system": "workspace:*",
+    "@connectio/evidence-panel-runtime": "workspace:*",
+    "@connectio/product-model": "workspace:*",
+    "@connectio/source-adapters": "workspace:*",
+    "@connectio/workspace-runtime": "workspace:*",
+    "@tanstack/react-query": "^5",
+    "react": "^18.3.1"
+  }
+}

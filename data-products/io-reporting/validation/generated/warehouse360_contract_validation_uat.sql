@@ -112,7 +112,7 @@ LIMIT 20;
 -- ============================================================================
 -- Contract: warehouse360.staging_workload
 -- View: connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_staging_workload
--- Grain: one row per plant_id, process order, reservation number, and batch ID
+-- Grain: one row per plant_id and process order (order grain — first wave)
 -- ============================================================================
 
 DESCRIBE TABLE connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_staging_workload;
@@ -126,16 +126,14 @@ SELECT
   'vw_consumption_warehouse360_staging_workload' AS view_name,
   COUNT(*) AS total_rows,
   COUNT_IF(plant_id IS NULL) AS null_plant_id_rows,
-  COUNT_IF(order_id IS NULL) AS null_order_id_rows,
-  COUNT_IF(reservation_no IS NULL) AS null_reservation_no_rows,
-  COUNT_IF(batch_id IS NULL) AS null_batch_id_rows
+  COUNT_IF(order_id IS NULL) AS null_order_id_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_staging_workload;
 
 SELECT
   'vw_consumption_warehouse360_staging_workload' AS view_name,
   COUNT(*) AS total_rows,
-  COUNT(DISTINCT struct(plant_id, order_id, reservation_no, batch_id)) AS distinct_pk_rows,
-  COUNT(*) - COUNT(DISTINCT struct(plant_id, order_id, reservation_no, batch_id)) AS duplicate_pk_rows
+  COUNT(DISTINCT struct(plant_id, order_id)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(plant_id, order_id)) AS duplicate_pk_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_staging_workload;
 
 SELECT
@@ -149,7 +147,7 @@ LIMIT 20;
 -- ============================================================================
 -- Contract: warehouse360.stock_exceptions
 -- View: connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_stock_exceptions
--- Grain: one row per plant_id, material_id, batch_id, storage location, and exception type
+-- Grain: one row per plant_id, material_id, batch_id, and exception type
 -- ============================================================================
 
 DESCRIBE TABLE connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_stock_exceptions;
@@ -165,15 +163,14 @@ SELECT
   COUNT_IF(plant_id IS NULL) AS null_plant_id_rows,
   COUNT_IF(material_id IS NULL) AS null_material_id_rows,
   COUNT_IF(batch_id IS NULL) AS null_batch_id_rows,
-  COUNT_IF(storage_loc IS NULL) AS null_storage_loc_rows,
   COUNT_IF(exception_type IS NULL) AS null_exception_type_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_stock_exceptions;
 
 SELECT
   'vw_consumption_warehouse360_stock_exceptions' AS view_name,
   COUNT(*) AS total_rows,
-  COUNT(DISTINCT struct(plant_id, material_id, batch_id, storage_loc, exception_type)) AS distinct_pk_rows,
-  COUNT(*) - COUNT(DISTINCT struct(plant_id, material_id, batch_id, storage_loc, exception_type)) AS duplicate_pk_rows
+  COUNT(DISTINCT struct(plant_id, material_id, batch_id, exception_type)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(plant_id, material_id, batch_id, exception_type)) AS duplicate_pk_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_stock_exceptions;
 
 SELECT
@@ -222,7 +219,7 @@ LIMIT 20;
 -- ============================================================================
 -- Contract: warehouse360.im_wm_reconciliation
 -- View: connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_im_wm_reconciliation
--- Grain: one row per plant_id, material_id, batch_id, storage location, bin, and exception type
+-- Grain: one row per plant_id, material_id, batch_id, and exception type (aggregate exception summary)
 -- ============================================================================
 
 DESCRIBE TABLE connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_im_wm_reconciliation;
@@ -237,17 +234,14 @@ SELECT
   COUNT(*) AS total_rows,
   COUNT_IF(plant_id IS NULL) AS null_plant_id_rows,
   COUNT_IF(material_id IS NULL) AS null_material_id_rows,
-  COUNT_IF(batch_id IS NULL) AS null_batch_id_rows,
-  COUNT_IF(storage_loc IS NULL) AS null_storage_loc_rows,
-  COUNT_IF(bin_id IS NULL) AS null_bin_id_rows,
   COUNT_IF(exception_type IS NULL) AS null_exception_type_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_im_wm_reconciliation;
 
 SELECT
   'vw_consumption_warehouse360_im_wm_reconciliation' AS view_name,
   COUNT(*) AS total_rows,
-  COUNT(DISTINCT struct(plant_id, material_id, batch_id, storage_loc, bin_id, exception_type)) AS distinct_pk_rows,
-  COUNT(*) - COUNT(DISTINCT struct(plant_id, material_id, batch_id, storage_loc, bin_id, exception_type)) AS duplicate_pk_rows
+  COUNT(DISTINCT struct(plant_id, material_id, batch_id, exception_type)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(plant_id, material_id, batch_id, exception_type)) AS duplicate_pk_rows
 FROM connected_plant_uat.gold_io_reporting.vw_consumption_warehouse360_im_wm_reconciliation;
 
 SELECT

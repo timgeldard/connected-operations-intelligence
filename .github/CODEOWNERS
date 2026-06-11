@@ -1,0 +1,17 @@
+# Code owners — required reviewers for matched paths.
+#
+# Goal: security- and CI-affecting changes must not be self-approved. The sensitive paths below should
+# list a SECOND owner (a team or a maintainer who is not the usual author) in addition to @timgeldard.
+#
+# TODO: replace `@timgeldard` on the sensitive paths with (or add) a second reviewer/team handle, e.g.
+#       `@<org>/connected-plant-maintainers`, so these paths require review from someone other than the
+#       change author. Left as @timgeldard for now because the second owner handle is not known here.
+
+# Default owner for everything.
+*                                   @timgeldard
+
+# Security- and CI-affecting paths — should require a second, non-authoring reviewer (see TODO above).
+/.github/                           @timgeldard
+/data-products/io-reporting/        @timgeldard
+/SECURITY.md                        @timgeldard
+/scripts/ci/                        @timgeldard

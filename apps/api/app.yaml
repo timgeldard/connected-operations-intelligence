@@ -41,9 +41,6 @@ env:
   - name: V1_TRACE_API_BASE_URL
     valueFrom: connectio-v2/v1-trace-api-base-url
 
-  - name: V1_WH360_API_BASE_URL
-    valueFrom: connectio-v2/v1-wh360-api-base-url
-
   - name: V1_POH_API_BASE_URL
     valueFrom: connectio-v2/v1-poh-api-base-url
 
@@ -51,7 +48,8 @@ env:
     valueFrom: connectio-v2/v1-cq-api-base-url
 
   # Backend adapter mode: "legacy-api" (proxy to V1) or "databricks-api" (native reads).
-  # Currently: databricks-api — native Databricks reads active for POH and CQ Lab plants.
+  # Currently: databricks-api — native Databricks reads active. Warehouse360 is fully
+  # governed (no V1 WH360 proxy remains; V1_WH360_API_BASE_URL removed).
   - name: BACKEND_ADAPTER_MODE
     value: databricks-api
 
@@ -64,10 +62,6 @@ env:
 
   - name: SQL_WAREHOUSE_ID
     value: e76480b94bea6ed5
-
-  # App behaviour (frontend adapter mode — baked into JS bundle at build time, informational only)
-  - name: ADAPTER_MODE
-    value: legacy-api
 
   # Domain catalog/schema — non-secret config set as literals.
   # Per-environment values live in the targets section of databricks.yml.
@@ -86,13 +80,30 @@ env:
     value: gold
 
   # WH360 catalog/schema — required for GET /api/warehouse360/* native routes.
-  # WH360_SCHEMA defaults to "wh360" in object_resolver.py — matches UAT schema connected_plant_uat.wh360.*
+  # GOVERNED WIRING (Gate B / validation_fixture, UAT): point the app at the governed serving schema so it
+  # reads the RLS-filtered vw_consumption_warehouse360_* views instead of legacy connected_plant_uat.wh360.*.
+  # WH360_SCHEMA MUST be set explicitly — object_resolver.py defaults it to "wh360" (legacy).
   - name: WH360_CATALOG
     value: connected_plant_uat
+
+  - name: WH360_SCHEMA
+    value: gold_io_reporting
+
+  # warehouse360_databricks_adapter.py REQUIRES this to be 'legacy_wh360' or 'governed_contracts' (raises if
+  # unset). governed_contracts → each route resolves to the vw_consumption_warehouse360_* governed views,
+  # RLS-filtered per end-user via current_user() (identity passed through as x-forwarded-access-token).
+  - name: WAREHOUSE360_SOURCE_MODE
+    value: governed_contracts
 
   # Auth diagnostics — DISABLED. OAuth headers confirmed 2026-05-17.
   # Re-enable by adding: - name: ENABLE_AUTH_DIAGNOSTICS / value: "true"
   # GET /api/diagnostics/auth-headers returns token_present/user_header_present (never raw token).
+
+  # Contract manifest path — the deployed app only contains apps/api/, so the resolver's
+  # repo-root walk-up finds no .git marker and falls back to a wrong absolute path.
+  # This env var points it at the copy bundled alongside the app source.
+  - name: APP_MANIFEST_PATH
+    value: /app/python/source_code/contracts/app_contract_manifest.yml
 
   # Python runtime
   - name: PYTHONUNBUFFERED

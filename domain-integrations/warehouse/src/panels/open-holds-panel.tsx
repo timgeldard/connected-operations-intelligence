@@ -24,24 +24,18 @@ export interface OpenHoldsPanelProps {
   readonly onHoldNavigate?: (workspaceId: string) => void
 }
 
+// SAP-truthful hold classification (WM stock category / batch restriction):
+// quality (Q), blocked (S), restricted (MCHB restricted-use stock).
 const REASON_COLOR: Record<string, string> = {
-  'quality-hold': '#D32F2F',
-  'investigation': '#7B1FA2',
-  'expired': '#D97706',
-  'customer-hold': '#F57C00',
-  'production-hold': '#005776',
-  'regulatory-hold': '#1565C0',
-  'damaged': '#8D6E63',
+  'quality': '#D32F2F',
+  'blocked': '#F57C00',
+  'restricted': '#7B1FA2',
 }
 
 const REASON_LABEL: Record<string, string> = {
-  'quality-hold': 'Quality Hold',
-  'investigation': 'Investigation',
-  'expired': 'Expired',
-  'customer-hold': 'Customer Hold',
-  'production-hold': 'Production Hold',
-  'regulatory-hold': 'Regulatory Hold',
-  'damaged': 'Damaged',
+  'quality': 'Quality Inspection',
+  'blocked': 'Blocked Stock',
+  'restricted': 'Restricted Use',
 }
 
 export function OpenHoldsPanel({ request, onHoldNavigate }: OpenHoldsPanelProps) {
@@ -75,7 +69,7 @@ export function OpenHoldsPanel({ request, onHoldNavigate }: OpenHoldsPanelProps)
         {holds.map(hold => (
           <div key={hold.holdId} style={{ borderLeft: `3px solid ${REASON_COLOR[hold.holdReason] ?? '#9E9E9E'}`, paddingLeft: 10, paddingTop: 4, paddingBottom: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--shell-fg)' }}>{hold.materialDescription}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--shell-fg)' }}>{hold.materialDescription ?? hold.materialId}</span>
               <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 3, background: REASON_COLOR[hold.holdReason] ?? '#9E9E9E', color: '#fff', whiteSpace: 'nowrap', fontWeight: 600 }}>{REASON_LABEL[hold.holdReason] ?? hold.holdReason}</span>
             </div>
             <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 11, color: 'var(--shell-fg-2)' }}>

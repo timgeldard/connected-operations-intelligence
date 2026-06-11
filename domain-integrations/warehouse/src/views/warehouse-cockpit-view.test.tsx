@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import '@testing-library/jest-dom'
 import { WarehouseCockpitView } from './warehouse-cockpit-view.js'
-import { warehouse360AdapterInstance } from '../adapters/warehouse-360-adapter-factory.js'
+import { warehouse360Adapter as warehouse360AdapterInstance } from '../adapters/warehouse-360-adapter.js'
 import type { Warehouse360AdapterRequest } from '../adapters/warehouse-360-adapter.js'
 
 function makeQueryClient() {

@@ -3,6 +3,15 @@
 ## Status
 Accepted (supersedes earlier `plant_access_filter` approach; refines ADR 005)
 
+> **Addendum (2026-06-08) — UAT validation security modes.** `generate_gold_security_sql.py` supports
+> `--security-mode strict|validation-open|validation-fixture`. `strict` (the model below) is the only mode
+> allowed for prod and is enforced by `scripts/ci/check_security_mode_policy.py`. `validation-open`
+> (UAT/DEV) creates the same `*_secured` view names as pass-throughs so UAT data-shape validation can run
+> when `published_uat.security.model` is unavailable — it preserves the secured boundary + harden revokes
+> but proves NO RLS. `validation-fixture` (UAT/DEV) filters on a local `security_model_fixture` table for
+> representative entitlement testing. See `docs/runbooks/warehouse360-uat-migration-readiness.md` (Gates
+> A/B/C). The secured-view boundary is never bypassed and consumption views are never repointed to base Gold.
+
 ## Context
 ADR 005 made the Gold layer a **trusted aggregate**: attaching a UC row filter directly to a
 materialized view forces **full MV refreshes** (cost + latency), so Gold MVs stay unfiltered.
@@ -49,6 +58,16 @@ Run once per env by a UC admin after deploy (re-runnable; views are `CREATE OR R
 The `users` group is granted SELECT on the `*_secured` views; direct SELECT on the base Gold
 tables is reserved for the data-product owner / admins. The hardening REVOKE script
 (`resources/sql/gold_security_harden_<env>.sql`) is applied separately (operationally sensitive).
+
+**Order matters, and is now verified.** The two scripts must be run in order
+(`gold_security_<env>.sql` → `gold_security_harden_<env>.sql`); a skipped harden step leaves base
+Gold tables readable by `users`. The **`gold_security_verify` job** (`resources/gold_security_job.job.yml`,
+driver `gold/security/verify_gold_security.py`) automates the verification gate: it discovers every
+`*_secured` view and asserts the `users` group has SELECT on the secured view but **not** on its base
+table, failing when `--enforce=true`. It defaults to verification-only / report mode (`--enforce=false`);
+flip to enforce once UAT is clean. It can also apply the two scripts in order (`--apply=true`), but the
+priority — and default — is the verification gate, so the manual admin run above remains the apply path
+until the apply mode is exercised. Verification core unit-tested in `tests/test_verify_gold_security.py`.
 
 ### 3. Snapshot tables — no row filter
 `gold/snapshots/warehouse_snapshot.py` writes `*_snapshot` companion tables. These no longer

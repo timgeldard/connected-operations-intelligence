@@ -3,16 +3,16 @@
 -- Purpose: identify missing source columns required by warehouse360_consumption_views_dev.sql.
 
 WITH expected_columns AS (
-  SELECT 'gold_warehouse_kpi_snapshot_secured' AS table_name, 'plant_code' AS column_name UNION ALL
-  SELECT 'gold_warehouse_kpi_snapshot_secured', 'snapshot_date' UNION ALL
-  SELECT 'gold_warehouse_kpi_snapshot_secured', 'active_order_count' UNION ALL
-  SELECT 'gold_warehouse_kpi_snapshot_secured', 'open_tr_item_count' UNION ALL
-  SELECT 'gold_warehouse_kpi_snapshot_secured', 'open_to_item_count' UNION ALL
-  SELECT 'gold_warehouse_kpi_snapshot_secured', 'open_delivery_count' UNION ALL
-  SELECT 'gold_warehouse_kpi_snapshot_secured', 'open_inbound_item_count' UNION ALL
-  SELECT 'gold_warehouse_kpi_snapshot_secured', 'blocked_bin_count' UNION ALL
-  SELECT 'gold_warehouse_kpi_snapshot_secured', 'total_bin_count' UNION ALL
-  SELECT 'gold_warehouse_kpi_snapshot_secured', 'bin_utilisation_pct' UNION ALL
+  SELECT 'gold_warehouse_kpi_snapshot_live' AS table_name, 'plant_code' AS column_name UNION ALL
+  SELECT 'gold_warehouse_kpi_snapshot_live', 'snapshot_date' UNION ALL  -- query-time column (base MV is deterministic)
+  SELECT 'gold_warehouse_kpi_snapshot_live', 'active_order_count' UNION ALL
+  SELECT 'gold_warehouse_kpi_snapshot_live', 'open_tr_item_count' UNION ALL
+  SELECT 'gold_warehouse_kpi_snapshot_live', 'open_to_item_count' UNION ALL
+  SELECT 'gold_warehouse_kpi_snapshot_live', 'open_delivery_count' UNION ALL
+  SELECT 'gold_warehouse_kpi_snapshot_live', 'open_inbound_item_count' UNION ALL
+  SELECT 'gold_warehouse_kpi_snapshot_live', 'blocked_bin_count' UNION ALL
+  SELECT 'gold_warehouse_kpi_snapshot_live', 'total_bin_count' UNION ALL
+  SELECT 'gold_warehouse_kpi_snapshot_live', 'bin_utilisation_pct' UNION ALL
 
   SELECT 'gold_inbound_po_backlog_enhanced_live', 'plant_id' UNION ALL
   SELECT 'gold_inbound_po_backlog_enhanced_live', 'po_id' UNION ALL
@@ -80,17 +80,17 @@ WITH expected_columns AS (
   SELECT 'gold_transfer_requirement_backlog', 'open_tr_items' UNION ALL
   SELECT 'gold_transfer_requirement_backlog', 'oldest_tr_creation_date' UNION ALL
 
-  SELECT 'gold_warehouse_exceptions', 'plant_id' UNION ALL
-  SELECT 'gold_warehouse_exceptions', 'material_id' UNION ALL
-  SELECT 'gold_warehouse_exceptions', 'batch_id' UNION ALL
-  SELECT 'gold_warehouse_exceptions', 'storage_location_id' UNION ALL
-  SELECT 'gold_warehouse_exceptions', 'exception_type' UNION ALL
-  SELECT 'gold_warehouse_exceptions', 'severity' UNION ALL
-  SELECT 'gold_warehouse_exceptions', 'sla_hours' UNION ALL
-  SELECT 'gold_warehouse_exceptions', 'qty' UNION ALL
-  SELECT 'gold_warehouse_exceptions', 'bin_id' UNION ALL
-  SELECT 'gold_warehouse_exceptions', 'detail_text' UNION ALL
-  SELECT 'gold_warehouse_exceptions', 'detected_date'
+  SELECT 'gold_warehouse_exceptions_live', 'plant_code' UNION ALL
+  SELECT 'gold_warehouse_exceptions_live', 'material_code' UNION ALL
+  SELECT 'gold_warehouse_exceptions_live', 'batch_number' UNION ALL
+  SELECT 'gold_warehouse_exceptions_live', 'warehouse_number' UNION ALL
+  SELECT 'gold_warehouse_exceptions_live', 'exception_type' UNION ALL
+  SELECT 'gold_warehouse_exceptions_live', 'severity' UNION ALL
+  SELECT 'gold_warehouse_exceptions_live', 'sla_hours' UNION ALL
+  SELECT 'gold_warehouse_exceptions_live', 'quantity' UNION ALL
+  SELECT 'gold_warehouse_exceptions_live', 'detail' UNION ALL
+  SELECT 'gold_warehouse_exceptions_live', 'age_days' UNION ALL
+  SELECT 'gold_warehouse_exceptions_live', 'detected_date'  -- query-time column (base MV holds deterministic candidates)
 ),
 actual_columns AS (
   SELECT

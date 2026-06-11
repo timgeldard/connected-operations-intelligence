@@ -329,6 +329,43 @@ def gold_transfer_requirement_backlog():
 
 
 @dlt.table(**gold_table_args(
+    comment="Open transfer-requirement backlog aggregated to plant x material — material-level shortfall "
+            "for the Warehouse360 shortfalls governed view (ADR-0004 D2). Open = not processing-complete "
+            "with open_quantity > 0. Aggregated across warehouses/queues to the contract's plant x material grain.",
+    cluster_by=["plant_code", "material_id"],
+))
+@dlt.expect("open transfer quantity non-negative", "open_tr_qty >= 0.0")
+def gold_transfer_requirement_material_backlog():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+    transfer_requirements = spark.read.table(f"{silver_schema}.warehouse_transfer_requirement")
+
+    open_requirements = transfer_requirements.filter(
+        (~F.coalesce(F.col("is_processing_complete"), F.lit(False)))
+        & (F.coalesce(F.col("open_quantity"), F.lit(0.0)) > 0)
+    )
+
+    return (
+        open_requirements
+        .groupBy("plant_code", "material_code")
+        .agg(
+            F.coalesce(F.sum("open_quantity"), F.lit(0))
+            .cast("decimal(18,4)")
+            .alias("open_tr_qty"),
+            F.count(F.lit(1)).alias("open_tr_items"),
+            F.min("created_datetime").alias("oldest_tr_creation_datetime"),
+        )
+        .select(
+            "plant_code",
+            F.col("material_code").alias("material_id"),
+            "open_tr_qty",
+            "open_tr_items",
+            F.to_date(F.col("oldest_tr_creation_datetime")).alias("oldest_tr_creation_date"),
+        )
+    )
+
+
+@dlt.table(**gold_table_args(
     comment="Current batch stock expiry risk by plant, material, batch, and base UOM.",
     cluster_by=["plant_code", "minimum_expiry_date"],
 ))

@@ -8,7 +8,7 @@ Tables: goods_movement, batch_stock, warehouse_transfer_order,
 import dlt
 from pyspark.sql import functions as F
 
-from silver._plant_gate import apply_plant_gate, apply_warehouse_gate
+from silver._plant_gate import active_warehouses_df, apply_plant_gate, apply_warehouse_gate
 from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
 
 # ── 1. GOODS MOVEMENT ────────────────────────────────────────────────────────
@@ -40,6 +40,11 @@ def stg_goods_movement():
 
     changed_keys = mseg_changes.unionByName(mkpf_changes)
     mseg = spark.read.table(f"{BRONZE}.inventorymovement_mseg")
+    # Pre-gate pushdown: shrink the ~155M-row MSEG static table to onboarded plants (MSEG.WERKS, the
+    # SAME plant axis as the final apply_plant_gate) BEFORE the changed-keys fan-out join. Row-equivalent
+    # to gating at the end; cuts the stream-static join's static side from ~8.7 GB to the onboarded-plant
+    # subset. Matches the LTBP/LIPS pre-gate pattern. The final apply_plant_gate is kept (authoritative).
+    mseg = apply_plant_gate(mseg, "WERKS", "ioreporting", spark=spark)
     mkpf = spark.read.table(f"{BRONZE}.materialdocument_mkpf").select(
         "MBLNR", "MJAHR", "MANDT", "BUDAT", "BLDAT", "USNAM", "TCODE"
     )
@@ -185,6 +190,12 @@ dlt.apply_changes(
 def batch_stock():
     spark = get_spark()
     mchb = spark.read.table(f"{BRONZE}.batchstock_mchb")
+    # Pre-gate pushdown: shrink the ~11.5M-row MCHB to plants onboarded for stock (MCHB.WERKS, the SAME
+    # plant axis as the final apply_plant_gate) BEFORE the MARA base_uom join, so this full-recompute MV
+    # joins only the onboarded-plant subset instead of all plants. Row-equivalent to gating at the end
+    # (MARA is a left base_uom lookup that adds no rows). The final apply_plant_gate is kept (authoritative
+    # + coverage-guard). Batch MV — MARA is a narrow 3-col lookup, left to the optimizer (no merge hint).
+    mchb = apply_plant_gate(mchb, "WERKS", "stock", spark=spark)
     # base_uom from material master (MCHB has no MEINS); MARA is unique per MANDT+MATNR.
     mara = spark.read.table(f"{BRONZE}.materialmaster_mara").select(
         F.col("MANDT").alias("_mara_mandt"),
@@ -232,6 +243,9 @@ def batch_stock():
     )
     # Plant stage-gate (DIRECT WERKS): MCHB carries the true plant in WERKS. Scope to plants onboarded
     # for stock (batch_managed_flag). Batch-static left-semi against the governed active-plant set.
+    # Fast-tier: the gate reads site_config_plant CROSS-pipeline (built by the slow pipeline), so it relies
+    # on deploy-order — do NOT add dlt.read("site_config_plant") here; that dataset is not in this pipeline
+    # and the reference would fail to compile. (Slow-tier same-pipeline gates DO declare it; see inbound.py.)
     return apply_plant_gate(batch_stock_out, "plant_code", "stock", spark=spark)
 
 
@@ -256,6 +270,14 @@ def stg_warehouse_transfer_order():
     changed_keys = ltak_changes.unionByName(ltap_changes)
     ltak = spark.read.table(f"{BRONZE}.transferorderobjects_ltak")
     ltap = spark.read.table(f"{BRONZE}.transferorderobjects_ltap")
+    # Pre-gate pushdown: shrink the wide LTAP (~91M) + LTAK (~77M) static tables to onboarded WAREHOUSES
+    # (LGNUM axis — the SAME axis as the final apply_warehouse_gate; NOT WERKS, unreliable on WM rows)
+    # BEFORE the fan-out join. LEFT_SEMI (filter-only — no plant_id enrichment, that stays on the final
+    # gate); row-equivalent. Matches the LTBP pattern; the prior code read all ~11.6 GB then gated the
+    # output. The final apply_warehouse_gate is kept (authoritative filter + plant_id + coverage-guard).
+    _active_wh = active_warehouses_df(spark, "warehouse")
+    ltap = ltap.join(F.broadcast(_active_wh), ltap["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
+    ltak = ltak.join(F.broadcast(_active_wh), ltak["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
     order_items_to_refresh = (
         changed_keys.alias("c")
         .join(ltap.alias("i"), ["LGNUM", "TANUM", "MANDT"], "left")
@@ -325,6 +347,7 @@ def stg_warehouse_transfer_order():
             sap_datetime("h.BDATU", "h.BZEIT").alias("created_datetime"),
             sap_date("h.PLDAT").alias("planned_execution_date"),
             sap_date("i.QDATU").alias("confirmed_date"),
+            sap_datetime("i.QDATU", "i.QZEIT").alias("confirmed_datetime"),
             sap_datetime("h.STDAT", "h.STUZT").alias("start_datetime"),
             sap_datetime("h.ENDAT", "h.ENUZT").alias("end_datetime"),
 
@@ -339,6 +362,12 @@ def stg_warehouse_transfer_order():
             F.col("h.BENUM").alias("source_reference_number_raw"),
             strip_zeros("h.VBELN").alias("delivery_number"),
             F.col("h.VBELN").alias("delivery_number_raw"),
+            # LTAK.TBNUM links a TO back to its transfer requirement (blank/zero for
+            # delivery- or posting-change-sourced TOs). Kept raw to match the TR key.
+            F.when(
+                F.coalesce(F.col("h.TBNUM"), F.lit("")).isin("", "0000000000"), F.lit(None)
+            ).otherwise(F.col("h.TBNUM")).alias("transfer_requirement_number"),
+            F.col("h.QUEUE").alias("queue"),
             F.col("h.TBPRI").alias("transfer_priority"),
 
             # ── Users
@@ -433,9 +462,22 @@ def stg_warehouse_transfer_requirement():
     changed_keys = ltbk_changes.unionByName(ltbp_changes)
     ltbk = spark.read.table(f"{BRONZE}.transferrequirementobjects_ltbk")
     ltbp = spark.read.table(f"{BRONZE}.transferrequirementobjects_ltbp")
+    # Pre-gate pushdown: shrink BOTH the wide static LTBP (item) AND the LTBK (header, ~9.6M rows) to
+    # onboarded WAREHOUSES BEFORE the joins — mirrors transfer_order, which pre-gates both LTAP+LTAK. Uses
+    # the LGNUM (warehouse_number) axis — the SAME axis as the final apply_warehouse_gate (NOT WERKS, which
+    # is unreliable on WM rows: LGNUM != WERKS). Filter-only LEFT_SEMI (no plant_id enrichment — that stays
+    # on the final gate); row-equivalent to gating at the end (header LGNUM == item LGNUM, so pre-filtering
+    # LTBK drops no header that a kept item would match). The final apply_warehouse_gate is kept
+    # (authoritative filter + plant_id + coverage-guard). NOTE: this only shrinks the static join side; the
+    # CDC stream (LTBK+LTBP change feed) is still read in full on the initial backfill.
+    _active_wh = active_warehouses_df(spark, "warehouse")
+    ltbp = ltbp.join(F.broadcast(_active_wh), ltbp["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
+    ltbk = ltbk.join(F.broadcast(_active_wh), ltbk["LGNUM"] == _active_wh["warehouse_number"], "left_semi")
     requirement_items_to_refresh = (
         changed_keys.alias("c")
-        .join(ltbp.alias("i"), ["LGNUM", "TBNUM", "MANDT"], "left")
+        # .hint("merge"): pre-filtered LTBP is small-but-wide; force sort-merge so it is not
+        # auto-broadcast (which would re-introduce the wide-row OOM the header merge hints prevent).
+        .join(ltbp.alias("i").hint("merge"), ["LGNUM", "TBNUM", "MANDT"], "left")
         .select(
             "i.*",
             F.col("c.LGNUM").alias("_change_lgnum"),
@@ -449,7 +491,10 @@ def stg_warehouse_transfer_requirement():
 
     transfer_requirement_out = (
         requirement_items_to_refresh.alias("i")
-        .join(ltbk.alias("h"), ["LGNUM", "TBNUM", "MANDT"], "left")
+        # .hint("merge"): force sort-merge on the wide LTBK header join — Photon's default broadcast
+        # hash join OOMs/spills on the wide reconstructed item rows (same pattern as
+        # warehouse_transfer_order's LTAK join).
+        .join(ltbk.alias("h").hint("merge"), ["LGNUM", "TBNUM", "MANDT"], "left")
         .select(
             # ── Natural key
             F.coalesce(F.col("i.LGNUM"), F.col("i._change_lgnum")).alias("warehouse_number"),
@@ -498,10 +543,17 @@ def stg_warehouse_transfer_requirement():
             F.col("h.BENUM").alias("source_reference_number_raw"),
             F.col("h.RSNUM").alias("reservation_number"),
 
-            # ── Custom fields (site-specific campaign / pick status)
+            # ── Custom fields (site-specific campaign / pick status / RF operator assignment)
+            # ZZ_UNAME_M / ZZ_RF_SEQ_M drive the warehouse (manual) RF flow ZWMAE0050;
+            # ZZ_UNAME_D / ZZ_RF_SEQ_D drive the dispensary RF flow ZPEXE0061. Parked/complete
+            # jobs keep the operator with a '~' prefix (SAP convention — preserved as-is).
             F.col("h.ZZ_CAMPAIGN").alias("campaign_reference"),
             F.col("h.ZZ_PICK_STAT_M").alias("manual_pick_status"),
             F.col("h.ZZ_PICK_STAT_D").alias("direct_pick_status"),
+            F.col("h.ZZ_UNAME_M").alias("assigned_operator_manual"),
+            F.col("h.ZZ_UNAME_D").alias("assigned_operator_direct"),
+            F.col("h.ZZ_RF_SEQ_M").alias("job_sequence_manual"),
+            F.col("h.ZZ_RF_SEQ_D").alias("job_sequence_direct"),
             F.col("h.ZZQUEUE").alias("queue"),
 
             F.col("h.BNAME").alias("created_by_user"),

@@ -94,7 +94,7 @@ export function StagingOrderListPanel({ request }: StagingOrderListPanelProps) {
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 11, color: 'var(--shell-fg-3)' }}>{order.processOrderId}</span>
                   <span style={{ fontSize: 11, color: 'var(--shell-fg-3)' }}>{order.lineOrResource}</span>
-                  <span style={{ fontSize: 11, color: 'var(--shell-fg-3)' }}>Start: {formatTime(order.plannedStart)}</span>
+                  <span style={{ fontSize: 11, color: 'var(--shell-fg-3)' }}>Start: {order.plannedStart ? formatTime(order.plannedStart) : '—'}</span>
                   {order.blockerReason && (
                     <span style={{ fontSize: 11, color: '#D32F2F' }}>{order.blockerReason}</span>
                   )}

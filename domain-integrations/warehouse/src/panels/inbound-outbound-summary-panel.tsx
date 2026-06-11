@@ -23,11 +23,13 @@ export interface InboundOutboundSummaryPanelProps {
   readonly request: Warehouse360AdapterRequest
 }
 
+// SAP-truthful movement classes (classification flags on the governed movements feed).
 const MOVEMENT_META: Record<string, { label: string; short: string; color: string }> = {
   'goods-receipt': { label: 'Goods Receipt', short: 'Inbound', color: '#2E7D32' },
   'goods-issue': { label: 'Goods Issue', short: 'Outbound', color: '#F57C00' },
-  'transfer-order': { label: 'Transfer Order', short: 'Transfer', color: '#005776' },
-  adjustment: { label: 'Adjustment', short: 'Adj', color: '#9E9E9E' },
+  'transfer': { label: 'Transfer', short: 'Transfer', color: '#005776' },
+  'reversal': { label: 'Reversal', short: 'Reversal', color: '#D97706' },
+  'other': { label: 'Other', short: 'Other', color: '#9E9E9E' },
 }
 
 interface MovementGroup {
@@ -47,7 +49,7 @@ function groupMovements(events: GoodsMovementEvent[]): MovementGroup[] {
       if (ev.timestamp > existing.latest.timestamp) existing.latest = ev
     }
   }
-  const order = ['goods-receipt', 'goods-issue', 'transfer-order', 'adjustment']
+  const order = ['goods-receipt', 'goods-issue', 'transfer', 'reversal', 'other']
   return order.flatMap(t => map.has(t) ? [map.get(t)!] : [])
 }
 
@@ -112,7 +114,7 @@ export function InboundOutboundSummaryPanel({ request }: InboundOutboundSummaryP
                     <div key={g.type} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12 }}>
                       <span style={{ fontWeight: 700, color: meta.color, minWidth: 52, fontSize: 11 }}>{meta.short}</span>
                       <span style={{ flex: 1, color: 'var(--shell-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {g.latest.materialDescription}
+                        {g.latest.materialDescription ?? g.latest.materialId}
                       </span>
                       <span style={{ color: 'var(--shell-fg-3)', whiteSpace: 'nowrap' }}>{formatTime(g.latest.timestamp)}</span>
                     </div>

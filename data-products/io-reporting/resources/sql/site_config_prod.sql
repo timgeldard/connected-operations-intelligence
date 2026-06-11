@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS connected_plant_prod.silver_io_reporting.site_config_
 BEGIN;
 DELETE FROM connected_plant_prod.silver_io_reporting.site_config_plant WHERE config_owner = 'wm-config-owner';
 INSERT INTO connected_plant_prod.silver_io_reporting.site_config_plant (plant_code, plant_name, country, region, business_unit, timezone, sap_system_id, go_live_status, wm_enabled_flag, hu_enabled_flag, qm_enabled_flag, batch_managed_flag, process_manufacturing_flag, default_language_code, valid_from, valid_to, is_active, config_owner, last_validated_at) VALUES
-  ('C061', 'Portbury [MFG]', 'GB', 'Europe', 'Operations', 'Europe/London', 'ECC', 'PRODUCTION', true, true, true, true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-03');
+  ('C061', 'Portbury [MFG]', 'GB', 'Europe', 'Operations', 'Europe/London', 'ECC', 'PRODUCTION', true, true, true, true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-03'),
+  ('P817', 'Jackson [MFG]', 'US', 'Americas', 'Operations', 'America/Chicago', 'ECC', 'PRODUCTION', true, true, true, true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-08');
 COMMIT;
 
 -- ── site_config_warehouse ──
@@ -47,7 +48,8 @@ CREATE TABLE IF NOT EXISTS connected_plant_prod.silver_io_reporting.site_config_
 BEGIN;
 DELETE FROM connected_plant_prod.silver_io_reporting.site_config_warehouse WHERE config_owner = 'wm-config-owner';
 INSERT INTO connected_plant_prod.silver_io_reporting.site_config_warehouse (plant_code, warehouse_number, warehouse_description, relationship_type, wm_usage_type, is_shared_warehouse, valid_from, valid_to, is_active, config_owner) VALUES
-  ('C061', '208', 'Portbury Main WH', 'PRIMARY', 'FULL_WM', false, DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner');
+  ('C061', '104', 'Portbury Main WH', 'PRIMARY', 'FULL_WM', false, DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner'),
+  ('P817', '208', 'Jackson Main WH', 'PRIMARY', 'FULL_WM', false, DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner');
 COMMIT;
 
 -- ── site_config_storage_type_role ──
@@ -71,17 +73,22 @@ CREATE TABLE IF NOT EXISTS connected_plant_prod.silver_io_reporting.site_config_
 BEGIN;
 DELETE FROM connected_plant_prod.silver_io_reporting.site_config_storage_type_role WHERE validated_by = 'wm-config-owner';
 INSERT INTO connected_plant_prod.silver_io_reporting.site_config_storage_type_role (plant_code, warehouse_number, storage_type, storage_type_description, storage_role, role_confidence, is_wm_managed, include_in_lineside_stock, include_in_staging, include_in_reconciliation, valid_from, valid_to, validated_by, validated_at) VALUES
-  ('C061', '208', '100', 'Production Supply', 'LINESIDE', 'CONFIRMED', true, true, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-03'),
-  ('C061', '208', '801', 'Palletising (for Prodc.)', 'LINESIDE', 'CONFIRMED', true, true, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-03'),
-  ('C061', '208', '802', 'Palletising (for Dispn.)', 'LINESIDE', 'CONFIRMED', true, true, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-03'),
-  ('C061', '208', '803', NULL, 'LINESIDE', 'CONFIRMED', true, true, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-03'),
-  ('C061', '208', '804', NULL, 'LINESIDE', 'CONFIRMED', true, true, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-03'),
-  ('C061', '208', '805', NULL, 'LINESIDE', 'CONFIRMED', true, true, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-03'),
-  ('C061', '208', '901', 'GR Area for Production', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-03'),
-  ('C061', '208', '902', 'GR Area External Rcpts', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-03'),
-  ('C061', '208', '911', NULL, 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-03'),
-  ('C061', '208', '922', 'Posting Change Area', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-03'),
-  ('C061', '208', '999', 'Differences', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-03');
+  ('C061', '104', '100', 'Production Supply', 'LINESIDE', 'CONFIRMED', true, true, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('C061', '104', '801', 'Palletising (for Prodc.)', 'LINESIDE', 'CONFIRMED', true, true, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('C061', '104', '802', 'Palletising (for Dispn.)', 'LINESIDE', 'CONFIRMED', true, true, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('C061', '104', '901', 'GR Area for Production', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('C061', '104', '902', 'GR Area External Rcpts', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('C061', '104', '911', 'GI Area for Cost Center', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('C061', '104', '922', 'Posting Change Area', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('C061', '104', '999', 'Differences', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('P817', '208', '100', 'Production Supply', 'LINESIDE', 'CONFIRMED', true, true, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('P817', '208', '801', 'Palletising (for Prodc.)', 'LINESIDE', 'CONFIRMED', true, true, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('P817', '208', '802', 'Palletising (for Dispn.)', 'LINESIDE', 'CONFIRMED', true, true, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('P817', '208', '901', 'GR Area for Production', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('P817', '208', '902', 'GR Area External Rcpts', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('P817', '208', '911', 'GI Area for Cost Center', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('P817', '208', '922', 'Posting Change Area', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08'),
+  ('P817', '208', '999', 'Differences', 'INTERIM', 'CONFIRMED', true, false, false, true, DATE'2026-01-01', DATE'9999-12-31', 'wm-config-owner', DATE'2026-06-08');
 COMMIT;
 
 -- ── site_config_movement_type_classification ──

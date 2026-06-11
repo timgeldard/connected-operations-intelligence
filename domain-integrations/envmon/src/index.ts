@@ -6,7 +6,6 @@
  */
 
 export { envmonRegistration } from './envmon-registration.js'
-export { envmonWorkspaceRegistration } from './registration.js'
 export { envmonConsumerRegistration } from './envmon-consumer-registration.js'
 
 export { EnvMonWorkspace } from './envmon-workspace.js'

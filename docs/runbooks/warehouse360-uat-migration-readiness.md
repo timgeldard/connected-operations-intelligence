@@ -4,12 +4,32 @@ This runbook defines the gates that must pass before Warehouse360 governed contr
 
 ## UAT is the first full-validation environment
 
+> **First UAT attempt (2026-06-08) — Outcome A, did NOT complete.** See
+> [UAT validation results](../architecture/warehouse360-uat-validation-results.md). A first-time deploy
+> surfaced a stage-gate leak + a warehouse config bug (both fixed in
+> `fix/warehouse360-stage-gate-inbound-outbound-p817`), and the validating user has **no write access to
+> `published_uat.security.model`** (and owns the deployed Gold objects), so RLS/entitlement could not be
+> proven. This is why UAT data-shape validation must be runnable **without** the corporate security model:
+> see the planned **validation security modes** (`validation_open` for data-shape, `validation_fixture`
+> for representative entitlement testing), to be implemented in follow-up PRs and split into
+> data-shape / fixture-RLS / strict-RLS gates.
+
+> **UAT revalidation (2026-06-09) after the stage-gate fixes — Outcome A (partial).** The Silver gate is
+> now proven (the 6 operational tables checked this run = C061+P817; `purchase_order` 184,553/2 — the leak
+> is gone; T320 mapping correct). All 7 consumption views create via the secured boundary. `overview` +
+> `im_wm_reconciliation` still leaked all plants (ungated `storage_bin` + `stock_at_location`) — **now fixed
+> in `fix/silver-gate-storage-bin-stock-at-location` (DEV-validated: both → 2 plants).** The remaining item
+> is **not** a data-shape blocker: the **`users` consumer group does not exist in the UAT metastore**, so the
+> consumer grant + harden (Gate B/C / production-security) cannot run until the group name is reconciled —
+> but Gate A (validation_open) data-shape validation runs without it. See
+> [UAT validation results](../architecture/warehouse360-uat-validation-results.md).
+
 DEV is a **technical shakedown only** (`dev_shakedown`, `enable_hu_reconciliation=false`)
 — see ADR `docs/architecture/adr-ioreporting-dev-shakedown-vs-uat-validation.md`.
 **UAT runs in `full_validation` mode** (`enable_hu_reconciliation=true`) and is the
 first environment where HU reconciliation and business validation occur.
 
-Before the gates below, run **`validation/ioreporting_uat_full_validation_preflight.sql`**:
+Before the gates below, run **`data-products/io-reporting/validation/ioreporting_uat_full_validation_preflight.sql`**:
 it **requires** the full `published_uat.central_services` set, including
 `handlingunit_vekp` and `handlingunit_vepo` — UAT must not proceed if either HU
 table is missing. A green DEV shakedown alone does **not** satisfy any UAT gate.
@@ -61,6 +81,63 @@ WH360_SCHEMA=gold_io_reporting
 ```
 
 Do not reintroduce legacy `wh360` views as governed dependencies. Legacy mode is only a backward-compatibility mode for explicitly configured non-governed paths.
+
+## Validation security gates (A / B / C)
+
+UAT validation is split into three gates so data-shape validation can proceed even when the corporate
+`published_uat.security.model` is unavailable to the validating user — **without** ever bypassing the
+`*_secured` boundary or claiming RLS that was not proven. The secured-view predicate is chosen by
+`generate_gold_security_sql.py --security-mode` (strict | validation-open | validation-fixture); prod is
+locked to `strict` by `scripts/ci/check_security_mode_policy.py`.
+> **Naming:** the **CLI flag values use hyphens** (`--security-mode validation-open` — argparse rejects the
+> underscore form), while the **mode/gate/file names use underscores** (`validation_open` →
+> `gold_security_uat_validation_open.sql`). The Gate headings below use the underscore (mode) form.
+
+### Gate A — UAT data-shape validation (`validation_open`)
+
+Use when `published_uat.security.model` is unavailable. The `*_secured` views are pass-throughs, but the
+harden step still revokes base Gold from `users`. Run in order:
+
+```text
+data-products/io-reporting/resources/sql/gold_security_uat_validation_open.sql
+data-products/io-reporting/resources/sql/gold_security_harden_uat.sql
+data-products/io-reporting/resources/sql/gold_serving_views_uat.sql
+data-products/io-reporting/resources/sql/warehouse360_consumption_views_uat.sql
+data-products/io-reporting/validation/generated/warehouse360_contract_validation_uat.sql
+```
+
+Proves: Gold objects materialise; secured-view names exist; consumption views create; schema/types match
+contracts; row counts / PK / null checks; data-bearing status understood.
+Does **NOT** prove: plant filtering, user entitlement, OAuth identity, or cutover readiness.
+
+### Gate B — UAT fixture RLS validation (`validation_fixture`)
+
+Use when test identities are available but the corporate model is not. Run after the fixture exists:
+
+```text
+data-products/io-reporting/resources/sql/security_model_fixture_uat.sql           -- seed placeholder/real test identities
+data-products/io-reporting/resources/sql/gold_security_uat_validation_fixture.sql
+data-products/io-reporting/resources/sql/gold_security_harden_uat.sql
+data-products/io-reporting/resources/sql/gold_serving_views_uat.sql
+data-products/io-reporting/resources/sql/warehouse360_consumption_views_uat.sql
+-- then identity-specific test queries (current_user(), plant_id row counts)
+```
+
+Proves: the secured-view predicate logic works; full-view user sees all permitted plants; single-/multi-plant
+users see only their plants; no-access user sees nothing.
+Does **NOT** prove real corporate-model integration unless the fixture uses representative real identities
+accepted by governance.
+
+### Gate C — strict UAT security validation (`strict`)
+
+Run only when `published_uat.security.model` is accessible (read **and** the validating identities are
+entitled in it). Run `data-products/io-reporting/resources/sql/gold_security_uat.sql` + `data-products/io-reporting/resources/sql/gold_security_harden_uat.sql` + the Gold RLS verify job
+(`data-products/io-reporting/resources/gold_security_job.job.yml`) + representative-identity tests. Proves real UAT entitlement.
+
+> App cutover requires **Gate C** (or accepted Gate-B fixture evidence with real identities) — never
+> Gate A alone. The first UAT attempt (2026-06-08) could not reach Gate C: the validating user has read
+> but **no write** access to `published_uat.security.model` and owns the deployed Gold objects. See
+> [UAT validation results](../architecture/warehouse360-uat-validation-results.md).
 
 ## Readiness Decision
 

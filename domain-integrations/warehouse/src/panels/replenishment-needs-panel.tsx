@@ -65,7 +65,7 @@ export function ReplenishmentNeedsPanel({ request }: ReplenishmentNeedsPanelProp
               <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 3, background: URGENCY_COLOR[need.urgency] ?? '#9E9E9E', color: '#fff', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{need.urgency}</span>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 11, color: 'var(--shell-fg-2)' }}>
-              <span>Stock: {need.currentStockQuantity.toLocaleString()} / ROP: {need.reorderPoint.toLocaleString()} {need.uom}</span>
+              <span>Stock: {need.currentStockQuantity != null ? need.currentStockQuantity.toLocaleString() : '—'} / ROP: {need.reorderPoint != null ? need.reorderPoint.toLocaleString() : '—'} {need.uom ?? ''}</span>
             </div>
             {need.openPurchaseOrderId && (
               <div style={{ fontSize: 11, color: 'var(--shell-fg-3)', marginTop: 2 }}>

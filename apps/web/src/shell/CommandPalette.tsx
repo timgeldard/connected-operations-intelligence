@@ -103,13 +103,46 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     ...pilotAdminCommands,
     ...helpCommands,
     {
-      id: 'wh360-mock',
-      label: 'Open Warehouse 360 — WH-IE10-MAIN · Kerry Listowel',
-      description: 'Main warehouse · Plant IE10 · 347 stock lines',
+      id: 'wh360-c061',
+      label: 'Open Warehouse 360 — 104 · Portbury [MFG]',
+      description: 'Main warehouse · Plant C061 · Warehouse 104',
       category: 'Recent Investigations',
       action: () => {
-        setActiveScope({ warehouseId: 'WH-IE10-MAIN', plantId: 'IE10' })
+        setActiveScope({ warehouseId: '104', plantId: 'C061' })
         setWorkspace('warehouse-360-overview')
+        onClose()
+      },
+    },
+    {
+      id: 'wh360-p817',
+      label: 'Open Warehouse 360 — 208 · Jackson [MFG]',
+      description: 'Main warehouse · Plant P817 · Warehouse 208',
+      category: 'Recent Investigations',
+      action: () => {
+        setActiveScope({ warehouseId: '208', plantId: 'P817' })
+        setWorkspace('warehouse-360-overview')
+        onClose()
+      },
+    },
+    {
+      id: 'wm-ops-c061',
+      label: 'Open WM Operations — 104 · Portbury [MFG]',
+      description: 'Staging & dispensary manager tools · Plant C061 · Warehouse 104',
+      category: 'Recent Investigations',
+      action: () => {
+        setActiveScope({ warehouseId: '104', plantId: 'C061' })
+        setWorkspace('wm-operations')
+        onClose()
+      },
+    },
+    {
+      id: 'wm-ops-p817',
+      label: 'Open WM Operations — 208 · Jackson [MFG]',
+      description: 'Staging & dispensary manager tools · Plant P817 · Warehouse 208',
+      category: 'Recent Investigations',
+      action: () => {
+        setActiveScope({ warehouseId: '208', plantId: 'P817' })
+        setWorkspace('wm-operations')
         onClose()
       },
     },

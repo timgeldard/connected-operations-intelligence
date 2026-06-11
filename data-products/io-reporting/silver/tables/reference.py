@@ -7,6 +7,7 @@ from pyspark.sql import Row, Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import BooleanType, StringType, StructField, StructType
 
+from silver._plant_gate import apply_plant_gate
 from silver.helpers import (
     BRONZE,
     PROCESS_LINE_ATINN,
@@ -457,7 +458,7 @@ def storage_type():
 def stock_at_location():
     spark = get_spark()
     src = spark.read.table(f"{BRONZE}.storagelocationmaterial_mard")
-    return src.select(
+    out = src.select(
         strip_zeros("MATNR").alias("material_code"),
         F.col("MATNR").alias("material_code_raw"),
         F.col("WERKS").alias("plant_code"),
@@ -474,6 +475,13 @@ def stock_at_location():
         F.col("LFMON").alias("fiscal_period"),
         F.col("AEDATTM").alias("_replicated_at"),
     )
+    # Stage gate: scope IM stock-at-location to onboarded plants (MARD.WERKS, direct plant axis).
+    # Feeds gold_warehouse_exceptions (im_wm_reconciliation) — ungated, this leaked all plants in UAT.
+    # Same-pipeline dependency: the gate reads site_config_plant (built above in THIS slow pipeline) via a
+    # fully-qualified spark.read.table inside apply_plant_gate, which DLT does NOT auto-track — so declare it
+    # explicitly to force correct intra-pipeline ordering (without it this can run before site_config_plant).
+    _ = dlt.read("site_config_plant")
+    return apply_plant_gate(out, "plant_code", "stock", spark=spark)
 
 
 # ── 10. MATERIAL VALUATION ────────────────────────────────────────────────────
@@ -571,25 +579,36 @@ def storage_type_role_mapping():
             spark.read.table(config_table)
             .filter(
                 (F.upper(F.col("review_status")) == "APPROVED")
-                & (F.col("valid_from").isNull() | (F.col("valid_from") <= F.current_date()))
-                & (F.col("valid_to").isNull() | (F.col("valid_to") > F.current_date()))
+                # determinism-exempt: governed-config validity window is evaluated at refresh time
+                # by design. Tiny admin-maintained table on the TRIGGERED slow pipeline (full
+                # recompute is intended and free); accepted deviation from the no-current_date()
+                # base-MV rule — see scripts/ci/check_gold_mv_determinism.py.
+                & (F.col("valid_from").isNull() | (F.col("valid_from") <= F.current_date()))  # determinism-exempt
+                & (F.col("valid_to").isNull() | (F.col("valid_to") > F.current_date()))  # determinism-exempt
             )
             .select("plant_code", "plant_name", "warehouse_number", "storage_type", "storage_type_description", "role")
         )
 
-    # Bootstrap fallback (C061 / warehouse 208) — used only until the governed config table exists.
+    # Bootstrap fallback — used only until the governed config table exists. Warehouse numbers and
+    # storage-type descriptions are from SAP T301/T301T (C061→104, P817→208); a prior seed used the
+    # wrong warehouse (208) for C061 and listed storage types (803/804/805) that do not exist in 104.
     data = [
-        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="208", storage_type="100", storage_type_description="Production Supply",       role="LINESIDE"),
-        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="208", storage_type="801", storage_type_description="Palletising (for Prodc.)", role="LINESIDE"),
-        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="208", storage_type="802", storage_type_description="Palletising (for Dispn.)", role="LINESIDE"),
-        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="208", storage_type="803", storage_type_description=None,                        role="LINESIDE"),
-        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="208", storage_type="804", storage_type_description=None,                        role="LINESIDE"),
-        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="208", storage_type="805", storage_type_description=None,                        role="LINESIDE"),
-        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="208", storage_type="901", storage_type_description="GR Area for Production",    role="INTERIM"),
-        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="208", storage_type="902", storage_type_description="GR Area External Rcpts",    role="INTERIM"),
-        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="208", storage_type="911", storage_type_description=None,                        role="INTERIM"),
-        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="208", storage_type="922", storage_type_description="Posting Change Area",        role="INTERIM"),
-        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="208", storage_type="999", storage_type_description="Differences",                role="INTERIM"),
+        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="104", storage_type="100", storage_type_description="Production Supply",       role="LINESIDE"),
+        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="104", storage_type="801", storage_type_description="Palletising (for Prodc.)", role="LINESIDE"),
+        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="104", storage_type="802", storage_type_description="Palletising (for Dispn.)", role="LINESIDE"),
+        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="104", storage_type="901", storage_type_description="GR Area for Production",    role="INTERIM"),
+        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="104", storage_type="902", storage_type_description="GR Area External Rcpts",    role="INTERIM"),
+        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="104", storage_type="911", storage_type_description="GI Area for Cost Center",   role="INTERIM"),
+        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="104", storage_type="922", storage_type_description="Posting Change Area",       role="INTERIM"),
+        Row(plant_code="C061", plant_name="Portbury [MFG]", warehouse_number="104", storage_type="999", storage_type_description="Differences",               role="INTERIM"),
+        Row(plant_code="P817", plant_name="Jackson [MFG]", warehouse_number="208", storage_type="100", storage_type_description="Production Supply",       role="LINESIDE"),
+        Row(plant_code="P817", plant_name="Jackson [MFG]", warehouse_number="208", storage_type="801", storage_type_description="Palletising (for Prodc.)", role="LINESIDE"),
+        Row(plant_code="P817", plant_name="Jackson [MFG]", warehouse_number="208", storage_type="802", storage_type_description="Palletising (for Dispn.)", role="LINESIDE"),
+        Row(plant_code="P817", plant_name="Jackson [MFG]", warehouse_number="208", storage_type="901", storage_type_description="GR Area for Production",    role="INTERIM"),
+        Row(plant_code="P817", plant_name="Jackson [MFG]", warehouse_number="208", storage_type="902", storage_type_description="GR Area External Rcpts",    role="INTERIM"),
+        Row(plant_code="P817", plant_name="Jackson [MFG]", warehouse_number="208", storage_type="911", storage_type_description="GI Area for Cost Center",   role="INTERIM"),
+        Row(plant_code="P817", plant_name="Jackson [MFG]", warehouse_number="208", storage_type="922", storage_type_description="Posting Change Area",       role="INTERIM"),
+        Row(plant_code="P817", plant_name="Jackson [MFG]", warehouse_number="208", storage_type="999", storage_type_description="Differences",               role="INTERIM"),
     ]
     return spark.createDataFrame(data, schema)
 
@@ -730,6 +749,28 @@ def warehouse_storage_location_mapping():
     )
 
 
+# T300 — warehouse-number master (from central_services). Authoritative list of WM warehouse numbers
+# with their region indicator. Companion to the T320 (plant↔warehouse) mapping above.
+
+@dlt.table(
+    name="warehouse_master",
+    comment="T300 warehouse-number master (from central_services): one row per WM warehouse number.",
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+@dlt.expect_or_drop("warehouse_number present", "warehouse_number IS NOT NULL")
+def warehouse_master():
+    spark = get_spark()
+    src = spark.read.table(f"{bronze_published()}.warehousemaster_t300")
+    return (
+        src.select(
+            F.col("LGNUM").alias("warehouse_number"),
+            F.col("REGKZ").alias("region_indicator"),
+            F.col("AEDATTM").alias("_replicated_at"),
+        )
+        .dropDuplicates(["warehouse_number"])
+    )
+
+
 # ── 16. GOVERNED READINESS CONFIGURATION TABLES ────────────────────────────────
 
 @dlt.table(
@@ -755,7 +796,13 @@ def site_config_plant():
             go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
             qm_enabled_flag=True, batch_managed_flag=True, process_manufacturing_flag=True,
             default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
-            is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-03")
+            is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-03"),
+        Row(plant_code="P817", plant_name="Jackson [MFG]", country="US", region="Americas",
+            business_unit="Operations", timezone="America/Chicago", sap_system_id="ECC",
+            go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
+            qm_enabled_flag=True, batch_managed_flag=True, process_manufacturing_flag=True,
+            default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
+            is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-08"),
     ]
     df = spark.createDataFrame(data)
     return (
@@ -782,10 +829,17 @@ def site_config_warehouse():
     if table_exists:
         return spark.read.table(config_table).filter(F.col("is_active"))
 
+    # NOTE: the plant↔warehouse RELATIONSHIP is now authoritatively derived from SAP T320
+    # (warehouse_storage_location_mapping) by the stage gate (silver/_plant_gate.py). This table is
+    # retained for readiness reporting/overrides only; keep its LGNUM↔WERKS values consistent with T320
+    # (C061→104, P817→208). A prior seed mis-mapped C061→208 (208 is P817's warehouse).
     data = [
-        Row(plant_code="C061", warehouse_number="208", warehouse_description="Portbury Main WH",
+        Row(plant_code="C061", warehouse_number="104", warehouse_description="Portbury Main WH",
             relationship_type="PRIMARY", wm_usage_type="FULL_WM", is_shared_warehouse=False,
-            valid_from="2026-01-01", valid_to="9999-12-31", is_active=True, config_owner="wm-config-owner")
+            valid_from="2026-01-01", valid_to="9999-12-31", is_active=True, config_owner="wm-config-owner"),
+        Row(plant_code="P817", warehouse_number="208", warehouse_description="Jackson Main WH",
+            relationship_type="PRIMARY", wm_usage_type="FULL_WM", is_shared_warehouse=False,
+            valid_from="2026-01-01", valid_to="9999-12-31", is_active=True, config_owner="wm-config-owner"),
     ]
     df = spark.createDataFrame(data)
     return (

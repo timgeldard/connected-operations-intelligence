@@ -14,6 +14,7 @@ Tables:
 import dlt
 from pyspark.sql import functions as F
 
+from silver._plant_gate import apply_plant_gate
 from silver.helpers import (
     bronze_published,
     get_spark,
@@ -45,10 +46,18 @@ def stg_purchase_order():
     changed_keys = ekko_changes.unionByName(ekpo_changes)
     ekko = spark.read.table(f"{published}.procurementorderobject_ekko")
     ekpo = spark.read.table(f"{published}.procurementorderobject_ekpo")
+    # Pre-gate pushdown: shrink the wide static EKPO (~6.62M item rows) to onboarded plants (EKPO.WERKS,
+    # the SAME plant axis as the final apply_plant_gate) BEFORE the changed-keys fan-out join. Row-equivalent
+    # to gating at the end; the final apply_plant_gate is kept (authoritative). Mirrors outbound_delivery's
+    # LIPS pre-gate exactly (incl. the header-only-delete limitation). EKKO (header) carries no plant, so it
+    # is not pre-filtered — only the merge hint applies to its join.
+    ekpo = apply_plant_gate(ekpo, "WERKS", "ioreporting", spark=spark)
 
     items_to_refresh = (
         changed_keys.alias("c")
-        .join(ekpo.alias("i"), ["EBELN", "MANDT"], "left")
+        # .hint("merge"): the pre-filtered EKPO is small-but-wide; force sort-merge so it is not
+        # auto-broadcast (which would re-introduce the wide-row OOM the header merge hint prevents).
+        .join(ekpo.alias("i").hint("merge"), ["EBELN", "MANDT"], "left")
         .select(
             "i.*",
             F.col("c.EBELN").alias("_change_ebeln"),
@@ -59,9 +68,11 @@ def stg_purchase_order():
         )
     )
 
-    return (
+    gated = (
         items_to_refresh.alias("i")
-        .join(ekko.alias("h"), ["EBELN", "MANDT"], "left")
+        # .hint("merge"): force sort-merge on the wide EKKO header join — Photon's default broadcast hash
+        # join OOMs/spills on the wide reconstructed item rows (same pattern as outbound_delivery's LIKP join).
+        .join(ekko.alias("h").hint("merge"), ["EBELN", "MANDT"], "left")
         .select(
             # ── Natural key
             strip_zeros(F.coalesce(F.col("i.EBELN"), F.col("i._change_ebeln"))).alias("purchase_order_number"),
@@ -103,6 +114,16 @@ def stg_purchase_order():
             ),
         )
     )
+    # Stage gate: scope to onboarded plants before SCD1 (stream-static broadcast join on plant_code).
+    # Slow-tier same-pipeline dependency: the gate reads site_config_plant (built by reference.py in THIS
+    # pipeline) via a fully-qualified spark.read.table inside apply_plant_gate, which DLT does NOT auto-track
+    # (proof: site_config_plant reads its own published name via conf, which would be a compile-time cycle if
+    # such reads were tracked) — so declare it explicitly to force correct intra-pipeline ordering. Fast-tier
+    # gated tables read site_config_plant CROSS-pipeline and rely on deploy-order; they must NOT use dlt.read.
+    _ = dlt.read("site_config_plant")
+    # Header-only deletes with a purged item carry null plant_code and are dropped — consistent with the
+    # documented "header-only delete can't cascade" limitation below.
+    return apply_plant_gate(gated, "plant_code", "ioreporting", spark=spark)
 
 dlt.create_streaming_table(
     name="purchase_order",
@@ -175,7 +196,7 @@ if hu_reconciliation_enabled():
         vekp = spark.read.table(f"{published}.handlingunit_vekp")
         vepo = spark.read.table(f"{published}.handlingunit_vepo")
 
-        return (
+        gated = (
             vepo.alias("i")
             .join(vekp.alias("h"), ["VENUM", "MANDT"], "left")
             .select(
@@ -212,6 +233,11 @@ if hu_reconciliation_enabled():
                 F.col("i.AEDATTM").alias("_replicated_at"),
             )
         )
+        # Stage gate: scope handling units to onboarded plants (warehouse product area). Declare the
+        # same-pipeline site_config_plant dependency explicitly (apply_plant_gate's spark.read.table is
+        # not DLT-tracked); see purchase_order above.
+        _ = dlt.read("site_config_plant")
+        return apply_plant_gate(gated, "plant_code", "warehouse", spark=spark)
 
 
 # ── 3. PHYSICAL INVENTORY DOCUMENT ────────────────────────────────────────────
@@ -232,8 +258,13 @@ def physical_inventory_document():
     published = bronze_published()
     ikpf = spark.read.table(f"{published}.header_physical_inventory_doc_ikpf")
     iseg = spark.read.table(f"{published}.physical_inventory_doc_items_iseg")
+    # Pre-gate pushdown: shrink the ISEG item table to plants onboarded for stock (ISEG.WERKS, the SAME
+    # plant axis as the final apply_plant_gate) BEFORE the IKPF header join. Row-equivalent to gating at
+    # the end; the final apply_plant_gate is kept (authoritative). Batch MV — IKPF is a narrow header
+    # lookup, left to the optimizer (no merge hint; not a wide-row stream-static broadcast risk).
+    iseg = apply_plant_gate(iseg, "WERKS", "stock", spark=spark)
 
-    return (
+    gated = (
         iseg.alias("i")
         .join(ikpf.alias("h"), ["MANDT", "IBLNR", "GJAHR"], "left")
         .select(
@@ -290,3 +321,8 @@ def physical_inventory_document():
             F.coalesce(F.col("i.AEDATTM"), F.col("h.AEDATTM")).alias("_replicated_at"),
         )
     )
+    # Stage gate: scope physical-inventory counts to onboarded plants (batch/stock product area). Declare
+    # the same-pipeline site_config_plant dependency explicitly (apply_plant_gate's spark.read.table is
+    # not DLT-tracked); see purchase_order above.
+    _ = dlt.read("site_config_plant")
+    return apply_plant_gate(gated, "plant_code", "stock", spark=spark)

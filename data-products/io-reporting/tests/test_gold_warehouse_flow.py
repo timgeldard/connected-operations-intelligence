@@ -957,3 +957,235 @@ def test_stock_reconciliation_summary_alias_adds_status(spark, monkeypatch):
 
     assert rows["MATCHED"]["reconciliation_status"] == "RECONCILED"
     assert rows["TRUE_VARIANCE"]["reconciliation_status"] == "ACTION_REQUIRED"
+
+
+def test_gold_stock_holds(spark):
+    from datetime import date
+
+    from gold.warehouse_flow_gold import gold_stock_holds
+
+    # 1. Populating batch_stock with a restricted batch and unrestricted batch
+    _save(spark, [
+        Row(plant_code="PL10", material_code="M1", batch_number="B_RESTRICTED", storage_location_code="SL01",
+            restricted_use_quantity=10.0, unrestricted_quantity=0.0, quality_inspection_quantity=0.0,
+            blocked_quantity=0.0, base_uom="KG"),
+        Row(plant_code="PL10", material_code="M1", batch_number="B_UNRESTRICTED", storage_location_code="SL01",
+            restricted_use_quantity=0.0, unrestricted_quantity=10.0, quality_inspection_quantity=0.0,
+            blocked_quantity=0.0, base_uom="KG"),
+    ], "batch_stock")
+
+    # 2. Populating storage_bin
+    _save(spark, [
+        # Quality hold
+        Row(plant_code="PL10", warehouse_number="WH01", storage_type="100", bin_code="BIN1",
+            quant_number="Q1", material_code="M1", batch_number="B1", stock_category_code="Q",
+            total_quantity=50.0, base_uom="KG", goods_receipt_date=date(2026, 6, 1)),
+        # Blocked hold
+        Row(plant_code="PL10", warehouse_number="WH01", storage_type="100", bin_code="BIN2",
+            quant_number="Q2", material_code="M1", batch_number="B2", stock_category_code="S",
+            total_quantity=30.0, base_uom="KG", goods_receipt_date=date(2026, 6, 2)),
+        # Restricted hold (stock_category_code is empty, but batch is restricted in batch_stock)
+        Row(plant_code="PL10", warehouse_number="WH01", storage_type="100", bin_code="BIN3",
+            quant_number="Q3", material_code="M1", batch_number="B_RESTRICTED", stock_category_code="",
+            total_quantity=20.0, base_uom="KG", goods_receipt_date=date(2026, 6, 3)),
+        # Unrestricted/Normal stock (should be filtered out)
+        Row(plant_code="PL10", warehouse_number="WH01", storage_type="100", bin_code="BIN4",
+            quant_number="Q4", material_code="M1", batch_number="B_UNRESTRICTED", stock_category_code="",
+            total_quantity=100.0, base_uom="KG", goods_receipt_date=date(2026, 6, 4)),
+    ], "storage_bin")
+
+    results = all_rows(gold_stock_holds())
+    assert len(results) == 3
+
+    by_quant = {r["quant_number"]: r for r in results}
+    assert "Q1" in by_quant
+    assert "Q2" in by_quant
+    assert "Q3" in by_quant
+    assert "Q4" not in by_quant
+
+    assert by_quant["Q1"]["hold_type"] == "quality"
+    assert by_quant["Q1"]["storage_bin"] == "BIN1"
+    assert by_quant["Q2"]["hold_type"] == "blocked"
+    assert by_quant["Q3"]["hold_type"] == "restricted"
+
+
+def test_gold_stock_holds_restricted_is_batch_level(spark):
+    """Restricted-use propagates batch-wide BY DESIGN (LQUA lacks LGORT — no sloc join possible)."""
+    from gold.warehouse_flow_gold import gold_stock_holds
+
+    _save(spark, [
+        # Same batch B9: restricted-use stock exists in SLOC A only; quants live in two bins.
+        Row(plant_code="PL10", warehouse_number="WH01", storage_type="100", bin_code="BIN-A",
+            quant_number="QA", material_code="M9", batch_number="B9", stock_category_code=None,
+            total_quantity=5.0, base_uom="KG", goods_receipt_date=None),
+        Row(plant_code="PL10", warehouse_number="WH01", storage_type="100", bin_code="BIN-B",
+            quant_number="QB", material_code="M9", batch_number="B9", stock_category_code=None,
+            total_quantity=7.0, base_uom="KG", goods_receipt_date=None),
+        # Different batch, no restriction: must not be flagged.
+        Row(plant_code="PL10", warehouse_number="WH01", storage_type="100", bin_code="BIN-C",
+            quant_number="QC", material_code="M9", batch_number="B8", stock_category_code=None,
+            total_quantity=3.0, base_uom="KG", goods_receipt_date=None),
+    ], "storage_bin")
+
+    _save(spark, [
+        # Restricted in one storage location only — the other location of B9 is clean.
+        Row(plant_code="PL10", material_code="M9", batch_number="B9",
+            storage_location_code="0001", restricted_use_quantity=2.0),
+        Row(plant_code="PL10", material_code="M9", batch_number="B9",
+            storage_location_code="0002", restricted_use_quantity=0.0),
+        Row(plant_code="PL10", material_code="M9", batch_number="B8",
+            storage_location_code="0001", restricted_use_quantity=0.0),
+    ], "batch_stock")
+
+    results = all_rows(gold_stock_holds())
+    by_quant = {r["quant_number"]: r for r in results}
+    # Batch-level propagation: BOTH quants of B9 are flagged restricted.
+    assert by_quant["QA"]["hold_type"] == "restricted"
+    assert by_quant["QB"]["hold_type"] == "restricted"
+    # Unrestricted batch B8 is not flagged.
+    assert "QC" not in by_quant
+
+
+def test_gold_transfer_order_open_items(spark):
+
+    from gold.warehouse_flow_gold import gold_transfer_order_open_items
+
+    # 1. Populating warehouse_transfer_order
+    _save(spark, [
+        # In scope: Open item
+        Row(plant_code="PL10", warehouse_number="WH01", transfer_order_number="T1", item_number="1",
+            material_code="M1", batch_number="B1", source_storage_type="100", source_bin="BIN1",
+            destination_storage_type="902", destination_bin="STAGE1", requested_quantity=10.0,
+            confirmed_quantity=0.0, item_status="Open", created_datetime=None, confirmed_date=None,
+            source_reference_type="F", source_reference_number="PO01", transfer_priority="1",
+            delivery_number="DEL01", created_by_user="USER1", confirmed_by_user=None),
+        # Out of scope: Confirmed item
+        Row(plant_code="PL10", warehouse_number="WH01", transfer_order_number="T2", item_number="1",
+            material_code="M1", batch_number="B1", source_storage_type="100", source_bin="BIN1",
+            destination_storage_type="902", destination_bin="STAGE1", requested_quantity=10.0,
+            confirmed_quantity=10.0, item_status="Fully Confirmed", created_datetime=None, confirmed_date=None,
+            source_reference_type="F", source_reference_number="PO01", transfer_priority="1",
+            delivery_number="DEL01", created_by_user="USER1", confirmed_by_user="USER2"),
+        # Out of scope: Open item but header deleted
+        Row(plant_code="PL10", warehouse_number="WH01", transfer_order_number="T3", item_number="1",
+            material_code="M1", batch_number="B1", source_storage_type="100", source_bin="BIN1",
+            destination_storage_type="902", destination_bin="STAGE1", requested_quantity=10.0,
+            confirmed_quantity=0.0, item_status="Open", created_datetime=None, confirmed_date=None,
+            source_reference_type="F", source_reference_number="PO01", transfer_priority="1",
+            delivery_number="DEL01", created_by_user="USER1", confirmed_by_user=None),
+        # In scope: partially confirmed item is still open work (matches the open-TO
+        # semantics in gold_warehouse_kpi_snapshot / gold_warehouse_exceptions).
+        Row(plant_code="PL10", warehouse_number="WH01", transfer_order_number="T4", item_number="1",
+            material_code="M1", batch_number="B1", source_storage_type="100", source_bin="BIN1",
+            destination_storage_type="902", destination_bin="STAGE1", requested_quantity=10.0,
+            confirmed_quantity=4.0, item_status="Partially Confirmed", created_datetime=None, confirmed_date=None,
+            source_reference_type="F", source_reference_number="PO01", transfer_priority="1",
+            delivery_number="DEL01", created_by_user="USER1", confirmed_by_user="USER2"),
+    ], "warehouse_transfer_order")
+
+    # 2. Populating warehouse_transfer_order_header_delete
+    _save(spark, [
+        Row(warehouse_number="WH01", transfer_order_number="T3", _replicated_at=None, _run_id=None, _record_seq=None),
+    ], "warehouse_transfer_order_header_delete")
+
+    results = all_rows(gold_transfer_order_open_items())
+    by_to = {r["transfer_order_number"]: r for r in results}
+    assert set(by_to) == {"T1", "T4"}
+    assert by_to["T1"]["plant_code"] == "PL10"
+    assert by_to["T1"]["item_status"] == "Open"
+    assert by_to["T4"]["item_status"] == "Partially Confirmed"
+    assert by_to["T4"]["confirmed_quantity"] == 4.0
+    assert by_to["T4"]["confirmed_by_user"] == "USER2"
+
+
+def test_gold_transfer_requirement_open_items(spark):
+    from gold.warehouse_flow_gold import gold_transfer_requirement_open_items
+
+    # Populating warehouse_transfer_requirement
+    _save(spark, [
+        # In scope: Open item with quantity
+        Row(plant_code="PL10", warehouse_number="WH01", transfer_requirement_number="TR1", item_number="1",
+            material_code="M1", batch_number="B1", source_storage_type="100", source_bin="BIN1",
+            destination_storage_type="902", destination_bin="STAGE1", required_quantity=10.0,
+            open_quantity=10.0, is_processing_complete=False, created_datetime=None,
+            planned_execution_datetime=None, source_reference_type="F", source_reference_number="PO01",
+            queue="Q1", transfer_priority="1"),
+        # Out of scope: Processing complete
+        Row(plant_code="PL10", warehouse_number="WH01", transfer_requirement_number="TR2", item_number="1",
+            material_code="M1", batch_number="B1", source_storage_type="100", source_bin="BIN1",
+            destination_storage_type="902", destination_bin="STAGE1", required_quantity=10.0,
+            open_quantity=10.0, is_processing_complete=True, created_datetime=None,
+            planned_execution_datetime=None, source_reference_type="F", source_reference_number="PO01",
+            queue="Q1", transfer_priority="1"),
+        # Out of scope: Open quantity is 0
+        Row(plant_code="PL10", warehouse_number="WH01", transfer_requirement_number="TR3", item_number="1",
+            material_code="M1", batch_number="B1", source_storage_type="100", source_bin="BIN1",
+            destination_storage_type="902", destination_bin="STAGE1", required_quantity=10.0,
+            open_quantity=0.0, is_processing_complete=False, created_datetime=None,
+            planned_execution_datetime=None, source_reference_type="F", source_reference_number="PO01",
+            queue="Q1", transfer_priority="1"),
+    ], "warehouse_transfer_requirement")
+
+    results = all_rows(gold_transfer_requirement_open_items())
+    assert len(results) == 1
+    assert results[0]["transfer_requirement_number"] == "TR1"
+    assert results[0]["plant_code"] == "PL10"
+    assert results[0]["open_quantity"] == 10.0
+
+def test_gold_goods_movement_activity(spark):
+    from datetime import date
+
+    from gold.warehouse_flow_gold import gold_goods_movement_activity
+
+    _save(spark, [
+        Row(plant_code="PL10", storage_location_code="0001", material_document_number="5000000001",
+            fiscal_year="2026", document_line_item="1", material_code="M1", batch_number="B1",
+            movement_type_code="101", debit_credit_indicator="S", quantity=10.0, base_uom="KG",
+            amount_local_currency=100.0, currency="EUR", posting_date=date(2026, 6, 9),
+            document_date=date(2026, 6, 9), order_number=None, purchase_order_number="PO01",
+            delivery_number=None, sales_order_number=None, posted_by_user="USER1",
+            transaction_code="MIGO"),
+        Row(plant_code="PL10", storage_location_code="0001", material_document_number="5000000002",
+            fiscal_year="2026", document_line_item="1", material_code="M1", batch_number="B1",
+            movement_type_code="261", debit_credit_indicator="H", quantity=4.0, base_uom="KG",
+            amount_local_currency=40.0, currency="EUR", posting_date=date(2026, 6, 9),
+            document_date=date(2026, 6, 9), order_number="700001", purchase_order_number=None,
+            delivery_number=None, sales_order_number=None, posted_by_user="USER2",
+            transaction_code="MB1A"),
+        # Movement type with no classification row: flags must default to False, not null.
+        Row(plant_code="PL10", storage_location_code="0001", material_document_number="5000000003",
+            fiscal_year="2026", document_line_item="1", material_code="M2", batch_number=None,
+            movement_type_code="999", debit_credit_indicator="S", quantity=1.0, base_uom="EA",
+            amount_local_currency=None, currency=None, posting_date=date(2026, 6, 8),
+            document_date=date(2026, 6, 8), order_number=None, purchase_order_number=None,
+            delivery_number=None, sales_order_number=None, posted_by_user=None,
+            transaction_code=None),
+    ], "goods_movement")
+
+    _save(spark, [
+        Row(movement_type_code="101", movement_label="GR_PO", event_category="RECEIPT",
+            is_goods_receipt=True, is_goods_issue=False, is_transfer=False, is_reversal=False),
+        Row(movement_type_code="261", movement_label="GI_ORDER", event_category="ISSUE",
+            is_goods_receipt=False, is_goods_issue=True, is_transfer=False, is_reversal=False),
+    ], "movement_type_classification")
+
+    results = all_rows(gold_goods_movement_activity())
+    assert len(results) == 3
+    by_doc = {r["material_document_number"]: r for r in results}
+
+    receipt = by_doc["5000000001"]
+    assert receipt["is_goods_receipt"] is True
+    assert receipt["event_category"] == "RECEIPT"
+    assert receipt["purchase_order_number"] == "PO01"
+    assert receipt["posted_by_user"] == "USER1"
+
+    issue = by_doc["5000000002"]
+    assert issue["is_goods_issue"] is True
+    assert issue["order_number"] == "700001"
+
+    unclassified = by_doc["5000000003"]
+    assert unclassified["is_goods_receipt"] is False
+    assert unclassified["is_goods_issue"] is False
+    assert unclassified["is_transfer"] is False
+    assert unclassified["event_category"] is None
+

@@ -1,0 +1,42 @@
+resources:
+  jobs:
+    gold_security_verify:
+      name: "[${bundle.target}] Connected Plant — Gold Security Verify"
+
+      tags:
+        owner: connected-plant-team
+        cost-center: connected-plant
+        project: ops-reporting
+
+      # Manual-trigger by default (no schedule): run after the gold_security_<env>.sql /
+      # gold_security_harden_<env>.sql admin scripts to VERIFY the RLS setup wasn't skipped or
+      # mis-ordered. Default mode is verification-only and report-only:
+      #   --enforce=false  -> report violations but do NOT fail (observe in UAT first).
+      # Flip to a gate by setting --enforce=true in these parameters once UAT is clean.
+      # To also APPLY the security SQL in order from the job, add:
+      #   --apply=true --security_sql=<ws path>/gold_security_${bundle.target}.sql
+      #   --harden_sql=<ws path>/gold_security_harden_${bundle.target}.sql
+      # (kept off by default; the verification gate is the priority — ADR 012 / hardening plan Phase 4.)
+      tasks:
+        - task_key: verify_gold_security
+          environment_key: default
+          spark_python_task:
+            python_file: ../gold/security/verify_gold_security.py
+            parameters:
+              - "--gold_catalog=${var.catalog}"
+              - "--gold_schema=${var.gold_schema}"
+              - "--consumer_group=users"
+              - "--enforce=false"
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users

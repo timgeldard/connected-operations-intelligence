@@ -145,20 +145,46 @@ def strip_zeros(col: "str | Column") -> Column:
         .otherwise(value)
     )
 
+# SAP "initial" date sentinels across both replication formats.
+_SAP_NULL_DATES = ("", "00000000", "0000-00-00")
+
+
 def sap_date(col_name: str) -> Column:
-    """Cast SAP YYYYMMDD string to DATE. Returns NULL for SAP sentinel '00000000' or blank."""
+    """Cast a SAP date string to DATE, tolerating BOTH replication formats.
+
+    Aecorsoft delivers compact DATS ('yyyyMMdd') on some tables and ISO
+    ('yyyy-MM-dd') on others (verified live in connected_plant_uat 2026-06-10:
+    AUFK/AFKO/LTBK dates arrive as '2026-04-01'; the compact-only parser returned
+    NULL for 100% of process_order and transfer-requirement dates). Returns NULL
+    for the SAP initial sentinels ('00000000' / '0000-00-00') and blank.
+    """
     normalized = F.trim(F.col(col_name).cast("string"))
-    return F.try_to_timestamp(
-        F.when(normalized.isNull() | (normalized == "") | (normalized == "00000000"), None)
-        .otherwise(normalized),
-        F.lit("yyyyMMdd"),
+    cleaned = F.when(
+        normalized.isNull() | normalized.isin(*_SAP_NULL_DATES), None
+    ).otherwise(normalized)
+    return F.coalesce(
+        F.try_to_timestamp(cleaned, F.lit("yyyyMMdd")),
+        F.try_to_timestamp(cleaned, F.lit("yyyy-MM-dd")),
     ).cast("date")
 
 def sap_datetime(date_col: str, time_col: str) -> Column:
-    """Combine SAP YYYYMMDD date + HHMMSS time strings into TIMESTAMP. Returns NULL if either part is blank."""
-    return F.try_to_timestamp(
-        F.concat(F.col(date_col), F.lpad(F.col(time_col), 6, "0")),
-        F.lit("yyyyMMddHHmmss"),
+    """Combine SAP date + time strings into TIMESTAMP, tolerating BOTH replication
+    formats: compact ('yyyyMMdd' + 'HHmmss') and ISO ('yyyy-MM-dd' + 'HH:mm:ss').
+    Returns NULL when the date part is blank/initial or either part fails to parse."""
+    date_normalized = F.trim(F.col(date_col).cast("string"))
+    date_cleaned = F.when(
+        date_normalized.isNull() | date_normalized.isin(*_SAP_NULL_DATES), None
+    ).otherwise(date_normalized)
+    time_normalized = F.trim(F.col(time_col).cast("string"))
+    return F.coalesce(
+        F.try_to_timestamp(
+            F.concat(date_cleaned, F.lpad(time_normalized, 6, "0")),
+            F.lit("yyyyMMddHHmmss"),
+        ),
+        F.try_to_timestamp(
+            F.concat_ws(" ", date_cleaned, time_normalized),
+            F.lit("yyyy-MM-dd HH:mm:ss"),
+        ),
     )
 
 def sap_flag(col_name: str) -> Column:

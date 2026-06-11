@@ -3266,24 +3266,26 @@
       "properties": {
         "movementId": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — document/year/line]"
         },
         "timestamp": {
           "type": "string",
-          "format": "date-time",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — posting date]"
         },
         "movementType": {
           "type": "string",
           "enum": [
             "goods-receipt",
             "goods-issue",
-            "transfer-order",
-            "stock-transfer",
-            "return",
-            "adjustment"
+            "transfer",
+            "reversal",
+            "other"
           ],
-          "description": "[classification: source-field]"
+          "description": "[classification: source-derived — classification flags]"
+        },
+        "movementTypeCode": {
+          "type": "string",
+          "description": "[classification: source-field — BWART]"
         },
         "materialId": {
           "type": "string",
@@ -3291,7 +3293,7 @@
         },
         "materialDescription": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — material join deferred]"
         },
         "batchId": {
           "type": "string",
@@ -3307,15 +3309,15 @@
         },
         "sourceLocation": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — IM storage location]"
         },
         "destinationLocation": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — not modelled at IM grain]"
         },
         "referenceDocument": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — PO/order/delivery]"
         },
         "postedBy": {
           "type": "string",
@@ -3327,9 +3329,7 @@
         "timestamp",
         "movementType",
         "materialId",
-        "materialDescription",
-        "quantity",
-        "uom"
+        "quantity"
       ],
       "additionalProperties": false
     },
@@ -4873,16 +4873,29 @@
           "description": "[classification: source-field]"
         },
         "materialDescription": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "[classification: source-field]"
         },
         "storageLocationId": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "[classification: source-field]"
         },
         "expiryDate": {
-          "type": "string",
-          "format": "date-time",
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
           "description": "[classification: source-field]"
         },
         "daysUntilExpiry": {
@@ -4890,12 +4903,22 @@
           "description": "[classification: application-derived]"
         },
         "quantity": {
-          "type": "number",
-          "minimum": 0,
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
           "description": "[classification: source-field]"
         },
         "uom": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "[classification: source-field]"
         },
         "urgency": {
@@ -4909,11 +4932,18 @@
           "description": "[classification: application-heuristic]"
         },
         "holdStatus": {
-          "type": "string",
-          "enum": [
-            "unrestricted",
-            "quality-hold",
-            "blocked"
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "unrestricted",
+                "quality-hold",
+                "blocked"
+              ]
+            },
+            {
+              "type": "null"
+            }
           ],
           "description": "[classification: application-heuristic]"
         }
@@ -4921,14 +4951,8 @@
       "required": [
         "batchId",
         "materialId",
-        "materialDescription",
-        "storageLocationId",
-        "expiryDate",
         "daysUntilExpiry",
-        "quantity",
-        "uom",
-        "urgency",
-        "holdStatus"
+        "urgency"
       ],
       "additionalProperties": false
     },
@@ -4949,28 +4973,23 @@
         },
         "materialDescription": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — material join deferred]"
         },
         "storageLocationId": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — storage_type/bin composite]"
         },
         "holdReason": {
           "type": "string",
           "enum": [
-            "quality-hold",
-            "customer-hold",
-            "production-hold",
-            "regulatory-hold",
-            "damaged",
-            "expired",
-            "investigation"
+            "quality",
+            "blocked",
+            "restricted"
           ],
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — SAP stock category]"
         },
         "holdQuantity": {
           "type": "number",
-          "minimum": 0,
           "description": "[classification: source-field]"
         },
         "uom": {
@@ -4979,12 +4998,11 @@
         },
         "raisedAt": {
           "type": "string",
-          "format": "date-time",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — goods receipt date (age basis)]"
         },
         "raisedBy": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — no QM hold log replicated]"
         },
         "ageHours": {
           "type": "number",
@@ -4999,12 +5017,9 @@
       "required": [
         "holdId",
         "materialId",
-        "materialDescription",
         "storageLocationId",
         "holdReason",
         "holdQuantity",
-        "uom",
-        "raisedAt",
         "ageHours"
       ],
       "additionalProperties": false
@@ -7125,7 +7140,7 @@
         },
         "warehouseName": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — no warehouse-name source replicated]"
         },
         "planDate": {
           "type": "string",
@@ -7187,7 +7202,6 @@
       "required": [
         "plantId",
         "warehouseId",
-        "warehouseName",
         "planDate",
         "totalOrders",
         "stagedOrders",
@@ -10354,30 +10368,60 @@
           "description": "[classification: source-field]"
         },
         "materialDescription": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "[classification: source-field]"
         },
         "storageLocationId": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "[classification: source-field]"
         },
         "currentStockQuantity": {
-          "type": "number",
-          "minimum": 0,
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
           "description": "[classification: source-field]"
         },
         "reorderPoint": {
-          "type": "number",
-          "minimum": 0,
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
           "description": "[classification: source-field]"
         },
         "targetQuantity": {
-          "type": "number",
-          "minimum": 0,
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
           "description": "[classification: source-field]"
         },
         "uom": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "[classification: source-field]"
         },
         "urgency": {
@@ -10403,12 +10447,6 @@
       "required": [
         "needId",
         "materialId",
-        "materialDescription",
-        "storageLocationId",
-        "currentStockQuantity",
-        "reorderPoint",
-        "targetQuantity",
-        "uom",
         "urgency"
       ],
       "additionalProperties": false
@@ -11415,12 +11453,10 @@
         },
         "raisedAt": {
           "type": "string",
-          "format": "date-time",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-derived — oldest underlying record or fetch time]"
         },
         "resolvedAt": {
           "type": "string",
-          "format": "date-time",
           "description": "[classification: source-field]"
         },
         "status": {
@@ -11475,7 +11511,7 @@
         },
         "materialDescription": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — material join deferred]"
         },
         "quantity": {
           "type": "number",
@@ -11483,19 +11519,19 @@
         },
         "uom": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — not sourced at TR-item grain]"
         },
         "processOrderId": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — BENUM when BETYP=F]"
         },
         "requestedBy": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — LTBK carries no requester]"
         },
         "assignedTo": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — LTBK carries no assignee]"
         },
         "status": {
           "type": "string",
@@ -11516,21 +11552,19 @@
             "high",
             "critical"
           ],
-          "description": "[classification: source-field]"
+          "description": "[classification: application-heuristic]"
         },
         "createdAt": {
           "type": "string",
-          "format": "date-time",
           "description": "[classification: source-field]"
         },
         "completedAt": {
           "type": "string",
-          "format": "date-time",
           "description": "[classification: source-field]"
         },
         "reason": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — WM queue]"
         }
       },
       "required": [
@@ -11539,14 +11573,9 @@
         "fromLocation",
         "toLocation",
         "materialId",
-        "materialDescription",
         "quantity",
-        "uom",
-        "requestedBy",
         "status",
-        "priority",
-        "createdAt",
-        "reason"
+        "priority"
       ],
       "additionalProperties": false
     },
@@ -11567,7 +11596,7 @@
         },
         "batchId": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — order batch not at this grain]"
         },
         "plantId": {
           "type": "string",
@@ -11575,12 +11604,11 @@
         },
         "lineOrResource": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — production line join deferred]"
         },
         "plannedStart": {
           "type": "string",
-          "format": "date-time",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — sched_start]"
         },
         "requiredQuantity": {
           "type": "number",
@@ -11588,7 +11616,7 @@
         },
         "stagedQuantity": {
           "type": "number",
-          "description": "[classification: source-field]"
+          "description": "[classification: application-derived — order_qty * staging_pct]"
         },
         "shortfallQuantity": {
           "type": "number",
@@ -11600,7 +11628,7 @@
         },
         "stagingArea": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — storage location absent]"
         },
         "status": {
           "type": "string",
@@ -11611,7 +11639,7 @@
             "blocked",
             "not-required"
           ],
-          "description": "[classification: source-field]"
+          "description": "[classification: application-heuristic]"
         },
         "urgency": {
           "type": "string",
@@ -11628,7 +11656,7 @@
           "items": {
             "type": "string"
           },
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — TO linkage via pick-tasks dataset]"
         },
         "blockerReason": {
           "type": "string",
@@ -11638,19 +11666,12 @@
       "required": [
         "processOrderId",
         "materialId",
-        "materialDescription",
-        "batchId",
         "plantId",
-        "lineOrResource",
-        "plannedStart",
         "requiredQuantity",
         "stagedQuantity",
         "shortfallQuantity",
-        "uom",
-        "stagingArea",
         "status",
-        "urgency",
-        "pickTaskIds"
+        "urgency"
       ],
       "additionalProperties": false
     },
@@ -11663,7 +11684,7 @@
         },
         "processOrderId": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — BENUM when BETYP=F]"
         },
         "materialId": {
           "type": "string",
@@ -11671,7 +11692,7 @@
         },
         "materialDescription": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — material join deferred]"
         },
         "warehouseId": {
           "type": "string",
@@ -11695,11 +11716,11 @@
         },
         "uom": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — not sourced at TO-item grain]"
         },
         "assignee": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — confirming user]"
         },
         "status": {
           "type": "string",
@@ -11720,16 +11741,14 @@
             "high",
             "critical"
           ],
-          "description": "[classification: source-field]"
+          "description": "[classification: application-heuristic]"
         },
         "createdAt": {
           "type": "string",
-          "format": "date-time",
           "description": "[classification: source-field]"
         },
         "completedAt": {
           "type": "string",
-          "format": "date-time",
           "description": "[classification: source-field]"
         },
         "batchId": {
@@ -11739,18 +11758,14 @@
       },
       "required": [
         "taskId",
-        "processOrderId",
         "materialId",
-        "materialDescription",
         "warehouseId",
         "storageLocation",
         "destinationLocation",
         "requiredQuantity",
         "pickedQuantity",
-        "uom",
         "status",
-        "priority",
-        "createdAt"
+        "priority"
       ],
       "additionalProperties": false
     },
@@ -11944,7 +11959,7 @@
         },
         "materialDescription": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — material join deferred]"
         },
         "plantId": {
           "type": "string",
@@ -11952,15 +11967,15 @@
         },
         "warehouseId": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — material-grain dataset]"
         },
         "requiredQuantity": {
           "type": "number",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — open TR qty]"
         },
         "availableQuantity": {
           "type": "number",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — stock join deferred]"
         },
         "shortfallQuantity": {
           "type": "number",
@@ -11968,14 +11983,14 @@
         },
         "uom": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — not sourced at material grain]"
         },
         "affectedOrders": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap — order linkage deferred]"
         },
         "urgency": {
           "type": "string",
@@ -11985,7 +12000,7 @@
             "high",
             "critical"
           ],
-          "description": "[classification: source-derived]"
+          "description": "[classification: application-heuristic — TR age]"
         },
         "procurementStatus": {
           "type": "string",
@@ -12001,28 +12016,21 @@
         },
         "expectedArrival": {
           "type": "string",
-          "format": "date-time",
-          "description": "[classification: source-field]"
+          "description": "[classification: data-gap]"
         },
         "canBeSubstituted": {
           "type": "boolean",
-          "description": "[classification: source-derived]"
+          "description": "[classification: data-gap]"
         }
       },
       "required": [
         "shortfallId",
         "materialId",
-        "materialDescription",
         "plantId",
-        "warehouseId",
         "requiredQuantity",
-        "availableQuantity",
         "shortfallQuantity",
-        "uom",
-        "affectedOrders",
         "urgency",
-        "procurementStatus",
-        "canBeSubstituted"
+        "procurementStatus"
       ],
       "additionalProperties": false
     },
@@ -12031,11 +12039,11 @@
       "properties": {
         "zoneId": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — storage type]"
         },
         "zoneName": {
           "type": "string",
-          "description": "[classification: source-field]"
+          "description": "[classification: source-field — storage type]"
         },
         "warehouseId": {
           "type": "string",
@@ -12045,22 +12053,22 @@
           "type": "number",
           "minimum": 0,
           "maximum": 100,
-          "description": "[classification: source-derived]"
+          "description": "[classification: source-derived — occupancy rate]"
         },
-        "pendingOrders": {
+        "occupiedBins": {
           "type": "integer",
           "minimum": 0,
-          "description": "[classification: source-derived]"
+          "description": "[classification: source-field]"
         },
-        "stagedOrders": {
+        "emptyBins": {
           "type": "integer",
           "minimum": 0,
-          "description": "[classification: source-derived]"
+          "description": "[classification: source-field]"
         },
-        "blockedOrders": {
+        "blockedBins": {
           "type": "integer",
           "minimum": 0,
-          "description": "[classification: source-derived]"
+          "description": "[classification: source-field]"
         },
         "status": {
           "type": "string",
@@ -12082,9 +12090,9 @@
         "zoneName",
         "warehouseId",
         "capacityPercent",
-        "pendingOrders",
-        "stagedOrders",
-        "blockedOrders",
+        "occupiedBins",
+        "emptyBins",
+        "blockedBins",
         "status",
         "overflowRisk"
       ],

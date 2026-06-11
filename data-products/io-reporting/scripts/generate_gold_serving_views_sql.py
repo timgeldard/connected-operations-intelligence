@@ -34,10 +34,35 @@ _DAYS_TO_GI = "datediff(b.planned_goods_issue_date, current_date())"
 _DAYS_TO_START = "datediff(b.scheduled_start_date, current_date())"
 _DAYS_TO_EXPIRY = "datediff(b.minimum_expiry_date, current_date())"
 _DAYS_SINCE_PO = "datediff(current_date(), b.earliest_po_date)"
+_DAYS_SINCE_PO_LINE = "datediff(current_date(), b.po_date)"
 
-# table -> [(output_column, sql_expression_over_base_alias_b)]. Mirrors the pre-Phase-2 test-mode
+# Age (days) of the warehouse-exception aging reference date, e.g. GR date or expiry date.
+_EXCEPTION_AGE_DAYS = "datediff(current_date(), b.aging_reference_date)"
+# Rolling age (hours) of the aging reference timestamp (transfer-order creation).
+_EXCEPTION_AGE_HOURS = (
+    "(unix_timestamp(current_timestamp()) - unix_timestamp(b.aging_reference_datetime)) / 3600.0"
+)
+
+# table -> serving-view spec. Either a plain list of (output_column, sql_expression_over_base_alias_b)
+# pairs, or a dict {"columns": [...], "where": "<predicate over b>"} when the view must also FILTER
+# the base candidates at query time (age-threshold exceptions). Mirrors the pre-Phase-2 test-mode
 # logic exactly so behaviour is unchanged — only the location moves (MV -> serving view).
 SERVING_VIEWS = {
+    "gold_stock_holds": [
+        ("age_hours",
+         "CASE WHEN b.goods_receipt_date IS NOT NULL "
+         "THEN (unix_timestamp(current_timestamp()) - unix_timestamp(b.goods_receipt_date)) / 3600.0 END"),
+    ],
+    "gold_transfer_order_open_items": [
+        ("age_hours",
+         "CASE WHEN b.created_datetime IS NOT NULL "
+         "THEN (unix_timestamp(current_timestamp()) - unix_timestamp(b.created_datetime)) / 3600.0 END"),
+    ],
+    "gold_transfer_requirement_open_items": [
+        ("age_hours",
+         "CASE WHEN b.created_datetime IS NOT NULL "
+         "THEN (unix_timestamp(current_timestamp()) - unix_timestamp(b.created_datetime)) / 3600.0 END"),
+    ],
     "gold_lineside_stock": [
         ("min_days_to_expiry",
          "CASE WHEN b.earliest_expiry_date IS NOT NULL "
@@ -105,14 +130,106 @@ SERVING_VIEWS = {
          f"WHEN {_DAYS_SINCE_PO} >= 14 THEN 'amber' "
          "ELSE 'green' END"),
     ],
+    # PO-line backlog: age + risk band are per-line (date-relative on the line's PO date), so they live
+    # in the _live serving view (base MV stays deterministic). No remaining_open_qty yet (GR qty is
+    # future enrichment), so the band is age-only.
+    "gold_inbound_po_line_backlog": [
+        ("oldest_po_age_days",
+         f"CASE WHEN b.po_date IS NOT NULL THEN {_DAYS_SINCE_PO_LINE} END"),
+        ("inbound_backlog_risk_band",
+         "CASE "
+         f"WHEN {_DAYS_SINCE_PO_LINE} IS NULL THEN 'grey' "
+         f"WHEN {_DAYS_SINCE_PO_LINE} >= 30 THEN 'red' "
+         f"WHEN {_DAYS_SINCE_PO_LINE} >= 14 THEN 'amber' "
+         "ELSE 'green' END"),
+    ],
+    # KPI snapshot: the base MV is deterministic (no snapshot_date); the query-time as-of marker
+    # is added here so consumers (Warehouse360 overview) get it without wall-clock SQL of their own.
+    "gold_warehouse_kpi_snapshot": [
+        ("snapshot_date", "current_date()"),
+    ],
+    # WM Operations worklist: job age + overdue flag vs the TR planned execution datetime.
+    "gold_wm_staging_worklist": [
+        ("age_hours",
+         "CASE WHEN b.created_datetime IS NOT NULL "
+         "THEN (unix_timestamp(current_timestamp()) - unix_timestamp(b.created_datetime)) / 3600.0 END"),
+        ("is_overdue",
+         "b.planned_execution_datetime IS NOT NULL "
+         "AND b.planned_execution_datetime < current_timestamp() "
+         "AND b.worklist_status NOT IN ('COMPLETE')"),
+    ],
+    # WM Operations order readiness: days-to-start + cockpit-style traffic light. Red when the
+    # order starts today-or-earlier without full PSA supply; amber when it starts within a day
+    # and staging is not fully planned; grey when unscheduled or without WM demand.
+    "gold_wm_order_readiness": [
+        ("days_to_start", _DAYS_TO_START),
+        ("readiness_band",
+         "CASE "
+         "WHEN b.readiness_status = 'NO_WM_DEMAND' THEN 'grey' "
+         f"WHEN {_DAYS_TO_START} IS NULL THEN 'grey' "
+         "WHEN b.supply_status = 'SUPPLIED' THEN 'green' "
+         f"WHEN b.readiness_status IN ('NOT_STARTED', 'PARTIALLY_PLANNED') AND {_DAYS_TO_START} <= 0 THEN 'red' "
+         f"WHEN b.readiness_status <> 'SUPPLIED' AND {_DAYS_TO_START} <= 1 THEN 'amber' "
+         "ELSE 'green' END"),
+    ],
+    # WM Operations bin/stock explorer: expiry age served live (base MV stays deterministic).
+    "gold_wm_bin_stock_detail": [
+        ("days_to_expiry",
+         "CASE WHEN b.expiry_date IS NOT NULL THEN datediff(b.expiry_date, current_date()) END"),
+        ("is_expired",
+         "b.expiry_date IS NOT NULL AND b.expiry_date < current_date()"),
+    ],
+    # WM slow movers: stock age served live so the base MV stays deterministic.
+    "gold_wm_slow_movers": [
+        ("days_since_last_movement",
+         "CASE WHEN b.last_movement_datetime IS NOT NULL "
+         "THEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) END"),
+        ("age_bucket",
+         "CASE "
+         "WHEN b.last_movement_datetime IS NULL THEN 'NO_MOVEMENT_RECORD' "
+         "WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 365 THEN 'OVER_365D' "
+         "WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 180 THEN 'D180_365' "
+         "WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 90 THEN 'D90_180' "
+         "ELSE 'ACTIVE' END"),
+    ],
+    # Warehouse exceptions: the base MV stores ALL aging candidates with their reference date
+    # (deterministic, incrementally refreshable); the per-type age thresholds, age_days and
+    # detected_date are evaluated here at query time. Consumers must read _live, not _secured —
+    # _secured rows are candidates, not confirmed exceptions.
+    "gold_warehouse_exceptions": {
+        "columns": [
+            ("age_days", f"CAST({_EXCEPTION_AGE_DAYS} AS INT)"),
+            ("detected_date", "current_date()"),
+        ],
+        "where": (
+            "CASE b.exception_type "
+            "WHEN 'EXPIRED_BATCH_WITH_STOCK' THEN b.aging_reference_date < current_date() "
+            f"WHEN 'QI_STOCK_AGED_14D' THEN {_EXCEPTION_AGE_DAYS} > 14 "
+            f"WHEN 'BLOCKED_STOCK_AGED_3D' THEN {_EXCEPTION_AGE_DAYS} > 3 "
+            f"WHEN 'OPEN_TO_AGED_24H' THEN {_EXCEPTION_AGE_HOURS} > 24 "
+            "ELSE TRUE END"
+        ),
+    },
 }
 
 
+def _spec(table: str) -> dict:
+    """Normalise a SERVING_VIEWS entry to {"columns": [...], "where": str | None}."""
+    entry = SERVING_VIEWS[table]
+    if isinstance(entry, dict):
+        return {"columns": entry["columns"], "where": entry.get("where")}
+    return {"columns": entry, "where": None}
+
+
 def serving_select_sql(table: str, base_relation: str) -> str:
-    """Return `SELECT b.*, <expr> AS <col>, ... FROM <base_relation> AS b` for a serving view.
-    Used by both the DDL generator and the unit tests (single source of truth)."""
-    cols = ",\n  ".join(f"{expr} AS {alias}" for alias, expr in SERVING_VIEWS[table])
-    return f"SELECT\n  b.*,\n  {cols}\nFROM {base_relation} AS b"
+    """Return `SELECT b.*, <expr> AS <col>, ... FROM <base_relation> AS b [WHERE ...]` for a
+    serving view. Used by both the DDL generator and the unit tests (single source of truth)."""
+    spec = _spec(table)
+    cols = ",\n  ".join(f"{expr} AS {alias}" for alias, expr in spec["columns"])
+    sql = f"SELECT\n  b.*,\n  {cols}\nFROM {base_relation} AS b"
+    if spec["where"]:
+        sql += f"\nWHERE {spec['where']}"
+    return sql
 
 
 def generate_sql():

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { EvidencePanel, useEvidencePanel } from '@connectio/evidence-panel-runtime'
+import { EvidencePanel, useEvidencePanel, DataGapNotice } from '@connectio/evidence-panel-runtime'
 import type { EvidencePanelRegistration } from '@connectio/product-model'
 import type { StagingPickingWave } from '@connectio/data-contracts'
 import { useStagingPickingWaves } from '../adapters/production-staging-queries.js'
@@ -60,7 +60,9 @@ export function StagingPickingWavesPanel({ request }: StagingPickingWavesPanelPr
       errorMessage={!result?.ok ? result?.error.message : undefined}
       source={result?.source}
     >
-      {waves && (
+      {result?.gap ? (
+        <DataGapNotice source={result.gap.source} tracking={result.gap.tracking} />
+      ) : waves && (
         <div style={{ padding: '8px 0' }}>
           {waves.map((wave) => {
             const color = STATUS_COLOR[wave.status] ?? 'var(--shell-fg-2)'

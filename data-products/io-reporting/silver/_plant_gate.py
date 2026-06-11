@@ -5,11 +5,16 @@ plants / warehouses approved by the governed site stage-gate config before data 
 Gold and serving views inherit Silver scope; user security is a separate concern and does NOT
 replace this plant gate.
 
-Source of truth (canonical gate): the governed `site_config_plant` and `site_config_warehouse`
-tables (built by the slow tier from the seeded config; see reference.py). This module reads them via
-the `site_config_plant_table` / `site_config_warehouse_table` Spark confs — the SAME confs the slow
-pipeline already sets to `${var.catalog}.${var.schema}.site_config_*`. They must also be set on any
-pipeline that applies a gate (see resources/*.pipeline.yml).
+Source of truth:
+  * Plant onboarding (which plants are active): the governed `site_config_plant` table (built by the slow
+    tier from the seeded config; see reference.py), read via the `site_config_plant_table` Spark conf.
+  * Plant↔warehouse relationship (LGNUM→WERKS): the SAP T320 link, already replicated to silver as
+    `warehouse_storage_location_mapping`, read via the `warehouse_sloc_mapping_table` Spark conf. The
+    warehouse mapping is NOT a hand-maintained seed — it is derived from SAP so it cannot drift (a prior
+    seed mis-mapped C061 to warehouse 208, which is actually P817's).
+These confs are set to `${var.catalog}.${var.schema}.<table>` on every pipeline that applies a gate
+(see resources/*.pipeline.yml). The slow pipeline must build `site_config_plant` and
+`warehouse_storage_location_mapping` BEFORE a fast-tier gate reads them.
 
 Design rules (see source-contracts/site_stage_gate_contract.md):
   * Do NOT filter Bronze. Gates apply at the Silver transform only.
@@ -90,25 +95,26 @@ def active_plants_df(spark=None, product_area=None) -> DataFrame:
 
 
 def active_warehouses_df(spark=None, product_area="warehouse") -> DataFrame:
-    """The approved LGNUM -> WERKS mapping: exactly ONE governing (warehouse_number, plant_code) row per
-    active warehouse, restricted to plants active for `product_area`. Fail-loud read.
+    """The governed LGNUM -> WERKS mapping for active plants, sourced from the SAP plant↔warehouse
+    relationship (T320 → `warehouse_storage_location_mapping`), restricted to plants active for
+    `product_area`. Fail-loud read.
 
-    A warehouse can be configured against multiple active plants (shared warehouse). Returning all of
-    them would fan out fact rows on join and corrupt aggregates, so we resolve a SINGLE governing plant
-    per warehouse: prefer relationship_type='PRIMARY', then the lexicographically-smallest plant_code as
-    a deterministic tie-break. (Splitting a genuinely shared warehouse across plants is a deeper modelling
-    decision — tracked, not done here; DEV is one plant per warehouse so this is a no-op in DEV.)"""
+    The relationship is DEFINED by the warehouse+storage-location→plant link in SAP T320 (the authoritative
+    source already replicated into silver as `warehouse_storage_location_mapping`), NOT a hand-maintained
+    seed. This prevents the LGNUM↔WERKS drift that a hardcoded seed allowed (e.g. C061 mis-mapped to 208,
+    P817's warehouse). Warehouse numbers are distinct per plant (C061→104, P817→208), so each warehouse
+    resolves to exactly one plant.
+
+    Defensive de-dup: should a warehouse genuinely map to multiple active plants, we still resolve a SINGLE
+    governing plant (lexicographically-smallest plant_code) to avoid fact-row fan-out on the warehouse join.
+    Splitting a genuinely shared warehouse across plants remains a deeper modelling decision, tracked
+    separately."""
     spark = spark or get_spark()
-    cfg = _require_conf(spark, "site_config_warehouse_table")
-    wh = spark.read.table(cfg).filter(F.col("is_active"))
+    cfg = _require_conf(spark, "warehouse_sloc_mapping_table")
+    mapping = spark.read.table(cfg).select("warehouse_number", "plant_code").distinct()
     plants = active_plants_df(spark, product_area)
-    mapped = wh.join(plants, "plant_code", "inner").select(
-        "warehouse_number", "plant_code", "relationship_type"
-    )
-    one_per_wh = Window.partitionBy("warehouse_number").orderBy(
-        F.when(F.col("relationship_type") == "PRIMARY", 0).otherwise(1),
-        F.col("plant_code"),
-    )
+    mapped = mapping.join(plants, "plant_code", "inner").select("warehouse_number", "plant_code")
+    one_per_wh = Window.partitionBy("warehouse_number").orderBy(F.col("plant_code"))
     return (
         mapped.withColumn("_rn", F.row_number().over(one_per_wh))
         .filter(F.col("_rn") == 1)

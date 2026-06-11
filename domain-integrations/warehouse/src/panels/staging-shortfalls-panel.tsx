@@ -80,7 +80,7 @@ export function StagingShortfallsPanel({ request, onProcessOrderClick }: Staging
                     <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: urgencyColor, border: `1px solid ${urgencyColor}`, borderRadius: 4, padding: '1px 6px' }}>
                       {sf.urgency}
                     </span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--shell-fg)', flex: 1 }}>{sf.materialDescription}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--shell-fg)', flex: 1 }}>{sf.materialDescription ?? sf.materialId}</span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--shell-fg-2)' }}>
                     Shortfall: <strong style={{ color: urgencyColor }}>{sf.shortfallQuantity} {sf.uom}</strong>
@@ -91,7 +91,7 @@ export function StagingShortfallsPanel({ request, onProcessOrderClick }: Staging
                     {sf.expectedArrival && (
                       <span style={{ fontSize: 11, color: 'var(--shell-fg-3)' }}>ETA: {new Date(sf.expectedArrival).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
                     )}
-                    {onProcessOrderClick ? (
+                    {sf.affectedOrders && onProcessOrderClick ? (
                       <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                         {sf.affectedOrders.map(orderId => (
                           <button
@@ -103,9 +103,9 @@ export function StagingShortfallsPanel({ request, onProcessOrderClick }: Staging
                           </button>
                         ))}
                       </span>
-                    ) : (
+                    ) : sf.affectedOrders ? (
                       <span style={{ fontSize: 11, color: 'var(--shell-fg-3)' }}>Orders: {sf.affectedOrders.length}</span>
-                    )}
+                    ) : null}
                     {sf.canBeSubstituted && (
                       <span style={{ fontSize: 11, color: '#1976D2' }}>Substitution available</span>
                     )}

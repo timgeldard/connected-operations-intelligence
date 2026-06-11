@@ -1,12 +1,20 @@
 """
 Shared Gold pipeline helpers.
+
+Session/conf/existence probes are delegated to silver.helpers (single implementation —
+the bundle root packages both silver* and gold*, so the import is available in every
+pipeline). The explicit-`spark` signatures are kept for existing Gold callers.
 """
 
 from pyspark.sql import DataFrame, SparkSession
 
+from silver.helpers import get_spark as _get_spark
+from silver.helpers import hu_reconciliation_enabled as _hu_reconciliation_enabled
+from silver.helpers import relation_exists as _relation_exists
+
 
 def get_spark_session() -> SparkSession:
-    return SparkSession.builder.getOrCreate()
+    return _get_spark()
 
 
 def get_silver_schema(spark: SparkSession) -> str:
@@ -32,22 +40,23 @@ def hu_reconciliation_enabled(spark: SparkSession) -> bool:
     handlingunit_vekp/vepo. So gold_hu_reconciliation / gold_handling_unit_summary and
     the HU branch of gold_reconciliation_alerts are not defined. UAT/PROD set it true.
     Defaults to true so a missing conf never silently drops HU in a real environment.
+
+    Delegates to silver.helpers.hu_reconciliation_enabled (single implementation); the
+    `spark` parameter is kept for signature stability (one session per pipeline run).
     """
-    return str(spark.conf.get("enable_hu_reconciliation", "true")).strip().lower() == "true"
+    del spark  # one active session per run; the shared helper resolves it itself
+    return _hu_reconciliation_enabled()
 
 
 def table_exists(spark: SparkSession, table_name: str) -> bool:
     """True if a (fully-qualified) relation exists.
 
-    Uses a lazy `spark.read.table` analysis probe, NOT `spark.catalog.tableExists`, which is a
-    BLOCKED Py4J API in the DLT serverless environment (PY4J_BLOCKED_API). `read.table` resolves
-    the relation (metadata only, no Spark job) and raises if it is absent.
+    Delegates to silver.helpers.relation_exists (single implementation of the lazy
+    `spark.read.table` analysis probe — spark.catalog.tableExists is a BLOCKED Py4J API in the
+    DLT serverless environment). The `spark` parameter is kept for signature stability.
     """
-    try:
-        spark.read.table(table_name)
-        return True
-    except Exception:  # noqa: BLE001 - missing UC catalog/schema is a normal bootstrap condition
-        return False
+    del spark  # one active session per run; the shared helper resolves it itself
+    return _relation_exists(table_name)
 
 
 def anti_join_optional_deleted_headers(

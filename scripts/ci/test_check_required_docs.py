@@ -27,9 +27,9 @@ def test_check_docs_unqualified_claims(tmp_path):
         "docs/architecture/warehouse360-governed-path-status.md",
         "docs/contracts/warehouse360-contract-status.md",
         "docs/contracts/warehouse360-route-to-contract-map.md",
-        "docs/decisions/ADR-0001-apps-use-consumption-views-only.md",
-        "docs/decisions/ADR-0002-secured-live-consumption-view-boundaries.md",
-        "docs/decisions/ADR-0003-dev-before-uat-validation.md",
+        "docs/adr/0008-apps-use-consumption-views-only.md",
+        "docs/adr/0009-secured-live-consumption-view-boundaries.md",
+        "docs/adr/0010-dev-before-uat-validation.md",
     ]:
         path = tmp_path / doc
         path.parent.mkdir(parents=True, exist_ok=True)

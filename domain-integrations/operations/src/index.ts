@@ -6,7 +6,6 @@
  * Phase 3: Operations Plan Risk workspace — full implementation.
  */
 
-export { operationsWorkspaceRegistration } from './registration.js'
 
 // Phase 3 — Operations Plan Risk workspace
 export { operationsPlanRiskRegistration } from './operations-plan-risk-registration.js'

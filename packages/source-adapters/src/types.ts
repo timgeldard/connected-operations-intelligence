@@ -10,10 +10,15 @@ export interface AdapterError {
   readonly retryable: boolean
 }
 
+export interface DataGap {
+  readonly source: string
+  readonly tracking: string
+}
+
 /** The result of a source adapter fetch. */
 export type AdapterResult<T> =
-  | { readonly ok: true; readonly data: T; readonly fetchedAt: string; readonly source?: AdapterSource }
-  | { readonly ok: false; readonly error: AdapterError; readonly displayState: EvidencePanelDisplayState; readonly source?: AdapterSource }
+  | { readonly ok: true; readonly data: T; readonly fetchedAt: string; readonly source?: AdapterSource; readonly gap?: DataGap }
+  | { readonly ok: false; readonly error: AdapterError; readonly displayState: EvidencePanelDisplayState; readonly source?: AdapterSource; readonly gap?: DataGap }
 
 /** Data freshness metadata attached to an adapter response. */
 export interface SourceFreshness {

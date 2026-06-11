@@ -81,10 +81,10 @@ export function StagingZoneCapacityPanel({ request }: StagingZoneCapacityPanelPr
                   <span style={{ fontSize: 12, fontWeight: 700, color: barColor, minWidth: 36 }}>{Math.round(zone.capacityPercent)}%</span>
                 </div>
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11, color: 'var(--shell-fg-3)' }}>Staged: {zone.stagedOrders}</span>
-                  <span style={{ fontSize: 11, color: 'var(--shell-fg-3)' }}>Pending: {zone.pendingOrders}</span>
-                  {zone.blockedOrders > 0 && (
-                    <span style={{ fontSize: 11, color: '#D32F2F' }}>Blocked: {zone.blockedOrders}</span>
+                  <span style={{ fontSize: 11, color: 'var(--shell-fg-3)' }}>Occupied: {zone.occupiedBins}</span>
+                  <span style={{ fontSize: 11, color: 'var(--shell-fg-3)' }}>Empty: {zone.emptyBins}</span>
+                  {zone.blockedBins > 0 && (
+                    <span style={{ fontSize: 11, color: '#D32F2F' }}>Blocked bins: {zone.blockedBins}</span>
                   )}
                 </div>
               </div>

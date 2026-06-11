@@ -17,7 +17,9 @@ import csv
 import os
 
 ENVIRONMENTS = {
-    "dev": {"catalog": "connected_plant_dev", "schema": "silver_dev"},
+    # dev schema matches databricks.yml `dev` target (silver_io_reporting — the DEV-native
+    # baseline; the earlier silver_dev schema is retired).
+    "dev": {"catalog": "connected_plant_dev", "schema": "silver_io_reporting"},
     "uat": {"catalog": "connected_plant_uat", "schema": "silver_io_reporting"},
     "prod": {"catalog": "connected_plant_prod", "schema": "silver_io_reporting"},
 }

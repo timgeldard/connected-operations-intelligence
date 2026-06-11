@@ -5,14 +5,11 @@ for Warehouse360 cockpit, inbound, outbound, staging, and exception monitoring.
 """
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Optional
 
 from shared.query_service.cache_policy import CacheTier
 from shared.query_service.contract_resolver import resolve_contract_object
-from shared.query_service.errors import DatabricksConfigError
-from shared.query_service.object_resolver import resolve_domain_object
 from shared.query_service.query_executor import DatabricksRepository
 from shared.query_service.query_spec import QuerySpec
 
@@ -62,6 +59,74 @@ class WarehouseExceptionRequest:
     limit: int = 100
 
 
+@dataclass
+class WarehouseStockExceptionsRequest:
+    warehouse_id: str
+    plant_id: Optional[str] = None
+    bucket: Optional[str] = None
+    limit: int = 100
+
+
+@dataclass
+class WarehouseShortfallsRequest:
+    warehouse_id: str
+    plant_id: Optional[str] = None
+    limit: int = 100
+
+
+@dataclass
+class WarehouseStockZonesRequest:
+    warehouse_id: str
+    plant_id: Optional[str] = None
+    limit: int = 100
+
+
+@dataclass
+class WarehouseBatchHoldStatusRequest:
+    batch_id: str
+    plant_id: Optional[str] = None
+
+
+@dataclass
+class WarehouseStagingReadinessRequest:
+    plant_id: str
+    plan_date: str
+
+
+@dataclass
+class WarehouseOpenHoldsRequest:
+    plant_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    limit: int = 200
+
+
+@dataclass
+class WarehousePickTasksRequest:
+    plant_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    limit: int = 200
+
+
+@dataclass
+class WarehouseMoveRequestsRequest:
+    plant_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    limit: int = 200
+
+
+@dataclass
+class WarehouseGoodsMovementsRequest:
+    """date_from/date_to are MANDATORY (ISO dates) — the movements feed is never unbounded."""
+    date_from: str
+    date_to: str
+    plant_id: Optional[str] = None
+    material_id: Optional[str] = None
+    limit: int = 200
+
+
+GOODS_MOVEMENTS_MAX_WINDOW_DAYS = 31
+
+
 # ---------------------------------------------------------------------------
 # Utility Mapping & Formatting Helpers
 # ---------------------------------------------------------------------------
@@ -94,53 +159,6 @@ def _format_datetime(value: object) -> str:
     return s
 
 
-def _map_exception_severity(severity_raw: object, days_to_expiry_raw: object) -> str:
-    """Map exception severity.
-
-    If days_to_expiry is provided:
-      - days < 0 (expired) -> critical
-      - days <= 7 -> high
-      - days <= 30 -> medium
-      - else -> low
-
-    Fallback to raw severity mapping if daysToExpiry is missing.
-    """
-    if days_to_expiry_raw is not None:
-        try:
-            days = int(days_to_expiry_raw)
-            if days < 0:
-                return "critical"
-            elif days <= 7:
-                return "high"
-            elif days <= 30:
-                return "medium"
-            else:
-                return "low"
-        except (ValueError, TypeError):
-            pass
-
-    if severity_raw:
-        s = str(severity_raw).lower().strip()
-        if s in ("critical", "high", "medium", "low"):
-            return s
-        if s == "warning":
-            return "medium"
-        if s == "caution":
-            return "low"
-
-    return "low"
-
-
-def _get_source_mode() -> str:
-    source_mode = os.getenv("WAREHOUSE360_SOURCE_MODE")
-    if source_mode not in {"legacy_wh360", "governed_contracts"}:
-        raise DatabricksConfigError(
-            ["WAREHOUSE360_SOURCE_MODE"],
-            "WAREHOUSE360_SOURCE_MODE must be explicitly set to 'legacy_wh360' or 'governed_contracts'",
-        )
-    return source_mode
-
-
 # ---------------------------------------------------------------------------
 # QuerySpec Factories & Row Mappers
 # ---------------------------------------------------------------------------
@@ -148,16 +166,11 @@ def _get_source_mode() -> str:
 def get_warehouse_overview_spec(request: WarehouseOverviewRequest) -> QuerySpec:
     """Return QuerySpec for Warehouse KPI Snapshot.
 
-    Source view: wh360_kpi_snapshot_v — global single-row KPI summary.
+    Source view: vw_consumption_warehouse360_overview.
     No warehouse_id filter: the view pre-aggregates across all warehouses.
     """
-    source_mode = _get_source_mode()
-    if source_mode == "governed_contracts":
-        view = resolve_contract_object("warehouse360.overview", "wh360")
-        contract_id = "warehouse360.overview"
-    else:
-        view = resolve_domain_object("wh360", "wh360_kpi_snapshot_v")
-        contract_id = None
+    view = resolve_contract_object("warehouse360.overview", "wh360")
+    contract_id = "warehouse360.overview"
 
     sql = f"""
     SELECT
@@ -230,27 +243,13 @@ def map_warehouse_overview_rows(rows: list[dict], request: WarehouseOverviewRequ
 def get_warehouse_inbound_spec(request: WarehouseInboundRequest) -> QuerySpec:
     """Return QuerySpec for Inbound POs & STOs.
 
-    Source view: wh360_inbound_v (connected_plant_uat, verified 2026-05-19 in
-    docs/data-layer/warehouse360-inbound-source-verification.md).
-
-    Actual columns: po_id, po_item, doc_type, doc_cat, vendor_id, vendor_name,
-    plant_id, storage_loc, material_id, material_name, ordered_qty, gr_qty,
-    uom, delivery_date, po_date, delivery_complete, open_qty, qa_lot_id,
-    qa_status. No LGNUM/WAREHOUSE_NUMBER, no STO id, no exception_reason —
-    those contract fields are emitted as null by the mapper.
+    Source view: vw_consumption_warehouse360_inbound_backlog.
 
     The request still carries warehouse_id for backwards-compatibility, but
-    the SQL does NOT filter on it (the view does not expose LGNUM). A
-    follow-up will reintroduce the filter once a LGNUM-bearing source is
-    confirmed.
+    the SQL does NOT filter on it (the view does not expose LGNUM).
     """
-    source_mode = _get_source_mode()
-    if source_mode == "governed_contracts":
-        view = resolve_contract_object("warehouse360.inbound_backlog", "wh360")
-        contract_id = "warehouse360.inbound_backlog"
-    else:
-        view = resolve_domain_object("wh360", "wh360_inbound_v")
-        contract_id = None
+    view = resolve_contract_object("warehouse360.inbound_backlog", "wh360")
+    contract_id = "warehouse360.inbound_backlog"
 
     where_clauses: list[str] = []
     params: dict[str, object] = {}
@@ -259,65 +258,35 @@ def get_warehouse_inbound_spec(request: WarehouseInboundRequest) -> QuerySpec:
         where_clauses.append("plant_id = :plant_id")
         params["plant_id"] = request.plant_id
     if request.date_from:
-        where_clauses.append("delivery_date >= :date_from")
+        where_clauses.append("po_date >= :date_from")
         params["date_from"] = request.date_from
     if request.date_to:
-        where_clauses.append("delivery_date <= :date_to")
+        where_clauses.append("po_date <= :date_to")
         params["date_to"] = request.date_to
 
     where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-    if source_mode == "governed_contracts":
-        sql = f"""
-        SELECT
-            po_id,
-            po_item,
-            doc_type,
-            vendor_id,
-            vendor_name,
-            plant_id,
-            storage_loc,
-            material_id,
-            material_name,
-            ordered_qty,
-            gr_qty,
-            open_qty,
-            uom,
-            delivery_date,
-            po_date,
-            qa_status,
-            oldest_po_age_days,
-            inbound_backlog_risk_band
-        FROM {view}
-        {where_str}
-        LIMIT {request.limit}
-        """
-    else:
-        sql = f"""
-        SELECT
-            po_id,
-            po_item,
-            doc_type,
-            doc_cat,
-            vendor_id,
-            vendor_name,
-            plant_id,
-            storage_loc,
-            material_id,
-            material_name,
-            ordered_qty,
-            gr_qty,
-            open_qty,
-            uom,
-            delivery_date,
-            po_date,
-            delivery_complete,
-            qa_lot_id,
-            qa_status
-        FROM {view}
-        {where_str}
-        LIMIT {request.limit}
-        """
+    # First-wave PO-line CORE fields (ADR-0004 D1). vendor_name / gr_qty / open_qty / delivery_date /
+    # qa_status are deferred future enrichment and are not selected (mapper emits None for them).
+    sql = f"""
+    SELECT
+        po_id,
+        po_item,
+        doc_type,
+        vendor_id,
+        plant_id,
+        storage_loc,
+        material_id,
+        material_name,
+        ordered_qty,
+        uom,
+        po_date,
+        oldest_po_age_days,
+        inbound_backlog_risk_band
+    FROM {view}
+    {where_str}
+    LIMIT {request.limit}
+    """
 
     return QuerySpec(
         name="warehouse360.get_inbound",
@@ -374,6 +343,8 @@ def _derive_inbound_document_status(row: dict) -> Optional[str]:
 
 
 def map_warehouse_inbound_rows(rows: list[dict]) -> list[dict]:
+    # NOTE: open_qty / delivery_date / delivery_complete are documented first-wave field gaps —
+    # the governed inbound consumption view does not expose them, so row.get() yields None by design.
     """Map raw inbound rows to Warehouse360InboundItem schema.
 
     Source columns documented in
@@ -428,50 +399,14 @@ def map_warehouse_inbound_rows(rows: list[dict]) -> list[dict]:
 def get_warehouse_outbound_spec(request: WarehouseOutboundRequest) -> QuerySpec:
     """Return QuerySpec for Outbound Deliveries.
 
-    Source view: wh360_deliveries_v (verified live 2026-05-25 via
-    ``DESCRIBE TABLE connected_plant_uat.wh360.wh360_deliveries_v`` —
-    see docs/data-layer/warehouse360-outbound-source-verification.md).
-
-    Verified columns: delivery_id, delivery_type, plant_id, customer_id,
-    customer_name, carrier, lgnum, planned_gi_date, actual_gi_date,
-    loading_date, delivery_date, gross_weight, weight_uom, packages,
-    wm_status, mins_to_cutoff, pick_pct, line_count, risk, shipped.
-
-    The previous adapter projected SAP-style UPPER_CASE line-item columns
-    (``DELIVERY_ITEM_ID``, ``SALES_ORDER_ID``, ``MATERIAL_ID``,
-    ``MATERIAL_DESCRIPTION``, ``BATCH_ID``, ``STORAGE_LOCATION``,
-    ``WAREHOUSE_NUMBER``, ``PLANNED_GOODS_ISSUE_DATE``,
-    ``ACTUAL_GOODS_ISSUE_DATE``, ``QUANTITY``, ``UNIT_OF_MEASURE``,
-    ``STATUS``, ``EXCEPTION_REASON``) which do not exist in the live
-    delivery-header view. The route returned HTTP 502 in databricks-api
-    mode. This spec now uses the live lower-case column names.
-
-    Filters are optional and symmetric (SQL placeholder ⇔ params key):
-      - ``lgnum = :warehouse_id`` when ``warehouse_id`` is supplied
-      - ``plant_id = :plant_id`` when ``plant_id`` is supplied
-      - ``planned_gi_date >= :date_from`` when supplied (lexical ISO compare —
-        the source column is ``string`` not ``date``)
-      - ``planned_gi_date <= :date_to`` when supplied
-
-    Line-item / material / batch fields are unavailable from this
-    delivery-header view; the mapper emits ``None`` for those contract
-    fields (``materialId`` stays as empty string to satisfy the
-    generated-contract requirement — see source-verification doc §5).
+    Source view: vw_consumption_warehouse360_outbound_backlog.
     """
-    source_mode = _get_source_mode()
-    if source_mode == "governed_contracts":
-        view = resolve_contract_object("warehouse360.outbound_backlog", "wh360")
-        contract_id = "warehouse360.outbound_backlog"
-    else:
-        view = resolve_domain_object("wh360", "wh360_deliveries_v")
-        contract_id = None
+    view = resolve_contract_object("warehouse360.outbound_backlog", "wh360")
+    contract_id = "warehouse360.outbound_backlog"
 
     where_clauses: list[str] = []
     params: dict[str, object] = {}
 
-    if request.warehouse_id:
-        where_clauses.append("lgnum = :warehouse_id")
-        params["warehouse_id"] = request.warehouse_id
     if request.plant_id:
         where_clauses.append("plant_id = :plant_id")
         params["plant_id"] = request.plant_id
@@ -484,54 +419,25 @@ def get_warehouse_outbound_spec(request: WarehouseOutboundRequest) -> QuerySpec:
 
     where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-    if source_mode == "governed_contracts":
-        sql = f"""
-        SELECT
-            delivery_id,
-            delivery_type,
-            plant_id,
-            customer_id,
-            customer_name,
-            carrier,
-            planned_gi_date,
-            actual_gi_date,
-            delivery_date,
-            gross_weight,
-            pick_pct,
-            line_count,
-            risk,
-            shipped
-        FROM {view}
-        {where_str}
-        LIMIT {request.limit}
-        """
-    else:
-        sql = f"""
-        SELECT
-            delivery_id,
-            delivery_type,
-            plant_id,
-            customer_id,
-            customer_name,
-            carrier,
-            lgnum,
-            planned_gi_date,
-            actual_gi_date,
-            loading_date,
-            delivery_date,
-            gross_weight,
-            weight_uom,
-            packages,
-            wm_status,
-            mins_to_cutoff,
-            pick_pct,
-            line_count,
-            risk,
-            shipped
-        FROM {view}
-        {where_str}
-        LIMIT {request.limit}
-        """
+    sql = f"""
+    SELECT
+        delivery_id,
+        delivery_type,
+        plant_id,
+        customer_id,
+        customer_name,
+        planned_gi_date,
+        actual_gi_date,
+        delivery_date,
+        gross_weight,
+        pick_pct,
+        line_count,
+        risk,
+        shipped
+    FROM {view}
+    {where_str}
+    LIMIT {request.limit}
+    """
 
     return QuerySpec(
         name="warehouse360.get_outbound",
@@ -546,6 +452,8 @@ def get_warehouse_outbound_spec(request: WarehouseOutboundRequest) -> QuerySpec:
 
 
 def map_warehouse_outbound_rows(rows: list[dict]) -> list[dict]:
+    # NOTE: lgnum / weight_uom / wm_status are not exposed by the governed outbound consumption
+    # view (delivery grain) — row.get() yields None for them by design (documented gaps).
     """Map raw wh360_deliveries_v rows to Warehouse360OutboundItem.
 
     Source columns verified live 2026-05-25 — see
@@ -606,29 +514,10 @@ def map_warehouse_outbound_rows(rows: list[dict]) -> list[dict]:
 def get_warehouse_staging_spec(request: WarehouseStagingRequest) -> QuerySpec:
     """Return QuerySpec for Production Staging Demands.
 
-    Source view: wh360_process_orders_v (verified 2026-05-19, see
-    docs/data-layer/warehouse360-staging-source-verification.md).
-
-    The previous adapter targeted ``staging_orders_v`` which does not exist
-    in UAT. ``wh360_process_orders_v`` is the verified replacement and
-    carries process-order-level staging fields:
-      order_id, sap_order, material_id, material_name, plant_id, order_qty,
-      uom, planned_start, planned_finish, sched_start, sched_finish,
-      staging_pct, to_items_total, to_items_done, mins_to_start, risk,
-      reservation_no, batch_id.
-
-    The request still carries warehouse_id for backwards-compatibility, but
-    the SQL does NOT filter on it (the view does not expose LGNUM). Per the
-    source-verification doc §3.1, the date filter is ``sched_start`` —
-    the documented "staging-by" anchor — not the missing REQUIREMENT_DATE.
+    Source view: vw_consumption_warehouse360_staging_workload.
     """
-    source_mode = _get_source_mode()
-    if source_mode == "governed_contracts":
-        view = resolve_contract_object("warehouse360.staging_workload", "wh360")
-        contract_id = "warehouse360.staging_workload"
-    else:
-        view = resolve_domain_object("wh360", "wh360_process_orders_v")
-        contract_id = None
+    view = resolve_contract_object("warehouse360.staging_workload", "wh360")
+    contract_id = "warehouse360.staging_workload"
 
     where_clauses: list[str] = []
     params: dict[str, object] = {}
@@ -645,54 +534,25 @@ def get_warehouse_staging_spec(request: WarehouseStagingRequest) -> QuerySpec:
 
     where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-    if source_mode == "governed_contracts":
-        sql = f"""
-        SELECT
-            order_id,
-            sap_order,
-            reservation_no,
-            material_id,
-            material_name,
-            batch_id,
-            plant_id,
-            uom,
-            order_qty,
-            sched_start,
-            sched_finish,
-            staging_pct,
-            to_items_total,
-            to_items_done,
-            mins_to_start,
-            risk
-        FROM {view}
-        {where_str}
-        LIMIT {request.limit}
-        """
-    else:
-        sql = f"""
-        SELECT
-            order_id,
-            sap_order,
-            reservation_no,
-            material_id,
-            material_name,
-            batch_id,
-            plant_id,
-            uom,
-            order_qty,
-            planned_start,
-            planned_finish,
-            sched_start,
-            sched_finish,
-            staging_pct,
-            to_items_total,
-            to_items_done,
-            mins_to_start,
-            risk
-        FROM {view}
-        {where_str}
-        LIMIT {request.limit}
-        """
+    sql = f"""
+    SELECT
+        order_id,
+        material_id,
+        material_name,
+        plant_id,
+        uom,
+        order_qty,
+        sched_start,
+        sched_finish,
+        staging_pct,
+        to_items_total,
+        to_items_done,
+        mins_to_start,
+        risk
+    FROM {view}
+    {where_str}
+    LIMIT {request.limit}
+    """
 
     return QuerySpec(
         name="warehouse360.get_staging",
@@ -813,29 +673,10 @@ def map_warehouse_staging_rows(rows: list[dict]) -> list[dict]:
 def get_warehouse_exceptions_spec(request: WarehouseExceptionRequest) -> QuerySpec:
     """Return QuerySpec for IM/WM exceptions.
 
-    Source view: imwm_exceptions_v (verified 2026-05-19, see
-    docs/data-layer/warehouse360-imwm-exceptions-source-verification.md).
-
-    The previous adapter targeted ``wh360_imwm_exceptions_v`` which does
-    not exist in UAT. The actual view drops the ``wh360_`` prefix.
-
-    Verified columns: exception_type, severity (int), sla_hours,
-    material_id, material_name, plant_id, storage_loc, storage_loc_name,
-    qty, batch_id, bin_id, detail_text, detected_date.
-
-    The request still carries warehouse_id for backwards-compatibility, but
-    the SQL does NOT filter on it (the view does not expose LGNUM). The
-    date filter targets ``detected_date`` — this is a SEMANTIC SHIFT from
-    the previous adapter (which filtered on a non-existent ``EXPIRY_DATE``
-    column). See source-verification doc §3.1.
+    Source view: vw_consumption_warehouse360_im_wm_reconciliation.
     """
-    source_mode = _get_source_mode()
-    if source_mode == "governed_contracts":
-        view = resolve_contract_object("warehouse360.im_wm_reconciliation", "wh360")
-        contract_id = "warehouse360.im_wm_reconciliation"
-    else:
-        view = resolve_domain_object("wh360", "imwm_exceptions_v")
-        contract_id = None
+    view = resolve_contract_object("warehouse360.im_wm_reconciliation", "wh360")
+    contract_id = "warehouse360.im_wm_reconciliation"
 
     where_clauses: list[str] = []
     params: dict[str, object] = {}
@@ -844,52 +685,27 @@ def get_warehouse_exceptions_spec(request: WarehouseExceptionRequest) -> QuerySp
         where_clauses.append("plant_id = :plant_id")
         params["plant_id"] = request.plant_id
     if request.date_from:
-        where_clauses.append("detected_date >= :date_from")
+        where_clauses.append("latest_detected_date >= :date_from")
         params["date_from"] = request.date_from
     if request.date_to:
-        where_clauses.append("detected_date <= :date_to")
+        where_clauses.append("latest_detected_date <= :date_to")
         params["date_to"] = request.date_to
 
     where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-    if source_mode == "governed_contracts":
-        sql = f"""
-        SELECT
-            exception_type,
-            severity,
-            sla_hours,
-            material_id,
-            plant_id,
-            storage_loc,
-            qty,
-            batch_id,
-            bin_id,
-            detail_text,
-            detected_date
-        FROM {view}
-        {where_str}
-        LIMIT {request.limit}
-        """
-    else:
-        sql = f"""
-        SELECT
-            exception_type,
-            severity,
-            sla_hours,
-            material_id,
-            material_name,
-            plant_id,
-            storage_loc,
-            storage_loc_name,
-            qty,
-            batch_id,
-            bin_id,
-            detail_text,
-            detected_date
-        FROM {view}
-        {where_str}
-        LIMIT {request.limit}
-        """
+    sql = f"""
+    SELECT
+        exception_type,
+        severity,
+        material_id,
+        plant_id,
+        qty,
+        batch_id,
+        detail_text
+    FROM {view}
+    {where_str}
+    LIMIT {request.limit}
+    """
 
     return QuerySpec(
         name="warehouse360.get_exceptions",
@@ -981,6 +797,620 @@ def map_warehouse_exceptions_rows(rows: list[dict]) -> list[dict]:
     return result
 
 
+def get_warehouse_stock_exceptions_spec(request: WarehouseStockExceptionsRequest) -> QuerySpec:
+    """Return QuerySpec for stock exceptions.
+
+    Source view: vw_consumption_warehouse360_stock_exceptions.
+    """
+    view = resolve_contract_object("warehouse360.stock_exceptions", "wh360")
+    contract_id = "warehouse360.stock_exceptions"
+
+    where_clauses: list[str] = []
+    params: dict[str, object] = {}
+
+    if request.plant_id:
+        where_clauses.append("plant_id = :plant_id")
+        params["plant_id"] = request.plant_id
+    if request.bucket:
+        where_clauses.append("exception_type = :bucket")
+        params["bucket"] = request.bucket
+
+    where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    sql = f"""
+    SELECT
+        plant_id,
+        material_id,
+        batch_id,
+        exception_type,
+        qty,
+        minimum_days_to_expiry,
+        has_minimum_shelf_life_breach
+    FROM {view}
+    {where_str}
+    LIMIT {request.limit}
+    """
+
+    return QuerySpec(
+        name="warehouse360.get_stock_exceptions",
+        module="wh360",
+        endpoint="/api/warehouse360/stock-exceptions",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "stock", "exceptions"],
+        contract_id=contract_id,
+    )
+
+
+def get_warehouse_shortfalls_spec(request: WarehouseShortfallsRequest) -> QuerySpec:
+    """Return QuerySpec for material shortfalls.
+
+    Source view: vw_consumption_warehouse360_shortfalls.
+    """
+    view = resolve_contract_object("warehouse360.shortfalls", "wh360")
+    contract_id = "warehouse360.shortfalls"
+
+    where_clauses: list[str] = []
+    params: dict[str, object] = {}
+
+    if request.plant_id:
+        where_clauses.append("plant_id = :plant_id")
+        params["plant_id"] = request.plant_id
+
+    where_str = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    sql = f"""
+    SELECT
+        plant_id,
+        material_id,
+        shortfall_qty,
+        open_items_count,
+        oldest_tr_date
+    FROM {view}
+    {where_str}
+    LIMIT {request.limit}
+    """
+
+    return QuerySpec(
+        name="warehouse360.get_shortfalls",
+        module="wh360",
+        endpoint="/api/warehouse360/shortfalls",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "production", "shortfalls"],
+        contract_id=contract_id,
+    )
+
+
+def get_warehouse_stock_zones_spec(request: WarehouseStockZonesRequest) -> QuerySpec:
+    view = resolve_contract_object("warehouse360.stock_zones", "wh360")
+    contract_id = "warehouse360.stock_zones"
+    params = {}
+    where_clauses = ["warehouse_number = :warehouse_id"]
+    params["warehouse_id"] = request.warehouse_id
+    if request.plant_id:
+        where_clauses.append("plant_id = :plant_id")
+        params["plant_id"] = request.plant_id
+    where_str = " WHERE " + " AND ".join(where_clauses)
+    sql = f"""
+    SELECT
+        plant_id,
+        warehouse_number,
+        storage_type,
+        bin_type,
+        bin_record_count,
+        occupied_bin_count,
+        empty_bin_count,
+        blocked_bin_count,
+        occupancy_rate
+    FROM {view}
+    {where_str}
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="warehouse360.get_stock_zones",
+        module="wh360",
+        endpoint="/api/warehouse360/stock-zones",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "stock", "zones"],
+        contract_id=contract_id,
+    )
+
+
+def get_warehouse_batch_hold_status_spec(request: WarehouseBatchHoldStatusRequest) -> QuerySpec:
+    view = resolve_contract_object("warehouse360.batch_hold_status", "wh360")
+    contract_id = "warehouse360.batch_hold_status"
+    params = {"batch_id": request.batch_id}
+    where_clauses = ["batch_id = :batch_id"]
+    if request.plant_id:
+        where_clauses.append("plant_id = :plant_id")
+        params["plant_id"] = request.plant_id
+    where_str = " WHERE " + " AND ".join(where_clauses)
+    sql = f"""
+    SELECT
+        plant_id,
+        storage_location_id,
+        material_id,
+        batch_id,
+        uom,
+        unrestricted_quantity,
+        blocked_quantity,
+        restricted_quantity,
+        total_quantity,
+        stock_type,
+        has_blocking_hold,
+        last_updated_at
+    FROM {view}
+    {where_str}
+    LIMIT 1
+    """
+    return QuerySpec(
+        name="warehouse360.get_batch_hold_status",
+        module="wh360",
+        endpoint="/api/warehouse360/batch/{{batchId}}/hold-status",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "batch", "hold_status"],
+        contract_id=contract_id,
+    )
+
+
+def get_warehouse_staging_readiness_spec(request: WarehouseStagingReadinessRequest) -> QuerySpec:
+    view = resolve_contract_object("warehouse360.staging_readiness", "wh360")
+    contract_id = "warehouse360.staging_readiness"
+    params = {"plant_id": request.plant_id, "plan_date": request.plan_date}
+    sql = f"""
+    SELECT
+        plant_id,
+        plan_date,
+        total_orders,
+        fully_staged,
+        partially_staged,
+        not_staged,
+        blocked
+    FROM {view}
+    WHERE plant_id = :plant_id AND plan_date = CAST(:plan_date AS DATE)
+    LIMIT 1
+    """
+    return QuerySpec(
+        name="warehouse360.get_staging_readiness",
+        module="wh360",
+        endpoint="/api/warehouse360/staging-readiness",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "staging", "readiness"],
+        contract_id=contract_id,
+    )
+
+
+def _open_items_where(request, params: dict) -> str:
+    """Shared optional plant/warehouse predicate for the open-items datasets."""
+    where_clauses: list[str] = []
+    if request.plant_id:
+        where_clauses.append("plant_id = :plant_id")
+        params["plant_id"] = request.plant_id
+    if request.warehouse_id:
+        where_clauses.append("warehouse_number = :warehouse_id")
+        params["warehouse_id"] = request.warehouse_id
+    return (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+
+def get_warehouse_open_holds_spec(request: WarehouseOpenHoldsRequest) -> QuerySpec:
+    view = resolve_contract_object("warehouse360.open_holds", "wh360")
+    contract_id = "warehouse360.open_holds"
+    params: dict[str, object] = {}
+    where_str = _open_items_where(request, params)
+    sql = f"""
+    SELECT
+        plant_id,
+        warehouse_number,
+        storage_type,
+        storage_bin,
+        quant_number,
+        material_id,
+        batch_id,
+        hold_type,
+        quantity,
+        uom,
+        goods_receipt_date,
+        age_hours
+    FROM {view}
+    {where_str}
+    ORDER BY age_hours DESC
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="warehouse360.get_open_holds",
+        module="wh360",
+        endpoint="/api/warehouse360/open-holds",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "stock", "holds"],
+        contract_id=contract_id,
+    )
+
+
+def get_warehouse_pick_tasks_spec(request: WarehousePickTasksRequest) -> QuerySpec:
+    view = resolve_contract_object("warehouse360.pick_tasks", "wh360")
+    contract_id = "warehouse360.pick_tasks"
+    params: dict[str, object] = {}
+    where_str = _open_items_where(request, params)
+    sql = f"""
+    SELECT
+        plant_id,
+        warehouse_number,
+        task_id,
+        item_number,
+        material_id,
+        batch_id,
+        source_storage_type,
+        source_storage_bin,
+        destination_storage_type,
+        destination_storage_bin,
+        requested_quantity,
+        confirmed_quantity,
+        item_status,
+        created_datetime,
+        order_reference_type,
+        order_reference_number,
+        transfer_priority,
+        delivery_number,
+        created_by_user,
+        confirmed_by_user,
+        age_hours
+    FROM {view}
+    {where_str}
+    ORDER BY created_datetime ASC
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="warehouse360.get_pick_tasks",
+        module="wh360",
+        endpoint="/api/warehouse360/pick-tasks",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "staging", "pick_tasks"],
+        contract_id=contract_id,
+    )
+
+
+def get_warehouse_move_requests_spec(request: WarehouseMoveRequestsRequest) -> QuerySpec:
+    view = resolve_contract_object("warehouse360.move_requests", "wh360")
+    contract_id = "warehouse360.move_requests"
+    params: dict[str, object] = {}
+    where_str = _open_items_where(request, params)
+    sql = f"""
+    SELECT
+        plant_id,
+        warehouse_number,
+        request_id,
+        item_number,
+        material_id,
+        batch_id,
+        source_storage_type,
+        source_storage_bin,
+        destination_storage_type,
+        destination_storage_bin,
+        required_quantity,
+        open_quantity,
+        created_datetime,
+        planned_execution_datetime,
+        queue,
+        transfer_priority,
+        order_reference_type,
+        order_reference_number,
+        age_hours
+    FROM {view}
+    {where_str}
+    ORDER BY created_datetime ASC
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="warehouse360.get_move_requests",
+        module="wh360",
+        endpoint="/api/warehouse360/move-requests",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "staging", "move_requests"],
+        contract_id=contract_id,
+    )
+
+
+def get_warehouse_goods_movements_spec(request: WarehouseGoodsMovementsRequest) -> QuerySpec:
+    """Movements-feed spec under mandatory cost controls (plan section 5).
+
+    The posting_date window is always bound (default 1 day at the route) and may never
+    exceed GOODS_MOVEMENTS_MAX_WINDOW_DAYS — enforced here as well as at the route so no
+    caller can construct an unbounded scan of the MSEG-grain table.
+    """
+    from datetime import date as _date
+
+    d_from = _date.fromisoformat(request.date_from)
+    d_to = _date.fromisoformat(request.date_to)
+    if d_to < d_from:
+        raise ValueError("date_to must not be before date_from")
+    if (d_to - d_from).days > GOODS_MOVEMENTS_MAX_WINDOW_DAYS:
+        raise ValueError(
+            f"posting_date window exceeds the hard maximum of {GOODS_MOVEMENTS_MAX_WINDOW_DAYS} days"
+        )
+    if request.limit < 1 or request.limit > 500:
+        raise ValueError("limit must be between 1 and 500")
+
+    view = resolve_contract_object("warehouse360.goods_movements", "wh360")
+    contract_id = "warehouse360.goods_movements"
+    params: dict[str, object] = {"date_from": request.date_from, "date_to": request.date_to}
+    where_clauses = [
+        "posting_date >= CAST(:date_from AS DATE)",
+        "posting_date <= CAST(:date_to AS DATE)",
+    ]
+    if request.plant_id:
+        where_clauses.append("plant_id = :plant_id")
+        params["plant_id"] = request.plant_id
+    if request.material_id:
+        where_clauses.append("material_id = :material_id")
+        params["material_id"] = request.material_id
+    where_str = " WHERE " + " AND ".join(where_clauses)
+    sql = f"""
+    SELECT
+        plant_id,
+        storage_location_id,
+        document_number,
+        fiscal_year,
+        line_item,
+        material_id,
+        batch_id,
+        movement_type_code,
+        movement_label,
+        event_category,
+        is_goods_receipt,
+        is_goods_issue,
+        is_transfer,
+        is_reversal,
+        debit_credit_indicator,
+        quantity,
+        uom,
+        amount_local_currency,
+        currency,
+        posting_date,
+        document_date,
+        order_number,
+        purchase_order_number,
+        delivery_number,
+        sales_order_number,
+        posted_by,
+        transaction_code
+    FROM {view}
+    {where_str}
+    ORDER BY posting_date DESC, document_number DESC
+    LIMIT {request.limit}
+    """
+    return QuerySpec(
+        name="warehouse360.get_goods_movements",
+        module="wh360",
+        endpoint="/api/warehouse360/goods-movements",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wh360", "movements", "activity"],
+        contract_id=contract_id,
+    )
+
+
+def map_warehouse_stock_exceptions_rows(rows: list[dict]) -> list[dict]:
+    """Map raw stock exceptions rows to Warehouse360StockExceptionItem."""
+    result = []
+    for row in rows:
+        result.append({
+            # plant/material/batch/exception_type are contract-required (must_not_be_null in the
+            # view expectations); fall back to "" so a malformed row degrades instead of 500ing
+            # on response-model validation.
+            "plantId": str(row.get("plant_id") or ""),
+            "materialId": str(row.get("material_id") or ""),
+            "batchId": str(row.get("batch_id") or ""),
+            "exceptionType": str(row.get("exception_type") or ""),
+            "qty": _safe_float(row.get("qty")) if row.get("qty") is not None else None,
+            "minimumDaysToExpiry": _safe_int(row.get("minimum_days_to_expiry")) if row.get("minimum_days_to_expiry") is not None else None,
+            "hasMinimumShelfLifeBreach": bool(row["has_minimum_shelf_life_breach"]) if row.get("has_minimum_shelf_life_breach") is not None else None,
+        })
+    return result
+
+
+def map_warehouse_shortfalls_rows(rows: list[dict]) -> list[dict]:
+    """Map raw shortfalls rows to Warehouse360ShortfallItem."""
+    result = []
+    for row in rows:
+        result.append({
+            # plant/material are contract-required; "" fallback avoids a 500 on model validation.
+            "plantId": str(row.get("plant_id") or ""),
+            "materialId": str(row.get("material_id") or ""),
+            "shortfallQty": _safe_float(row.get("shortfall_qty")) if row.get("shortfall_qty") is not None else None,
+            "openItemsCount": _safe_int(row.get("open_items_count")) if row.get("open_items_count") is not None else None,
+            "oldestTrDate": str(row["oldest_tr_date"]) if row.get("oldest_tr_date") else None,
+        })
+    return result
+
+
+def map_warehouse_stock_zones_rows(rows: list[dict]) -> list[dict]:
+    """Map raw stock zones rows."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "warehouseNumber": str(row["warehouse_number"]) if row.get("warehouse_number") else None,
+            "storageType": str(row["storage_type"]) if row.get("storage_type") else None,
+            "binType": str(row["bin_type"]) if row.get("bin_type") else None,
+            "binRecordCount": _safe_int(row.get("bin_record_count")),
+            "occupiedBinCount": _safe_int(row.get("occupied_bin_count")),
+            "emptyBinCount": _safe_int(row.get("empty_bin_count")),
+            "blockedBinCount": _safe_int(row.get("blocked_bin_count")),
+            "occupancyRate": _safe_float(row.get("occupancy_rate")),
+        })
+    return result
+
+
+def map_warehouse_open_holds_rows(rows: list[dict]) -> list[dict]:
+    """Map raw open-holds rows. raisedBy is a documented data gap (no QM hold log replicated)."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "warehouseNumber": str(row["warehouse_number"]) if row.get("warehouse_number") else None,
+            "storageType": str(row["storage_type"]) if row.get("storage_type") else None,
+            "storageBin": str(row["storage_bin"]) if row.get("storage_bin") else None,
+            "quantNumber": str(row["quant_number"]) if row.get("quant_number") else None,
+            "materialId": str(row["material_id"]) if row.get("material_id") else None,
+            "batchId": str(row["batch_id"]) if row.get("batch_id") else None,
+            "holdType": str(row["hold_type"]) if row.get("hold_type") else None,
+            "quantity": _safe_float(row.get("quantity")) if row.get("quantity") is not None else None,
+            "uom": str(row["uom"]) if row.get("uom") else None,
+            "goodsReceiptDate": str(row["goods_receipt_date"]) if row.get("goods_receipt_date") else None,
+            "ageHours": _safe_float(row.get("age_hours")) if row.get("age_hours") is not None else None,
+            "raisedBy": None,
+        })
+    return result
+
+
+def map_warehouse_pick_tasks_rows(rows: list[dict]) -> list[dict]:
+    """Map raw pick-task rows (open TO items). assignee maps to confirmed_by_user when present."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "warehouseNumber": str(row["warehouse_number"]) if row.get("warehouse_number") else None,
+            "taskId": str(row["task_id"]) if row.get("task_id") else None,
+            "itemNumber": str(row["item_number"]) if row.get("item_number") else None,
+            "materialId": str(row["material_id"]) if row.get("material_id") else None,
+            "batchId": str(row["batch_id"]) if row.get("batch_id") else None,
+            "sourceStorageType": str(row["source_storage_type"]) if row.get("source_storage_type") else None,
+            "sourceStorageBin": str(row["source_storage_bin"]) if row.get("source_storage_bin") else None,
+            "destinationStorageType": str(row["destination_storage_type"]) if row.get("destination_storage_type") else None,
+            "destinationStorageBin": str(row["destination_storage_bin"]) if row.get("destination_storage_bin") else None,
+            "requestedQuantity": _safe_float(row.get("requested_quantity")) if row.get("requested_quantity") is not None else None,
+            "confirmedQuantity": _safe_float(row.get("confirmed_quantity")) if row.get("confirmed_quantity") is not None else None,
+            "itemStatus": str(row["item_status"]) if row.get("item_status") else None,
+            "createdDatetime": str(row["created_datetime"]) if row.get("created_datetime") else None,
+            "orderReferenceType": str(row["order_reference_type"]) if row.get("order_reference_type") else None,
+            "orderReferenceNumber": str(row["order_reference_number"]) if row.get("order_reference_number") else None,
+            "transferPriority": str(row["transfer_priority"]) if row.get("transfer_priority") else None,
+            "deliveryNumber": str(row["delivery_number"]) if row.get("delivery_number") else None,
+            "createdByUser": str(row["created_by_user"]) if row.get("created_by_user") else None,
+            "assignee": str(row["confirmed_by_user"]) if row.get("confirmed_by_user") else None,
+            "ageHours": _safe_float(row.get("age_hours")) if row.get("age_hours") is not None else None,
+        })
+    return result
+
+
+def map_warehouse_move_requests_rows(rows: list[dict]) -> list[dict]:
+    """Map raw move-request rows (open TR items). assignedTo is a documented data gap."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "warehouseNumber": str(row["warehouse_number"]) if row.get("warehouse_number") else None,
+            "requestId": str(row["request_id"]) if row.get("request_id") else None,
+            "itemNumber": str(row["item_number"]) if row.get("item_number") else None,
+            "materialId": str(row["material_id"]) if row.get("material_id") else None,
+            "batchId": str(row["batch_id"]) if row.get("batch_id") else None,
+            "sourceStorageType": str(row["source_storage_type"]) if row.get("source_storage_type") else None,
+            "sourceStorageBin": str(row["source_storage_bin"]) if row.get("source_storage_bin") else None,
+            "destinationStorageType": str(row["destination_storage_type"]) if row.get("destination_storage_type") else None,
+            "destinationStorageBin": str(row["destination_storage_bin"]) if row.get("destination_storage_bin") else None,
+            "requiredQuantity": _safe_float(row.get("required_quantity")) if row.get("required_quantity") is not None else None,
+            "openQuantity": _safe_float(row.get("open_quantity")) if row.get("open_quantity") is not None else None,
+            "createdDatetime": str(row["created_datetime"]) if row.get("created_datetime") else None,
+            "plannedExecutionDatetime": str(row["planned_execution_datetime"]) if row.get("planned_execution_datetime") else None,
+            "queue": str(row["queue"]) if row.get("queue") else None,
+            "transferPriority": str(row["transfer_priority"]) if row.get("transfer_priority") else None,
+            "orderReferenceType": str(row["order_reference_type"]) if row.get("order_reference_type") else None,
+            "orderReferenceNumber": str(row["order_reference_number"]) if row.get("order_reference_number") else None,
+            "assignedTo": None,
+            "ageHours": _safe_float(row.get("age_hours")) if row.get("age_hours") is not None else None,
+        })
+    return result
+
+
+def map_warehouse_goods_movements_rows(rows: list[dict]) -> list[dict]:
+    """Map raw goods-movement rows (MSEG-line grain) with classification flags."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "storageLocationId": str(row["storage_location_id"]) if row.get("storage_location_id") else None,
+            "documentNumber": str(row["document_number"]) if row.get("document_number") else None,
+            "fiscalYear": str(row["fiscal_year"]) if row.get("fiscal_year") else None,
+            "lineItem": str(row["line_item"]) if row.get("line_item") else None,
+            "materialId": str(row["material_id"]) if row.get("material_id") else None,
+            "batchId": str(row["batch_id"]) if row.get("batch_id") else None,
+            "movementTypeCode": str(row["movement_type_code"]) if row.get("movement_type_code") else None,
+            "movementLabel": str(row["movement_label"]) if row.get("movement_label") else None,
+            "eventCategory": str(row["event_category"]) if row.get("event_category") else None,
+            "isGoodsReceipt": bool(row.get("is_goods_receipt", False)),
+            "isGoodsIssue": bool(row.get("is_goods_issue", False)),
+            "isTransfer": bool(row.get("is_transfer", False)),
+            "isReversal": bool(row.get("is_reversal", False)),
+            "debitCreditIndicator": str(row["debit_credit_indicator"]) if row.get("debit_credit_indicator") else None,
+            "quantity": _safe_float(row.get("quantity")) if row.get("quantity") is not None else None,
+            "uom": str(row["uom"]) if row.get("uom") else None,
+            "amountLocalCurrency": _safe_float(row.get("amount_local_currency")) if row.get("amount_local_currency") is not None else None,
+            "currency": str(row["currency"]) if row.get("currency") else None,
+            "postingDate": str(row["posting_date"]) if row.get("posting_date") else None,
+            "documentDate": str(row["document_date"]) if row.get("document_date") else None,
+            "orderNumber": str(row["order_number"]) if row.get("order_number") else None,
+            "purchaseOrderNumber": str(row["purchase_order_number"]) if row.get("purchase_order_number") else None,
+            "deliveryNumber": str(row["delivery_number"]) if row.get("delivery_number") else None,
+            "salesOrderNumber": str(row["sales_order_number"]) if row.get("sales_order_number") else None,
+            "postedBy": str(row["posted_by"]) if row.get("posted_by") else None,
+            "transactionCode": str(row["transaction_code"]) if row.get("transaction_code") else None,
+        })
+    return result
+
+
+def map_warehouse_batch_hold_status_rows(rows: list[dict]) -> list[dict]:
+    """Map raw batch hold status rows."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "storageLocationId": str(row["storage_location_id"]) if row.get("storage_location_id") else None,
+            "materialId": str(row["material_id"]) if row.get("material_id") else None,
+            "batchId": str(row["batch_id"]) if row.get("batch_id") else None,
+            "uom": str(row["uom"]) if row.get("uom") else None,
+            "unrestrictedQuantity": _safe_float(row.get("unrestricted_quantity")),
+            "blockedQuantity": _safe_float(row.get("blocked_quantity")),
+            "restrictedQuantity": _safe_float(row.get("restricted_quantity")),
+            "totalQuantity": _safe_float(row.get("total_quantity")),
+            "stockType": str(row["stock_type"]) if row.get("stock_type") else None,
+            "hasBlockingHold": bool(row.get("has_blocking_hold")),
+            "lastUpdatedAt": _format_datetime(row.get("last_updated_at")),
+        })
+    return result
+
+
+def map_warehouse_staging_readiness_rows(rows: list[dict]) -> list[dict]:
+    """Map raw staging readiness rows."""
+    result = []
+    for row in rows:
+        result.append({
+            "plantId": str(row["plant_id"]) if row.get("plant_id") else None,
+            "planDate": str(row["plan_date"]) if row.get("plan_date") else None,
+            "totalOrders": _safe_int(row.get("total_orders")),
+            "fullyStaged": _safe_int(row.get("fully_staged")),
+            "partiallyStaged": _safe_int(row.get("partially_staged")),
+            "notStaged": _safe_int(row.get("not_staged")),
+            "blocked": _safe_int(row.get("blocked")),
+        })
+    return result
+
+
 class Warehouse360Repository:
     """Repository for Warehouse 360 data."""
 
@@ -1014,5 +1444,59 @@ class Warehouse360Repository:
     async def fetch_warehouse_exceptions(self, request: WarehouseExceptionRequest) -> tuple[list[dict], QuerySpec]:
         return await self._repository.fetch(
             spec_factory=lambda: get_warehouse_exceptions_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_stock_exceptions(self, request: WarehouseStockExceptionsRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_stock_exceptions_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_shortfalls(self, request: WarehouseShortfallsRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_shortfalls_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_stock_zones(self, request: WarehouseStockZonesRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_stock_zones_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_batch_hold_status(self, request: WarehouseBatchHoldStatusRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_batch_hold_status_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_staging_readiness(self, request: WarehouseStagingReadinessRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_staging_readiness_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_open_holds(self, request: WarehouseOpenHoldsRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_open_holds_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_pick_tasks(self, request: WarehousePickTasksRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_pick_tasks_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_move_requests(self, request: WarehouseMoveRequestsRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_move_requests_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_warehouse_goods_movements(self, request: WarehouseGoodsMovementsRequest) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_warehouse_goods_movements_spec(request),
             mapper=lambda rows: rows,
         )
