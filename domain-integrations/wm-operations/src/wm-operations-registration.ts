@@ -105,6 +105,8 @@ export const wmOperationsRegistration: WorkspaceRegistration = {
     { viewId: 'movement-control', displayName: 'Movement Control', lifecycle: 'pilot', sortOrder: 15, defaultPanels: [{ panelId: 'wm-movement-control', defaultVisible: true, defaultOrder: 0 }] },
     { viewId: 'staging-pace', displayName: 'Staging Pace', lifecycle: 'pilot', sortOrder: 16, defaultPanels: [{ panelId: 'wm-staging-pace', defaultVisible: true, defaultOrder: 0 }] },
     { viewId: 'production-health', displayName: 'Production Health', lifecycle: 'pilot', sortOrder: 17, defaultPanels: [{ panelId: 'wm-production-health', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'qm-command-centre', displayName: 'QM Command Centre', lifecycle: 'pilot', sortOrder: 18, defaultPanels: [{ panelId: 'wm-qm-command-centre', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'qm-disposition-queue', displayName: 'Disposition Queue', lifecycle: 'pilot', sortOrder: 19, defaultPanels: [{ panelId: 'wm-qm-disposition-queue', defaultVisible: true, defaultOrder: 0 }] },
   ],
   defaultPanels: [
     { panelId: 'wm-worklist-summary', defaultVisible: true, defaultOrder: 0 },

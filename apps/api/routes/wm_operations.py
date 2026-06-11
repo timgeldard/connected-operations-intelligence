@@ -645,6 +645,7 @@ def _make_simple_route(dataset: str, cfg: dict):
         severity: str | None = None,
         days: int | None = None,
         open_only: bool = True,
+        origin: str | None = None,
         limit: int = 200,
         x_forwarded_access_token: str | None = Header(default=None),
         x_forwarded_user: str | None = Header(default=None),
@@ -660,6 +661,7 @@ def _make_simple_route(dataset: str, cfg: dict):
             severity=severity.strip().upper() if severity else None,
             days=days,
             open_only=open_only,
+            origin=origin.strip() if origin else None,
             limit=limit,
         )
         repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)

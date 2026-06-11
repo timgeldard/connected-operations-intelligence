@@ -338,6 +338,8 @@ NEW_ENDPOINTS = [
     ("/api/wm-operations/batch-movements", {"plant_id": "C061", "material_id": "RM1"}),
     ("/api/wm-operations/downtime-pareto", {"plant_id": "C061"}),
     ("/api/wm-operations/downtime-events", {"plant_id": "C061"}),
+    ("/api/wm-operations/qm-lot-status", {"plant_id": "C061"}),
+    ("/api/wm-operations/qm-disposition-queue", {"plant_id": "C061"}),
 ]
 
 
@@ -638,3 +640,140 @@ class TestPlantsRoute:
         async with _make_client() as client:
             response = await client.get("/api/wm-operations/plants", headers=_HEADERS_WITH_TOKEN)
         assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# QM lot status
+# ---------------------------------------------------------------------------
+
+class TestQmLotStatusRoute:
+    async def test_returns_mapped_lot_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "lot_id": "000010001234",
+            "inspection_lot_origin_code": "04",
+            "inspection_type": "04",
+            "material_id": "FG001",
+            "material_name": "Finished Good One",
+            "batch_id": "B0001",
+            "order_id": "900001",
+            "lot_created_date": "2026-06-01",
+            "inspection_start_date": "2026-06-01",
+            "inspection_end_date": "2026-06-08",
+            "lot_qty": 500.0,
+            "lot_uom": "KG",
+            "has_usage_decision": False,
+            "last_usage_decision": None,
+            "last_usage_decision_date": None,
+            "last_usage_decision_by": None,
+            "quality_score": None,
+            "lot_age_days": 10,
+            "ud_lead_time_days": None,
+            "is_overdue": True,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/qm-lot-status",
+                    params={"plant_id": "C061", "open_only": "true", "limit": 500},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["plantId"] == "C061"
+        assert row["lotId"] == "000010001234"
+        assert row["hasUsageDecision"] is False
+        assert row["isOverdue"] is True
+        assert row["lotAgeDays"] == 10
+        assert row["lotQty"] == 500.0
+        assert response.headers.get("x-contract-id") == "wm_operations.qm_lot_status"
+        # open_only clause applied
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "NOT coalesce(has_usage_decision, false)" in executed_sql
+
+    async def test_open_only_false_omits_clause(self, wm_ops_databricks_env) -> None:
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/qm-lot-status",
+                    params={"plant_id": "C061", "open_only": "false"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "NOT coalesce(has_usage_decision, false)" not in executed_sql
+
+    async def test_origin_filter_binds_param(self, wm_ops_databricks_env) -> None:
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/qm-lot-status",
+                    params={"plant_id": "C061", "origin": "04"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "inspection_lot_origin_code = :origin" in executed_sql
+
+
+# ---------------------------------------------------------------------------
+# QM disposition queue
+# ---------------------------------------------------------------------------
+
+class TestQmDispositionQueueRoute:
+    async def test_returns_mapped_queue_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "lot_id": "000010009999",
+            "inspection_lot_origin_code": "01",
+            "inspection_type": "01",
+            "material_id": "RM001",
+            "material_name": "Raw Material One",
+            "batch_id": "B9001",
+            "order_id": None,
+            "lot_created_date": "2026-05-20",
+            "inspection_start_date": "2026-05-20",
+            "inspection_end_date": "2026-05-27",
+            "lot_qty": 1000.0,
+            "lot_uom": "KG",
+            "blocked_qty": 900.0,
+            "blocked_uom": "KG",
+            "est_blocked_value": 45000.0,
+            "lot_age_days": 22,
+            "is_overdue": True,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/qm-disposition-queue",
+                    params={"plant_id": "C061", "limit": 200},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["plantId"] == "C061"
+        assert row["lotId"] == "000010009999"
+        assert row["blockedQty"] == 900.0
+        assert row["estBlockedValue"] == 45000.0
+        assert row["lotAgeDays"] == 22
+        assert row["isOverdue"] is True
+        assert response.headers.get("x-contract-id") == "wm_operations.qm_disposition_queue"
+        # ordered by est_blocked_value DESC NULLS LAST
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "est_blocked_value DESC NULLS LAST" in executed_sql
+
+    async def test_plant_id_filter_binds_param(self, wm_ops_databricks_env) -> None:
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/qm-disposition-queue",
+                    params={"plant_id": "P817"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "plant_id = :plant_id" in executed_sql

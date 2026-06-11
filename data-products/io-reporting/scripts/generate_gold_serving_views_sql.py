@@ -192,6 +192,29 @@ SERVING_VIEWS = {
          "WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 90 THEN 'D90_180' "
          "ELSE 'ACTIVE' END"),
     ],
+    # QM lot status (all lots): date-relative columns at query time so the base MV stays deterministic.
+    # is_overdue: no UD AND current_date > inspection_end_date (planned end).
+    "gold_wm_qm_lot_status": [
+        ("lot_age_days",
+         "CASE WHEN b.lot_created_date IS NOT NULL "
+         "THEN datediff(current_date(), b.lot_created_date) END"),
+        ("ud_lead_time_days",
+         "CASE WHEN b.last_usage_decision_date IS NOT NULL AND b.lot_created_date IS NOT NULL "
+         "THEN datediff(b.last_usage_decision_date, b.lot_created_date) END"),
+        ("is_overdue",
+         "NOT coalesce(b.has_usage_decision, false) "
+         "AND b.inspection_end_date IS NOT NULL "
+         "AND b.inspection_end_date < current_date()"),
+    ],
+    # QM disposition queue (open lots only): same date-relative columns.
+    "gold_wm_qm_disposition_queue": [
+        ("lot_age_days",
+         "CASE WHEN b.lot_created_date IS NOT NULL "
+         "THEN datediff(current_date(), b.lot_created_date) END"),
+        ("is_overdue",
+         "b.inspection_end_date IS NOT NULL "
+         "AND b.inspection_end_date < current_date()"),
+    ],
     # Warehouse exceptions: the base MV stores ALL aging candidates with their reference date
     # (deterministic, incrementally refreshable); the per-type age thresholds, age_days and
     # detected_date are evaluated here at query time. Consumers must read _live, not _secured —

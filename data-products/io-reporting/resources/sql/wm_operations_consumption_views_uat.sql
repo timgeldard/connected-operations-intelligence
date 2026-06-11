@@ -471,7 +471,62 @@ SELECT
 FROM connected_plant_uat.gold_io_reporting.gold_wm_downtime_event_detail_secured
 WHERE plant_code IS NOT NULL;
 
--- 29. Onboarded plants (command-palette plant picker)
+-- 29. QM lot status (all lots, plant × inspection_lot grain, date-relative from _live view)
+-- Grain: 1 row per plant_id + lot_id. RLS inherited via gold_wm_qm_lot_status_secured.
+-- Source-guarded: view exists only when silver QM tables are present (quality gate).
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_qm_lot_status AS
+SELECT
+  plant_code AS plant_id,
+  inspection_lot_number AS lot_id,
+  inspection_lot_origin_code,
+  inspection_type,
+  material_code AS material_id,
+  material_name,
+  batch_number AS batch_id,
+  order_number AS order_id,
+  CAST(lot_created_date AS DATE) AS lot_created_date,
+  CAST(inspection_start_date AS DATE) AS inspection_start_date,
+  CAST(inspection_end_date AS DATE) AS inspection_end_date,
+  inspection_lot_quantity AS lot_qty,
+  inspection_lot_uom AS lot_uom,
+  has_usage_decision,
+  last_usage_decision,
+  CAST(last_usage_decision_date AS DATE) AS last_usage_decision_date,
+  last_usage_decision_by,
+  quality_score,
+  lot_age_days,
+  ud_lead_time_days,
+  is_overdue
+FROM connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_status_live
+WHERE plant_code IS NOT NULL;
+
+-- 30. QM disposition queue (open lots only, with blocked-stock value estimate)
+-- Grain: 1 row per plant_id + lot_id (open = no usage decision). RLS inherited via _secured.
+-- Source-guarded: view exists only when silver QM tables are present (quality gate).
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_qm_disposition_queue AS
+SELECT
+  plant_code AS plant_id,
+  inspection_lot_number AS lot_id,
+  inspection_lot_origin_code,
+  inspection_type,
+  material_code AS material_id,
+  material_name,
+  batch_number AS batch_id,
+  order_number AS order_id,
+  CAST(lot_created_date AS DATE) AS lot_created_date,
+  CAST(inspection_start_date AS DATE) AS inspection_start_date,
+  CAST(inspection_end_date AS DATE) AS inspection_end_date,
+  inspection_lot_quantity AS lot_qty,
+  inspection_lot_uom AS lot_uom,
+  blocked_qty,
+  blocked_uom,
+  est_blocked_value,
+  lot_age_days,
+  is_overdue
+FROM connected_plant_uat.gold_io_reporting.gold_wm_qm_disposition_queue_live
+WHERE plant_code IS NOT NULL;
+
+-- 31. Onboarded plants (command-palette plant picker)
 -- Grain: 1 row per plant_id + warehouse_id. Derived from the worklist summary secured view
 -- (already RLS-governed); no new gold object. Used by the frontend command palette to
 -- enumerate onboarded plants dynamically without hardcoding.

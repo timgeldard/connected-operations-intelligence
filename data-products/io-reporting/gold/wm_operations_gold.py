@@ -1237,7 +1237,163 @@ if (
         )
 
 
-# ── 15. ORDER OPERATIONS (operation-level enrichment for Order Detail overlay) ──
+# ── 15. QM LOT STATUS (lot-grain manager view — all lots, not just open) ─────
+#
+# Source-guarded: silver QM tables only materialise when the QM bronze sources are
+# replicated (quality.py guards on column presence; tables are plant- and time-gated).
+
+if (
+    table_exists(get_spark_session(), f"{get_silver_schema(get_spark_session())}.quality_inspection_lot")
+    and table_exists(get_spark_session(), f"{get_silver_schema(get_spark_session())}.quality_inspection_usage_decision")
+):
+
+    @dlt.table(**gold_table_args(
+        comment=(
+            "QM inspection lot status — one row per plant_code × inspection_lot_number (all lots "
+            "in the silver lookback window). Carries lot header fields, material name from the "
+            "material lookup, and the latest usage decision (collapsed from the 1:many QAVE child "
+            "via max_by date+counter). Date-relative columns (lot_age_days, ud_lead_time_days, "
+            "is_overdue) live in the qm_lot_status_live serving view (no current_date() here)."
+        ),
+        cluster_by=["plant_code", "lot_created_date"],
+    ))
+    def gold_wm_qm_lot_status():
+        spark = get_spark_session()
+        ss = get_silver_schema(spark)
+        lots = spark.read.table(f"{ss}.quality_inspection_lot")
+        uds = spark.read.table(f"{ss}.quality_inspection_usage_decision")
+        material = _material_lookup(spark, ss)
+
+        # Collapse UD child table to the latest UD per lot (max_by date then counter, same
+        # logic as gold_wm_qm_lot_context). This preserves lot grain on the outer join.
+        latest_ud = uds.groupBy("plant_code", "inspection_lot_number").agg(
+            F.expr(
+                "max_by(struct(usage_decision_valuation, usage_decision, usage_decision_code,"
+                " usage_decision_code_group, quality_score, usage_decision_by, usage_decision_date,"
+                " usage_decision_counter),"
+                " struct(coalesce(usage_decision_date, DATE'1900-01-01'),"
+                "        coalesce(usage_decision_counter, '')))"
+            ).alias("_ud"),
+        )
+
+        return (
+            lots.alias("l")
+            .join(latest_ud.alias("ud"), ["plant_code", "inspection_lot_number"], "left")
+            .join(F.broadcast(material), ["plant_code", "material_code"], "left")
+            .select(
+                F.col("l.inspection_lot_number"),
+                F.col("l.plant_code"),
+                F.col("l.inspection_lot_origin_code"),
+                F.col("l.inspection_type"),
+                F.col("l.material_code"),
+                F.col("material_description").alias("material_name"),
+                F.col("l.batch_number"),
+                F.col("l.order_number"),
+                F.col("l.lot_created_date"),
+                F.col("l.inspection_start_date"),
+                F.col("l.inspection_end_date"),
+                F.col("l.inspection_lot_quantity"),
+                F.col("l.inspection_lot_uom"),
+                # has_usage_decision: true when a UD row exists for this lot.
+                F.col("_ud").isNotNull().alias("has_usage_decision"),
+                # Flatten the latest-UD struct (NULL when no UD).
+                F.col("_ud.usage_decision").alias("last_usage_decision"),
+                F.col("_ud.usage_decision_date").alias("last_usage_decision_date"),
+                F.col("_ud.usage_decision_by").alias("last_usage_decision_by"),
+                F.col("_ud.quality_score").alias("quality_score"),
+            )
+        )
+
+    @dlt.table(**gold_table_args(
+        comment=(
+            "QM disposition queue — open lots only (no usage decision). Enriched with blocked "
+            "stock quantity (quality_inspection_quantity from batch_stock, the MCHB.CINSM field) "
+            "and estimated blocked value (blocked_qty × standard_price / price_unit from "
+            "material_valuation). Grain: plant_code × inspection_lot_number. Date-relative columns "
+            "(lot_age_days, is_overdue) live in the qm_disposition_queue_live serving view."
+        ),
+        cluster_by=["plant_code", "lot_created_date"],
+    ))
+    def gold_wm_qm_disposition_queue():
+        spark = get_spark_session()
+        ss = get_silver_schema(spark)
+        lots = spark.read.table(f"{ss}.quality_inspection_lot")
+        uds = spark.read.table(f"{ss}.quality_inspection_usage_decision")
+        material = _material_lookup(spark, ss)
+
+        # Latest-UD guard: open = no UD row at all for this lot.
+        latest_ud_keys = (
+            uds.groupBy("plant_code", "inspection_lot_number")
+            .agg(F.count(F.lit(1)).alias("_ud_count"))
+        )
+
+        open_lots = (
+            lots.join(latest_ud_keys, ["plant_code", "inspection_lot_number"], "left")
+            .filter(F.col("_ud_count").isNull())
+            .drop("_ud_count")
+        )
+
+        # Blocked stock: MCHB.CINSM (quality_inspection_quantity) aggregated to plant×material×batch.
+        blocked = (
+            spark.read.table(f"{ss}.batch_stock")
+            .groupBy("plant_code", "material_code", "batch_number")
+            .agg(
+                F.coalesce(F.sum("quality_inspection_quantity"), F.lit(0.0)).alias("blocked_qty"),
+                F.first("base_uom", ignorenulls=True).alias("blocked_uom"),
+            )
+        )
+
+        # Standard price / price unit (same pattern as gold_wm_slow_movers).
+        price = (
+            spark.read.table(f"{ss}.material_valuation")
+            .groupBy(F.col("valuation_area").alias("plant_code"), "material_code")
+            .agg(
+                F.first("standard_price", ignorenulls=True).alias("standard_price"),
+                F.first("price_unit", ignorenulls=True).alias("price_unit"),
+            )
+        )
+
+        return (
+            open_lots.alias("l")
+            .join(F.broadcast(material), ["plant_code", "material_code"], "left")
+            .join(
+                blocked.alias("bs"),
+                (F.col("l.plant_code") == F.col("bs.plant_code"))
+                & (F.col("l.material_code") == F.col("bs.material_code"))
+                & F.col("l.batch_number").eqNullSafe(F.col("bs.batch_number")),
+                "left",
+            )
+            .join(price, ["plant_code", "material_code"], "left")
+            .select(
+                F.col("l.inspection_lot_number"),
+                F.col("l.plant_code"),
+                F.col("l.inspection_lot_origin_code"),
+                F.col("l.inspection_type"),
+                F.col("l.material_code"),
+                F.col("material_description").alias("material_name"),
+                F.col("l.batch_number"),
+                F.col("l.order_number"),
+                F.col("l.lot_created_date"),
+                F.col("l.inspection_start_date"),
+                F.col("l.inspection_end_date"),
+                F.col("l.inspection_lot_quantity"),
+                F.col("l.inspection_lot_uom"),
+                F.coalesce(F.col("bs.blocked_qty"), F.lit(0.0)).alias("blocked_qty"),
+                F.col("bs.blocked_uom"),
+                F.col("standard_price"),
+                F.col("price_unit"),
+                # est_blocked_value: blocked_qty × standard_price / price_unit (price_unit=0 → NULL)
+                F.when(
+                    F.coalesce(F.col("price_unit").cast("double"), F.lit(0.0)) > 0,
+                    F.coalesce(F.col("bs.blocked_qty"), F.lit(0.0))
+                    * F.col("standard_price")
+                    / F.col("price_unit").cast("double"),
+                ).otherwise(F.lit(None).cast("double")).alias("est_blocked_value"),
+            )
+        )
+
+
+# ── 17. ORDER OPERATIONS (operation-level enrichment for Order Detail overlay) ──
 
 @dlt.table(**gold_table_args(
     comment=(
@@ -1293,7 +1449,7 @@ def gold_wm_order_operations():
     )
 
 
-# ── 16. DOWNTIME PARETO (weekly aggregated pareto by reason) ──────────────────
+# ── 18. DOWNTIME PARETO (weekly aggregated pareto by reason) ──────────────────
 
 @dlt.table(**gold_table_args(
     comment=(
@@ -1334,7 +1490,7 @@ def gold_wm_downtime_pareto():
     )
 
 
-# ── 17. DOWNTIME EVENT DETAIL (event-grain passthrough) ───────────────────────
+# ── 19. DOWNTIME EVENT DETAIL (event-grain passthrough) ───────────────────────
 
 @dlt.table(**gold_table_args(
     comment=(

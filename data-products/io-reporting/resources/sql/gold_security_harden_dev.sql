@@ -55,6 +55,8 @@ REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_staging_pac
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_staging_demand_hourly FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_staging_buffer_flow_hourly FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_context FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_status FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_qm_disposition_queue FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_order_operations FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_downtime_pareto FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_downtime_event_detail FROM `users`;

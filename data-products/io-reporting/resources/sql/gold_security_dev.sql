@@ -221,6 +221,14 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_cont
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_context;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_context_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_status_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_status;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_status_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_qm_disposition_queue_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_qm_disposition_queue;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_qm_disposition_queue_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_operations_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_order_operations;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_operations_secured TO `users`;
