@@ -39,6 +39,9 @@ resources:
         site_config_movement_type_classification_table: ${var.catalog}.${var.schema}.site_config_movement_type_classification
         site_config_staging_method_table: ${var.catalog}.${var.schema}.site_config_staging_method
         site_config_kpi_enablement_table: ${var.catalog}.${var.schema}.site_config_kpi_enablement
+        # Estate-wide lifecycle dimension (ADR 016 — trace T2 prerequisite). Seeded from
+        # resources/config/site_lifecycle_review.csv via scripts/generate_site_lifecycle_sql.py.
+        site_lifecycle_table: ${var.catalog}.${var.schema}.site_lifecycle_config
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting

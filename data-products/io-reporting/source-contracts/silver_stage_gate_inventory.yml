@@ -34,7 +34,7 @@ meta:
   phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; QM lot+UD + PP/PI snapshots enforced 2026-06-11
   enforced_count: 22           # +4 QM result family (characteristic/result/sample_result/individual_result) enforced 2026-06-11 (SPC Phase 1)
   source_guarded_count: 0      # all PP/PI flows now enforced — no remaining CDC-blocked flows
-  exempt_count: 17
+  exempt_count: 19
   needs_mapping_count: 7
   blocked_count: 0
 
@@ -496,3 +496,10 @@ silver_outputs:
     gating_category: D
     current_status: EXEMPT
     exempt_reason: "Governed config (per-plant KPI enablement); governance dimension, not gated operational data."
+
+  - table_name: site_lifecycle
+    file: silver/tables/reference.py
+    source_tables: [site_lifecycle_config_seed]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Global governed lifecycle dimension for the full ~550-plant estate (ADR 016 — trace T2 prerequisite). Serves all plants; consumers filter on effective_lifecycle. Deliberately separate from product-area onboarding flags (see silver/_plant_gate.py docstring)."

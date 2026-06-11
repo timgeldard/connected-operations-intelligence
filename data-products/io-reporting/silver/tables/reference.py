@@ -815,6 +815,7 @@ def site_config_plant():
             go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
             qm_enabled_flag=True,
             spc_enabled_flag=True,  # SPC tier flag (quality AND spc) — default true for onboarded plants, the lever to give a site QM reporting without SPC.
+            lifecycle_status="ACTIVE",  # ADR 016: onboarded plants are ACTIVE by definition; estate-wide lifecycle lives in site_lifecycle_config.
             batch_managed_flag=True, process_manufacturing_flag=True,
             default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
             is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-03"),
@@ -823,6 +824,7 @@ def site_config_plant():
             go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
             qm_enabled_flag=True,
             spc_enabled_flag=True,  # SPC tier flag (quality AND spc) — default true for onboarded plants, the lever to give a site QM reporting without SPC.
+            lifecycle_status="ACTIVE",  # ADR 016: onboarded plants are ACTIVE by definition; estate-wide lifecycle lives in site_lifecycle_config.
             batch_managed_flag=True, process_manufacturing_flag=True,
             default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
             is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-08"),
@@ -833,6 +835,7 @@ def site_config_plant():
             go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
             qm_enabled_flag=True,
             spc_enabled_flag=True,  # SPC tier flag (quality AND spc) — default true for onboarded plants, the lever to give a site QM reporting without SPC.
+            lifecycle_status="ACTIVE",  # ADR 016: onboarded plants are ACTIVE by definition; estate-wide lifecycle lives in site_lifecycle_config.
             batch_managed_flag=True, process_manufacturing_flag=True,
             default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
             is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-11"),
@@ -845,6 +848,7 @@ def site_config_plant():
             go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
             qm_enabled_flag=True,
             spc_enabled_flag=True,  # SPC tier flag (quality AND spc) — default true for onboarded plants, the lever to give a site QM reporting without SPC.
+            lifecycle_status="ACTIVE",  # ADR 016: onboarded plants are ACTIVE by definition; estate-wide lifecycle lives in site_lifecycle_config.
             batch_managed_flag=True, process_manufacturing_flag=True,
             default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
             is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-11"),
@@ -1050,4 +1054,78 @@ def site_config_kpi_enablement():
         df.withColumn("approved_at", F.to_date("approved_at"))
         .withColumn("review_due_at", F.to_date("review_due_at"))
     )
+
+
+# ── 17. SITE LIFECYCLE ────────────────────────────────────────────────────────
+# Estate-wide lifecycle dimension for the ~550-plant SAP estate (ADR 016).
+# Sourced from the governed `site_lifecycle_config` UC table (seeded from
+# resources/config/site_lifecycle_review.csv via scripts/generate_site_lifecycle_sql.py)
+# when configured/present — set the `site_lifecycle_table` Spark conf to its fully-qualified
+# name (the slow pipeline wires it to <catalog>.<schema>.site_lifecycle_config).
+# Serves ALL rows; consumers filter on effective_lifecycle (ACTIVE / CLOSED / SOLD /
+# DIVESTED_ON_SAP). Falls back to a small seed of the 4 onboarded plants as ACTIVE so the
+# pipeline never breaks before the config table is seeded (trace T2 prerequisite — ADR 016).
+
+@dlt.table(
+    name="site_lifecycle",
+    comment=(
+        "Estate-wide site lifecycle dimension (~550 plants). "
+        "effective_lifecycle ∈ ACTIVE / CLOSED / SOLD / DIVESTED_ON_SAP (ADR 016). "
+        "Consumers filter on effective_lifecycle; this table serves all rows. "
+        "Sourced from site_lifecycle_config (admin-seeded from site_lifecycle_review.csv)."
+    ),
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+def site_lifecycle():
+    spark = get_spark()
+    # Config-table-with-fallback: same pattern as storage_type_role_mapping.
+    # Set `site_lifecycle_table` Spark conf to the fully-qualified site_lifecycle_config table.
+    config_table = spark.conf.get("site_lifecycle_table", None)
+    table_exists = False
+    if config_table:
+        try:
+            table_exists = relation_exists(config_table)
+        except Exception:  # noqa: BLE001 — missing catalog/schema is expected pre-bootstrap
+            table_exists = False
+    if table_exists:
+        return spark.read.table(config_table).select(
+            "plant_code", "plant_name", "country", "last_posting",
+            "proposed_lifecycle", "confirmed_lifecycle",
+            "effective_lifecycle", "review_status",
+            "reviewed_by", "notes",
+        )
+
+    # Bootstrap fallback — used only until the governed config table is seeded.
+    # Only the 4 onboarded plants; effective_lifecycle=ACTIVE (trace T2 prerequisite — ADR 016).
+    schema = StructType([
+        StructField("plant_code", StringType(), True),
+        StructField("plant_name", StringType(), True),
+        StructField("country", StringType(), True),
+        StructField("last_posting", StringType(), True),
+        StructField("proposed_lifecycle", StringType(), True),
+        StructField("confirmed_lifecycle", StringType(), True),
+        StructField("effective_lifecycle", StringType(), True),
+        StructField("review_status", StringType(), True),
+        StructField("reviewed_by", StringType(), True),
+        StructField("notes", StringType(), True),
+    ])
+    data = [
+        Row(plant_code="C061", plant_name="Portbury [MFG]", country="GB", last_posting=None,
+            proposed_lifecycle="ACTIVE", confirmed_lifecycle="ACTIVE",
+            effective_lifecycle="ACTIVE", review_status="CONFIRMED",
+            reviewed_by=None, notes="Bootstrap seed — replace with site_lifecycle_config (ADR 016)."),
+        Row(plant_code="P817", plant_name="Jackson [MFG]", country="US", last_posting=None,
+            proposed_lifecycle="ACTIVE", confirmed_lifecycle="ACTIVE",
+            effective_lifecycle="ACTIVE", review_status="CONFIRMED",
+            reviewed_by=None, notes="Bootstrap seed — replace with site_lifecycle_config (ADR 016)."),
+        Row(plant_code="P806", plant_name="Clark North [MFG]", country="US", last_posting=None,
+            proposed_lifecycle="ACTIVE", confirmed_lifecycle="ACTIVE",
+            effective_lifecycle="ACTIVE", review_status="CONFIRMED",
+            reviewed_by=None, notes="Bootstrap seed — replace with site_lifecycle_config (ADR 016)."),
+        Row(plant_code="C351", plant_name="Olesnica [MFG]", country="PL", last_posting=None,
+            proposed_lifecycle="ACTIVE", confirmed_lifecycle="ACTIVE",
+            effective_lifecycle="ACTIVE", review_status="CONFIRMED",
+            reviewed_by=None, notes="Bootstrap seed — replace with site_lifecycle_config (ADR 016)."),
+    ]
+    return spark.createDataFrame(data, schema)
 
