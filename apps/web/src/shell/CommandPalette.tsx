@@ -147,6 +147,17 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       },
     },
     {
+      id: 'wm-ops-p806',
+      label: 'Open WM Operations — 190 · Clark North [MFG]',
+      description: 'Staging & dispensary manager tools · Plant P806 · Warehouse 190',
+      category: 'Recent Investigations',
+      action: () => {
+        setActiveScope({ warehouseId: '190', plantId: 'P806' })
+        setWorkspace('wm-operations')
+        onClose()
+      },
+    },
+    {
       id: 'por-mock',
       label: 'Open Process Order — PO-240308-3847',
       description: 'EMMENTAL BLOCK NATURAL 100KG · Batch CH-240308-0047 · Kerry Listowel',

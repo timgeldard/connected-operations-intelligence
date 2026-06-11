@@ -1575,43 +1575,43 @@ P805,Calhoun [MFG],195,922,Posting Change Area,INTERIM,2026-06-02,,wm-config-own
 P805,Calhoun [MFG],195,980,R/3 --> R/2 Cumulative,INTERIM,2026-06-02,,wm-config-owner,PENDING
 P805,Calhoun [MFG],195,998,Init. Entry of Inv. Data,INTERIM,2026-06-02,,wm-config-owner,PENDING
 P805,Calhoun [MFG],195,999,Differences,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,100,Production Supply,LINESIDE,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,110,Production Supply 810,LINESIDE,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,111,Production Supply 811,LINESIDE,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,112,Production Supply 812,LINESIDE,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,113,Production Supply 813,LINESIDE,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,115,Production Supply 815,LINESIDE,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,116,Production Supply 816,LINESIDE,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,313,R&D Lab/QA,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,314,GR Area EO,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,315,GR Area Beverage,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,316,GR Area Flavors,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,317,GR Area Spray Dry,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,318,GR Area Pack Flavors Ext,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,319,GR Area Dry Blend,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,320,GR Area Oleo,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,323,GR Area Distillation,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,324,GR Area PACKEONOT,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,328,Discard,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,801,Palletising (for Prodc.),LINESIDE,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,840,Returns Essential Oil,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,841,Returns Beverage,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,842,Returns Flavors,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,843,Returns Spray Dry,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,844,Returns Distillation,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,845,Returns Dry Blend,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,846,Returns Oleo,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,901,GR Area for Production,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,902,GR Area External Rcpts,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,910,GI Area General,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,914,GI Area Production Orders,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,916,Shipping Area Deliveries,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,920,Stock Transfers (plant),INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,921,Stock Transfers (StLoc),INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,922,Posting Change Area,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,980,R/3 --> R/2 Cumulative,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,998,Init. Entry of Inv. Data,INTERIM,2026-06-02,,wm-config-owner,PENDING
-P806,Clark North [MFG],190,999,Differences,INTERIM,2026-06-02,,wm-config-owner,PENDING
+P806,Clark North [MFG],190,100,Production Supply,LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,110,Production Supply 810,LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,111,Production Supply 811,LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,112,Production Supply 812,LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,113,Production Supply 813,LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,115,Production Supply 815,LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,116,Production Supply 816,LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,313,R&D Lab/QA,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,314,GR Area EO,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,315,GR Area Beverage,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,316,GR Area Flavors,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,317,GR Area Spray Dry,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,318,GR Area Pack Flavors Ext,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,319,GR Area Dry Blend,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,320,GR Area Oleo,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,323,GR Area Distillation,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,324,GR Area PACKEONOT,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,328,Discard,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,801,Palletising (for Prodc.),LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,840,Returns Essential Oil,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,841,Returns Beverage,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,842,Returns Flavors,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,843,Returns Spray Dry,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,844,Returns Distillation,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,845,Returns Dry Blend,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,846,Returns Oleo,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,901,GR Area for Production,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,902,GR Area External Rcpts,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,910,GI Area General,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,914,GI Area Production Orders,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,916,Shipping Area Deliveries,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,920,Stock Transfers (plant),INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,921,Stock Transfers (StLoc),INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,922,Posting Change Area,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,980,R/3 --> R/2 Cumulative,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,998,Init. Entry of Inv. Data,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+P806,Clark North [MFG],190,999,Differences,INTERIM,2026-06-02,,wm-config-owner,APPROVED
 P807,Commerce [MFG],177,100,Production Supply,LINESIDE,2026-06-02,,wm-config-owner,PENDING
 P807,Commerce [MFG],177,801,Palletising (for Prodc.),LINESIDE,2026-06-02,,wm-config-owner,PENDING
 P807,Commerce [MFG],177,901,GR Area for Production,INTERIM,2026-06-02,,wm-config-owner,PENDING
