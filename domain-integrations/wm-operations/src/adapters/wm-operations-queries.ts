@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { wmOperationsAdapter } from './wm-operations-adapter.js'
-import type { WmDrillRequest, WmOperationsAdapterRequest } from './wm-operations-adapter.js'
+import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem } from './wm-operations-adapter.js'
 
 export function useWmOrderComponents(request: WmDrillRequest, enabled = true) {
   return useQuery({
@@ -127,6 +127,30 @@ export function useWmOrderJourneyEvents(request: WmDrillRequest, enabled = true)
     queryFn: () => wmOperationsAdapter.getOrderJourneyEvents(request),
     staleTime: 60 * 1000,
     enabled: enabled && Boolean(request.plantId && request.orderId),
+  })
+}
+
+export function useWmWipStages(plantId: string | null | undefined, limit = 500, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-wip-stages', plantId ?? null, limit],
+    queryFn: () => wmOperationsAdapter.getList<WmWipStageItem>(
+      '/api/wm-operations/wip-stages',
+      { plant_id: plantId ?? undefined, limit },
+    ),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(plantId),
+  })
+}
+
+export function useWmScheduleAdherenceDaily(plantId: string | null | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-schedule-adherence-daily', plantId ?? null],
+    queryFn: () => wmOperationsAdapter.getList<WmScheduleAdherenceDailyItem>(
+      '/api/wm-operations/schedule-adherence-daily',
+      { plant_id: plantId ?? undefined, limit: 200 },
+    ),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(plantId),
   })
 }
 

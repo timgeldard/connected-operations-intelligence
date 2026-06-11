@@ -3590,3 +3590,114 @@ contracts:
       - name: detail
         type: string
         required: false
+
+  - id: wm_operations.wip_stages
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Active process order WIP funnel — one row per plant_id x order_id for released,
+      not-finished orders. stage values: RELEASED / STAGING / STAGED / IN_PRODUCTION /
+      GR_PARTIAL / GR_COMPLETE, derived deterministically from journey milestones.
+      Includes order qty, material, scheduled dates. No current_date/current_timestamp.
+    source_view: vw_consumption_wm_operations_wip_stages
+    grain: one row per plant_id and order_id (active orders only)
+    primary_key:
+      - plant_id
+      - order_id
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: order_id
+        type: string
+        required: true
+      - name: material_code
+        type: string
+        required: false
+      - name: material_name
+        type: string
+        required: false
+      - name: order_qty
+        type: double
+        required: false
+      - name: uom
+        type: string
+        required: false
+      - name: scheduled_start_date
+        type: date
+        required: false
+      - name: scheduled_finish_date
+        type: date
+        required: false
+      - name: stage
+        type: string
+        required: true
+        description: "RELEASED | STAGING | STAGED | IN_PRODUCTION | GR_PARTIAL | GR_COMPLETE"
+      - name: first_tr_created_ts
+        type: timestamp
+        required: false
+      - name: staging_last_confirmed_ts
+        type: timestamp
+        required: false
+      - name: production_first_actual_start
+        type: timestamp
+        required: false
+      - name: first_gr_posting_date
+        type: date
+        required: false
+      - name: gr_qty
+        type: double
+        required: false
+
+  - id: wm_operations.schedule_adherence_daily
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Schedule adherence aggregated to plant x scheduled_finish_date (day) grain.
+      planned_count = orders scheduled to finish on this date; completed_count = orders that
+      actually finished; on_time_count = completed on or before scheduled date.
+      max_actual_date is the latest actual_finish_date in the source table — use this
+      to anchor the S-curve chart instead of wall-clock date. No current_date/current_timestamp.
+      Source: gold_process_order_schedule_adherence (completed/closed orders).
+    source_view: vw_consumption_wm_operations_schedule_adherence_daily
+    grain: one row per plant_id and scheduled_date
+    primary_key:
+      - plant_id
+      - scheduled_date
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: scheduled_date
+        type: date
+        required: true
+      - name: planned_count
+        type: integer
+        required: true
+      - name: completed_count
+        type: integer
+        required: true
+      - name: on_time_count
+        type: integer
+        required: true
+      - name: max_actual_date
+        type: date
+        required: false

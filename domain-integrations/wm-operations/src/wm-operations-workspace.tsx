@@ -25,6 +25,7 @@ import { ProductionHealthView } from './views/production-health-view.js'
 import { QmCommandCentreView } from './views/qm-command-centre-view.js'
 import { QmDispositionQueueView } from './views/qm-disposition-queue-view.js'
 import { OrderJourneyView } from './views/order-journey-view.js'
+import { ProductionProgressView } from './views/production-progress-view.js'
 import { EmptyNote, ViewHeader } from './components/kerry.js'
 import './theme/kerry-theme.css'
 
@@ -50,6 +51,7 @@ export type WmOperationsViewId =
   | 'qm-command-centre'
   | 'qm-disposition-queue'
   | 'order-journey'
+  | 'production-progress'
 
 export interface WmOperationsWorkspaceProps {
   readonly scope: ScopeContext
@@ -106,6 +108,7 @@ const VIEW_GROUPS: Array<{ label: string; views: Array<{ id: WmOperationsViewId;
       { id: 'trends', label: 'Trends' },
       { id: 'movements', label: 'Goods Movements' },
       { id: 'production-health', label: 'Production Health' },
+      { id: 'production-progress', label: 'Production Progress' },
     ],
   },
 ]
@@ -269,6 +272,8 @@ function resolveView(viewId: string, request: WmOperationsAdapterRequest, onNavi
       return <QmDispositionQueueView request={request} onOpenProcessOrder={onOpenProcessOrder} />
     case 'order-journey':
       return <OrderJourneyView request={request} onNavigateToView={onNavigateToView} />
+    case 'production-progress':
+      return <ProductionProgressView request={request} onOpenProcessOrder={onOpenProcessOrder} onNavigateToView={onNavigateToView} />
     case 'staging-worklist':
     default:
       return <StagingWorklistView request={request} onOpenProcessOrder={onOpenProcessOrder} onNavigateToView={onNavigateToView} />
