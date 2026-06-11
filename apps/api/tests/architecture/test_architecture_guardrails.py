@@ -21,6 +21,7 @@ Limitations:
 """
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -35,14 +36,52 @@ _PYTHON_DB_DIR = _REPO_ROOT / "packages" / "python-db" / "src"
 _WEB_SRC = _REPO_ROOT / "apps" / "web" / "src"
 
 
+# Directories to never descend into when scanning source trees.
+_PRUNE_DIRS = frozenset({
+    "node_modules",
+    "dist",
+    ".git",
+    "coverage",
+    # Bundled/minified frontend assets served by the API
+    "static",
+})
+
+# Absolute paths that should also be pruned (checked via startswith).
+_PRUNE_ABS_DIRS = (
+    str(_REPO_ROOT / "apps" / "api" / "static" / "assets"),
+)
+
+
+def _should_prune(dirpath: str, dirname: str) -> bool:
+    """Return True if a directory should be skipped during tree traversal."""
+    if dirname in _PRUNE_DIRS:
+        return True
+    full = os.path.join(dirpath, dirname)
+    return any(full.startswith(p) for p in _PRUNE_ABS_DIRS)
+
+
 def _py_files(directory: Path) -> list[Path]:
-    return list(directory.rglob("*.py")) if directory.exists() else []
+    if not directory.exists():
+        return []
+    result: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(directory):
+        dirnames[:] = [d for d in dirnames if not _should_prune(dirpath, d)]
+        for filename in filenames:
+            if filename.endswith(".py"):
+                result.append(Path(dirpath) / filename)
+    return result
 
 
 def _ts_files(directory: Path) -> list[Path]:
-    return [
-        p for p in directory.rglob("*") if p.suffix in {".ts", ".tsx"}
-    ] if directory.exists() else []
+    if not directory.exists():
+        return []
+    result: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(directory):
+        dirnames[:] = [d for d in dirnames if not _should_prune(dirpath, d)]
+        for filename in filenames:
+            if filename.endswith(".ts") or filename.endswith(".tsx"):
+                result.append(Path(dirpath) / filename)
+    return result
 
 
 def _read(path: Path) -> str:
