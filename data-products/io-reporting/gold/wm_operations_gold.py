@@ -2138,6 +2138,8 @@ def gold_wm_order_wip_stage():
         F.col("first_tr_created_ts"),
         F.col("staging_first_confirmed_ts"),
         F.col("staging_last_confirmed_ts"),
+        F.col("staged_item_count"),
+        F.col("staged_item_total"),
         F.col("production_first_actual_start"),
         F.col("first_gr_posting_date"),
         F.col("gr_qty"),
@@ -2167,14 +2169,18 @@ def gold_wm_order_wip_stage():
             F.col("production_first_actual_start").isNotNull(),
             F.lit("IN_PRODUCTION"),
         )
-        # STAGED: staging last confirmed present (all staging TOs done), production not started.
+        # STAGED: ALL staging TO items confirmed (count == total, total > 0), production
+        # not started. staging_last_confirmed_ts alone is NOT sufficient — it is non-null
+        # from the FIRST confirmed item, which would overstate STAGED for partial staging.
         .when(
-            F.col("staging_last_confirmed_ts").isNotNull(),
+            (F.coalesce(F.col("staged_item_total"), F.lit(0)) > 0)
+            & (
+                F.coalesce(F.col("staged_item_count"), F.lit(0))
+                >= F.col("staged_item_total")
+            ),
             F.lit("STAGED"),
         )
-        # STAGING: first TR exists and staging has begun (first_confirmed present)
-        # but staging_last_confirmed not yet present — staging in progress.
-        # Also covers: TR exists but no confirmation yet — staging initiated.
+        # STAGING: TR exists (with zero or some — but not all — items confirmed).
         .when(
             F.col("first_tr_created_ts").isNotNull(),
             F.lit("STAGING"),
