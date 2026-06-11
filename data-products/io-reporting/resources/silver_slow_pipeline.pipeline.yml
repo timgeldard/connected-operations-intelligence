@@ -39,6 +39,13 @@ resources:
         site_config_movement_type_classification_table: ${var.catalog}.${var.schema}.site_config_movement_type_classification
         site_config_staging_method_table: ${var.catalog}.${var.schema}.site_config_staging_method
         site_config_kpi_enablement_table: ${var.catalog}.${var.schema}.site_config_kpi_enablement
+        # Time gate for CHVW batch where-used history (silver/tables/traceability.py).
+        # Applied to BUDAT (posting date) at the source read; snapshot-MV recompute self-corrects
+        # when this changes — no manual full refresh. Default 5 years (ADR 016 §1: legislation
+        # references 7 years; 5 acceptable now, possibly reduced to 3 later). Lookbacks beyond
+        # this window are explicitly referred back to SAP — a documented procedure, not an app
+        # feature. Increase toward 7 to satisfy the statutory trace obligation if required.
+        trace_lookback_years: "5"
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting
