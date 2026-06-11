@@ -209,9 +209,7 @@ export function WmOperationsWorkspace({
               subtitle="Choose a plant or warehouse in the scope bar to load staging, dispensary, and stock tools."
             />
             <EmptyNote>
-              No plant selected. Use the scope bar (or Ctrl+K → “WM Operations”) to pick
-              Portbury (C061 · WH 104), Jackson (P817 · WH 208), Clark North (P806 · WH 190)
-              or Olesnica (C351 · WH 105).
+              No plant selected. Use the scope bar or Ctrl+K — onboarded plants appear in the command palette.
             </EmptyNote>
           </>
         )}

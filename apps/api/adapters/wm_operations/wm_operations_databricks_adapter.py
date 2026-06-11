@@ -1305,6 +1305,12 @@ SIMPLE_DATASETS: dict[str, dict] = {
         numeric=("duration_minutes",), integer=(), boolean=(), has_warehouse=False,
         days_col="start_datetime",
     ),
+    "plants": dict(
+        contract="wm_operations.plants", endpoint="/api/wm-operations/plants",
+        columns="plant_id, warehouse_id, worklist_tr_count",
+        order_by="plant_id ASC",
+        numeric=(), integer=("worklist_tr_count",), boolean=(), has_warehouse=False,
+    ),
 }
 
 
