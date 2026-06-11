@@ -11,6 +11,15 @@ export function useWmOrderComponents(request: WmDrillRequest, enabled = true) {
   })
 }
 
+export function useWmOrderOperations(request: WmDrillRequest, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-order-operations', request.plantId ?? null, request.orderId ?? null, request.limit ?? null],
+    queryFn: () => wmOperationsAdapter.getOrderOperations(request),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(request.plantId && request.orderId),
+  })
+}
+
 export function useWmOperatorActivity(request: WmDrillRequest) {
   return useQuery({
     queryKey: ['wm-ops-operator-activity', request.plantId ?? null, request.warehouseId ?? null, request.days ?? 14, request.limit ?? null],

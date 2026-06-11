@@ -285,6 +285,14 @@ export class WmOperationsAdapter {
     return this.fetchList<WmOrderComponentItem>(url)
   }
 
+  async getOrderOperations(request: WmDrillRequest): Promise<AdapterResult<WmOrderOperationItem[]>> {
+    const url = this.buildUrl('/api/wm-operations/order-operations', {
+      plant_id: request.plantId,
+      order_id: request.orderId,
+    })
+    return this.fetchList<WmOrderOperationItem>(url)
+  }
+
   async getOperatorActivity(request: WmDrillRequest): Promise<AdapterResult<WmOperatorActivityItem[]>> {
     const url = this.buildUrl('/api/wm-operations/operator-activity', {
       plant_id: request.plantId,
@@ -443,6 +451,62 @@ export interface WmBatchMovementItem {
   readonly orderId: string | null
   readonly deliveryId: string | null
   readonly postedBy: string | null
+}
+
+export interface WmOrderOperationItem {
+  readonly plantId: string
+  readonly orderNumber: string
+  readonly routingNumber: string | null
+  readonly operationCounter: string | null
+  readonly operationNumber: string | null
+  readonly operationDescription: string | null
+  readonly controlKey: string | null
+  readonly workCentreCode: string | null
+  readonly workCentreDescription: string | null
+  readonly scheduledStartDatetime: string | null
+  readonly scheduledFinishDatetime: string | null
+  readonly actualStartDatetime: string | null
+  readonly actualFinishDate: string | null
+  readonly operationQty: number | null
+  readonly confirmedYieldQty: number | null
+  readonly confirmedScrapQty: number | null
+  readonly isConfirmed: boolean | null
+}
+
+export interface WmDowntimePareto {
+  readonly plantId: string
+  readonly weekStart: string
+  readonly downtimeReasonCode: string | null
+  readonly subReasonCode: string | null
+  readonly workCentreCode: string | null
+  readonly downtimeReasonDescription: string | null
+  readonly subReasonDescription: string | null
+  readonly productionLineDescription: string | null
+  readonly eventCount: number | null
+  readonly totalDurationMinutes: number | null
+  readonly avgDurationMinutes: number | null
+  readonly distinctOrderCount: number | null
+}
+
+export interface WmDowntimeEvent {
+  readonly plantId: string
+  readonly workCentreCode: string | null
+  readonly machineCode: string | null
+  readonly machineDescription: string | null
+  readonly productionLineDescription: string | null
+  readonly orderNumber: string | null
+  readonly materialCode: string | null
+  readonly operationNumber: string | null
+  readonly itemNumber: string | null
+  readonly downtimeReasonCode: string | null
+  readonly downtimeReasonDescription: string | null
+  readonly subReasonCode: string | null
+  readonly subReasonDescription: string | null
+  readonly startDatetime: string | null
+  readonly endDatetime: string | null
+  readonly durationMinutes: number | null
+  readonly reportedByUser: string | null
+  readonly comment: string | null
 }
 
 export interface WmDrillRequest {

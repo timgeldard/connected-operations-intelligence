@@ -550,6 +550,62 @@ def map_wm_order_components_rows(rows: list[dict]) -> list[dict]:
     } for r in rows]
 
 
+# ── Order operations drill (plant_id + order_id required) ────────────────────
+
+@dataclass
+class WmOrderOperationsRequest:
+    plant_id: str
+    order_id: str
+
+
+def get_wm_order_operations_spec(request: WmOrderOperationsRequest) -> QuerySpec:
+    view = resolve_contract_object("wm_operations.order_operations", "wh360")
+    sql = f"""
+    SELECT
+        plant_id, order_number, routing_number, operation_counter, operation_number,
+        operation_description, control_key, work_centre_code, work_centre_description,
+        scheduled_start_datetime, scheduled_finish_datetime, actual_start_datetime,
+        actual_finish_date, operation_quantity, confirmed_yield_quantity,
+        confirmed_scrap_quantity, is_confirmed
+    FROM {view}
+    WHERE plant_id = :plant_id AND order_number = :order_id
+    ORDER BY operation_number ASC
+    LIMIT 100
+    """
+    return QuerySpec(
+        name="wm_operations.get_order_operations",
+        module="wh360",
+        endpoint="/api/wm-operations/order-operations",
+        sql=sql,
+        params={"plant_id": request.plant_id, "order_id": request.order_id},
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "staging", "order_detail"],
+        contract_id="wm_operations.order_operations",
+    )
+
+
+def map_wm_order_operations_rows(rows: list[dict]) -> list[dict]:
+    return [{
+        "plantId": _opt_str(r, "plant_id"),
+        "orderNumber": _opt_str(r, "order_number"),
+        "routingNumber": _opt_str(r, "routing_number"),
+        "operationCounter": _opt_str(r, "operation_counter"),
+        "operationNumber": _opt_str(r, "operation_number"),
+        "operationDescription": _opt_str(r, "operation_description"),
+        "controlKey": _opt_str(r, "control_key"),
+        "workCentreCode": _opt_str(r, "work_centre_code"),
+        "workCentreDescription": _opt_str(r, "work_centre_description"),
+        "scheduledStartDatetime": _opt_str(r, "scheduled_start_datetime"),
+        "scheduledFinishDatetime": _opt_str(r, "scheduled_finish_datetime"),
+        "actualStartDatetime": _opt_str(r, "actual_start_datetime"),
+        "actualFinishDate": _opt_str(r, "actual_finish_date"),
+        "operationQty": _safe_float(r.get("operation_quantity")),
+        "confirmedYieldQty": _safe_float(r.get("confirmed_yield_quantity")),
+        "confirmedScrapQty": _safe_float(r.get("confirmed_scrap_quantity")),
+        "isConfirmed": _safe_bool(r.get("is_confirmed")),
+    } for r in rows]
+
+
 # ── Operator activity ─────────────────────────────────────────────────────────
 
 @dataclass
@@ -973,6 +1029,14 @@ class WmOperationsRepository:
             mapper=lambda rows: rows,
         )
 
+    async def fetch_order_operations(
+        self, request: WmOrderOperationsRequest
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_order_operations_spec(request),
+            mapper=lambda rows: rows,
+        )
+
     async def fetch_operator_activity(
         self, request: WmOperatorActivityRequest
     ) -> tuple[list[dict], QuerySpec]:
@@ -1220,6 +1284,26 @@ SIMPLE_DATASETS: dict[str, dict] = {
                 "lot_origin_code, oldest_open_start_date, last_usage_decision, last_usage_decision_date",
         order_by="open_lot_count DESC",
         numeric=(), integer=("lot_count", "open_lot_count"), boolean=(), has_warehouse=False,
+    ),
+    "downtime_pareto": dict(
+        contract="wm_operations.downtime_pareto", endpoint="/api/wm-operations/downtime-pareto",
+        columns="plant_id, week_start, downtime_reason_code, sub_reason_code, work_centre_code, "
+                "downtime_reason_description, sub_reason_description, production_line_description, "
+                "event_count, total_duration_minutes, avg_duration_minutes, distinct_order_count",
+        order_by="total_duration_minutes DESC",
+        numeric=("total_duration_minutes", "avg_duration_minutes"),
+        integer=("event_count", "distinct_order_count"), boolean=(), has_warehouse=False,
+    ),
+    "downtime_events": dict(
+        contract="wm_operations.downtime_events", endpoint="/api/wm-operations/downtime-events",
+        columns="plant_id, work_centre_code, machine_code, machine_description, "
+                "production_line_description, order_number, material_code, operation_number, "
+                "item_number, downtime_reason_code, downtime_reason_description, sub_reason_code, "
+                "sub_reason_description, start_datetime, end_datetime, duration_minutes, "
+                "reported_by_user, comment",
+        order_by="start_datetime DESC",
+        numeric=("duration_minutes",), integer=(), boolean=(), has_warehouse=False,
+        days_col="start_datetime",
     ),
 }
 

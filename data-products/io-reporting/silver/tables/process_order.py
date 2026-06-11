@@ -311,8 +311,11 @@ if bronze_columns_exist("dbstructureoperationquantitydatevalues_afvv", _AFVV_REQ
 # The source represents PI-sheet execution current state (one row per order/operation execution
 # timing), making a full-recompute snapshot MV the correct model (same rationale as downtime_event).
 # No PP/PI flow remains CDC-blocked after this remodel.
+# The client field on this Z-table is CLIENT — not MANDT (AFKO/AUFK) and not MANDANT (QM tables);
+# a third replicated-source naming variant, verified against UAT bronze 2026-06-11. The original
+# MANDT guard silently kept the flow undefined.
 _PI_SHEET_REQUIRED = [
-    "MANDT", "ZWERKS", "ZAUFNR", "ZVORNR", "ZSDATS", "ZSTIMS", "ZEDATS", "ZETIMS",
+    "CLIENT", "ZWERKS", "ZAUFNR", "ZVORNR", "ZSDATS", "ZSTIMS", "ZEDATS", "ZETIMS",
     "ZDUR", "ZUSERSTART", "ZUSEREND", "AEDATTM",
 ]
 if bronze_columns_exist("actualpistartenddatetime_zmanpex_e04_002", _PI_SHEET_REQUIRED):
@@ -345,7 +348,8 @@ if bronze_columns_exist("actualpistartenddatetime_zmanpex_e04_002", _PI_SHEET_RE
         pi_sheet_out = (
             src
             .select(
-                # ── Natural key
+                # ── Natural key (client field is CLIENT on this Z-table — see _PI_SHEET_REQUIRED)
+                F.col("CLIENT").alias("client"),
                 F.col("ZWERKS").alias("plant_code"),
                 strip_zeros("ZAUFNR").alias("order_number"),
                 F.col("ZAUFNR").alias("order_number_raw"),

@@ -19,6 +19,7 @@ from adapters.wm_operations.wm_operations_databricks_adapter import (
     WmOperationsRepository,
     WmOperatorActivityRequest,
     WmOrderComponentsRequest,
+    WmOrderOperationsRequest,
     WmOrderReadinessRequest,
     WmOutboundRequest,
     WmQueueWorkloadRequest,
@@ -32,6 +33,7 @@ from adapters.wm_operations.wm_operations_databricks_adapter import (
     map_wm_movements_rows,
     map_wm_operator_activity_rows,
     map_wm_order_components_rows,
+    map_wm_order_operations_rows,
     map_wm_order_readiness_rows,
     map_wm_outbound_rows,
     map_wm_queue_workload_rows,
@@ -361,6 +363,45 @@ class WmOrderComponentItem(BaseModel):
     pick_progress_fraction: Optional[float] = Field(None, alias='pickProgressFraction')
     psa_supplied_qty: Optional[float] = Field(None, alias='psaSuppliedQty')
     is_supplied: Optional[bool] = Field(None, alias='isSupplied')
+
+
+class WmOrderOperationsItem(BaseModel):
+    model_config = ConfigDict(extra='forbid', populate_by_name=True)
+    plant_id: str = Field(..., alias='plantId')
+    order_number: str = Field(..., alias='orderNumber')
+    routing_number: Optional[str] = Field(None, alias='routingNumber')
+    operation_counter: Optional[str] = Field(None, alias='operationCounter')
+    operation_number: Optional[str] = Field(None, alias='operationNumber')
+    operation_description: Optional[str] = Field(None, alias='operationDescription')
+    control_key: Optional[str] = Field(None, alias='controlKey')
+    work_centre_code: Optional[str] = Field(None, alias='workCentreCode')
+    work_centre_description: Optional[str] = Field(None, alias='workCentreDescription')
+    scheduled_start_datetime: Optional[str] = Field(None, alias='scheduledStartDatetime')
+    scheduled_finish_datetime: Optional[str] = Field(None, alias='scheduledFinishDatetime')
+    actual_start_datetime: Optional[str] = Field(None, alias='actualStartDatetime')
+    actual_finish_date: Optional[str] = Field(None, alias='actualFinishDate')
+    operation_qty: Optional[float] = Field(None, alias='operationQty')
+    confirmed_yield_qty: Optional[float] = Field(None, alias='confirmedYieldQty')
+    confirmed_scrap_qty: Optional[float] = Field(None, alias='confirmedScrapQty')
+    is_confirmed: Optional[bool] = Field(None, alias='isConfirmed')
+
+
+@router.get("/wm-operations/order-operations", response_model=list[WmOrderOperationsItem])
+async def wm_operations_order_operations(
+    response: Response,
+    plant_id: str,
+    order_id: str,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[WmOrderOperationsItem]:
+    """Operation-level routing detail for one process order — databricks-api only."""
+    _require_databricks_mode("WM Operations order operations")
+    req = WmOrderOperationsRequest(plant_id=plant_id.strip(), order_id=order_id.strip())
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_order_operations(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_order_operations_rows(rows)
 
 
 class WmOperatorActivityItem(BaseModel):
