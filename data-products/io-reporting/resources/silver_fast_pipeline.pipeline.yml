@@ -6,7 +6,12 @@ resources:
       schema: ${var.schema}
 
       serverless: true
-      continuous: true
+      # Cost policy: the fast pipeline runs on the scheduled refresh-cadence job
+      # (resources/refresh_cadence.job.yml), not continuously. Triggered mode also stops
+      # `bundle deploy` from auto-starting the pipeline — a recurring operational annoyance
+      # where deploys auto-started the continuous pipeline and twice cancelled their own
+      # auto-start mid-update.
+      continuous: false
       photon: true
       channel: CURRENT
       development: false
@@ -23,9 +28,9 @@ resources:
         # silver.recipe_process_line reference table (built by the slow pipeline from
         # central_services INOB/AUSP/CAWNT) instead of scanning AUSP itself — so the fast pipeline
         # no longer needs the published/central_services source configured. The map is read
-        # UNCONDITIONALLY (no tableExists guard — this is a continuous pipeline; a guard would bake an
-        # empty fallback into the plan for the life of the update). DEPLOY ORDER: run the slow pipeline
-        # once (to create recipe_process_line) BEFORE first starting this continuous fast pipeline,
+        # UNCONDITIONALLY (no tableExists guard — a guard would bake an empty fallback into the graph
+        # plan for the life of the update, silently NULL-ing every line). DEPLOY ORDER: run the slow
+        # pipeline once (to create recipe_process_line) BEFORE first running this fast pipeline,
         # otherwise it fails loud at startup with table-not-found.
         recipe_process_line_table: ${var.catalog}.${var.schema}.recipe_process_line
         # Plant/site stage-gate config (silver/_plant_gate.py). The slow tier builds these; the fast
@@ -33,7 +38,7 @@ resources:
         # relationship comes from SAP T320 (warehouse_storage_location_mapping), NOT a hand-maintained
         # seed, so the LGNUM→WERKS mapping cannot drift.
         # DEPLOY ORDER: the slow pipeline must build site_config_plant + warehouse_storage_location_mapping
-        # before this continuous pipeline starts (same dependency as recipe_process_line). Read fail-loud.
+        # before this fast pipeline first runs (same dependency as recipe_process_line). Read fail-loud.
         site_config_plant_table: ${var.catalog}.${var.schema}.site_config_plant
         warehouse_sloc_mapping_table: ${var.catalog}.${var.schema}.warehouse_storage_location_mapping
         # NOTE: the stg_warehouse_transfer_order broadcast-join OOM is now handled by a TARGETED

@@ -4,7 +4,7 @@ Upstream dependencies for each Gold table: the Silver tables it reads, the bronz
 sources behind those, and which Silver pipeline tier refreshes them. Use this with
 `docs/data_contracts.md` (grain/keys/caveats) and `docs/freshness_contracts.md` (SLAs, Sprint 3).
 
-**Silver pipeline tiers:** `fast` = continuous (`silver_fast_pipeline`) · `slow` = triggered reference
+**Silver pipeline tiers:** `fast` = triggered (`silver_fast_pipeline`, runs first in refresh-cadence job) · `slow` = triggered reference
 (`silver_slow_pipeline`) · `quality` = triggered (`silver_quality_pipeline`) · `published` =
 second bronze source `published_<env>.central_services` · `seed` = config/seed table.
 

@@ -1,0 +1,67 @@
+resources:
+  jobs:
+    refresh_cadence:
+      name: "[${bundle.target}] Connected Plant — Refresh Cadence"
+
+      # Rationale for running all four pipelines in sequence:
+      #   - Frozen-snapshot credibility: Gold materialized views (and snapshot-MV tables) only
+      #     reflect the SAP state at the moment they run; a full cadence pass produces a coherent
+      #     snapshot across all Silver tiers and Gold in a single window.
+      #   - Additive streaming columns: new columns added to fast-tier streaming tables (SCD1
+      #     apply_changes) only backfill on a triggered refresh — they are not back-propagated by
+      #     a running continuous pipeline. Running fast first ensures the latest schema is present
+      #     before Gold reads Silver.
+      #   - Snapshot MVs: batch-mode materialized views (storage_bin, batch_stock, etc.) only
+      #     recompute when their pipeline runs; they do not self-update between cadence runs.
+      #   - Gold reads QM/downtime Silver: the gold_pipeline task must run AFTER the quality
+      #     pipeline because gold tables such as gold_order_downtime_summary and
+      #     gold_process_order_operations read quality-inspection and downtime Silver tables
+      #     produced by silver_quality_pipeline.
+
+      tags:
+        owner: connected-plant-team
+        cost-center: connected-plant
+        project: ops-reporting
+
+      tasks:
+        - task_key: refresh_silver_fast
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver_fast_pipeline.id}
+
+        - task_key: refresh_silver_slow
+          depends_on:
+            - task_key: refresh_silver_fast
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver_slow_pipeline.id}
+
+        - task_key: refresh_silver_quality
+          depends_on:
+            - task_key: refresh_silver_fast
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver_quality_pipeline.id}
+
+        - task_key: refresh_gold
+          # Gold must run after both slow and quality Silver tiers:
+          #   - slow provides reference/dimension tables (movement_type_classification, material, etc.)
+          #   - quality provides QM inspection lots and downtime events consumed by gold aggregates
+          depends_on:
+            - task_key: refresh_silver_slow
+            - task_key: refresh_silver_quality
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gold_pipeline.id}
+
+      schedule:
+        # 05:30 Europe/London daily (06:30 BST / 05:30 GMT depending on DST).
+        # Runs after the Aecorsoft overnight replication window; produces a fresh snapshot
+        # before the operational day begins.
+        quartz_cron_expression: "0 30 5 * * ?"
+        timezone_id: "Europe/London"
+        pause_status: ${var.cadence_pause_status}
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users
