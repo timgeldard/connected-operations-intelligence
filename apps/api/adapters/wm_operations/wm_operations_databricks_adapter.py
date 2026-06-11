@@ -1308,7 +1308,7 @@ SIMPLE_DATASETS: dict[str, dict] = {
     "plants": dict(
         contract="wm_operations.plants", endpoint="/api/wm-operations/plants",
         columns="plant_id, warehouse_id, worklist_tr_count",
-        order_by="plant_id ASC",
+        order_by="plant_id ASC, warehouse_id ASC",
         numeric=(), integer=("worklist_tr_count",), boolean=(), has_warehouse=False,
     ),
 }

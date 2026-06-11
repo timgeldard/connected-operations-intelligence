@@ -126,7 +126,9 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   ]
 
   /** Plant shortcuts generated from the API response (or fallback). */
-  const plantCommands: Command[] = plants.flatMap(p => [
+  const plantCommands: Command[] = plants.flatMap(p => {
+    if (!p || typeof p.plantId !== 'string' || !p.plantId || typeof p.warehouseId !== 'string' || !p.warehouseId) return []
+    return [
     {
       id: `wm-ops-${p.plantId.toLowerCase()}`,
       label: `Open WM Operations — ${p.warehouseId} · ${p.plantId}`,
@@ -149,7 +151,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
         onClose()
       },
     },
-  ])
+  ]})
 
   /** Build the full command list from registered workspaces + quick actions. */
   const allCommands: Command[] = [
