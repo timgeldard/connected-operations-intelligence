@@ -371,6 +371,7 @@ SELECT
   order_number,
   purchase_order_number,
   delivery_number,
+  delivery_item_number,
   sales_order_number,
   posted_by_user AS posted_by,
   transaction_code

@@ -303,56 +303,26 @@ if bronze_columns_exist("dbstructureoperationquantitydatevalues_afvv", _AFVV_REQ
 
 # ── 3. PI SHEET EXECUTION ─────────────────────────────────────────────────────
 
-# Source-guard (PP/PI; NOT a Warehouse360 feeder). The PI-sheet source
-# (actualpistartenddatetime_zmanpex_e04_002) lacks AERUNID/AERECNO CDC sequencing metadata in the
-# replicated source → deterministic SCD1 impossible → not materialised where absent (DEV+UAT+PROD).
-# Self-heals once the source is replicated with CDC metadata. A snapshot/current-state redesign is a
-# possible future option but requires functional sign-off (see sap_unresolved_sources.yml).
-if bronze_columns_exist("actualpistartenddatetime_zmanpex_e04_002", ["AERUNID", "AERECNO"]):
-    @dlt.view(name="stg_pi_sheet_execution")
-    @dlt.expect_all_or_drop({
-        "order_number present": "order_number IS NOT NULL",
-        "operation_number present": "operation_number IS NOT NULL"
-    })
-    @dlt.expect_all({
-        "start before end": "pi_sheet_start_datetime <= pi_sheet_end_datetime OR pi_sheet_end_datetime IS NULL"
-    })
-    def stg_pi_sheet_execution():
-        spark = get_spark()
-        src = spark.readStream.table(
-            f"{BRONZE}.actualpistartenddatetime_zmanpex_e04_002"
-        )
-        src_with_datetimes = (
-            src
-            .withColumn("pi_sheet_start_datetime", sap_datetime("ZSDATS", "ZSTIMS"))
-            .withColumn("pi_sheet_end_datetime", sap_datetime("ZEDATS", "ZETIMS"))
-        )
-        # Plant stage-gate (DIRECT ZWERKS). Gate-ready for when CDC unblocks this flow.
-        return apply_plant_gate(src_with_datetimes.select(
-            F.col("ZWERKS").alias("plant_code"),
-            strip_zeros("ZAUFNR").alias("order_number"),
-            F.col("ZAUFNR").alias("order_number_raw"),
-            F.col("ZVORNR").alias("operation_number"),
-
-            F.col("pi_sheet_start_datetime"),
-            F.col("pi_sheet_end_datetime"),
-            F.col("ZDUR").alias("duration_decimal_days"),
-            F.round(F.col("ZDUR") * 24, 4).alias("duration_hours"),
-
-            F.col("ZUSERSTART").alias("started_by_user"),
-            F.col("ZUSEREND").alias("completed_by_user"),
-
-            F.when(F.col("pi_sheet_end_datetime").isNotNull(), "Completed")
-             .when(F.col("pi_sheet_start_datetime").isNotNull(), "In Progress")
-             .otherwise("Not Started").alias("pi_sheet_status"),
-
-            F.col("AEDATTM").alias("_replicated_at"),
-            F.col("AERUNID").alias("_run_id"),
-            F.col("AERECNO").alias("_record_seq"),
-        ), "plant_code", "process_order", spark=spark)
-
-    dlt.create_streaming_table(
+# Current-state snapshot MV (the downtime_event / batch_stock / MCHB pattern).
+# Remodelled from never-eligible streaming SCD1 to a current-state snapshot 2026-06-11.
+# Functional sign-off: Tim Geldard 2026-06-11.
+# The PI-sheet source (actualpistartenddatetime_zmanpex_e04_002) is replicated with AEDATTM only —
+# no AERUNID/AERECNO/RecordActivity — so the original streaming SCD1 design could never run.
+# The source represents PI-sheet execution current state (one row per order/operation execution
+# timing), making a full-recompute snapshot MV the correct model (same rationale as downtime_event).
+# No PP/PI flow remains CDC-blocked after this remodel.
+_PI_SHEET_REQUIRED = [
+    "MANDT", "ZWERKS", "ZAUFNR", "ZVORNR", "ZSDATS", "ZSTIMS", "ZEDATS", "ZETIMS",
+    "ZDUR", "ZUSERSTART", "ZUSEREND", "AEDATTM",
+]
+if bronze_columns_exist("actualpistartenddatetime_zmanpex_e04_002", _PI_SHEET_REQUIRED):
+    @dlt.table(
         name="pi_sheet_execution",
+        comment=(
+            "PI-sheet execution timing (ZMANPEX_E04_002) — one row per order/operation PI-sheet "
+            "execution entry with start/end datetimes, duration, and user. Current-state snapshot "
+            "(source has no CDC sequencing metadata — AEDATTM only)."
+        ),
         table_properties={
             "delta.enableChangeDataFeed": "true",
             "delta.autoOptimize.optimizeWrite": "true",
@@ -360,14 +330,48 @@ if bronze_columns_exist("actualpistartenddatetime_zmanpex_e04_002", ["AERUNID", 
         },
         cluster_by=["plant_code", "pi_sheet_start_datetime"],
     )
+    @dlt.expect_all_or_drop({
+        "order_number present": "order_number IS NOT NULL",
+        "operation_number present": "operation_number IS NOT NULL"
+    })
+    @dlt.expect_all({
+        "start before end": "pi_sheet_start_datetime <= pi_sheet_end_datetime OR pi_sheet_end_datetime IS NULL"
+    })
+    def pi_sheet_execution():
+        spark = get_spark()
+        src = spark.read.table(f"{BRONZE}.actualpistartenddatetime_zmanpex_e04_002")
+        start_datetime = sap_datetime("ZSDATS", "ZSTIMS")
+        end_datetime = sap_datetime("ZEDATS", "ZETIMS")
+        pi_sheet_out = (
+            src
+            .select(
+                # ── Natural key
+                F.col("ZWERKS").alias("plant_code"),
+                strip_zeros("ZAUFNR").alias("order_number"),
+                F.col("ZAUFNR").alias("order_number_raw"),
+                F.col("ZVORNR").alias("operation_number"),
 
-    dlt.apply_changes(
-        target="pi_sheet_execution",
-        source="stg_pi_sheet_execution",
-        keys=["plant_code", "order_number", "operation_number"],
-        sequence_by=F.struct("_replicated_at", "_run_id", "_record_seq"),
-        stored_as_scd_type=1,
-    )
+                # ── Execution times
+                start_datetime.alias("pi_sheet_start_datetime"),
+                end_datetime.alias("pi_sheet_end_datetime"),
+                F.col("ZDUR").alias("duration_decimal_days"),
+                F.round(F.col("ZDUR") * 24, 4).alias("duration_hours"),
+
+                # ── Users
+                F.col("ZUSERSTART").alias("started_by_user"),
+                F.col("ZUSEREND").alias("completed_by_user"),
+
+                # ── Derived status
+                F.when(end_datetime.isNotNull(), "Completed")
+                 .when(start_datetime.isNotNull(), "In Progress")
+                 .otherwise("Not Started").alias("pi_sheet_status"),
+
+                # Extraction timestamp only — NOT an event-ordering column (MCHB note).
+                F.col("AEDATTM").cast("timestamp").alias("_replicated_at"),
+            )
+        )
+        # Plant stage-gate (DIRECT ZWERKS).
+        return apply_plant_gate(pi_sheet_out, "plant_code", "process_order", spark=spark)
 
 # ── 4. DOWNTIME EVENT ─────────────────────────────────────────────────────────
 

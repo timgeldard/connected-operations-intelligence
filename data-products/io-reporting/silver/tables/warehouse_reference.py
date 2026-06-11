@@ -156,13 +156,29 @@ def stg_storage_bin():
             # gold consumer except bin_type: gold_bin_occupancy loses bin_type as a grouping dimension
             # (collapses to a single NULL group) — bin COUNTS, and therefore the Warehouse360 overview
             # KPIs, are unaffected. These gaps also apply to UAT. See ioreporting_dev_source_schema_preflight.sql.
+            # DD03L verdict 2026-06-11: the real capacity/occupancy fields (LGEWI/MGEWI/ANZQU/MAXQU/
+            # ANZLE/MAXLE/KZLER/KZVOL/LZONE) ARE replicated in bronze storagebin_lagp — wired here as
+            # direct column references. MAXGW/BRGEW/MAXEI/ANZRE remain fabricated (not on LAGP in DDIC)
+            # and keep the col_or_null degradation. maximum_weight is upgraded from col_or_null(MAXGW)
+            # to the real field MGEWI (confirmed in DD03L + UAT bronze 2026-06-11).
             F.col("b.LGBER").alias("storage_section"),
             col_or_null(lagp, "LGBKT", "string", "b").alias("bin_type"),
             F.col("b.KOBER").alias("picking_area"),
             col_or_null(lagp, "LGPBE", "string", "b").alias("storage_bin_structure"),
-            col_or_null(lagp, "MAXGW", "double", "b").alias("maximum_weight"),
-            col_or_null(lagp, "BRGEW", "double", "b").alias("current_weight"),
+            # Real bin capacity fields (DD03L + UAT bronze confirmed 2026-06-11).
+            # Additive columns — NULL on pre-existing rows until next full refresh/churn.
+            F.col("b.LGEWI").alias("load_capacity"),
+            F.col("b.MGEWI").alias("maximum_weight"),
             F.col("b.GEWEI").alias("weight_unit"),
+            F.col("b.ANZQU").cast("integer").alias("quant_count"),
+            F.col("b.MAXQU").cast("integer").alias("max_quant_count"),
+            F.col("b.ANZLE").cast("integer").alias("storage_unit_count"),
+            F.col("b.MAXLE").cast("integer").alias("max_storage_unit_count"),
+            sap_flag("b.KZLER").alias("is_empty"),
+            sap_flag("b.KZVOL").alias("is_full"),
+            F.col("b.LZONE").alias("bin_storage_zone_code"),
+            # col_or_null fields: not on LAGP per DD03L; keep typed NULL for contract stability.
+            col_or_null(lagp, "BRGEW", "double", "b").alias("current_weight"),
             col_or_null(lagp, "MAXEI", "double", "b").alias("maximum_capacity_units"),
             col_or_null(lagp, "ANZRE", "double", "b").alias("current_capacity_units_used"),
             sap_flag("b.SPGRU").alias("is_blocked"),

@@ -1469,6 +1469,9 @@ def gold_goods_movement_activity():
             "order_number",
             "purchase_order_number",
             "delivery_number",
+            # delivery_item_number (VBELP_IM) additive — NULL on pre-existing rows until
+            # the next full refresh or row churn (additive streaming column).
+            "delivery_item_number",
             "sales_order_number",
             "posted_by_user",
             "transaction_code",

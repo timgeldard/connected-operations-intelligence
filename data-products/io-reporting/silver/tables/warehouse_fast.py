@@ -116,9 +116,12 @@ def stg_goods_movement():
             # MSEG.VBELN is absent; VBELN_IM/VBELP_IM are the IM delivery reference. Movement-type
             # dependent — may be blank, so delivery_number stays NULL (no fake fallback to
             # MBLNR/KDAUF/LFBNR). reference_type = 'DELIVERY' only when VBELN_IM is populated.
+            # delivery_item_number is additive: NULL on pre-existing rows until the next full
+            # refresh or row churn (additive streaming column; VBELP_IM was already replicated).
             strip_zeros("s.VBELN_IM").alias("delivery_number"),
             F.col("s.VBELN_IM").alias("delivery_number_raw"),
             F.col("s.VBELP_IM").alias("delivery_item"),
+            F.col("s.VBELP_IM").alias("delivery_item_number"),
             F.when(strip_zeros("s.VBELN_IM").isNotNull(), F.lit("DELIVERY"))
              .otherwise(F.lit(None).cast("string")).alias("reference_type"),
             F.col("s.KDAUF").alias("sales_order_number"),
@@ -334,6 +337,9 @@ def stg_warehouse_transfer_order():
             F.col("i.VSOLM").alias("requested_quantity"),
             F.col("i.VISTA").alias("confirmed_quantity"),
             F.col("i.VISTA").alias("actual_quantity_picked"),
+            # TO confirmation difference quantity (LTAP.DMENG — requested minus confirmed when
+            # a short pick is posted). NULL on pre-existing rows until refresh/churn (additive column).
+            F.col("i.DMENG").alias("difference_quantity"),
 
             # ── Status
             F.when(F.col("i.PQUIT") == "B", "Fully Confirmed")
