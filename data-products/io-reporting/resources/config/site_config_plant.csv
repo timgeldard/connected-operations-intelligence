@@ -2,4 +2,4 @@ plant_code,plant_name,country,region,business_unit,timezone,sap_system_id,go_liv
 C061,Portbury [MFG],GB,Europe,Operations,Europe/London,ECC,PRODUCTION,true,true,true,true,true,EN,2026-01-01,9999-12-31,true,wm-config-owner,2026-06-03
 P817,Jackson [MFG],US,Americas,Operations,America/Chicago,ECC,PRODUCTION,true,true,true,true,true,EN,2026-01-01,9999-12-31,true,wm-config-owner,2026-06-08
 P806,Clark North [MFG],US,Americas,Operations,America/New_York,ECC,PRODUCTION,true,true,true,true,true,EN,2026-01-01,9999-12-31,true,wm-config-owner,2026-06-11
-C350,DNU Kielce [MFG],PL,Europe,Operations,Europe/Warsaw,ECC,PRODUCTION,false,false,true,true,true,EN,2026-01-01,9999-12-31,true,wm-config-owner,2026-06-11
+C351,Olesnica [MFG],PL,Europe,Operations,Europe/Warsaw,ECC,PRODUCTION,true,true,true,true,true,EN,2026-01-01,9999-12-31,true,wm-config-owner,2026-06-11

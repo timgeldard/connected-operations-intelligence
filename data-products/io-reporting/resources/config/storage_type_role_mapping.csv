@@ -326,25 +326,25 @@ C350,DNU Kielce [MFG],132,922,Posting Change Area,INTERIM,2026-06-02,,wm-config-
 C350,DNU Kielce [MFG],132,980,R/3 --> R/2 Cumulative,INTERIM,2026-06-02,,wm-config-owner,PENDING
 C350,DNU Kielce [MFG],132,998,Init. Entry of Inv. Data,INTERIM,2026-06-02,,wm-config-owner,PENDING
 C350,DNU Kielce [MFG],132,999,Differences,INTERIM,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,100,Production Supply,LINESIDE,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,800,Production Dispensary,LINESIDE,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,801,Palletising (for Prodc.),LINESIDE,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,802,Palletising (for Dispn.),LINESIDE,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,810,Oils Dispensary,LINESIDE,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,820,Gnocchi Dispensary,LINESIDE,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,850,Pork dispensary,LINESIDE,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,901,GR Area for Production,INTERIM,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,902,GR Area External Rcpts,INTERIM,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,910,GI Area General,INTERIM,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,914,GI Area Production Orders,INTERIM,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,916,Shipping Area Deliveries,INTERIM,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,917,Quality Assurance,INTERIM,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,920,Stock Transfers (plant),INTERIM,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,921,Stock Transfers (StLoc),INTERIM,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,922,Posting Change Area,INTERIM,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,980,R/3 --> R/2 Cumulative,INTERIM,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,998,Init. Entry of Inv. Data,INTERIM,2026-06-02,,wm-config-owner,PENDING
-C351,Olesnica [MFG],105,999,Differences,INTERIM,2026-06-02,,wm-config-owner,PENDING
+C351,Olesnica [MFG],105,100,Production Supply,LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,800,Production Dispensary,LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,801,Palletising (for Prodc.),LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,802,Palletising (for Dispn.),LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,810,Oils Dispensary,LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,820,Gnocchi Dispensary,LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,850,Pork dispensary,LINESIDE,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,901,GR Area for Production,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,902,GR Area External Rcpts,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,910,GI Area General,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,914,GI Area Production Orders,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,916,Shipping Area Deliveries,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,917,Quality Assurance,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,920,Stock Transfers (plant),INTERIM,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,921,Stock Transfers (StLoc),INTERIM,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,922,Posting Change Area,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,980,R/3 --> R/2 Cumulative,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,998,Init. Entry of Inv. Data,INTERIM,2026-06-02,,wm-config-owner,APPROVED
+C351,Olesnica [MFG],105,999,Differences,INTERIM,2026-06-02,,wm-config-owner,APPROVED
 C495,Omagh (ing) [MFG],130,100,Production Supply,LINESIDE,2026-06-02,,wm-config-owner,PENDING
 C495,Omagh (ing) [MFG],130,800,Production Dispensary,LINESIDE,2026-06-02,,wm-config-owner,PENDING
 C495,Omagh (ing) [MFG],130,802,Palletising (for Dispn.),LINESIDE,2026-06-02,,wm-config-owner,PENDING

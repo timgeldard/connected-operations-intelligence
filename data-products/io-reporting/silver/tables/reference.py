@@ -811,13 +811,13 @@ def site_config_plant():
             qm_enabled_flag=True, batch_managed_flag=True, process_manufacturing_flag=True,
             default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
             is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-11"),
-        # C350 Kielce ("DNU" in SAP master data): DECOMMISSIONED in practice — last process order
-        # 2021-12, zero TR/TO in warehouse 132 ever, zero goods movements 2025+, QM stopped 2024-09.
-        # Onboarded for historical stock/QM visibility only: WM and HU stay DISABLED (no WM data;
-        # keeps warehouse-gated flows clean). Verified 2026-06-11.
-        Row(plant_code="C350", plant_name="DNU Kielce [MFG]", country="PL", region="Europe",
+        # C351 Olesnica: fully live in UAT replication (149k process orders, 479k TRs, 3.96M TOs,
+        # 622k stock quants, 219k QM lots — verified 2026-06-11). Warehouse 105 per T320.
+        # (C350 "DNU Kielce" was briefly onboarded 2026-06-11 by mistake and revoked the same day —
+        # it is decommissioned: last process order 2021-12, zero TR/TO in warehouse 132 ever.)
+        Row(plant_code="C351", plant_name="Olesnica [MFG]", country="PL", region="Europe",
             business_unit="Operations", timezone="Europe/Warsaw", sap_system_id="ECC",
-            go_live_status="PRODUCTION", wm_enabled_flag=False, hu_enabled_flag=False,
+            go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
             qm_enabled_flag=True, batch_managed_flag=True, process_manufacturing_flag=True,
             default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
             is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-11"),
@@ -858,9 +858,11 @@ def site_config_warehouse():
         Row(plant_code="P817", warehouse_number="208", warehouse_description="Jackson Main WH",
             relationship_type="PRIMARY", wm_usage_type="FULL_WM", is_shared_warehouse=False,
             valid_from="2026-01-01", valid_to="9999-12-31", is_active=True, config_owner="wm-config-owner"),
-        # P806 -> 190 per T320 (12 storage-location links, verified 2026-06-11). C350's warehouse
-        # (132) is deliberately NOT seeded: wm_enabled_flag=false and 132 carries no WM data.
+        # P806 -> 190, C351 -> 105 per T320 (verified 2026-06-11).
         Row(plant_code="P806", warehouse_number="190", warehouse_description="Clark North Main WH",
+            relationship_type="PRIMARY", wm_usage_type="FULL_WM", is_shared_warehouse=False,
+            valid_from="2026-01-01", valid_to="9999-12-31", is_active=True, config_owner="wm-config-owner"),
+        Row(plant_code="C351", warehouse_number="105", warehouse_description="Olesnica Main WH",
             relationship_type="PRIMARY", wm_usage_type="FULL_WM", is_shared_warehouse=False,
             valid_from="2026-01-01", valid_to="9999-12-31", is_active=True, config_owner="wm-config-owner"),
     ]

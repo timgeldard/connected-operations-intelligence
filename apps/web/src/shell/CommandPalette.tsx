@@ -158,6 +158,17 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
       },
     },
     {
+      id: 'wm-ops-c351',
+      label: 'Open WM Operations — 105 · Olesnica [MFG]',
+      description: 'Staging & dispensary manager tools · Plant C351 · Warehouse 105',
+      category: 'Recent Investigations',
+      action: () => {
+        setActiveScope({ warehouseId: '105', plantId: 'C351' })
+        setWorkspace('wm-operations')
+        onClose()
+      },
+    },
+    {
       id: 'por-mock',
       label: 'Open Process Order — PO-240308-3847',
       description: 'EMMENTAL BLOCK NATURAL 100KG · Batch CH-240308-0047 · Kerry Listowel',
