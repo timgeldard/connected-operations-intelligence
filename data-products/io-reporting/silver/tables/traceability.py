@@ -136,8 +136,10 @@ if bronze_columns_exist("batchwhereusedlist_chvw", _CHVW_REQUIRED):
         #      any digit (ASCII 48–57), so an ISO date would compare LOWER than its compact
         #      equivalent — a single-threshold filter would incorrectly exclude recent ISO-format rows.
         #      F.length(F.trim(...)) == 8 vs 10 discriminates format unambiguously.
-        cutoff_compact = F.date_format(F.add_months(F.current_date(), -12 * lookback), "yyyyMMdd")
-        cutoff_iso = F.date_format(F.add_months(F.current_date(), -12 * lookback), "yyyy-MM-dd")
+        # determinism-exempt: rolling trace window (ADR 016) is intentionally evaluated at
+        # refresh time — same pattern as the qm_lookback_years window in quality.py.
+        cutoff_compact = F.date_format(F.add_months(F.current_date(), -12 * lookback), "yyyyMMdd")  # determinism-exempt
+        cutoff_iso = F.date_format(F.add_months(F.current_date(), -12 * lookback), "yyyy-MM-dd")  # determinism-exempt
         keep = (
             F.col("BUDAT").isNull()
             | F.col("BUDAT").isin(*_SAP_NULL_DATES)
