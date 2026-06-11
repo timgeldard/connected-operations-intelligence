@@ -5,7 +5,7 @@ Reference/Master data domain tables.
 import dlt
 from pyspark.sql import Row, Window
 from pyspark.sql import functions as F
-from pyspark.sql.types import BooleanType, StringType, StructField, StructType
+from pyspark.sql.types import BooleanType, DateType, StringType, StructField, StructType
 
 from silver._plant_gate import apply_plant_gate
 from silver.helpers import (
@@ -1101,7 +1101,7 @@ def site_lifecycle():
         StructField("plant_code", StringType(), True),
         StructField("plant_name", StringType(), True),
         StructField("country", StringType(), True),
-        StructField("last_posting", StringType(), True),
+        StructField("last_posting", DateType(), True),
         StructField("proposed_lifecycle", StringType(), True),
         StructField("confirmed_lifecycle", StringType(), True),
         StructField("effective_lifecycle", StringType(), True),
