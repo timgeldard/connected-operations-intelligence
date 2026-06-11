@@ -34,7 +34,7 @@ meta:
   phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; QM lot+UD + PP/PI snapshots enforced 2026-06-11
   enforced_count: 22           # +4 QM result family (characteristic/result/sample_result/individual_result) enforced 2026-06-11 (SPC Phase 1)
   source_guarded_count: 0      # all PP/PI flows now enforced — no remaining CDC-blocked flows
-  exempt_count: 17
+  exempt_count: 18             # +1 batch_where_used (traceability, 2026-06-11) — estate-wide exempt
   needs_mapping_count: 7
   blocked_count: 0
 
@@ -496,3 +496,20 @@ silver_outputs:
     gating_category: D
     current_status: EXEMPT
     exempt_reason: "Governed config (per-plant KPI enablement); governance dimension, not gated operational data."
+
+  # ── EXEMPT (traceability — estate-wide, lifecycle gating deferred to gold T2) ────────────────
+  - table_name: batch_where_used
+    file: silver/tables/traceability.py
+    source_tables: [batchwhereusedlist_chvw]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: >
+      Estate-wide traceability product (ADR 016 §1): batch where-used traces cross ALL active
+      plants and their supply chains — NOT limited to the WM/QM pilot set. A plant gate at silver
+      would silently truncate graph traversals at sold/divested/closed plant boundaries, producing
+      incomplete traces with no visible error. Lifecycle gating (exclude SOLD/DIVESTED edges;
+      preserve CLOSED as pass-through nodes — ADR 016 §2) is applied at the gold edge build (T2)
+      once site_config_plant.lifecycle_status is populated and business-reviewed
+      (resources/config/site_lifecycle_review.csv). Silver is window-gated via
+      trace_lookback_years (default 5y, BUDAT at source read) which cuts volume substantially
+      while keeping the table faithful to source within the window.
