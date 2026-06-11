@@ -30,6 +30,11 @@ variables:
     default: "false"
   notification_email:
     description: Required notification distribution list for pipeline and job failures.
+  # Controls whether the refresh_cadence job schedule is active.
+  # Default PAUSED keeps the job dormant in dev targets and prod until explicitly enabled.
+  # UAT overrides to UNPAUSED to run the scheduled 05:30 Europe/London cadence.
+  cadence_pause_status:
+    default: PAUSED
 
 targets:
   # DEV-native target: deploys into the DEV workspace (profile TG) reading the real
@@ -147,6 +152,7 @@ targets:
       # published_uat.central_services set incl. handlingunit_vekp/vepo.
       deployment_mode: full_validation
       enable_hu_reconciliation: "true"
+      cadence_pause_status: UNPAUSED
 
   prod:
     mode: production

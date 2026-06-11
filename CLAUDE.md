@@ -30,14 +30,14 @@ Configure auth before deploying: `databricks auth login --profile DEFAULT`
 data-products/io-reporting/
   databricks.yml                  # Bundle config (dev / uat / prod targets)
   resources/
-    silver_fast_pipeline.pipeline.yml    # Continuous Silver pipeline definition
+    silver_fast_pipeline.pipeline.yml    # Triggered Silver fast pipeline definition (refresh-cadence job)
     silver_slow_pipeline.pipeline.yml    # Triggered Silver reference pipeline definition
     silver_quality_pipeline.pipeline.yml # Triggered Silver quality pipeline definition
     gold_pipeline.pipeline.yml    # Triggered Gold pipeline definition
     sql/                          # Generated UC SQL (RLS secured views, _live serving views, consumption views)
   silver/
     tables/                       # Domain-specific table definitions (process_order, warehouse_fast, warehouse_reference, etc.)
-    dlt_silver_fast.py            # Fast operational silver entrypoint (continuous)
+    dlt_silver_fast.py            # Fast operational silver entrypoint (triggered)
     dlt_silver_slow.py            # Slow reference silver entrypoint (triggered)
     dlt_silver_quality.py         # Quality silver entrypoint (triggered)
     helpers.py                    # Shared DLT helpers and constants
@@ -74,7 +74,7 @@ databricks bundle deploy -t prod --profile DEFAULT
 > where `connected_plant_uat` is bound (not the DEV workspace). See
 > `docs/architecture/adr-ioreporting-dev-deployment-baseline.md`.
 
-The Silver pipelines are configured with different update modes (fast is continuous, slow and quality are triggered). The Gold pipeline is triggered (batch) mode.
+All Silver pipelines and the Gold pipeline are triggered (batch) mode. The fast pipeline runs via the scheduled refresh-cadence job (`resources/refresh_cadence.job.yml`); slow, quality, and gold run via that same job in sequence.
 
 ```bash
 databricks pipelines start-update <pipeline-id> --profile DEFAULT

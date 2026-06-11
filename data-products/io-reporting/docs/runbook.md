@@ -7,7 +7,7 @@
 | Bundle name | `connected-plant` | `connected-plant` |
 | Target Catalog (Prod) | `connected_plant_prod` | `connected_plant_prod` |
 | Target Schema (Prod) | `silver` | `gold` |
-| Mode | Continuous | Triggered (Batch) |
+| Mode | Triggered (Batch) | Triggered (Batch) |
 | Notifications | Configure in `resources/silver_*_pipeline.pipeline.yml` | Configure in `resources/gold_pipeline.pipeline.yml` |
 
 ### Environment Target Matrix
@@ -31,7 +31,7 @@ databricks pipelines list --profile DEFAULT | grep "Connected Plant"
 databricks pipelines get --pipeline-id <id> --profile DEFAULT
 ```
 
-- **Silver Pipeline**: Healthy state is `RUNNING` (runs continuously). Alert states are `FAILED`, `IDLE` (unexpected stop).
+- **Silver Fast Pipeline**: Healthy state after a cadence run is `COMPLETED`. Alert state is `FAILED`.
 - **Gold Pipeline**: Healthy state is `COMPLETED` after a successful run. Alert state is `FAILED`.
 
 ---
@@ -128,9 +128,9 @@ No manual SQL script is required for the Gold tables. Gold row filters are disab
 
 ## 8. Running the Gold Pipeline
 
-Since the Gold pipeline runs in **Triggered (batch)** mode, use the bundled `gold_refresh_job` to refresh slow Silver domains and then Gold three times daily. The Silver fast pipeline is continuous and is not included as a scheduled job task because continuous pipeline tasks do not naturally complete.
+Since the Gold pipeline runs in **Triggered (batch)** mode, use the bundled `refresh_cadence` job to refresh all four pipelines (silver_fast → silver_slow/quality in parallel → gold) on a scheduled cadence. The legacy `gold_refresh_job` refreshes only slow + quality Silver then Gold; prefer `refresh_cadence` for full end-to-end refreshes.
 
-Gold output for production orders and material movements reflects the current state of `silver_fast_pipeline` at job-run time. If the continuous fast pipeline is stopped or lagging, Gold refreshes can complete successfully while aggregating stale fast-domain data.
+Gold output for production orders and material movements reflects the Silver state produced by the preceding fast-pipeline run in the same cadence job. If the fast pipeline task fails or is skipped, Gold refreshes can complete while aggregating stale fast-domain data.
 
 Gold reads from Silver tables that have Unity Catalog row filters applied, but Gold table row filters are disabled by default. Databricks may choose full refresh for materialized views sourced from row-filtered tables, even on serverless. After first deployment, compare Gold update duration and input rows across several runs before increasing schedule frequency.
 
