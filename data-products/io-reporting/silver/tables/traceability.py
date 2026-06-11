@@ -39,7 +39,14 @@ ESTATE GATING (PHASE 1 — WINDOW ONLY):
 import dlt
 from pyspark.sql import functions as F
 
-from silver.helpers import BRONZE, bronze_columns_exist, get_spark, sap_date, strip_zeros
+from silver.helpers import (
+    _SAP_NULL_DATES,
+    BRONZE,
+    bronze_columns_exist,
+    get_spark,
+    sap_date,
+    strip_zeros,
+)
 
 # Every column used in the flow, including AEDATTM, must be present for the flow to be
 # run-eligible. CHVW is AEDATTM-only (no AERUNID/AERECNO) — snapshot MV pattern.
@@ -112,9 +119,32 @@ if bronze_columns_exist("batchwhereusedlist_chvw", _CHVW_REQUIRED):
 
         # Time-gate at the source read: window-only gating for phase 1 (no plant filter —
         # see module docstring; lifecycle gating deferred to T2 gold edge build).
-        chvw = chvw.filter(
-            sap_date("BUDAT") >= F.add_months(F.current_date(), -12 * lookback)
+        #
+        # Raw-string pushdown: compare BUDAT as a string rather than calling sap_date() here.
+        # Rationale (review PR #96):
+        #   1. Delta file skipping: a string predicate on BUDAT propagates as a data-skipping filter;
+        #      sap_date() wraps the column in try_to_timestamp() expressions that Delta cannot push
+        #      down to file-level statistics, destroying skip efficiency on large CHVW partitions.
+        #   2. NULL/sentinel preservation: NULL BUDAT rows and SAP initial-date sentinels
+        #      ("", "00000000", "0000-00-00" — matching _SAP_NULL_DATES in helpers.py) are
+        #      DELIBERATELY KEPT so they reach the "posting_date present" @dlt.expect_all expectation
+        #      below. sap_date() maps them to NULL at SELECT time (not filter time), so the
+        #      expectation sees them as warnings rather than silently dropping them.
+        #   3. Dual-format support: Aecorsoft delivers BUDAT in BOTH compact 'yyyyMMdd' (e.g.
+        #      '20240115') and ISO 'yyyy-MM-dd' (e.g. '2024-01-15') formats. A single lexicographic
+        #      cutoff string cannot span both: at character position 5, '-' (ASCII 45) sorts BELOW
+        #      any digit (ASCII 48–57), so an ISO date would compare LOWER than its compact
+        #      equivalent — a single-threshold filter would incorrectly exclude recent ISO-format rows.
+        #      F.length(F.trim(...)) == 8 vs 10 discriminates format unambiguously.
+        cutoff_compact = F.date_format(F.add_months(F.current_date(), -12 * lookback), "yyyyMMdd")
+        cutoff_iso = F.date_format(F.add_months(F.current_date(), -12 * lookback), "yyyy-MM-dd")
+        keep = (
+            F.col("BUDAT").isNull()
+            | F.col("BUDAT").isin(*_SAP_NULL_DATES)
+            | ((F.length(F.trim(F.col("BUDAT"))) == 8) & (F.col("BUDAT") >= cutoff_compact))
+            | ((F.length(F.trim(F.col("BUDAT"))) == 10) & (F.col("BUDAT") >= cutoff_iso))
         )
+        chvw = chvw.filter(keep)
 
         return chvw.select(
             # ── identity ────────────────────────────────────────────────────────────────────
