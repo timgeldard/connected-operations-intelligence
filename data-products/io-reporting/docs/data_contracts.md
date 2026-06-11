@@ -14,7 +14,7 @@ This document defines the formal data contracts for the key Silver and Gold laye
 * **Delete Handling**: CDC tracking via Aecorsoft `RecordActivity`. Deletes are applied directly as hard deletes (`apply_as_deletes`).
 * **Sequence / Watermark Column**: `_replicated_at` (derived from `AEDATTM`)
 * **Row-Level Security**: Plant-level filter (`plant_access_filter`) applied to the `plant_code` column.
-* **Freshness Expectation**: Continuous execution (near real-time, within 15-minute latency).
+* **Freshness Expectation**: Silver operational tables refresh on the scheduled refresh-cadence job (daily at 05:30 Europe/London in UAT; on-demand otherwise), so data freshness is "as of the last cadence run", not near-real-time.
 * **Known Caveats**: Due to the stream-static join for recipe enrichment, the `production_line` field reflects the recipe classification at the time the process order last changed (not necessarily today's classification if the recipe is reclassified later for a closed/unchanged order).
 
 ### 2. `silver.goods_movement`
@@ -24,7 +24,7 @@ This document defines the formal data contracts for the key Silver and Gold laye
 * **Delete Handling**: Hard deletes tracked via Aecorsoft `RecordActivity`.
 * **Sequence / Watermark Column**: `_replicated_at`
 * **Row-Level Security**: Enforced via `plant_code`.
-* **Freshness Expectation**: Near real-time (continuous streaming).
+* **Freshness Expectation**: Silver operational tables refresh on the scheduled refresh-cadence job (daily at 05:30 Europe/London in UAT; on-demand otherwise), so data freshness is "as of the last cadence run", not near-real-time.
 
 ### 3. `silver.storage_bin`
 * **Grain**: 1 row per occupancy slot — a physical bin plus its occupancy key (`warehouse_number` + `storage_type` + `bin_code` + `_storage_bin_occupancy_key`). An occupied bin yields one row per quant (`LQNUM`); an empty bin yields a single `__EMPTY__` row.
@@ -55,7 +55,7 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Row-Level Security**: Gold is produced by a trusted aggregate pipeline. Apply plant-level controls at the consumption boundary.
 * **Freshness Expectation**: Triggered pipeline execution (bundled job schedule: three times daily).
 * **Known Caveats**: Relies on conformed classifications mapped in `movement_type_classification`. T156-only movement codes are retained as `OTHER` with false KPI flags; any newly introduced custom movement code must be functionally classified before it contributes to output or throughput measures.
-* **Freshness Caveat**: Depends on the continuous `silver_fast_pipeline`; the Gold refresh job does not trigger that pipeline.
+* **Freshness Caveat**: Depends on the `silver_fast_pipeline` being run by the scheduled refresh-cadence job; the Gold refresh job does not trigger that pipeline.
 
 ### 2. `gold.gold_process_order_schedule_adherence`
 * **Grain**: 1 row per completed process order
@@ -69,7 +69,7 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Note**: Measures process-order schedule adherence, starting adherence, yield-to-order fill rate, scrap rate, and production line details per completed/closed order. Unrelated to customer-delivery OTIF.
 * **Row-Level Security**: Gold is produced by a trusted aggregate pipeline. Apply plant-level controls at the consumption boundary.
 * **Freshness Expectation**: Batch triggered.
-* **Freshness Caveat**: Depends on the continuous `silver_fast_pipeline`; the Gold refresh job does not trigger that pipeline.
+* **Freshness Caveat**: Depends on the `silver_fast_pipeline` being run by the scheduled refresh-cadence job; the Gold refresh job does not trigger that pipeline.
 
 ### 3. `gold.gold_plant_production_quality_summary`
 * **Grain**: 1 row per plant across all available history
