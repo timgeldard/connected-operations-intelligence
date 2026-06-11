@@ -79,6 +79,18 @@ env:
   - name: TRACE_SCHEMA
     value: gold
 
+  # SPC catalog/schema — required for GET /api/spc/* native routes.
+  # SPC Phase 2 governed wiring: point the adapter at the governed gold_io_reporting schema
+  # so it reads the RLS-filtered spc_quality_metric_subgroup_mv serving view (which is a
+  # SELECT * pass-through of gold_spc_quality_metric_subgroup_secured). SPC_CATALOG falls back
+  # to TRACE_CATALOG (object_resolver.py) — set SPC_CATALOG explicitly for clarity.
+  # SPC_SCHEMA MUST be set explicitly — object_resolver.py defaults it to "gold" (legacy schema).
+  - name: SPC_CATALOG
+    value: connected_plant_uat
+
+  - name: SPC_SCHEMA
+    value: gold_io_reporting
+
   # WH360 catalog/schema — required for GET /api/warehouse360/* native routes.
   # GOVERNED WIRING (Gate B / validation_fixture, UAT): point the app at the governed serving schema so it
   # reads the RLS-filtered vw_consumption_warehouse360_* views instead of legacy connected_plant_uat.wh360.*.

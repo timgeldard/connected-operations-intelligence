@@ -149,6 +149,8 @@ GOLD_TABLES = [
     "gold_wm_order_operations",
     "gold_wm_downtime_pareto",
     "gold_wm_downtime_event_detail",
+    # spc_gold.py
+    "gold_spc_quality_metric_subgroup",
 ]
 
 TEMPLATE = """-- Unity Catalog Gold row-level security — secured serving views ({env_upper}).
