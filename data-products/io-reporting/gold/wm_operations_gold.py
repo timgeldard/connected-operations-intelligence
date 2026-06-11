@@ -187,13 +187,13 @@ def gold_wm_staging_worklist():
             # fills as TO items churn after the LAGP columns land). Do NOT coalesce to 0.
             F.sum(
                 F.when(
-                    F.col("difference_quantity").isNotNull() & (F.col("difference_quantity") != 0),
+                    F.col("difference_quantity") != 0,  # NULL != 0 -> NULL -> when() yields NULL (deliberate: chip hides on NULL)
                     F.abs(F.col("difference_quantity")),
                 )
             ).alias("short_pick_qty"),
             F.sum(
                 F.when(
-                    F.col("difference_quantity").isNotNull() & (F.col("difference_quantity") != 0),
+                    F.col("difference_quantity") != 0,  # NULL != 0 -> NULL -> when() yields NULL (deliberate: chip hides on NULL)
                     F.lit(1),
                 )
             ).alias("short_pick_item_count"),
