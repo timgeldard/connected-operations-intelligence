@@ -14,13 +14,8 @@ gen = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gen)
 
 
-@pytest.fixture(autouse=True)
-def _use_tmp_cwd(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-
-
 def _gen(tmp_path, mode, env="uat"):
-    gen.generate_sql(env_filter=env, security_mode=mode)
+    gen.generate_sql(env_filter=env, security_mode=mode, base_dir=tmp_path)
     sql_dir = tmp_path / "resources" / "sql"
     return {p.name: p.read_text(encoding="utf-8") for p in sql_dir.glob("*.sql")}
 
