@@ -56,3 +56,15 @@ trace workspaces. It is renamed/re-identified to `trace` ONLY when the legacy tr
 explicitly dropped — by instruction, or at the production deployment. Until then both run in
 parallel; contracts are NOT shared between old and new (clean drop, per the migration brief).
 
+## Review-state mapping (bootstrap CSV → conformed statuses)
+`resources/config/site_lifecycle_review.csv` carries evidence-triage labels in `proposed_lifecycle`;
+these are NOT the conformed statuses. The business review resolves them into the four conformed
+values via `confirmed_lifecycle`:
+- ACTIVE → ACTIVE (no review needed unless contradicted).
+- SOLD_OR_CLOSED_REVIEW (DNU-named) → reviewer chooses SOLD, CLOSED, or DIVESTED_ON_SAP.
+- REVIEW_RECENT_DORMANT (no postings since 2025-06) → reviewer chooses ACTIVE (seasonal/slow) or CLOSED.
+Until a row is confirmed, the effective status defaults CONSERVATIVELY: ACTIVE proposals behave as
+ACTIVE; both review states behave as CLOSED (visible pass-through, not anchorable, edges retained).
+SOLD/DIVESTED exclusion — the destructive outcome — only ever takes effect from an EXPLICIT
+confirmed_lifecycle, never from a default.
+
