@@ -195,7 +195,12 @@ unresolved_sources:
     handling: "Source-guarded: the whole flow is wrapped in `if bronze_columns_exist('inspection_qals', ['AERUNID','AERECNO'])` — absent CDC metadata -> flow not defined -> silver_quality COMPLETES (was failing analysis on MANDT->WERK->...). NO plant gate applied yet and NO field remap done (deliberate — a gate/WERK fix while the contract is broken yields no runtime benefit; advisor-confirmed). NO fabricated fields."
     model_resolved: "Field contract + grain split + AEDATTM ingestion model RESOLVED in docs/quality_qm_functional_model.md (2026-06-07, legacy silver_qals.csv/silver_qave.csv + DD03L). Remaining is implementation + the run-eligibility hold below."
     follow_up: "Implement the corrected model (lot=QALS PASTRTERM/PAENDTERM/AUFNR/WERK..., new quality_inspection_usage_decision from QAVE, AEDATTM-sequenced SCD1, apply_plant_gate(quality) on plant_code). DO NOT flip the source-guard / make the flow run-eligible until the quality plant gate is verified in ('we don't run anything until the plant gate is in'). Then reclassify ENFORCED. Characterisation query: validation/quality_qm_field_contract_check.sql."
-    status: MODEL_RESOLVED_SOURCE_GUARDED_PENDING_PLANT_GATE
+    # UPDATE 2026-06-11: lot + UD (QALS/QAVE) flipped to run-eligible (corrected model implemented,
+    # quality plant gate verified). The result-grain family (QAMV/QAMR/QASR/QASE — §8) also became
+    # run-eligible 2026-06-11 under the two-tier spc gate (SPC Phase 1, WP1.2 — Tim Geldard);
+    # hold lifted per PR #79 (spc_enabled_flag added to site_config_plant). All four result tables
+    # now ENFORCED with gate-via-parent (PRUEFLOS -> gated QALS, product_area="spc").
+    status: RESOLVED_ENFORCED
 
   - id: picking_waves_wave_groupings
     model: stg_picking_waves / picking_waves
