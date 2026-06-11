@@ -813,13 +813,17 @@ def site_config_plant():
         Row(plant_code="C061", plant_name="Portbury [MFG]", country="GB", region="Europe",
             business_unit="Operations", timezone="Europe/London", sap_system_id="ECC",
             go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
-            qm_enabled_flag=True, batch_managed_flag=True, process_manufacturing_flag=True,
+            qm_enabled_flag=True,
+            spc_enabled_flag=True,  # SPC tier flag (quality AND spc) — default true for onboarded plants, the lever to give a site QM reporting without SPC.
+            batch_managed_flag=True, process_manufacturing_flag=True,
             default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
             is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-03"),
         Row(plant_code="P817", plant_name="Jackson [MFG]", country="US", region="Americas",
             business_unit="Operations", timezone="America/Chicago", sap_system_id="ECC",
             go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
-            qm_enabled_flag=True, batch_managed_flag=True, process_manufacturing_flag=True,
+            qm_enabled_flag=True,
+            spc_enabled_flag=True,  # SPC tier flag (quality AND spc) — default true for onboarded plants, the lever to give a site QM reporting without SPC.
+            batch_managed_flag=True, process_manufacturing_flag=True,
             default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
             is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-08"),
         # P806 Clark North: fully live in UAT replication (53k process orders, 58k TRs, 983k TOs,
@@ -827,7 +831,9 @@ def site_config_plant():
         Row(plant_code="P806", plant_name="Clark North [MFG]", country="US", region="Americas",
             business_unit="Operations", timezone="America/New_York", sap_system_id="ECC",
             go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
-            qm_enabled_flag=True, batch_managed_flag=True, process_manufacturing_flag=True,
+            qm_enabled_flag=True,
+            spc_enabled_flag=True,  # SPC tier flag (quality AND spc) — default true for onboarded plants, the lever to give a site QM reporting without SPC.
+            batch_managed_flag=True, process_manufacturing_flag=True,
             default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
             is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-11"),
         # C351 Olesnica: fully live in UAT replication (149k process orders, 479k TRs, 3.96M TOs,
@@ -837,7 +843,9 @@ def site_config_plant():
         Row(plant_code="C351", plant_name="Olesnica [MFG]", country="PL", region="Europe",
             business_unit="Operations", timezone="Europe/Warsaw", sap_system_id="ECC",
             go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
-            qm_enabled_flag=True, batch_managed_flag=True, process_manufacturing_flag=True,
+            qm_enabled_flag=True,
+            spc_enabled_flag=True,  # SPC tier flag (quality AND spc) — default true for onboarded plants, the lever to give a site QM reporting without SPC.
+            batch_managed_flag=True, process_manufacturing_flag=True,
             default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
             is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-11"),
     ]

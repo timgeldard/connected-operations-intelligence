@@ -16,6 +16,16 @@
 #   NEEDS_MAPPING = operational, plant/warehouse-derivable, gate NOT yet applied (Phase 2 backlog).
 #   BLOCKED       = no approved plant derivation; needs a source/owner decision.
 # Phase 1 enforces the runnable WM/MM reference set; all 40 outputs are classified for completeness.
+#
+# Active-for derivations (from site_config_plant flags — see silver/_plant_gate.py):
+#   active_for_ioreporting  := is_active AND go_live_status NOT IN (BLOCKED, DECOMMISSIONED, SUSPENDED)
+#   active_for_warehouse360 := active_for_ioreporting AND wm_enabled_flag
+#   active_for_stock        := active_for_ioreporting AND batch_managed_flag
+#   active_for_quality      := active_for_ioreporting AND qm_enabled_flag
+#   active_for_process_order:= active_for_ioreporting AND process_manufacturing_flag
+#   active_for_spc          := active_for_quality AND spc_enabled_flag
+#     (two-tier QM rule, Tim Geldard 2026-06-11: quality does NOT require wm_enabled_flag;
+#      spc is a further opt-in tier above quality, requiring both qm_enabled_flag AND spc_enabled_flag)
 
 meta:
   canonical_gate_plant: site_config_plant

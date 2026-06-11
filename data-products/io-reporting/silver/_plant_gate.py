@@ -30,13 +30,24 @@ Design rules (see source-contracts/site_stage_gate_contract.md):
     reports before/after row counts, so any drop-all is loud in validation evidence.
   * DEPLOY ORDER: the slow pipeline must build site_config_* BEFORE the continuous fast pipeline
     starts (same dependency as recipe_process_line). On first deploy, run slow once, then start fast.
+  * DEPLOY ORDER (spc area): the `spc_enabled_flag` column is added to `site_config_plant` in this
+    change. The slow pipeline must rebuild `site_config_plant` (adding the column) BEFORE any
+    spc-area flow first runs. Running a spc-gated flow against a stale materialisation that lacks
+    `spc_enabled_flag` will RAISE at filter time (fail-loud, not silent pass).
 
-Product-area gate semantics (DERIVED from the existing site_config_plant flags; no schema change):
+Product-area gate semantics (DERIVED from the existing site_config_plant flags):
   active_for_ioreporting    := is_active AND go_live_status NOT IN (blocked statuses)
   active_for_warehouse360   := <ioreporting> AND wm_enabled_flag
   active_for_stock          := <ioreporting> AND batch_managed_flag
   active_for_quality        := <ioreporting> AND qm_enabled_flag
   active_for_process_order  := <ioreporting> AND process_manufacturing_flag
+  active_for_spc            := <quality> AND spc_enabled_flag
+
+Two-tier QM rule (Tim Geldard, 2026-06-11): "A site may need QM reporting but not WM reporting;
+above that, a site might have QM reporting but not SPC." The `quality` area therefore gates on
+qm_enabled_flag alone (independent of wm_enabled_flag), while the `spc` area is a further tier
+that requires BOTH qm_enabled_flag AND spc_enabled_flag.
+
 technical_validated / business_validated are NOT yet first-class columns on the config (closest signal
 is the deployment_mode shakedown-vs-full_validation flag + last_validated_at). They are documented in
 the contract as a Phase-2 schema addition and are NOT silently assumed true here.
@@ -49,8 +60,10 @@ from silver.helpers import get_spark
 # go_live_status values that exclude a plant even when is_active (defensive; extend via the contract).
 _BLOCKED_GO_LIVE_STATUSES = ["BLOCKED", "DECOMMISSIONED", "SUSPENDED"]
 
-# product_area -> the site_config_plant boolean flag that additionally includes a plant for that area.
+# product_area -> the site_config_plant boolean flag(s) that additionally include a plant for that area.
 # None = base ioreporting gate (is_active + go_live_status only).
+# A single string = one extra flag column required.
+# A tuple/list of strings = ALL listed flag columns required (AND logic).
 _PRODUCT_AREA_FLAG = {
     None: None,
     "ioreporting": None,
@@ -59,6 +72,9 @@ _PRODUCT_AREA_FLAG = {
     "stock": "batch_managed_flag",
     "quality": "qm_enabled_flag",
     "process_order": "process_manufacturing_flag",
+    # spc is a second tier above quality: a site may have QM reporting (quality) without SPC.
+    # Requires BOTH qm_enabled_flag AND spc_enabled_flag. See two-tier QM rule in module docstring.
+    "spc": ("qm_enabled_flag", "spc_enabled_flag"),
 }
 
 
@@ -77,6 +93,12 @@ def active_plants_df(spark=None, product_area=None) -> DataFrame:
 
     Read UNCONDITIONALLY (fail-loud): a missing site_config_plant table raises (slow pipeline must build
     it first). Returns one column: `plant_code`.
+
+    When the product_area maps to a sequence of flag columns (e.g. "spc" requires both
+    qm_enabled_flag AND spc_enabled_flag), ALL flags are required (AND logic). If any flag column is
+    absent from the table the Spark column reference will raise — this is intentional fail-loud
+    behaviour for the case where site_config_plant was built against a stale schema that lacks the
+    column (see DEPLOY ORDER note in the module docstring).
     """
     spark = spark or get_spark()
     if product_area not in _PRODUCT_AREA_FLAG:
@@ -88,9 +110,13 @@ def active_plants_df(spark=None, product_area=None) -> DataFrame:
     df = df.filter(
         F.col("is_active") & (~F.col("go_live_status").isin(_BLOCKED_GO_LIVE_STATUSES))
     )
-    flag = _PRODUCT_AREA_FLAG.get(product_area)
-    if flag:
-        df = df.filter(F.col(flag))
+    flags = _PRODUCT_AREA_FLAG.get(product_area)
+    if flags:
+        if isinstance(flags, (list, tuple)):
+            for flag in flags:
+                df = df.filter(F.col(flag))
+        else:
+            df = df.filter(F.col(flags))
     return df.select(F.col("plant_code")).distinct()
 
 
