@@ -1164,11 +1164,13 @@ SIMPLE_DATASETS: dict[str, dict] = {
         columns="plant_id, warehouse_id, storage_type, bin_type, bin_record_count, "
                 "occupied_bin_count, empty_bin_count, blocked_bin_count, "
                 "stock_removal_blocked_bin_count, putaway_blocked_bin_count, occupancy_rate, "
-                "total_stock_qty, available_stock_qty, open_transfer_stock_qty",
+                "total_stock_qty, available_stock_qty, open_transfer_stock_qty, "
+                "total_max_quant_count, total_maximum_weight, quant_utilisation_fraction",
         order_by="occupancy_rate DESC",
-        numeric=("occupancy_rate", "total_stock_qty", "available_stock_qty", "open_transfer_stock_qty"),
+        numeric=("occupancy_rate", "total_stock_qty", "available_stock_qty", "open_transfer_stock_qty",
+                 "total_maximum_weight", "quant_utilisation_fraction"),
         integer=("bin_record_count", "occupied_bin_count", "empty_bin_count", "blocked_bin_count",
-                 "stock_removal_blocked_bin_count", "putaway_blocked_bin_count"),
+                 "stock_removal_blocked_bin_count", "putaway_blocked_bin_count", "total_max_quant_count"),
         boolean=(), has_warehouse=True,
     ),
     "slow_movers": dict(

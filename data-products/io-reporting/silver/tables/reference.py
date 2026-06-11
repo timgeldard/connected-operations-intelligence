@@ -13,8 +13,9 @@ from silver.helpers import (
     PROCESS_LINE_ATINN,
     bronze_columns_exist,
     bronze_published,
-    bronze_table_exists,
+    col_or_null,
     get_spark,
+    published_columns_exist,
     relation_exists,
     sap_date,
     sap_flag,
@@ -113,18 +114,22 @@ def storage_location():
 
 
 # ── 3. WORK CENTRE ────────────────────────────────────────────────────────────
-# work_centre's source tables (CRHD header + CRTX text) are NOT present in the replicated SAP in
-# EITHER connected_plant_dev.sap OR connected_plant_uat.sap (confirmed 2026-06-07 — zero crhd/crtx
-# tables in both). work_centre has NO downstream pipeline consumers (referenced only in
-# silver/design_spec.md), so it is defined only when its source exists — otherwise it would fail the
-# whole Silver run on an unreplicated source. This is a real source-replication gap that ALSO blocks
-# UAT full_validation; it is flagged by ioreporting_dev_source_schema_preflight.sql. Do NOT fabricate
-# CRHD/CRTX data. The table self-heals (is defined) once the source is replicated.
+# CRHD/CRTX are NOT in connected_plant.sap — they live in the PUBLISHED (central_services) catalog
+# (published_uat.central_services.workcenterheader_crhd / workcentertext_crtx; located by Tim
+# Geldard 2026-06-11, verified live: 7,296 work centres, 43–70 per onboarded plant). Same source
+# pattern as the T320 warehouse mapping. AEDATTM-only (reference master, no CDC) → batch MV.
+# central_services fields can carry SAP fixed-width padding → keys/codes are TRIMmed. KOSTL (cost
+# centre) is NOT in the published projection → col_or_null keeps the column contract. Plant-gated
+# (CRHD.WERKS direct, process_order area) per the stage-gate inventory.
 
-if bronze_table_exists("workcenterheader_crhd"):
+if (
+    published_columns_exist("workcenterheader_crhd", ["OBJID", "OBJTY", "MANDT", "ARBPL", "WERKS", "VERWE", "AEDATTM"])
+    and published_columns_exist("workcentertext_crtx", ["OBJID", "OBJTY", "MANDT", "SPRAS", "KTEXT"])
+):
 
     @dlt.table(
-        comment="Work centres — one row per work centre per plant, with descriptions",
+        comment="Work centres — one row per work centre per plant, with descriptions "
+                "(CRHD/CRTX from the published central_services catalog).",
         table_properties={"delta.enableChangeDataFeed": "true"},
     )
     @dlt.expect_all_or_drop({
@@ -133,23 +138,37 @@ if bronze_table_exists("workcenterheader_crhd"):
     })
     def work_centre():
         spark = get_spark()
-        crhd = spark.read.table(f"{BRONZE}.workcenterheader_crhd")
-        crtx = spark.read.table(f"{BRONZE}.workcentertext_crtx").filter(
-            F.col("SPRAS") == "E"
+        published = bronze_published()
+        # OBJTY 'A' = work-centre objects (CRHD/CRTX are shared HR/logistics object tables).
+        crhd = spark.read.table(f"{published}.workcenterheader_crhd").filter(
+            F.trim(F.col("OBJTY")) == "A"
         )
-        return (
+        crtx = spark.read.table(f"{published}.workcentertext_crtx").filter(
+            (F.trim(F.col("OBJTY")) == "A") & (F.trim(F.col("SPRAS")) == "E")
+        ).select(
+            F.trim(F.col("OBJID")).alias("_t_objid"),
+            F.trim(F.col("MANDT")).alias("_t_mandt"),
+            F.col("KTEXT").alias("_t_ktext"),
+        )
+        out = (
             crhd.alias("w")
-            .join(crtx.alias("t"), ["OBJID", "MANDT"], "left")
+            .join(
+                crtx.alias("t"),
+                (F.trim(F.col("w.OBJID")) == F.col("t._t_objid"))
+                & (F.trim(F.col("w.MANDT")) == F.col("t._t_mandt")),
+                "left",
+            )
             .select(
-                F.col("w.ARBPL").alias("work_centre_code"),
-                F.col("w.WERKS").alias("plant_code"),
-                F.col("t.KTEXT").alias("work_centre_description"),
-                F.col("w.VERWE").alias("work_centre_category"),
-                F.col("w.KOSTL").alias("cost_centre"),
-                F.col("w.OBJID").alias("work_centre_internal_id"),
-                F.col("w.AEDATTM").alias("_replicated_at"),
+                F.trim(F.col("w.ARBPL")).alias("work_centre_code"),
+                F.trim(F.col("w.WERKS")).alias("plant_code"),
+                F.col("t._t_ktext").alias("work_centre_description"),
+                F.trim(F.col("w.VERWE")).alias("work_centre_category"),
+                col_or_null(crhd, "KOSTL", "string").alias("cost_centre"),
+                F.trim(F.col("w.OBJID")).alias("work_centre_internal_id"),
+                F.col("w.AEDATTM").cast("timestamp").alias("_replicated_at"),
             )
         )
+        return apply_plant_gate(out, "plant_code", "process_order", spark=spark)
 
 
 # ── 4. CAPACITY UTILISATION ───────────────────────────────────────────────────
@@ -803,6 +822,24 @@ def site_config_plant():
             qm_enabled_flag=True, batch_managed_flag=True, process_manufacturing_flag=True,
             default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
             is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-08"),
+        # P806 Clark North: fully live in UAT replication (53k process orders, 58k TRs, 983k TOs,
+        # 104k stock quants, 192k QM lots — verified 2026-06-11). Warehouse 190 per T320.
+        Row(plant_code="P806", plant_name="Clark North [MFG]", country="US", region="Americas",
+            business_unit="Operations", timezone="America/New_York", sap_system_id="ECC",
+            go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
+            qm_enabled_flag=True, batch_managed_flag=True, process_manufacturing_flag=True,
+            default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
+            is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-11"),
+        # C351 Olesnica: fully live in UAT replication (149k process orders, 479k TRs, 3.96M TOs,
+        # 622k stock quants, 219k QM lots — verified 2026-06-11). Warehouse 105 per T320.
+        # (C350 "DNU Kielce" was briefly onboarded 2026-06-11 by mistake and revoked the same day —
+        # it is decommissioned: last process order 2021-12, zero TR/TO in warehouse 132 ever.)
+        Row(plant_code="C351", plant_name="Olesnica [MFG]", country="PL", region="Europe",
+            business_unit="Operations", timezone="Europe/Warsaw", sap_system_id="ECC",
+            go_live_status="PRODUCTION", wm_enabled_flag=True, hu_enabled_flag=True,
+            qm_enabled_flag=True, batch_managed_flag=True, process_manufacturing_flag=True,
+            default_language_code="EN", valid_from="2026-01-01", valid_to="9999-12-31",
+            is_active=True, config_owner="wm-config-owner", last_validated_at="2026-06-11"),
     ]
     df = spark.createDataFrame(data)
     return (
@@ -838,6 +875,13 @@ def site_config_warehouse():
             relationship_type="PRIMARY", wm_usage_type="FULL_WM", is_shared_warehouse=False,
             valid_from="2026-01-01", valid_to="9999-12-31", is_active=True, config_owner="wm-config-owner"),
         Row(plant_code="P817", warehouse_number="208", warehouse_description="Jackson Main WH",
+            relationship_type="PRIMARY", wm_usage_type="FULL_WM", is_shared_warehouse=False,
+            valid_from="2026-01-01", valid_to="9999-12-31", is_active=True, config_owner="wm-config-owner"),
+        # P806 -> 190, C351 -> 105 per T320 (verified 2026-06-11).
+        Row(plant_code="P806", warehouse_number="190", warehouse_description="Clark North Main WH",
+            relationship_type="PRIMARY", wm_usage_type="FULL_WM", is_shared_warehouse=False,
+            valid_from="2026-01-01", valid_to="9999-12-31", is_active=True, config_owner="wm-config-owner"),
+        Row(plant_code="C351", warehouse_number="105", warehouse_description="Olesnica Main WH",
             relationship_type="PRIMARY", wm_usage_type="FULL_WM", is_shared_warehouse=False,
             valid_from="2026-01-01", valid_to="9999-12-31", is_active=True, config_owner="wm-config-owner"),
     ]

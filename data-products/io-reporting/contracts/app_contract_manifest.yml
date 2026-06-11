@@ -1112,6 +1112,10 @@ contracts:
         type: string
         required: false
         description: Linked IM delivery (VBELN_IM)
+      - name: delivery_item_number
+        type: string
+        required: false
+        description: Linked IM delivery item (VBELP_IM); NULL on pre-existing rows until next full refresh/churn
       - name: sales_order_number
         type: string
         required: false
@@ -2551,6 +2555,18 @@ contracts:
       - name: open_transfer_stock_qty
         type: double
         required: false
+      - name: total_max_quant_count
+        type: long
+        required: false
+        description: Sum of max_quant_count across bins (LAGP.MAXQU); NULL until full refresh/churn
+      - name: total_maximum_weight
+        type: double
+        required: false
+        description: Sum of maximum_weight across bins (LAGP.MGEWI); NULL until full refresh/churn
+      - name: quant_utilisation_fraction
+        type: double
+        required: false
+        description: occupied_bin_count / total_max_quant_count; NULL when denominator absent
 
   - id: wm_operations.slow_movers
     version: 0.1.0

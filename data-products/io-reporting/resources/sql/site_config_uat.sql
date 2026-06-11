@@ -28,7 +28,9 @@ BEGIN;
 DELETE FROM connected_plant_uat.silver_io_reporting.site_config_plant WHERE config_owner = 'wm-config-owner';
 INSERT INTO connected_plant_uat.silver_io_reporting.site_config_plant (plant_code, plant_name, country, region, business_unit, timezone, sap_system_id, go_live_status, wm_enabled_flag, hu_enabled_flag, qm_enabled_flag, batch_managed_flag, process_manufacturing_flag, default_language_code, valid_from, valid_to, is_active, config_owner, last_validated_at) VALUES
   ('C061', 'Portbury [MFG]', 'GB', 'Europe', 'Operations', 'Europe/London', 'ECC', 'PRODUCTION', true, true, true, true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-03'),
-  ('P817', 'Jackson [MFG]', 'US', 'Americas', 'Operations', 'America/Chicago', 'ECC', 'PRODUCTION', true, true, true, true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-08');
+  ('P817', 'Jackson [MFG]', 'US', 'Americas', 'Operations', 'America/Chicago', 'ECC', 'PRODUCTION', true, true, true, true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-08'),
+  ('P806', 'Clark North [MFG]', 'US', 'Americas', 'Operations', 'America/New_York', 'ECC', 'PRODUCTION', true, true, true, true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-11'),
+  ('C351', 'Olesnica [MFG]', 'PL', 'Europe', 'Operations', 'Europe/Warsaw', 'ECC', 'PRODUCTION', true, true, true, true, true, 'EN', DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner', DATE'2026-06-11');
 COMMIT;
 
 -- ── site_config_warehouse ──
@@ -49,7 +51,9 @@ BEGIN;
 DELETE FROM connected_plant_uat.silver_io_reporting.site_config_warehouse WHERE config_owner = 'wm-config-owner';
 INSERT INTO connected_plant_uat.silver_io_reporting.site_config_warehouse (plant_code, warehouse_number, warehouse_description, relationship_type, wm_usage_type, is_shared_warehouse, valid_from, valid_to, is_active, config_owner) VALUES
   ('C061', '104', 'Portbury Main WH', 'PRIMARY', 'FULL_WM', false, DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner'),
-  ('P817', '208', 'Jackson Main WH', 'PRIMARY', 'FULL_WM', false, DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner');
+  ('P817', '208', 'Jackson Main WH', 'PRIMARY', 'FULL_WM', false, DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner'),
+  ('P806', '190', 'Clark North Main WH', 'PRIMARY', 'FULL_WM', false, DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner'),
+  ('C351', '105', 'Olesnica Main WH', 'PRIMARY', 'FULL_WM', false, DATE'2026-01-01', DATE'9999-12-31', true, 'wm-config-owner');
 COMMIT;
 
 -- ── site_config_storage_type_role ──

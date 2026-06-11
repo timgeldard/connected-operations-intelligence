@@ -207,7 +207,8 @@ export function WmOperationsWorkspace({
             />
             <EmptyNote>
               No plant selected. Use the scope bar (or Ctrl+K → “WM Operations”) to pick
-              Portbury (C061 · WH 104) or Jackson (P817 · WH 208).
+              Portbury (C061 · WH 104), Jackson (P817 · WH 208), Clark North (P806 · WH 190)
+              or Olesnica (C351 · WH 105).
             </EmptyNote>
           </>
         )}

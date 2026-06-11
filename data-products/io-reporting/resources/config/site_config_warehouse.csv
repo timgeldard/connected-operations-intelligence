@@ -1,3 +1,5 @@
 plant_code,warehouse_number,warehouse_description,relationship_type,wm_usage_type,is_shared_warehouse,valid_from,valid_to,is_active,config_owner
 C061,104,Portbury Main WH,PRIMARY,FULL_WM,false,2026-01-01,9999-12-31,true,wm-config-owner
 P817,208,Jackson Main WH,PRIMARY,FULL_WM,false,2026-01-01,9999-12-31,true,wm-config-owner
+P806,190,Clark North Main WH,PRIMARY,FULL_WM,false,2026-01-01,9999-12-31,true,wm-config-owner
+C351,105,Olesnica Main WH,PRIMARY,FULL_WM,false,2026-01-01,9999-12-31,true,wm-config-owner

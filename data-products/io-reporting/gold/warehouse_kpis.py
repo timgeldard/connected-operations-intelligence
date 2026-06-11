@@ -183,6 +183,11 @@ def gold_bin_occupancy():
             F.coalesce(F.sum("open_transfer_quantity"), F.lit(0.0)).alias(
                 "open_transfer_quantity"
             ),
+            # Bin-level capacity attributes (LAGP, not quant-grain): take the first non-null value
+            # per bin (they are physically stored on the bin master row, not per quant).
+            # Additive — NULL on pre-existing rows until the next full refresh/churn.
+            F.first("max_quant_count", ignorenulls=True).alias("max_quant_count"),
+            F.first("maximum_weight", ignorenulls=True).alias("maximum_weight"),
         )
     )
 
@@ -201,6 +206,10 @@ def gold_bin_occupancy():
             F.coalesce(F.sum("open_transfer_quantity"), F.lit(0.0)).alias(
                 "open_transfer_stock_qty"
             ),
+            # Capacity utilisation: sum max_quant_count across bins; NULL until storage_bin
+            # receives a full refresh (additive LAGP columns from 2026-06-11).
+            F.sum("max_quant_count").alias("total_max_quant_count"),
+            F.sum("maximum_weight").alias("total_maximum_weight"),
         )
         .select(
             "warehouse_number",
@@ -220,6 +229,16 @@ def gold_bin_occupancy():
             "total_stock_qty",
             "available_stock_qty",
             "open_transfer_stock_qty",
+            # Bin capacity aggregates (from LAGP real fields; NULL until full refresh/churn).
+            "total_max_quant_count",
+            "total_maximum_weight",
+            # Quant utilisation fraction: occupied_bin_count / total_max_quant_count across the group.
+            # Guarded against zero/null denominator; NULL when max_quant_count is not yet populated.
+            F.when(
+                F.col("total_max_quant_count").isNotNull()
+                & (F.col("total_max_quant_count") > 0),
+                F.col("occupied_bin_count").cast("double") / F.col("total_max_quant_count"),
+            ).otherwise(F.lit(None).cast("double")).alias("quant_utilisation_fraction"),
         )
     )
 

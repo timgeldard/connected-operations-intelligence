@@ -38,7 +38,7 @@ unresolved_sources:
   - id: work_centre_crhd_crtx_absent
     model: work_centre (silver/tables/reference.py)
     expected_source: [connected_plant_dev.sap.workcenterheader_crhd, connected_plant_dev.sap.workcentertext_crtx]
-    evidence: "Live: zero crhd/crtx tables in BOTH dev and uat sap (work-centre master not replicated)."
+    evidence: "Live: zero crhd/crtx tables in BOTH dev and uat sap. RESOLVED 2026-06-11: CRHD/CRTX ARE available in the PUBLISHED catalog (published_uat.central_services.workcenterheader_crhd / workcentertext_crtx — 7,296 work centres; located by Tim Geldard). work_centre rewired to the published source (T320 pattern), plant-gated, ENFORCED."
     warehouse360_dependency: false
     affects_uat: true
     status: source-guarded (bronze_table_exists); not materialised until CRHD/CRTX replicated
@@ -129,7 +129,7 @@ unresolved_sources:
   - id: pp_pi_flows_missing_cdc_metadata
     models: [stg_process_order_operation, stg_pi_sheet_execution, stg_downtime_event]
     file: silver/tables/process_order.py
-    summary: "3 PP/PI silver_fast flows reference AERUNID/AERECNO(/RecordActivity) CDC sequencing metadata that is absent from their replicated source tables. Source-guarded out (not materialised) where the metadata is absent, so silver_fast can complete for the Warehouse360-critical flows."
+    summary: "WAS: 3 PP/PI silver_fast flows blocked on absent AERUNID/AERECNO CDC metadata. UPDATE 2026-06-11: ALL THREE remodelled as current-state snapshot MVs (sign-off Tim Geldard). process_order_operation: bronze AFVV 94M rows pre-gated via AFVC.WERKS before the join; downtime_event: denormalised reason/sub-reason texts + masters in bronze. pi_sheet_execution: also remodelled 2026-06-11 (AEDATTM-only source; current-state snapshot MV on the same MCHB/downtime_event pattern). No PP/PI flow remains CDC-blocked."
     # Live information_schema.columns 2026-06-07 (profile TG): which CDC cols each source carries.
     cdc_metadata_by_source:
       - {table: processorderobject_afvc, has: [AEDATTM, AERECNO, AERUNID, RecordActivity], note: "full CDC — fine"}
@@ -199,9 +199,32 @@ unresolved_sources:
 
   - id: picking_waves_wave_groupings
     model: stg_picking_waves / picking_waves
-    summary: "Picking wave schedule and completion status cannot be served by governed data. LTAK/REFNR wave groupings are missing from the replicated SAP source."
-    evidence: "Live SAP: LTAK/REFNR tables and wave metadata are not replicated into bronze/silver."
+    summary: "Picking wave schedule and completion status cannot be served by governed data. LTAK/REFNR wave groupings are missing from the replicated SAP source. PARTIAL UPDATE 2026-06-11: LTAK.REFNR IS replicated and populated at warehouse 190 / P806 only (40.8k TOs in 2,260 groups; blank at 104/105/208). Passed through to silver warehouse_transfer_order as wave_group_reference (NULL on pre-existing rows until next full refresh/churn). Wave header metadata (T311) still missing. CLOSED 2026-06-11 (business decision, Tim Geldard): the site staging/picking process is 'wave-like' but does NOT use SAP wave management; the T311/T311A replication request is CANCELLED. The LTAK.REFNR passthrough (silver warehouse_transfer_order.wave_group_reference, populated only at warehouse 190/P806) is retained as incidental context, not a feature commitment."
     warehouse360_dependency: true
     affects_uat: true
-    status: SOURCE_GUARDED_DATAGAPNOTICE
+    status: CLOSED_NOT_REQUIRED
     tracking_issue: SAP-WAVE-01
+  - id: fabricated_field_names_dd03l_verdict
+    summary: "DD03L verdict 2026-06-11: ALL 20 'missing' field names across LAGP/KAPA/LTAP/LTBP/MSEG
+      are FABRICATIONS — none exist in the SAP data dictionary on those tables (same defect class as
+      the invented QALS fields, #27 lineage). The REAL fields for every functional need are already
+      replicated in bronze — there is NOTHING to request from SAP for these five tables."
+    evidence: "published_uat.central_services.datadictionaryfields_dd03l cross-checked against
+      connected_plant_uat.information_schema.columns, 2026-06-11."
+    verdicts:
+      - {table: LAGP, fabricated: [LGBKT, LGPBE, MAXGW, BRGEW, MAXEI, ANZRE],
+         real_in_bronze: [LGEWI, GEWEI, MGEWI, ANZQU, MAXQU, ANZLE, MAXLE, KZLER, KZVOL, LZONE, SKZUA, SKZUE, SPGRU, LPTYP, KOBER],
+         note: "bin load capacity/weight unit/max weight, quant + storage-unit counts and maxima, empty/full flags, zone, blocks — Bin Capacity screen can be upgraded with NO replication change"}
+      - {table: KAPA, fabricated: [DAFBI, DAFEI, PAUSA, BEGDA, ENDDA, MEINH, OEFFZ, NORMA, RUEZT],
+         real_in_bronze: [DATUB, TAGNR, SCHNR, ANZHL, BEGZT, EINZT, ENDZT, FABTG, KAPAZ, PAUSE, NGRAD, TPROG, WOTAG],
+         note: "shift capacity intervals/breaks/utilisation all replicated — capacity_utilisation needs a functional REMODEL on the real contract (the guard tests fabricated names so it never ran), not a replication request"}
+      - {table: LTAP, fabricated: [ANFME, ENMNG, ISPOS],
+         real_in_bronze: [VSOLM, NSOLM, VISTM, NISTM, RSOLM, RISTM, DMENG, PVQUI, VORGA, KZSUB, POSNR],
+         note: "source/dest target+actual quantities already used post-remap; DMENG (difference qty), PVQUI (pick confirmation) available unused"}
+      - {table: LTBP, fabricated: [ENQTY], real_in_bronze: [MENGE, MENGA, TAMEN, MEINS],
+         note: "requirement/processed/TO-created quantities all replicated"}
+      - {table: MSEG, fabricated: [VBELN],
+         real_in_bronze: [VBELN_IM, VBELP_IM, KDAUF],
+         note: "delivery reference EXISTS as VBELN_IM/VBELP_IM (+ MKPF.LE_VBELN also in bronze) — goods-movement->delivery linkage is wireable today"}
+    status: RESOLVED_NO_REPLICATION_REQUEST_NEEDED
+

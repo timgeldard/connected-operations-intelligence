@@ -338,7 +338,8 @@ CREATE OR REPLACE VIEW vw_consumption_wm_operations_bin_occupancy AS
 SELECT plant_code AS plant_id, warehouse_number AS warehouse_id, storage_type, bin_type,
   bin_record_count, occupied_bin_count, empty_bin_count, blocked_bin_count,
   stock_removal_blocked_bin_count, putaway_blocked_bin_count, occupancy_rate,
-  total_stock_qty, available_stock_qty, open_transfer_stock_qty
+  total_stock_qty, available_stock_qty, open_transfer_stock_qty,
+  total_max_quant_count, total_maximum_weight, quant_utilisation_fraction
 FROM connected_plant_uat.gold_io_reporting.gold_bin_occupancy_secured
 WHERE plant_code IS NOT NULL;
 
