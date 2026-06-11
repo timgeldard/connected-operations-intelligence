@@ -18,6 +18,8 @@ export function OperatorsView({ request }: { readonly request: WmOperationsAdapt
 
   const activity = activityResult.data?.ok ? activityResult.data.data : []
   const queues = queueResult.data?.ok ? queueResult.data.data : []
+  const queueError = queueResult.data && !queueResult.data.ok ? queueResult.data.error : null
+  const activityError = activityResult.data && !activityResult.data.ok ? activityResult.data.error : null
 
   const operators = new Set(activity.map(a => a.operator)).size
   const items = activity.reduce((s, a) => s + (a.itemsConfirmed ?? 0), 0)
@@ -56,7 +58,8 @@ export function OperatorsView({ request }: { readonly request: WmOperationsAdapt
 
       <div className="kw-card">
         <div className="kw-card-title">Queue workload (live)</div>
-        {queueResult.isLoading ? <LoadingRows rows={4} /> : queues.length === 0 ? (
+        {queueError ? <EmptyNote>Could not load queue workload — {queueError.message}</EmptyNote>
+          : queueResult.isLoading ? <LoadingRows rows={4} /> : queues.length === 0 ? (
           <EmptyNote>No open jobs in any queue.</EmptyNote>
         ) : (
           <div className="kw-table-wrap">
@@ -85,7 +88,8 @@ export function OperatorsView({ request }: { readonly request: WmOperationsAdapt
 
       <div className="kw-card">
         <div className="kw-card-title">Operator activity (last 14 days)</div>
-        {activityResult.isLoading ? <LoadingRows rows={5} /> : operatorRows.length === 0 ? (
+        {activityError ? <EmptyNote>Could not load operator activity — {activityError.message}</EmptyNote>
+          : activityResult.isLoading ? <LoadingRows rows={5} /> : operatorRows.length === 0 ? (
           <EmptyNote>No confirmed picks in the window.</EmptyNote>
         ) : (
           <div className="kw-table-wrap">

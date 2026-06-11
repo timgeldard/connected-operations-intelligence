@@ -21,6 +21,7 @@ Limitations:
 """
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -35,14 +36,54 @@ _PYTHON_DB_DIR = _REPO_ROOT / "packages" / "python-db" / "src"
 _WEB_SRC = _REPO_ROOT / "apps" / "web" / "src"
 
 
+# Directories to never descend into when scanning source trees.
+_PRUNE_DIRS = frozenset({
+    "node_modules",
+    "dist",
+    ".git",
+    "coverage",
+    # Bundled/minified frontend assets served by the API
+    "static",
+})
+
+# Absolute paths that should be pruned — checked by exact equality (not startswith,
+# which would incorrectly prune siblings like assets_backup when assets is listed).
+# Entries are stored with forward slashes so the check is platform-independent.
+_PRUNE_ABS_DIRS: tuple[str, ...] = (
+    str(_REPO_ROOT / "apps" / "api" / "static" / "assets").replace(os.sep, "/"),
+)
+
+
+def _should_prune(dirpath: str, dirname: str) -> bool:
+    """Return True if a directory should be skipped during tree traversal."""
+    if dirname in _PRUNE_DIRS:
+        return True
+    full = os.path.join(dirpath, dirname).replace(os.sep, "/")
+    return full in _PRUNE_ABS_DIRS
+
+
 def _py_files(directory: Path) -> list[Path]:
-    return list(directory.rglob("*.py")) if directory.exists() else []
+    if not directory.exists():
+        return []
+    result: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(directory):
+        dirnames[:] = [d for d in dirnames if not _should_prune(dirpath, d)]
+        for filename in filenames:
+            if filename.endswith(".py"):
+                result.append(Path(dirpath) / filename)
+    return result
 
 
 def _ts_files(directory: Path) -> list[Path]:
-    return [
-        p for p in directory.rglob("*") if p.suffix in {".ts", ".tsx"}
-    ] if directory.exists() else []
+    if not directory.exists():
+        return []
+    result: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(directory):
+        dirnames[:] = [d for d in dirnames if not _should_prune(dirpath, d)]
+        for filename in filenames:
+            if filename.endswith(".ts") or filename.endswith(".tsx"):
+                result.append(Path(dirpath) / filename)
+    return result
 
 
 def _read(path: Path) -> str:
@@ -339,4 +380,34 @@ class TestNoRawTokenLogging:
             "x-forwarded-access-token logged in frontend code. "
             "Do not log raw OAuth token values in browser console.\n"
             + "\n".join(violations)
+        )
+
+
+# ── 8. _should_prune exact-match regression ──────────────────────────────────
+
+class TestShouldPruneExactMatch:
+    """Guard against startswith-style over-matching in _should_prune.
+
+    A sibling directory whose name *starts with* a pruned name (e.g.
+    ``assets_backup`` vs ``assets``) must NOT be pruned.
+    """
+
+    def test_prune_abs_dir_is_pruned(self) -> None:
+        # The configured assets dir itself must be pruned.
+        assets_dir = str(_REPO_ROOT / "apps" / "api" / "static" / "assets").replace(os.sep, "/")
+        # Split into parent and final component for _should_prune's (dirpath, dirname) API.
+        parent = assets_dir.rsplit("/", 1)[0]
+        name = assets_dir.rsplit("/", 1)[1]
+        assert _should_prune(parent, name), (
+            f"Expected _should_prune to prune the configured abs dir '{assets_dir}'"
+        )
+
+    def test_sibling_with_longer_name_is_not_pruned(self) -> None:
+        # ``assets_backup`` shares the ``assets`` prefix but is a *different* directory
+        # and must not be pruned.
+        assets_dir = str(_REPO_ROOT / "apps" / "api" / "static" / "assets").replace(os.sep, "/")
+        parent = assets_dir.rsplit("/", 1)[0]
+        assert not _should_prune(parent, "assets_backup"), (
+            "assets_backup should NOT be pruned — it is a sibling of the configured "
+            "abs-dir 'assets', not the dir itself."
         )

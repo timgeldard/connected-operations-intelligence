@@ -170,10 +170,12 @@ export function DeliveryPicksOverlay({ plantId, deliveryId, customer, onClose }:
     itemStatus: string | null; createdDatetime: string | null; createdByUser: string | null
   }>('/api/wm-operations/delivery-picks', { plant_id: plantId, delivery_id: deliveryId })
   const rows = result.data?.ok ? result.data.data : []
+  const error = result.data && !result.data.ok ? result.data.error : null
 
   return (
     <Overlay title={`Delivery ${deliveryId}`} subtitle={customer ?? 'Open pick tasks'} onClose={onClose}>
-      {result.isLoading ? <LoadingRows rows={4} /> : rows.length === 0 ? (
+      {error ? <EmptyNote>Could not load pick tasks — {error.message}</EmptyNote>
+        : result.isLoading ? <LoadingRows rows={4} /> : rows.length === 0 ? (
         <EmptyNote>No open pick tasks — picking is complete or not yet created.</EmptyNote>
       ) : (
         <div className="kw-table-wrap">

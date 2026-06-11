@@ -33,11 +33,13 @@ named gold_security_<env>_validation_<mode>.sql and reuse the same harden script
 """
 import argparse
 import os
+import pathlib
 import sys
 
-# Resolve output paths relative to the repo root (this script lives in scripts/), so it runs the
-# same regardless of the caller's working directory (matches generate_gold_serving_views_sql.py).
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Default base directory: the repo root (parent of the scripts/ directory this script lives in).
+# Tests override this via the base_dir parameter to generate_sql() so they can redirect output
+# to a tmp directory without touching the committed resources/sql/ files.
+_DEFAULT_BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
 
 APPLICATION_KEY = "io_reporting"
 
@@ -244,7 +246,11 @@ def _mode_header_note(security_mode: str) -> str:
     return ""
 
 
-def generate_sql(env_filter: str | None = None, security_mode: str = "strict"):
+def generate_sql(
+    env_filter: str | None = None,
+    security_mode: str = "strict",
+    base_dir: pathlib.Path | None = None,
+):
     """Write the per-environment Gold RLS SQL (and, in strict mode, the harden script).
 
     Args:
@@ -255,11 +261,17 @@ def generate_sql(env_filter: str | None = None, security_mode: str = "strict"):
             script), 'validation-open' (pass-through secured views) or
             'validation-fixture' (local fixture table) — UAT/DEV only, written to
             clearly suffixed gold_security_<env>_validation_<mode>.sql files.
+        base_dir: root directory under which ``resources/sql/`` is created.  Defaults
+            to the repo root (parent of the ``scripts/`` directory).  Tests pass
+            ``tmp_path`` here to avoid writing into the committed tree.
 
     Raises:
         SystemExit: unknown mode/env, validation mode without an explicit env, or a
             validation mode targeting prod.
     """
+    if base_dir is None:
+        base_dir = _DEFAULT_BASE_DIR
+    base_dir = pathlib.Path(base_dir)
     if security_mode not in SECURITY_MODES:
         raise SystemExit(f"Unknown --security-mode '{security_mode}' (allowed: {', '.join(SECURITY_MODES)}).")
 
@@ -278,7 +290,7 @@ def generate_sql(env_filter: str | None = None, security_mode: str = "strict"):
     if security_mode in VALIDATION_MODES and "prod" in envs:
         raise SystemExit("validation security modes are forbidden for prod")
 
-    os.makedirs(os.path.join(REPO_ROOT, "resources/sql"), exist_ok=True)
+    (base_dir / "resources" / "sql").mkdir(parents=True, exist_ok=True)
 
     for env, cfg in envs.items():
 
@@ -323,7 +335,7 @@ def generate_sql(env_filter: str | None = None, security_mode: str = "strict"):
             )
 
         sql += REVOKE_NOTE.format(env_lower=env)
-        out_fn = os.path.join(REPO_ROOT, _output_filename(cfg, security_mode))
+        out_fn = base_dir / _output_filename(cfg, security_mode)
         with open(out_fn, "w", encoding="utf-8", newline="\n") as f:
             f.write(sql)
         print(f"Generated: {out_fn}")
@@ -345,7 +357,7 @@ def generate_sql(env_filter: str | None = None, security_mode: str = "strict"):
         )
         for table in env_tables:
             harden += f"REVOKE SELECT ON TABLE {gold}.{table} FROM `{group}`;\n"
-        harden_fn = os.path.join(REPO_ROOT, os.path.dirname(cfg["filename"]), f"gold_security_harden_{env}.sql")
+        harden_fn = base_dir / os.path.dirname(cfg["filename"]) / f"gold_security_harden_{env}.sql"
         with open(harden_fn, "w", encoding="utf-8", newline="\n") as f:
             f.write(harden)
         print(f"Generated: {harden_fn}")

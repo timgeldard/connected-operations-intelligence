@@ -41,6 +41,33 @@ importers:
       '@connectio/design-system':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@connectio/di-envmon':
+        specifier: workspace:*
+        version: link:../../domain-integrations/envmon
+      '@connectio/di-maintenance':
+        specifier: workspace:*
+        version: link:../../domain-integrations/maintenance
+      '@connectio/di-operations':
+        specifier: workspace:*
+        version: link:../../domain-integrations/operations
+      '@connectio/di-quality':
+        specifier: workspace:*
+        version: link:../../domain-integrations/quality
+      '@connectio/di-spc':
+        specifier: workspace:*
+        version: link:../../domain-integrations/spc
+      '@connectio/di-traceability':
+        specifier: workspace:*
+        version: link:../../domain-integrations/traceability
+      '@connectio/di-warehouse':
+        specifier: workspace:*
+        version: link:../../domain-integrations/warehouse
+      '@connectio/di-wm-operations':
+        specifier: workspace:*
+        version: link:../../domain-integrations/wm-operations
+      '@connectio/feature-flags':
+        specifier: workspace:*
+        version: link:../../packages/feature-flags
       '@connectio/personalization':
         specifier: workspace:*
         version: link:../../packages/personalization
@@ -63,6 +90,15 @@ importers:
         specifier: ^18
         version: 18.3.1(react@18.3.1)
     devDependencies:
+      '@connectio/test-support':
+        specifier: workspace:*
+        version: link:../../packages/test-support
+      '@testing-library/jest-dom':
+        specifier: 6.6.3
+        version: 6.6.3
+      '@testing-library/react':
+        specifier: 16.3.0
+        version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.30))(@types/react@18.3.30)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/react':
         specifier: ^18
         version: 18.3.30
@@ -72,12 +108,18 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^4
         version: 4.7.0(vite@6.4.3(@types/node@18.19.130)(jiti@1.21.7))
+      jsdom:
+        specifier: 26.1.0
+        version: 26.1.0
       typescript:
         specifier: ~5.6.3
         version: 5.6.3
       vite:
         specifier: ^6
         version: 6.4.3(@types/node@18.19.130)(jiti@1.21.7)
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@18.19.130)(jiti@1.21.7)(jsdom@26.1.0)
 
   domain-integrations/analytics:
     dependencies:
@@ -90,6 +132,9 @@ importers:
       '@connectio/data-contracts':
         specifier: workspace:*
         version: link:../../packages/data-contracts
+      '@connectio/design-system':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@connectio/evidence-panel-runtime':
         specifier: workspace:*
         version: link:../../packages/evidence-panel-runtime
@@ -127,15 +172,24 @@ importers:
       '@connectio/data-contracts':
         specifier: workspace:*
         version: link:../../packages/data-contracts
+      '@connectio/design-system':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@connectio/evidence-panel-runtime':
         specifier: workspace:*
         version: link:../../packages/evidence-panel-runtime
+      '@connectio/feature-flags':
+        specifier: workspace:*
+        version: link:../../packages/feature-flags
       '@connectio/product-model':
         specifier: workspace:*
         version: link:../../packages/domain-models
       '@connectio/source-adapters':
         specifier: workspace:*
         version: link:../../packages/source-adapters
+      '@connectio/workspace-runtime':
+        specifier: workspace:*
+        version: link:../../packages/workspace-runtime
       '@tanstack/react-query':
         specifier: ^5
         version: 5.101.0(react@18.3.1)
@@ -167,6 +221,15 @@ importers:
       '@connectio/design-system':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@connectio/di-maintenance':
+        specifier: workspace:*
+        version: link:../maintenance
+      '@connectio/di-quality':
+        specifier: workspace:*
+        version: link:../quality
+      '@connectio/di-warehouse':
+        specifier: workspace:*
+        version: link:../warehouse
       '@connectio/evidence-panel-runtime':
         specifier: workspace:*
         version: link:../../packages/evidence-panel-runtime
@@ -179,6 +242,9 @@ importers:
       '@connectio/source-adapters':
         specifier: workspace:*
         version: link:../../packages/source-adapters
+      '@connectio/workspace-runtime':
+        specifier: workspace:*
+        version: link:../../packages/workspace-runtime
       '@tanstack/react-query':
         specifier: ^5
         version: 5.101.0(react@18.3.1)
@@ -194,6 +260,21 @@ importers:
       '@connectio/data-contracts':
         specifier: workspace:*
         version: link:../../packages/data-contracts
+      '@connectio/design-system':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@connectio/di-operations':
+        specifier: workspace:*
+        version: link:../operations
+      '@connectio/di-spc':
+        specifier: workspace:*
+        version: link:../spc
+      '@connectio/di-traceability':
+        specifier: workspace:*
+        version: link:../traceability
+      '@connectio/di-warehouse':
+        specifier: workspace:*
+        version: link:../warehouse
       '@connectio/evidence-panel-runtime':
         specifier: workspace:*
         version: link:../../packages/evidence-panel-runtime
@@ -240,6 +321,9 @@ importers:
       '@connectio/source-adapters':
         specifier: workspace:*
         version: link:../../packages/source-adapters
+      '@connectio/workspace-runtime':
+        specifier: workspace:*
+        version: link:../../packages/workspace-runtime
       '@tanstack/react-query':
         specifier: ^5
         version: 5.101.0(react@18.3.1)
@@ -255,6 +339,9 @@ importers:
       '@connectio/data-contracts':
         specifier: workspace:*
         version: link:../../packages/data-contracts
+      '@connectio/design-system':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@connectio/evidence-panel-runtime':
         specifier: workspace:*
         version: link:../../packages/evidence-panel-runtime
@@ -4770,6 +4857,16 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.1
       '@types/react-dom': 18.3.0
+
+  '@testing-library/react@16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.30))(@types/react@18.3.30)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@babel/runtime': 7.29.7
+      '@testing-library/dom': 10.4.1
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 18.3.30
+      '@types/react-dom': 18.3.7(@types/react@18.3.30)
 
   '@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.30))(@types/react@18.3.30)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:

@@ -206,6 +206,46 @@ CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_queue_workl
   SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_queue_workload;
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_queue_workload_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_campaign_summary_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_campaign_summary;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_campaign_summary_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_daily_activity_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_daily_activity;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_daily_activity_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_slow_movers_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_slow_movers;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_slow_movers_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_pace_hourly_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_staging_pace_hourly;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_pace_hourly_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_demand_hourly_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_staging_demand_hourly;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_demand_hourly_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_buffer_flow_hourly_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_staging_buffer_flow_hourly;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_buffer_flow_hourly_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_context_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_context;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_context_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_operations_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_order_operations;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_operations_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_downtime_pareto_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_downtime_pareto;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_downtime_pareto_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_downtime_event_detail_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_downtime_event_detail;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_downtime_event_detail_secured TO `users`;
+
 -- ── Base-table access hardening ──
 -- The actual REVOKE statements are generated as a SEPARATE admin script
 -- (resources/sql/gold_security_harden_uat.sql). Apply it AFTER this script so plant-scoped users

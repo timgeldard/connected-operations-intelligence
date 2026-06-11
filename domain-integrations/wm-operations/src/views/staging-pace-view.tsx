@@ -40,6 +40,10 @@ export function StagingPaceView({ request }: { readonly request: WmOperationsAda
   const demandRows = demand.data?.ok ? demand.data.data : []
   const bufferRows = buffer.data?.ok ? buffer.data.data : []
   const flowRows = (flow.data?.ok ? flow.data.data : []).slice().sort((a, b) => a.activityHour.localeCompare(b.activityHour))
+  const paceError = pace.data && !pace.data.ok ? pace.data.error : null
+  const demandError = demand.data && !demand.data.ok ? demand.data.error : null
+  const bufferError = buffer.data && !buffer.data.ok ? buffer.data.error : null
+  const flowError = flow.data && !flow.data.ok ? flow.data.error : null
 
   // Anchor the wave on the latest activity in the data (works on frozen snapshots too).
   const maxHour = paceRows.reduce((m, r) => (r.activityHour > m ? r.activityHour : m), '')
@@ -131,7 +135,8 @@ export function StagingPaceView({ request }: { readonly request: WmOperationsAda
         <div className="kw-card-title">
           The wave — staged-in (slate) vs planned demand (sunset), last 48h of activity
         </div>
-        {pace.isLoading || demand.isLoading ? <LoadingRows rows={4} /> : windowKeys.length === 0 ? (
+        {paceError ?? demandError ? <EmptyNote>Could not load staging pace — {(paceError ?? demandError)!.message}</EmptyNote>
+          : pace.isLoading || demand.isLoading ? <LoadingRows rows={4} /> : windowKeys.length === 0 ? (
           <EmptyNote>No staging throughput recorded yet for this scope.</EmptyNote>
         ) : (
           <>
@@ -158,7 +163,8 @@ export function StagingPaceView({ request }: { readonly request: WmOperationsAda
 
       <div className="kw-card">
         <div className="kw-card-title">Buffer level B(t) — reconstructed from flows, anchored to live stock</div>
-        {flow.isLoading ? <LoadingRows rows={3} /> : bByHour.size === 0 ? (
+        {flowError ?? bufferError ? <EmptyNote>Could not load buffer flow — {(flowError ?? bufferError)!.message}</EmptyNote>
+          : flow.isLoading || buffer.isLoading ? <LoadingRows rows={3} /> : bByHour.size === 0 ? (
           <EmptyNote>No buffer flow recorded in the window.</EmptyNote>
         ) : (
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 100 }}>
@@ -178,7 +184,9 @@ export function StagingPaceView({ request }: { readonly request: WmOperationsAda
 
       <div className="kw-card">
         <div className="kw-card-title">Open demand by production supply area</div>
-        {demandByPsa.size === 0 ? <EmptyNote>No open demand.</EmptyNote> : (
+        {demandError ? <EmptyNote>Could not load demand — {demandError.message}</EmptyNote>
+          : demand.isLoading ? <LoadingRows rows={3} />
+          : demandByPsa.size === 0 ? <EmptyNote>No open demand.</EmptyNote> : (
           <div className="kw-table-wrap">
             <table className="kw-table">
               <thead><tr><th>Area</th><th>Open TRs</th></tr></thead>
@@ -194,7 +202,8 @@ export function StagingPaceView({ request }: { readonly request: WmOperationsAda
 
       <div className="kw-card">
         <div className="kw-card-title">What good looks like — items staged per hour of day (history)</div>
-        {pace.isLoading ? <LoadingRows rows={3} /> : byHourOfDay.size === 0 ? (
+        {paceError ? <EmptyNote>Could not load staging history — {paceError.message}</EmptyNote>
+          : pace.isLoading ? <LoadingRows rows={3} /> : byHourOfDay.size === 0 ? (
           <EmptyNote>Not enough history to baseline yet.</EmptyNote>
         ) : (
           <div className="kw-table-wrap">

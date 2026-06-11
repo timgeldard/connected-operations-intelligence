@@ -132,17 +132,74 @@ def _strip_python_prose(source):
     return "\n".join(lines)
 
 
-def scan_text(text, *, is_python=False):
+# Matches the `description:` key starting a YAML block scalar (> >- | |-).
+_YAML_DESC_BLOCK_RE = re.compile(r"^(\s*)description:\s*[>|][>|!-]*\s*$", re.IGNORECASE)
+# Matches an inline `description:` key with the rest of the value on the same line.
+_YAML_DESC_INLINE_RE = re.compile(r"^\s*description:", re.IGNORECASE)
+
+
+def _strip_yaml_descriptions(lines):
+    """Return a copy of *lines* with YAML description content blanked out.
+
+    Two forms are suppressed — conservatively, only for the ``description`` key:
+
+    * Block scalar: ``description: >`` / ``description: |`` (and the ``-`` variants).
+      All subsequent lines indented more than the key's own indentation are blanked.
+    * Inline value: ``description: "some text"`` or ``description: plain text here``.
+      The whole line is blanked.
+
+    Everything else (other keys, non-YAML files) is returned unchanged.
+    """
+    result = list(lines)
+    i = 0
+    while i < len(result):
+        line = result[i]
+        m_block = _YAML_DESC_BLOCK_RE.match(line)
+        if m_block:
+            # Blank the ``description: >`` / ``description: |`` line itself.
+            result[i] = ""
+            key_indent = len(m_block.group(1))
+            i += 1
+            # Blank all following lines that are MORE indented than the key.
+            while i < len(result):
+                content_line = result[i]
+                if content_line.strip() == "":
+                    # Empty lines inside a block scalar are allowed; skip them.
+                    result[i] = ""
+                    i += 1
+                    continue
+                content_indent = len(content_line) - len(content_line.lstrip())
+                if content_indent > key_indent:
+                    result[i] = ""
+                    i += 1
+                else:
+                    break
+            continue
+
+        if _YAML_DESC_INLINE_RE.match(line):
+            result[i] = ""
+            i += 1
+            continue
+
+        i += 1
+    return result
+
+
+def scan_text(text, *, is_python=False, is_yaml=False):
     """Return a list of (line_no, line_content, matched_fragment) for forbidden references.
 
     Importable for tests: pass a snippet directly. Set is_python=True to strip Python
-    comments/docstrings before scanning.
+    comments/docstrings before scanning. Set is_yaml=True to skip YAML description blocks.
     """
     if is_python:
         text = _strip_python_prose(text)
 
+    lines = text.splitlines()
+    if is_yaml:
+        lines = _strip_yaml_descriptions(lines)
+
     violations = []
-    for line_no, line in enumerate(text.splitlines(), 1):
+    for line_no, line in enumerate(lines, 1):
         clean_line = line.strip()
         # Skip whole-line comments (defence in depth; docstrings already stripped for Python).
         if clean_line.startswith(("//", "#", "/*", "*")):
@@ -164,7 +221,8 @@ def check_file(file_path):
     except Exception as exc:
         print(f"Warning: Could not read {file_path}: {exc}")
         return []
-    return scan_text(text, is_python=file_path.endswith(".py"))
+    is_yaml = file_path.endswith((".yml", ".yaml"))
+    return scan_text(text, is_python=file_path.endswith(".py"), is_yaml=is_yaml)
 
 
 def _func_name(func):
