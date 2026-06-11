@@ -399,3 +399,72 @@ SELECT plant_code AS plant_id, material_code AS material_id, batch_number AS bat
   last_usage_decision, last_usage_decision_date
 FROM connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_context_secured
 WHERE plant_code IS NOT NULL;
+
+-- 26. Order operations (operation-level drill for Order Detail overlay)
+-- Grain: 1 row per plant_id + order_number + routing_number + operation_counter.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_order_operations AS
+SELECT
+  plant_code AS plant_id,
+  order_number,
+  routing_number,
+  operation_counter,
+  operation_number,
+  operation_description,
+  control_key,
+  work_centre_code,
+  work_centre_description,
+  CAST(scheduled_start_datetime AS TIMESTAMP) AS scheduled_start_datetime,
+  CAST(scheduled_finish_datetime AS TIMESTAMP) AS scheduled_finish_datetime,
+  CAST(actual_start_datetime AS TIMESTAMP) AS actual_start_datetime,
+  CAST(actual_finish_date AS DATE) AS actual_finish_date,
+  operation_quantity,
+  confirmed_yield_quantity,
+  confirmed_scrap_quantity,
+  is_confirmed
+FROM connected_plant_dev.gold_io_reporting.gold_wm_order_operations_secured
+WHERE plant_code IS NOT NULL;
+
+-- 27. Downtime pareto (weekly aggregated pareto by reason — Production Health view)
+-- Grain: 1 row per plant_id + week_start + downtime_reason_code + sub_reason_code + work_centre_code.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_downtime_pareto AS
+SELECT
+  plant_code AS plant_id,
+  CAST(week_start AS DATE) AS week_start,
+  downtime_reason_code,
+  sub_reason_code,
+  work_centre_code,
+  downtime_reason_description,
+  sub_reason_description,
+  production_line_description,
+  event_count,
+  total_duration_minutes,
+  avg_duration_minutes,
+  distinct_order_count
+FROM connected_plant_dev.gold_io_reporting.gold_wm_downtime_pareto_secured
+WHERE plant_code IS NOT NULL;
+
+-- 28. Downtime event detail (event-grain passthrough — Production Health recent-events table)
+-- Grain: 1 row per downtime entry (plant_id + order_number + operation_number + item_number is the
+-- closest natural key; multiple downtime entries can share these fields).
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_downtime_events AS
+SELECT
+  plant_code AS plant_id,
+  work_centre_code,
+  machine_code,
+  machine_description,
+  production_line_description,
+  order_number,
+  material_code,
+  operation_number,
+  item_number,
+  downtime_reason_code,
+  downtime_reason_description,
+  sub_reason_code,
+  sub_reason_description,
+  CAST(start_datetime AS TIMESTAMP) AS start_datetime,
+  CAST(end_datetime AS TIMESTAMP) AS end_datetime,
+  duration_minutes,
+  reported_by_user,
+  comment
+FROM connected_plant_dev.gold_io_reporting.gold_wm_downtime_event_detail_secured
+WHERE plant_code IS NOT NULL;

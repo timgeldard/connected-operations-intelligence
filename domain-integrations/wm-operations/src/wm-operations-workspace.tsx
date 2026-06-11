@@ -21,6 +21,7 @@ import { MovementsView } from './views/movements-view.js'
 import { SlowMoversView } from './views/slow-movers-view.js'
 import { MovementControlView } from './views/movement-control-view.js'
 import { StagingPaceView } from './views/staging-pace-view.js'
+import { ProductionHealthView } from './views/production-health-view.js'
 import { EmptyNote, ViewHeader } from './components/kerry.js'
 import './theme/kerry-theme.css'
 
@@ -42,6 +43,7 @@ export type WmOperationsViewId =
   | 'slow-movers'
   | 'movement-control'
   | 'staging-pace'
+  | 'production-health'
 
 export interface WmOperationsWorkspaceProps {
   readonly scope: ScopeContext
@@ -94,6 +96,7 @@ const VIEW_GROUPS: Array<{ label: string; views: Array<{ id: WmOperationsViewId;
       { id: 'operators', label: 'Operators' },
       { id: 'trends', label: 'Trends' },
       { id: 'movements', label: 'Goods Movements' },
+      { id: 'production-health', label: 'Production Health' },
     ],
   },
 ]
@@ -251,6 +254,8 @@ function resolveView(viewId: string, request: WmOperationsAdapterRequest, onNavi
       return <MovementControlView request={request} />
     case 'staging-pace':
       return <StagingPaceView request={request} />
+    case 'production-health':
+      return <ProductionHealthView request={request} onOpenProcessOrder={onOpenProcessOrder} />
     case 'staging-worklist':
     default:
       return <StagingWorklistView request={request} onOpenProcessOrder={onOpenProcessOrder} />

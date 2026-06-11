@@ -1166,6 +1166,7 @@ def gold_wm_staging_buffer_flow_hourly():
 # replicated (silver/tables/quality.py guards on column presence; the tables are plant- and
 # time-gated — rolling qm_lookback_years window). The app handles the absent dataset gracefully
 # (QM columns show as em-dashes).
+
 if (
     table_exists(get_spark_session(), f"{get_silver_schema(get_spark_session())}.quality_inspection_lot")
     and table_exists(get_spark_session(), f"{get_silver_schema(get_spark_session())}.quality_inspection_usage_decision")
@@ -1215,3 +1216,139 @@ if (
                 F.max("_last_ud_date").alias("last_usage_decision_date"),
             )
         )
+
+
+# ── 15. ORDER OPERATIONS (operation-level enrichment for Order Detail overlay) ──
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Process-order operations enriched with work-centre description — one row per "
+        "plant_code × order_number × routing_number × operation_counter. Drill-through "
+        "behind the Order Detail overlay (Item B): operation sequence, scheduled window, "
+        "actual start, yield, scrap, and derived completion status. "
+        "LEFT JOIN to work_centre on work_centre_internal_id + plant_code."
+    ),
+    cluster_by=["plant_code", "order_number"],
+))
+def gold_wm_order_operations():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    ops = spark.read.table(f"{ss}.process_order_operation")
+    wc = spark.read.table(f"{ss}.work_centre")
+
+    return (
+        ops.alias("op")
+        .join(
+            F.broadcast(
+                wc.select(
+                    "plant_code",
+                    "work_centre_internal_id",
+                    "work_centre_code",
+                    "work_centre_description",
+                ).alias("wc")
+            ),
+            (F.col("op.plant_code") == F.col("wc.plant_code"))
+            & (F.col("op.work_centre_internal_id") == F.col("wc.work_centre_internal_id")),
+            "left",
+        )
+        .select(
+            F.col("op.plant_code"),
+            F.col("op.order_number"),
+            F.col("op.routing_number"),
+            F.col("op.operation_counter"),
+            F.col("op.operation_number"),
+            F.col("op.operation_description"),
+            F.col("op.control_key"),
+            F.col("wc.work_centre_code"),
+            F.col("wc.work_centre_description"),
+            F.col("op.scheduled_start_datetime"),
+            F.col("op.scheduled_finish_datetime"),
+            F.col("op.actual_start_datetime"),
+            F.col("op.actual_finish_date"),
+            F.col("op.operation_quantity"),
+            F.col("op.confirmed_yield_quantity"),
+            F.col("op.confirmed_scrap_quantity"),
+            F.col("op.is_confirmed"),
+        )
+    )
+
+
+# ── 16. DOWNTIME PARETO (weekly aggregated pareto by reason) ──────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Weekly production downtime pareto: plant_code × week_start × "
+        "downtime_reason_code × sub_reason_code × work_centre_code grain. "
+        "week_start = date_trunc('week', start_datetime) cast to DATE. "
+        "Aggregates event_count, total/avg duration, and distinct order count. "
+        "Rows with NULL start_datetime are excluded. Feeds the Production Health view."
+    ),
+    cluster_by=["plant_code", "week_start"],
+))
+def gold_wm_downtime_pareto():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    dt = spark.read.table(f"{ss}.downtime_event").filter(F.col("start_datetime").isNotNull())
+
+    return (
+        dt.withColumn("week_start", F.to_date(F.date_trunc("week", F.col("start_datetime"))))
+        .groupBy(
+            "plant_code",
+            "week_start",
+            "downtime_reason_code",
+            "sub_reason_code",
+            "work_centre_code",
+        )
+        .agg(
+            F.first("downtime_reason_description", ignorenulls=True).alias("downtime_reason_description"),
+            F.first("sub_reason_description", ignorenulls=True).alias("sub_reason_description"),
+            F.first("production_line_description", ignorenulls=True).alias("production_line_description"),
+            F.count(F.lit(1)).alias("event_count"),
+            F.coalesce(F.sum("duration_minutes"), F.lit(0.0)).alias("total_duration_minutes"),
+            (F.coalesce(F.sum("duration_minutes"), F.lit(0.0)) / F.count(F.lit(1))).alias(
+                "avg_duration_minutes"
+            ),
+            F.count_distinct("order_number").alias("distinct_order_count"),
+        )
+    )
+
+
+# ── 17. DOWNTIME EVENT DETAIL (event-grain passthrough) ───────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Production downtime events at event grain — passthrough of the key columns "
+        "from silver.downtime_event for drill-through in the Production Health view. "
+        "Feeds the recent-events table and order-number drill-through."
+    ),
+    cluster_by=["plant_code", "start_datetime"],
+))
+def gold_wm_downtime_event_detail():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    return (
+        spark.read.table(f"{ss}.downtime_event")
+        .select(
+            "plant_code",
+            "work_centre_code",
+            "machine_code",
+            "machine_description",
+            "production_line_description",
+            "order_number",
+            "material_code",
+            "operation_number",
+            "item_number",
+            "downtime_reason_code",
+            "downtime_reason_description",
+            "sub_reason_code",
+            "sub_reason_description",
+            "start_datetime",
+            "end_datetime",
+            "duration_minutes",
+            "reported_by_user",
+            "comment",
+        )
+    )

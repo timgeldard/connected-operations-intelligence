@@ -2894,3 +2894,222 @@ contracts:
       - name: last_usage_decision_date
         type: string
         required: false
+
+  - id: wm_operations.order_operations
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Process-order operations enriched with work-centre description — one row per
+      plant_id, order_number, routing_number, and operation_counter. Drill-through
+      behind the Order Detail overlay. Candidate contract pending DEV profiling.
+    source_view: vw_consumption_wm_operations_order_operations
+    grain: one row per plant_id, order_number, routing_number and operation_counter
+    primary_key:
+      - plant_id
+      - order_number
+      - routing_number
+      - operation_counter
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: order_number
+        type: string
+        required: true
+      - name: routing_number
+        type: string
+        required: true
+      - name: operation_counter
+        type: string
+        required: true
+      - name: operation_number
+        type: string
+        required: false
+      - name: operation_description
+        type: string
+        required: false
+      - name: control_key
+        type: string
+        required: false
+      - name: work_centre_code
+        type: string
+        required: false
+      - name: work_centre_description
+        type: string
+        required: false
+      - name: scheduled_start_datetime
+        type: timestamp
+        required: false
+      - name: scheduled_finish_datetime
+        type: timestamp
+        required: false
+      - name: actual_start_datetime
+        type: timestamp
+        required: false
+      - name: actual_finish_date
+        type: date
+        required: false
+      - name: operation_quantity
+        type: double
+        required: false
+      - name: confirmed_yield_quantity
+        type: double
+        required: false
+      - name: confirmed_scrap_quantity
+        type: double
+        required: false
+      - name: is_confirmed
+        type: boolean
+        required: false
+
+  - id: wm_operations.downtime_pareto
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Weekly production downtime pareto aggregated by plant, week, reason code, sub-reason
+      code, and work centre. Feeds the Production Health view Pareto chart and KPI tiles.
+      Candidate contract pending DEV profiling.
+    source_view: vw_consumption_wm_operations_downtime_pareto
+    grain: one row per plant_id, week_start, downtime_reason_code, sub_reason_code and work_centre_code
+    primary_key:
+      - plant_id
+      - week_start
+      - downtime_reason_code
+      - sub_reason_code
+      - work_centre_code
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: week_start
+        type: date
+        required: true
+      - name: downtime_reason_code
+        type: string
+        required: false
+      - name: sub_reason_code
+        type: string
+        required: false
+      - name: work_centre_code
+        type: string
+        required: false
+      - name: downtime_reason_description
+        type: string
+        required: false
+      - name: sub_reason_description
+        type: string
+        required: false
+      - name: production_line_description
+        type: string
+        required: false
+      - name: event_count
+        type: long
+        required: false
+      - name: total_duration_minutes
+        type: double
+        required: false
+      - name: avg_duration_minutes
+        type: double
+        required: false
+      - name: distinct_order_count
+        type: long
+        required: false
+
+  - id: wm_operations.downtime_events
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Production downtime events at event grain — passthrough from silver.downtime_event.
+      One row per downtime entry; multiple entries can share the same plant_id, order_number,
+      operation_number, and item_number. Feeds the Production Health recent-events table.
+      Candidate contract pending DEV profiling.
+    source_view: vw_consumption_wm_operations_downtime_events
+    grain: one row per downtime entry (plant_id + order_number + operation_number + item_number
+      is the closest natural key; multiple downtime entries can share these fields)
+    primary_key:
+      - plant_id
+      - order_number
+      - operation_number
+      - item_number
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: work_centre_code
+        type: string
+        required: false
+      - name: machine_code
+        type: string
+        required: false
+      - name: machine_description
+        type: string
+        required: false
+      - name: production_line_description
+        type: string
+        required: false
+      - name: order_number
+        type: string
+        required: false
+      - name: material_code
+        type: string
+        required: false
+      - name: operation_number
+        type: string
+        required: false
+      - name: item_number
+        type: string
+        required: false
+      - name: downtime_reason_code
+        type: string
+        required: false
+      - name: downtime_reason_description
+        type: string
+        required: false
+      - name: sub_reason_code
+        type: string
+        required: false
+      - name: sub_reason_description
+        type: string
+        required: false
+      - name: start_datetime
+        type: timestamp
+        required: false
+      - name: end_datetime
+        type: timestamp
+        required: false
+      - name: duration_minutes
+        type: double
+        required: false
+      - name: reported_by_user
+        type: string
+        required: false
+      - name: comment
+        type: string
+        required: false

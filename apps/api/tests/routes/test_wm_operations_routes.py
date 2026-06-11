@@ -330,11 +330,14 @@ class TestBinStockRoute:
 
 NEW_ENDPOINTS = [
     ("/api/wm-operations/order-components", {"plant_id": "C061", "order_id": "900001"}),
+    ("/api/wm-operations/order-operations", {"plant_id": "C061", "order_id": "900001"}),
     ("/api/wm-operations/operator-activity", {"plant_id": "C061"}),
     ("/api/wm-operations/queue-workload", {"plant_id": "C061"}),
     ("/api/wm-operations/outbound", {"plant_id": "C061"}),
     ("/api/wm-operations/recon-alerts", {"plant_id": "C061"}),
     ("/api/wm-operations/batch-movements", {"plant_id": "C061", "material_id": "RM1"}),
+    ("/api/wm-operations/downtime-pareto", {"plant_id": "C061"}),
+    ("/api/wm-operations/downtime-events", {"plant_id": "C061"}),
 ]
 
 
@@ -508,3 +511,84 @@ class TestExtendedFilters:
         assert row["movementType"] == "261"
         assert row["orderId"] == "900001"
         assert response.headers.get("x-contract-id") == "warehouse360.goods_movements"
+
+
+class TestOrderOperationsRoute:
+    async def test_returns_mapped_operations(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061", "order_number": "900001", "routing_number": "1",
+            "operation_counter": "0010", "operation_number": "0010",
+            "operation_description": "Mixing", "control_key": "PP01",
+            "work_centre_code": "MIX01", "work_centre_description": "Mixing Line 1",
+            "scheduled_start_datetime": "2026-06-10T06:00:00",
+            "scheduled_finish_datetime": "2026-06-10T14:00:00",
+            "actual_start_datetime": "2026-06-10T06:15:00",
+            "actual_finish_date": None,
+            "operation_quantity": 500.0, "confirmed_yield_quantity": 490.0,
+            "confirmed_scrap_quantity": 10.0, "is_confirmed": False,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/order-operations",
+                    params={"plant_id": "C061", "order_id": "900001"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        row = response.json()[0]
+        assert row["workCentreCode"] == "MIX01"
+        assert row["isConfirmed"] is False
+        assert row["confirmedYieldQty"] == 490.0
+        assert response.headers.get("x-contract-id") == "wm_operations.order_operations"
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "order_number = :order_id" in executed_sql
+
+
+class TestDowntimeRoutes:
+    async def test_downtime_pareto_mapped(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061", "week_start": "2026-06-02",
+            "downtime_reason_code": "MECH", "sub_reason_code": "BEARING",
+            "work_centre_code": "LINE01", "downtime_reason_description": "Mechanical",
+            "sub_reason_description": "Bearing failure", "production_line_description": "Line 1",
+            "event_count": 3, "total_duration_minutes": 125.5,
+            "avg_duration_minutes": 41.83, "distinct_order_count": 2,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/downtime-pareto",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        row = response.json()[0]
+        assert row["downtimeReasonCode"] == "MECH"
+        assert row["totalDurationMinutes"] == 125.5
+        assert row["eventCount"] == 3
+        assert response.headers.get("x-contract-id") == "wm_operations.downtime_pareto"
+
+    async def test_downtime_events_mapped(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061", "work_centre_code": "LINE01", "machine_code": "M01",
+            "machine_description": "Filler A", "production_line_description": "Line 1",
+            "order_number": "900001", "material_code": "FG001", "operation_number": "0010",
+            "item_number": "1", "downtime_reason_code": "MECH",
+            "downtime_reason_description": "Mechanical", "sub_reason_code": "BEARING",
+            "sub_reason_description": "Bearing failure",
+            "start_datetime": "2026-06-10T08:00:00", "end_datetime": "2026-06-10T09:30:00",
+            "duration_minutes": 90.0, "reported_by_user": "OPC06100034", "comment": None,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/downtime-events",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        row = response.json()[0]
+        assert row["downtimeReasonCode"] == "MECH"
+        assert row["durationMinutes"] == 90.0
+        assert row["orderNumber"] == "900001"
+        assert response.headers.get("x-contract-id") == "wm_operations.downtime_events"

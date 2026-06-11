@@ -104,6 +104,7 @@ export const wmOperationsRegistration: WorkspaceRegistration = {
     { viewId: 'slow-movers', displayName: 'Slow Movers', lifecycle: 'pilot', sortOrder: 14, defaultPanels: [{ panelId: 'wm-slow-movers', defaultVisible: true, defaultOrder: 0 }] },
     { viewId: 'movement-control', displayName: 'Movement Control', lifecycle: 'pilot', sortOrder: 15, defaultPanels: [{ panelId: 'wm-movement-control', defaultVisible: true, defaultOrder: 0 }] },
     { viewId: 'staging-pace', displayName: 'Staging Pace', lifecycle: 'pilot', sortOrder: 16, defaultPanels: [{ panelId: 'wm-staging-pace', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'production-health', displayName: 'Production Health', lifecycle: 'pilot', sortOrder: 17, defaultPanels: [{ panelId: 'wm-production-health', defaultVisible: true, defaultOrder: 0 }] },
   ],
   defaultPanels: [
     { panelId: 'wm-worklist-summary', defaultVisible: true, defaultOrder: 0 },

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useWmBatchMovements, useWmList, useWmOrderComponents } from '../adapters/wm-operations-queries.js'
+import { useWmBatchMovements, useWmList, useWmOrderComponents, useWmOrderOperations } from '../adapters/wm-operations-queries.js'
 import type { WmOperatorActivityItem } from '../adapters/wm-operations-adapter.js'
 import { EmptyNote, LoadingRows, formatDate, formatQty } from './kerry.js'
 
@@ -33,6 +33,9 @@ export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose, onOp
   readonly onClose: () => void
   readonly onOpenProcessOrder?: (orderId: string) => void
 }) {
+  const opsResult = useWmOrderOperations({ plantId, orderId })
+  const opsRows = opsResult.data?.ok ? opsResult.data.data : []
+
   const result = useWmOrderComponents({ plantId, orderId })
   const rows = result.data?.ok ? result.data.data : []
   const error = result.data && !result.data.ok ? result.data.error : null
@@ -46,6 +49,52 @@ export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose, onOp
           </button>
         </div>
       )}
+
+      {/* Operations card */}
+      {(opsResult.isLoading || opsRows.length > 0) && (
+        <div className="kw-card" style={{ marginBottom: 16 }}>
+          <div className="kw-card-title">Operations</div>
+          {opsResult.isLoading ? <LoadingRows rows={3} /> : (
+            <div className="kw-table-wrap">
+              <table className="kw-table">
+                <thead>
+                  <tr>
+                    <th>Operation</th><th>Description</th><th>Work centre</th>
+                    <th>Scheduled window</th><th>Actual start</th>
+                    <th>Yield</th><th>Scrap</th><th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {opsRows.map((op, i) => {
+                    const statusChip = op.actualFinishDate
+                      ? { label: 'COMPLETE', cls: 'kw-chip--complete' }
+                      : op.actualStartDatetime
+                        ? { label: 'IN PROGRESS', cls: 'kw-chip--open' }
+                        : { label: 'PLANNED', cls: 'kw-chip--neutral' }
+                    const schedWindow = (op.scheduledStartDatetime || op.scheduledFinishDatetime)
+                      ? `${formatDate(op.scheduledStartDatetime)} – ${formatDate(op.scheduledFinishDatetime)}`
+                      : '—'
+                    return (
+                      <tr key={`${op.operationNumber ?? i}-${op.operationCounter ?? i}`}>
+                        <td className="kw-mono">{op.operationNumber ?? '—'}</td>
+                        <td>{op.operationDescription ?? '—'}</td>
+                        <td className="kw-mono" title={op.workCentreDescription ?? undefined}>{op.workCentreCode ?? '—'}</td>
+                        <td className="kw-num" style={{ fontSize: 11 }}>{schedWindow}</td>
+                        <td className="kw-num">{formatDate(op.actualStartDatetime)}</td>
+                        <td className="kw-num">{formatQty(op.confirmedYieldQty)}</td>
+                        <td className="kw-num">{formatQty(op.confirmedScrapQty)}</td>
+                        <td><span className={`kw-chip ${statusChip.cls}`}>{statusChip.label}</span></td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Components card */}
       {error ? (
         <EmptyNote>Could not load components — {error.message}</EmptyNote>
       ) : result.isLoading ? (

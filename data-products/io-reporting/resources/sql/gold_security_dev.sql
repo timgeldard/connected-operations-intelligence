@@ -221,6 +221,18 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_cont
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_context;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_context_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_operations_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_order_operations;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_operations_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_downtime_pareto_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_downtime_pareto;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_downtime_pareto_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_downtime_event_detail_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_downtime_event_detail;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_downtime_event_detail_secured TO `users`;
+
 -- ── Base-table access hardening ──
 -- The actual REVOKE statements are generated as a SEPARATE admin script
 -- (resources/sql/gold_security_harden_dev.sql). Apply it AFTER this script so plant-scoped users
