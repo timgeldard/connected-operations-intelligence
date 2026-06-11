@@ -40,6 +40,9 @@ export function StockHealthView({ request }: { readonly request: WmOperationsAda
   const holdRows = holds.data?.ok ? holds.data.data : []
   const exceptionRows = exceptions.data?.ok ? exceptions.data.data : []
   const qmRows = qm.data?.ok ? qm.data.data : []
+  const expiryError = expiry.data && !expiry.data.ok ? expiry.data.error : null
+  const holdsError = holds.data && !holds.data.ok ? holds.data.error : null
+  const exceptionsError = exceptions.data && !exceptions.data.ok ? exceptions.data.error : null
   const qmByKey = new Map(qmRows.map(l => [`${l.materialId}|${l.batchId ?? ''}`, l]))
 
   const expired = expiryRows.filter(r => r.highestExpiryRiskBucket === 'EXPIRED').length
@@ -61,7 +64,8 @@ export function StockHealthView({ request }: { readonly request: WmOperationsAda
 
       <div className="kw-card">
         <div className="kw-card-title">Shelf-life risk (worst first)</div>
-        {expiry.isLoading ? <LoadingRows rows={5} /> : expiryRows.length === 0 ? <EmptyNote>No batches with expiry data.</EmptyNote> : (
+        {expiryError ? <EmptyNote>Could not load expiry data — {expiryError.message}</EmptyNote>
+          : expiry.isLoading ? <LoadingRows rows={5} /> : expiryRows.length === 0 ? <EmptyNote>No batches with expiry data.</EmptyNote> : (
           <div className="kw-table-wrap">
             <table className="kw-table">
               <thead><tr><th>Bucket</th><th>Material</th><th>Batch</th><th>Stock</th><th>Expiry</th><th>Days</th><th>MSL breach</th></tr></thead>
@@ -85,7 +89,8 @@ export function StockHealthView({ request }: { readonly request: WmOperationsAda
 
       <div className="kw-card">
         <div className="kw-card-title">QI / blocked / restricted holds (oldest first)</div>
-        {holds.isLoading ? <LoadingRows rows={4} /> : holdRows.length === 0 ? <EmptyNote>No held stock.</EmptyNote> : (
+        {holdsError ? <EmptyNote>Could not load stock holds — {holdsError.message}</EmptyNote>
+          : holds.isLoading ? <LoadingRows rows={4} /> : holdRows.length === 0 ? <EmptyNote>No held stock.</EmptyNote> : (
           <div className="kw-table-wrap">
             <table className="kw-table">
               <thead><tr><th>Hold</th><th>ST</th><th>Bin</th><th>Material</th><th>Batch</th><th>Qty</th><th>GR date</th><th>Age</th><th>QM lot</th><th>UD</th></tr></thead>
@@ -114,7 +119,8 @@ export function StockHealthView({ request }: { readonly request: WmOperationsAda
 
       <div className="kw-card">
         <div className="kw-card-title">Aged exceptions (past SLA)</div>
-        {exceptions.isLoading ? <LoadingRows rows={4} /> : exceptionRows.length === 0 ? <EmptyNote>No exceptions past SLA.</EmptyNote> : (
+        {exceptionsError ? <EmptyNote>Could not load exceptions — {exceptionsError.message}</EmptyNote>
+          : exceptions.isLoading ? <LoadingRows rows={4} /> : exceptionRows.length === 0 ? <EmptyNote>No exceptions past SLA.</EmptyNote> : (
           <div className="kw-table-wrap">
             <table className="kw-table">
               <thead><tr><th>Type</th><th>Severity</th><th>Material</th><th>Batch</th><th>Reference</th><th>Qty</th><th>Age (d)</th><th>Detail</th></tr></thead>

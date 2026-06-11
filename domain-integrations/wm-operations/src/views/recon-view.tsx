@@ -28,6 +28,8 @@ export function ReconView({ request }: { readonly request: WmOperationsAdapterRe
 
   const sumRows = summary.data?.ok ? summary.data.data : []
   const rows = detail.data?.ok ? detail.data.data : []
+  const summaryError = summary.data && !summary.data.ok ? summary.data.error : null
+  const detailError = detail.data && !detail.data.ok ? detail.data.error : null
   const totalExceptions = sumRows.reduce((s, r) => s + (r.toleranceExceededCount ?? 0), 0)
   const totalAbsValue = sumRows.reduce((s, r) => s + (r.absDeltaValue ?? 0), 0)
   const high = sumRows.filter(r => r.mismatchSeverity === 'HIGH').reduce((s, r) => s + (r.toleranceExceededCount ?? 0), 0)
@@ -48,7 +50,8 @@ export function ReconView({ request }: { readonly request: WmOperationsAdapterRe
 
       <div className="kw-card">
         <div className="kw-card-title">Value at stake by reason</div>
-        {summary.isLoading ? <LoadingRows rows={4} /> : sumRows.length === 0 ? <EmptyNote>Nothing to reconcile.</EmptyNote> : (
+        {summaryError ? <EmptyNote>Could not load reconciliation summary — {summaryError.message}</EmptyNote>
+          : summary.isLoading ? <LoadingRows rows={4} /> : sumRows.length === 0 ? <EmptyNote>Nothing to reconcile.</EmptyNote> : (
           <div className="kw-table-wrap">
             <table className="kw-table">
               <thead><tr><th>Reason</th><th>Severity</th><th>Rows</th><th>Exceeded</th><th>Net Δ value</th><th>Abs Δ value</th><th>Status</th></tr></thead>
@@ -79,7 +82,8 @@ export function ReconView({ request }: { readonly request: WmOperationsAdapterRe
             <option value="MEDIUM">Medium</option>
           </select>
         </div>
-        {detail.isLoading ? <LoadingRows rows={6} /> : rows.length === 0 ? <EmptyNote>No exceptions for this filter.</EmptyNote> : (
+        {detailError ? <EmptyNote>Could not load recon exceptions — {detailError.message}</EmptyNote>
+          : detail.isLoading ? <LoadingRows rows={6} /> : rows.length === 0 ? <EmptyNote>No exceptions for this filter.</EmptyNote> : (
           <div className="kw-table-wrap">
             <table className="kw-table">
               <thead><tr><th>Material</th><th>Batch</th><th>Category</th><th>IM</th><th>WM</th><th>Δ qty</th><th>Δ value</th><th>Reason</th><th>Trusted</th></tr></thead>

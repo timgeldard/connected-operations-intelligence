@@ -23,6 +23,8 @@ export function CampaignsView({ request }: { readonly request: WmOperationsAdapt
 
   const rows = result.data?.ok ? result.data.data : []
   const drillRows = selected && drill.data?.ok ? drill.data.data : []
+  const error = result.data && !result.data.ok ? result.data.error : null
+  const drillError = selected && drill.data && !drill.data.ok ? drill.data.error : null
   const active = rows.filter(r => (r.trCount ?? 0) > (r.completeTrs ?? 0))
 
   return (
@@ -41,7 +43,8 @@ export function CampaignsView({ request }: { readonly request: WmOperationsAdapt
 
       <div className="kw-card">
         <div className="kw-card-title">Campaign progress (click a campaign for its TRs)</div>
-        {result.isLoading ? <LoadingRows rows={5} /> : rows.length === 0 ? (
+        {error ? <EmptyNote>Could not load campaigns — {error.message}</EmptyNote>
+          : result.isLoading ? <LoadingRows rows={5} /> : rows.length === 0 ? (
           <EmptyNote>No campaign-grouped TRs for this scope.</EmptyNote>
         ) : (
           <div className="kw-table-wrap">
@@ -82,7 +85,8 @@ export function CampaignsView({ request }: { readonly request: WmOperationsAdapt
             Campaign {selected} — transfer requirements
             <button type="button" className="kw-viewnav-tab" style={{ marginLeft: 'auto' }} onClick={() => setSelected(null)}>Close</button>
           </div>
-          <WorklistTable items={drillRows} isLoading={drill.isLoading} emptyMessage="No TRs found for this campaign." showWorkArea={false} />
+          {drillError ? <EmptyNote>Could not load campaign TRs — {drillError.message}</EmptyNote>
+            : <WorklistTable items={drillRows} isLoading={drill.isLoading} emptyMessage="No TRs found for this campaign." showWorkArea={false} />}
         </div>
       )}
     </section>

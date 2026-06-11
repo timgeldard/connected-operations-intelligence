@@ -54,6 +54,7 @@ export function TrendsView({ request }: { readonly request: WmOperationsAdapterR
     plant_id: request.plantId, days, limit: 400,
   })
   const rows = (result.data?.ok ? result.data.data : []).slice().sort((a, b) => a.activityDate.localeCompare(b.activityDate))
+  const error = result.data && !result.data.ok ? result.data.error : null
 
   const totalPicks = rows.reduce((s, r) => s + (r.toItemsConfirmed ?? 0), 0)
   const busiest = rows.reduce((m, r) => Math.max(m, r.toItemsConfirmed ?? 0), 0)
@@ -80,7 +81,8 @@ export function TrendsView({ request }: { readonly request: WmOperationsAdapterR
         </select>
       </div>
 
-      {result.isLoading ? <LoadingRows rows={6} /> : (
+      {error ? <div className="kw-card"><EmptyNote>Could not load activity trends — {error.message}</EmptyNote></div>
+        : result.isLoading ? <LoadingRows rows={6} /> : (
         <>
           <BarChart rows={rows} value={r => r.toItemsConfirmed ?? 0} color="var(--kw-valentia-slate)" label="TO items confirmed per day" />
           <BarChart rows={rows} value={r => r.trsCreated ?? 0} color="var(--kw-sage)" label="Transfer requirements created per day" />

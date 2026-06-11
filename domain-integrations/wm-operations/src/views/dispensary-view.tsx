@@ -31,6 +31,8 @@ export function DispensaryView({ request }: DispensaryViewProps) {
   const picking = pickingResult.data?.ok ? pickingResult.data.data : []
   const replen = replenResult.data?.ok ? replenResult.data.data : []
   const stock = stockResult.data?.ok ? stockResult.data.data : []
+  const pickingError = pickingResult.data && !pickingResult.data.ok ? pickingResult.data.error : null
+  const replenError = replenResult.data && !replenResult.data.ok ? replenResult.data.error : null
   const stockError = stockResult.data && !stockResult.data.ok ? stockResult.data.error : null
 
   // FEFO risk: an older-expiry quant of the same material also has available stock.
@@ -70,22 +72,24 @@ export function DispensaryView({ request }: DispensaryViewProps) {
 
       <div className="kw-card">
         <div className="kw-card-title">Open dispensing work (dispensary → production)</div>
-        <WorklistTable
-          items={picking}
-          isLoading={pickingResult.isLoading}
-          emptyMessage="No open dispensary picking jobs."
-          showWorkArea={false}
-        />
+        {pickingError ? <EmptyNote>Could not load dispensing work — {pickingError.message}</EmptyNote>
+          : <WorklistTable
+            items={picking}
+            isLoading={pickingResult.isLoading}
+            emptyMessage="No open dispensary picking jobs."
+            showWorkArea={false}
+          />}
       </div>
 
       <div className="kw-card">
         <div className="kw-card-title">Replenishment backlog (warehouse → dispensary)</div>
-        <WorklistTable
-          items={replen}
-          isLoading={replenResult.isLoading}
-          emptyMessage="No open dispensary replenishment."
-          showWorkArea={false}
-        />
+        {replenError ? <EmptyNote>Could not load replenishment — {replenError.message}</EmptyNote>
+          : <WorklistTable
+            items={replen}
+            isLoading={replenResult.isLoading}
+            emptyMessage="No open dispensary replenishment."
+            showWorkArea={false}
+          />}
       </div>
 
       <div className="kw-card">
