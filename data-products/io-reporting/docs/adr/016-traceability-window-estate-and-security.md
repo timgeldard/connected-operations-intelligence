@@ -12,11 +12,12 @@ plants, and divested businesses that continue to operate on Kerry's SAP (no SAP 
 these lifecycles; a "DNU" name prefix was the historical heuristic).
 
 ## Decision
-1. **History window: rolling 5 years** for the governed traceability product (aligned with the
-   QM `qm_lookback_years` window). The statutory 7-year obligation is met by the source layer:
-   bronze/SAP retain full history, and statutory lookbacks beyond the product window are served by
-   ad-hoc query against source, not by the interactive product. (Accepted by Tim Geldard
-   2026-06-11: "technically legislation says 7 years, but 5 years is fine.")
+1. **History window: a configurable PARAMETER** (`trace_lookback_years` pipeline conf, default 5 —
+   the same self-correcting snapshot-MV mechanism as `qm_lookback_years`; the business may settle on
+   3). Lookbacks beyond the product window (up to the statutory 7 years and the full 16-year SAP
+   history) are explicitly REFERRED BACK TO SAP / the source layer — a documented procedure, not an
+   app feature. (Tim Geldard 2026-06-11: legislation references 7 years; 5 acceptable now, possibly
+   3 later; 4–7 years = refer to SAP.)
 2. **Estate scope via a governed `lifecycle_status`** on `site_config_plant`
    (ACTIVE / CLOSED / SOLD / DIVESTED_ON_SAP, with validity dates; bootstrapped from movement
    recency + T001W names + company-code analysis, business-reviewed):
@@ -48,3 +49,10 @@ these lifecycles; a "DNU" name prefix was the historical heuristic).
   solely from SAP); divested-on-SAP detection requires business confirmation since activity data
   cannot distinguish it.
 - A 7-year statutory request is a documented manual/source procedure, not an app feature.
+
+## Naming and transition
+The new workspace launches as **"Final Trace"** (workspace id `final-trace`) alongside the legacy
+trace workspaces. It is renamed/re-identified to `trace` ONLY when the legacy trace surfaces are
+explicitly dropped — by instruction, or at the production deployment. Until then both run in
+parallel; contracts are NOT shared between old and new (clean drop, per the migration brief).
+
