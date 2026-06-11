@@ -34,7 +34,7 @@ meta:
   phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; QM lot+UD + PP/PI snapshots enforced 2026-06-11
   enforced_count: 22           # +4 QM result family (characteristic/result/sample_result/individual_result) enforced 2026-06-11 (SPC Phase 1)
   source_guarded_count: 0      # all PP/PI flows now enforced — no remaining CDC-blocked flows
-  exempt_count: 19
+  exempt_count: 18
   needs_mapping_count: 7
   blocked_count: 0
 
