@@ -97,6 +97,8 @@ class WmWorklistItem(BaseModel):
     cycle_hours: Optional[float] = Field(None, alias='cycleHours')
     age_hours: Optional[float] = Field(None, alias='ageHours')
     is_overdue: Optional[bool] = Field(None, alias='isOverdue')
+    short_pick_qty: Optional[float] = Field(None, alias='shortPickQty')
+    short_pick_item_count: Optional[int] = Field(None, alias='shortPickItemCount')
 
 
 class WmWorklistSummaryItem(BaseModel):

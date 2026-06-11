@@ -56,6 +56,8 @@ export interface WmWorklistItem {
   readonly cycleHours: number | null
   readonly ageHours: number | null
   readonly isOverdue: boolean | null
+  readonly shortPickQty: number | null
+  readonly shortPickItemCount: number | null
 }
 
 export interface WmWorklistSummaryItem {

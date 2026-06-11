@@ -8,6 +8,8 @@ interface OccRow {
   blockedBinCount: number | null; stockRemovalBlockedBinCount: number | null
   putawayBlockedBinCount: number | null; occupancyRate: number | null
   totalStockQty: number | null; availableStockQty: number | null; openTransferStockQty: number | null
+  totalMaxQuantCount: number | null; totalMaximumWeight: number | null
+  quantUtilisationFraction: number | null
 }
 
 /** Screen: bin occupancy & capacity headroom for putaway planning. */
@@ -24,6 +26,17 @@ export function BinCapacityView({ request }: { readonly request: WmOperationsAda
   const occupied = rows.reduce((s, r) => s + (r.occupiedBinCount ?? 0), 0)
   const utilisation = totalBins ? Math.round((occupied / totalBins) * 100) : 0
 
+  // Overfull = occupied_bin_count > total_max_quant_count (null-safe: only flag when both are known)
+  const overfullCount = rows.filter(r =>
+    r.occupiedBinCount != null && r.totalMaxQuantCount != null && r.occupiedBinCount > r.totalMaxQuantCount
+  ).length
+
+  // Avg quant utilisation across rows that have a value (100% populated in UAT)
+  const utilRows = rows.filter(r => r.quantUtilisationFraction != null)
+  const avgUtilPct = utilRows.length
+    ? Math.round(utilRows.reduce((s, r) => s + (r.quantUtilisationFraction as number), 0) / utilRows.length * 100)
+    : null
+
   return (
     <section>
       <ViewHeader
@@ -36,6 +49,16 @@ export function BinCapacityView({ request }: { readonly request: WmOperationsAda
         <KpiTile label="Utilisation" value={`${utilisation}%`} tone={utilisation > 90 ? 'alert' : utilisation > 75 ? 'warn' : 'ok'} />
         <KpiTile label="Empty bins" value={emptyBins.toLocaleString()} tone={emptyBins === 0 ? 'alert' : 'none'} />
         <KpiTile label="Blocked bins" value={blockedBins.toLocaleString()} tone={blockedBins > 0 ? 'warn' : 'none'} />
+        <KpiTile
+          label="Avg quant utilisation"
+          value={avgUtilPct != null ? `${avgUtilPct}%` : '—'}
+          tone={avgUtilPct != null && avgUtilPct > 90 ? 'alert' : avgUtilPct != null && avgUtilPct > 75 ? 'warn' : 'none'}
+        />
+        <KpiTile
+          label="Overfull storage types"
+          value={overfullCount}
+          tone={overfullCount > 0 ? 'alert' : 'none'}
+        />
       </div>
 
       <div className="kw-card">
@@ -45,16 +68,31 @@ export function BinCapacityView({ request }: { readonly request: WmOperationsAda
           : rows.length === 0 ? <EmptyNote>No bin master data for this scope.</EmptyNote> : (
           <div className="kw-table-wrap">
             <table className="kw-table">
-              <thead><tr><th>ST</th><th>Bin type</th><th>Bins</th><th>Occupied</th><th>Empty</th><th>Blocked</th><th>Occupancy</th><th>Stock qty</th><th>Available qty</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>ST</th><th>Bin type</th><th>Bins</th><th>Occupied</th><th>Empty</th>
+                  <th>Blocked</th><th>Occupancy</th><th>Max quants</th><th>Max weight (kg)</th>
+                  <th>Quant util</th><th>Stock qty</th><th>Available qty</th>
+                </tr>
+              </thead>
               <tbody>
                 {rows.map(r => {
                   const pct = Math.round((r.occupancyRate ?? 0) * 100)
+                  const utilFrac = r.quantUtilisationFraction
+                  const utilPct = utilFrac != null ? Math.round(utilFrac * 100) : null
+                  const isOverfull = r.occupiedBinCount != null && r.totalMaxQuantCount != null
+                    && r.occupiedBinCount > r.totalMaxQuantCount
                   return (
-                    <tr key={`${r.warehouseId}-${r.storageType}-${r.binType}`}>
+                    <tr
+                      key={`${r.warehouseId}-${r.storageType}-${r.binType}`}
+                      style={isOverfull ? { background: 'rgba(220,60,40,0.07)' } : undefined}
+                    >
                       <td className="kw-mono">{r.storageType}</td>
                       <td className="kw-mono">{r.binType || '—'}</td>
                       <td className="kw-num">{(r.binRecordCount ?? 0).toLocaleString()}</td>
-                      <td className="kw-num">{(r.occupiedBinCount ?? 0).toLocaleString()}</td>
+                      <td className="kw-num" style={isOverfull ? { color: 'var(--kw-sunset)', fontWeight: 600 } : undefined}>
+                        {(r.occupiedBinCount ?? 0).toLocaleString()}
+                      </td>
                       <td className="kw-num" style={(r.emptyBinCount ?? 0) === 0 ? { color: 'var(--kw-sunset)', fontWeight: 600 } : undefined}>{(r.emptyBinCount ?? 0).toLocaleString()}</td>
                       <td className="kw-num">{(r.blockedBinCount ?? 0).toLocaleString()}</td>
                       <td>
@@ -64,6 +102,18 @@ export function BinCapacityView({ request }: { readonly request: WmOperationsAda
                           </div>
                           <span className="kw-num" style={{ fontSize: 10.5 }}>{pct}%</span>
                         </div>
+                      </td>
+                      <td className="kw-num">{r.totalMaxQuantCount != null ? r.totalMaxQuantCount.toLocaleString() : '—'}</td>
+                      <td className="kw-num">{r.totalMaximumWeight != null ? r.totalMaximumWeight.toLocaleString() : '—'}</td>
+                      <td>
+                        {utilPct != null ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div className="kw-progress" style={{ width: 48 }}>
+                              <span style={{ width: `${Math.min(100, utilPct)}%`, background: utilPct > 100 ? 'var(--kw-sunset)' : utilPct > 85 ? 'var(--kw-sunrise)' : 'var(--kw-valentia-slate)' }} />
+                            </div>
+                            <span className="kw-num" style={{ fontSize: 10.5, color: utilPct > 100 ? 'var(--kw-sunset)' : undefined }}>{utilPct}%</span>
+                          </div>
+                        ) : '—'}
                       </td>
                       <td className="kw-num">{formatQty(r.totalStockQty)}</td>
                       <td className="kw-num">{formatQty(r.availableStockQty)}</td>
