@@ -288,13 +288,11 @@ def gold_spc_quality_metric_subgroup():
         F.date_trunc("month", F.min("lot_created_date").over(sg_win))
     ).alias("batch_month")
 
-    # batch_range: the date range (in days) spanned by the subgroup's lots.
-    # Approximation: uses lot_created_date min/max. Matches legacy MV convention.
+    # batch_range: the VALUE range of the subgroup (max - min of the sample values) — the
+    # R-chart input. Verified against the legacy MV 2026-06-11: batch_range == max_value -
+    # min_value on every sampled row (it is NOT a date span).
     batch_range_col = (
-        F.datediff(
-            F.max("lot_created_date").over(sg_win),
-            F.min("lot_created_date").over(sg_win),
-        )
+        F.max("value").over(sg_win) - F.min("value").over(sg_win)
     ).alias("batch_range")
 
     # first_posting_date / last_posting_date: approximated as min/max of lot_created_date
