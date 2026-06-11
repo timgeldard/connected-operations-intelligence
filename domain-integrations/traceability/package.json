@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@connectio/data-contracts": "workspace:*",
+    "@connectio/design-system": "workspace:*",
     "@connectio/evidence-panel-runtime": "workspace:*",
     "@connectio/feature-flags": "workspace:*",
     "@connectio/product-model": "workspace:*",

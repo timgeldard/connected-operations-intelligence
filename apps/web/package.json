@@ -6,12 +6,22 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "@connectio/auth-scope": "workspace:*",
     "@connectio/data-contracts": "workspace:*",
     "@connectio/design-system": "workspace:*",
+    "@connectio/di-envmon": "workspace:*",
+    "@connectio/di-maintenance": "workspace:*",
+    "@connectio/di-operations": "workspace:*",
+    "@connectio/di-quality": "workspace:*",
+    "@connectio/di-spc": "workspace:*",
+    "@connectio/di-traceability": "workspace:*",
+    "@connectio/di-warehouse": "workspace:*",
+    "@connectio/di-wm-operations": "workspace:*",
+    "@connectio/feature-flags": "workspace:*",
     "@connectio/personalization": "workspace:*",
     "@connectio/product-model": "workspace:*",
     "@connectio/telemetry": "workspace:*",
@@ -21,10 +31,15 @@
     "react-dom": "^18"
   },
   "devDependencies": {
+    "@connectio/test-support": "workspace:*",
+    "@testing-library/jest-dom": "6.6.3",
+    "@testing-library/react": "16.3.0",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@vitejs/plugin-react": "^4",
+    "jsdom": "26.1.0",
     "typescript": "~5.6.3",
-    "vite": "^6"
+    "vite": "^6",
+    "vitest": "3.2.4"
   }
 }

@@ -10,8 +10,11 @@
   "dependencies": {
     "@connectio/product-model": "workspace:*",
     "@connectio/data-contracts": "workspace:*",
+    "@connectio/design-system": "workspace:*",
     "@connectio/evidence-panel-runtime": "workspace:*",
+    "@connectio/feature-flags": "workspace:*",
     "@connectio/source-adapters": "workspace:*",
+    "@connectio/workspace-runtime": "workspace:*",
     "react": "^18.3.1",
     "@tanstack/react-query": "^5"
   },

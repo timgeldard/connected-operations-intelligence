@@ -10,10 +10,14 @@
   "dependencies": {
     "@connectio/data-contracts": "workspace:*",
     "@connectio/design-system": "workspace:*",
+    "@connectio/di-maintenance": "workspace:*",
+    "@connectio/di-quality": "workspace:*",
+    "@connectio/di-warehouse": "workspace:*",
     "@connectio/evidence-panel-runtime": "workspace:*",
     "@connectio/feature-flags": "workspace:*",
     "@connectio/product-model": "workspace:*",
     "@connectio/source-adapters": "workspace:*",
+    "@connectio/workspace-runtime": "workspace:*",
     "@tanstack/react-query": "^5",
     "react": "^18.3.1",
     "zod": "^3.23.8"
