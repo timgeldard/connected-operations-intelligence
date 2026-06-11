@@ -47,14 +47,24 @@ const HORIZONS = [
 
 export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrder }: OrderReadinessViewProps) {
   const [horizon, setHorizon] = useState('')
+  const [lineFilter, setLineFilter] = useState('')
   const [drillOrder, setDrillOrder] = useState<{ plantId: string; orderId: string; label?: string } | null>(null)
   const result = useWmOrderReadiness({
     ...request,
     startFromDaysAgo: horizon ? 2 : undefined,
     startToDaysAhead: horizon ? Number(horizon) : undefined,
   })
-  const orders = result.data?.ok ? result.data.data : []
+  const allOrders = result.data?.ok ? result.data.data : []
   const error = result.data && !result.data.ok ? result.data.error : null
+
+  // Client-side line filter using distinct production_line values from loaded rows.
+  const distinctLines = Array.from(
+    new Set(allOrders.map(o => o.productionLine).filter((l): l is string => l != null))
+  ).sort()
+  // Derived (not setState-in-render): a stale selection simply stops filtering when its line
+  // disappears from the loaded dataset (horizon/plant change).
+  const effectiveLineFilter = lineFilter && distinctLines.includes(lineFilter) ? lineFilter : ''
+  const orders = effectiveLineFilter ? allOrders.filter(o => o.productionLine === effectiveLineFilter) : allOrders
 
   const atRisk = orders.filter(o => o.readinessBand === 'red').length
   const watch = orders.filter(o => o.readinessBand === 'amber').length
@@ -78,6 +88,17 @@ export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrd
       <div className="kw-card">
         <div className="kw-card-title">
           Released orders by scheduled start
+          {distinctLines.length > 0 && (
+            <select
+              aria-label="Filter by production line"
+              style={{ marginLeft: 8, fontWeight: 400, fontSize: 12 }}
+              value={effectiveLineFilter}
+              onChange={e => setLineFilter(e.target.value)}
+            >
+              <option value="">All lines</option>
+              {distinctLines.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          )}
           <select
             aria-label="Schedule horizon"
             style={{ marginLeft: 'auto', fontWeight: 400, fontSize: 12 }}
@@ -104,6 +125,7 @@ export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrd
                   <th>Qty</th>
                   <th>Start</th>
                   <th>Days</th>
+                  <th>Line</th>
                   <th></th>
                   <th>PSA</th>
                   <th>WM components</th>
@@ -125,6 +147,7 @@ export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrd
                     <td className="kw-num">{formatQty(order.orderQty, order.uom)}</td>
                     <td className="kw-num">{formatDate(order.scheduledStartDate)}</td>
                     <td className="kw-num">{order.daysToStart ?? '—'}</td>
+                    <td className="kw-mono">{order.productionLine ?? '—'}</td>
                     <td>
                       {onNavigateToView && (order.trCount ?? 0) > 0 && (
                         <button type="button" className="kw-link" onClick={() => { setWorklistDeepLink({ reference: order.orderId }); onNavigateToView('staging-worklist') }}>TRs</button>

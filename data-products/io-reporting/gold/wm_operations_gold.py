@@ -124,6 +124,7 @@ def gold_wm_staging_worklist():
         "order_number",
         F.col("material_code").alias("order_material_code"),
         "scheduled_start_date",
+        "production_line",
     )
     material = _material_lookup(spark, ss)
 
@@ -344,6 +345,10 @@ def gold_wm_staging_worklist():
             # non-null only when at least one item carried a non-zero difference.
             "short_pick_qty",
             "short_pick_item_count",
+            # Production line passthrough from process_order (production_line = CRVER/line ID;
+            # 99.99% populated at C061/P817 — 35 lines / 18-19 lines respectively, verified UAT
+            # 2026-06-11). NULL when the TR source is not a process order or order is not found.
+            F.col("production_line").alias("order_production_line"),
         )
     )
 
@@ -557,6 +562,9 @@ def gold_wm_order_readiness():
             "psa_quant_count",
             "supply_status",
             "readiness_status",
+            # Production line passthrough from process_order (verified UAT 2026-06-11:
+            # 99.99% populated at C061/P817 — 35 lines / 18-19 lines respectively).
+            "production_line",
         )
     )
 

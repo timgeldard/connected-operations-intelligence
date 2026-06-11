@@ -1319,6 +1319,13 @@ contracts:
         type: long
         required: false
         description: Count of TO line items with a non-zero difference quantity (short-pick signal)
+      - name: order_production_line
+        type: string
+        required: false
+        description: >
+          Production line (AUFK CRVER) of the linked process order — 99.99% populated at C061/P817
+          (35 lines / 18-19 lines respectively, verified UAT 2026-06-11). NULL when the TR source
+          is not a process order or the order is not found.
 
   - id: wm_operations.worklist_summary
     version: 0.1.0
@@ -1500,6 +1507,12 @@ contracts:
         type: string
         required: false
         description: red | amber | green | grey (query-time traffic light)
+      - name: production_line
+        type: string
+        required: false
+        description: >
+          Production line (AUFK CRVER) of the process order — 99.99% populated at C061/P817
+          (35 lines / 18-19 lines respectively, verified UAT 2026-06-11).
 
   - id: wm_operations.bin_stock
     version: 0.1.0
@@ -1910,6 +1923,79 @@ contracts:
         type: long
         required: false
       - name: risk_band
+        type: string
+        required: false
+
+  - id: wm_operations.inbound_deliveries
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Inbound delivery expected-receipt board — EL (standard inbound) and ELST (inbound stock
+      transport) SAP delivery types with expected receipt date, line counts, receipt progress,
+      and query-time receipt_band. Counterpart to wm_operations.outbound; vendor/supplier
+      columns are not available (LIKP ship_to/sold_to are customer fields; supplier not
+      replicated). Candidate contract pending DEV profiling.
+    source_view: vw_consumption_wm_operations_inbound_deliveries
+    grain: one row per plant_id and delivery_id
+    primary_key:
+      - plant_id
+      - delivery_id
+    freshness:
+      expected_minutes: 30
+      warning_minutes: 60
+      critical_minutes: 120
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: warehouse_id
+        type: string
+        required: false
+      - name: delivery_id
+        type: string
+        required: true
+      - name: delivery_type
+        type: string
+        required: false
+      - name: shipping_point
+        type: string
+        required: false
+      - name: line_count
+        type: long
+        required: false
+      - name: delivery_qty
+        type: double
+        required: false
+      - name: received_qty
+        type: double
+        required: false
+      - name: receipt_fraction
+        type: double
+        required: false
+      - name: has_mixed_base_uom
+        type: boolean
+        required: false
+      - name: wm_status_code
+        type: string
+        required: false
+      - name: expected_receipt_date
+        type: date
+        required: false
+      - name: actual_receipt_date
+        type: date
+        required: false
+      - name: is_received
+        type: boolean
+        required: false
+      - name: days_until_expected_receipt
+        type: long
+        required: false
+      - name: receipt_band
         type: string
         required: false
 

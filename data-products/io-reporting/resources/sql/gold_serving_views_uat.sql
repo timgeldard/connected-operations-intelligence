@@ -42,6 +42,14 @@ SELECT
 FROM connected_plant_uat.gold_io_reporting.gold_delivery_pick_status_secured AS b;
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_delivery_pick_status_live TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_inbound_deliveries_live AS
+SELECT
+  b.*,
+  datediff(b.expected_receipt_date, current_date()) AS days_until_expected_receipt,
+  CASE WHEN b.is_received THEN 'green' WHEN b.expected_receipt_date IS NULL THEN 'grey' WHEN datediff(b.expected_receipt_date, current_date()) IS NULL THEN 'grey' WHEN coalesce(b.receipt_fraction, 0.0) < 0.5 AND datediff(b.expected_receipt_date, current_date()) <= 0 THEN 'red' WHEN coalesce(b.receipt_fraction, 0.0) < 0.8 AND datediff(b.expected_receipt_date, current_date()) <= 1 THEN 'amber' ELSE 'green' END AS receipt_band
+FROM connected_plant_uat.gold_io_reporting.gold_wm_inbound_deliveries_secured AS b;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_inbound_deliveries_live TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_process_order_staging_live AS
 SELECT
   b.*,

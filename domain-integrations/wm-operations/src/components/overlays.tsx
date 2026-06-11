@@ -45,6 +45,8 @@ export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose, onOp
   })
   const worklistRows = worklistResult.data?.ok ? worklistResult.data.data : []
   const totalShortPickItems = worklistRows.reduce((sum, r) => sum + (typeof r.shortPickItemCount === 'number' ? r.shortPickItemCount : 0), 0)
+  // Production line from the first worklist row (all rows for the same order share the same line).
+  const orderProductionLine = worklistRows.find(r => r.orderProductionLine != null)?.orderProductionLine ?? null
 
   return (
     <Overlay title={`Order ${orderId}`} subtitle={orderLabel ?? 'Component staging detail'} onClose={onClose}>
@@ -53,6 +55,11 @@ export function OrderDetailOverlay({ plantId, orderId, orderLabel, onClose, onOp
           <button type="button" className="kw-viewnav-tab" onClick={() => onOpenProcessOrder(orderId)}>
             Open in Process Order Review →
           </button>
+        </div>
+      )}
+      {orderProductionLine && (
+        <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--kw-text-muted, #666)' }}>
+          Line: <span className="kw-mono" style={{ fontWeight: 600 }}>{orderProductionLine}</span>
         </div>
       )}
 

@@ -58,6 +58,7 @@ export interface WmWorklistItem {
   readonly isOverdue: boolean | null
   readonly shortPickQty: number | null
   readonly shortPickItemCount: number | null
+  readonly orderProductionLine: string | null
 }
 
 export interface WmWorklistSummaryItem {
@@ -102,6 +103,7 @@ export interface WmOrderReadinessItem {
     | 'NO_WM_DEMAND'
   readonly daysToStart: number | null
   readonly readinessBand: 'red' | 'amber' | 'green' | 'grey' | null
+  readonly productionLine: string | null
 }
 
 export interface WmBinStockItem {
