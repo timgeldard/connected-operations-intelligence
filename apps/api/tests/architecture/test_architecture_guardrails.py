@@ -46,9 +46,11 @@ _PRUNE_DIRS = frozenset({
     "static",
 })
 
-# Absolute paths that should also be pruned (checked via startswith).
-_PRUNE_ABS_DIRS = (
-    str(_REPO_ROOT / "apps" / "api" / "static" / "assets"),
+# Absolute paths that should be pruned — checked by exact equality (not startswith,
+# which would incorrectly prune siblings like assets_backup when assets is listed).
+# Entries are stored with forward slashes so the check is platform-independent.
+_PRUNE_ABS_DIRS: tuple[str, ...] = (
+    str(_REPO_ROOT / "apps" / "api" / "static" / "assets").replace(os.sep, "/"),
 )
 
 
@@ -56,8 +58,8 @@ def _should_prune(dirpath: str, dirname: str) -> bool:
     """Return True if a directory should be skipped during tree traversal."""
     if dirname in _PRUNE_DIRS:
         return True
-    full = os.path.join(dirpath, dirname)
-    return any(full.startswith(p) for p in _PRUNE_ABS_DIRS)
+    full = os.path.join(dirpath, dirname).replace(os.sep, "/")
+    return full in _PRUNE_ABS_DIRS
 
 
 def _py_files(directory: Path) -> list[Path]:
@@ -378,4 +380,34 @@ class TestNoRawTokenLogging:
             "x-forwarded-access-token logged in frontend code. "
             "Do not log raw OAuth token values in browser console.\n"
             + "\n".join(violations)
+        )
+
+
+# ── 8. _should_prune exact-match regression ──────────────────────────────────
+
+class TestShouldPruneExactMatch:
+    """Guard against startswith-style over-matching in _should_prune.
+
+    A sibling directory whose name *starts with* a pruned name (e.g.
+    ``assets_backup`` vs ``assets``) must NOT be pruned.
+    """
+
+    def test_prune_abs_dir_is_pruned(self) -> None:
+        # The configured assets dir itself must be pruned.
+        assets_dir = str(_REPO_ROOT / "apps" / "api" / "static" / "assets").replace(os.sep, "/")
+        # Split into parent and final component for _should_prune's (dirpath, dirname) API.
+        parent = assets_dir.rsplit("/", 1)[0]
+        name = assets_dir.rsplit("/", 1)[1]
+        assert _should_prune(parent, name), (
+            f"Expected _should_prune to prune the configured abs dir '{assets_dir}'"
+        )
+
+    def test_sibling_with_longer_name_is_not_pruned(self) -> None:
+        # ``assets_backup`` shares the ``assets`` prefix but is a *different* directory
+        # and must not be pruned.
+        assets_dir = str(_REPO_ROOT / "apps" / "api" / "static" / "assets").replace(os.sep, "/")
+        parent = assets_dir.rsplit("/", 1)[0]
+        assert not _should_prune(parent, "assets_backup"), (
+            "assets_backup should NOT be pruned — it is a sibling of the configured "
+            "abs-dir 'assets', not the dir itself."
         )
