@@ -155,3 +155,63 @@ def test_allowlist_cannot_lie_removing_pending_domain_fails():
     finding = scan_resolver_calls(src)
     assert finding == [("trace2", "gold_batch_lineage", True, 1)]
     assert "trace2" in MIGRATION_PENDING_DOMAINS  # currently allowlisted -> pending; remove -> violation
+
+
+# --- YAML description-block suppression -------------------------------------------
+
+def test_yaml_block_scalar_description_is_not_scanned():
+    # The contract manifest legitimately mentions gold/silver in prose; these must not flag.
+    yaml = (
+        "contracts:\n"
+        "  - id: foo\n"
+        "    description: >\n"
+        "      sourced from gold_inbound_po_line_backlog / silver.purchase_order\n"
+        "      Candidate contract pending DEV profiling.\n"
+        "    source_view: vw_consumption_foo\n"
+    )
+    assert scan_text(yaml, is_yaml=True) == []
+
+
+def test_yaml_block_scalar_pipe_description_is_not_scanned():
+    yaml = (
+        "fields:\n"
+        "  - name: x\n"
+        "    description: |\n"
+        "      FROM gold_batch_lineage (sourced from connected_plant_uat.gold.foo)\n"
+        "    type: string\n"
+    )
+    assert scan_text(yaml, is_yaml=True) == []
+
+
+def test_yaml_inline_description_is_not_scanned():
+    # Inline `description: ...` values on the same line must also be suppressed.
+    yaml = "    description: Purchase order creation date (cast to DATE in silver)\n"
+    assert scan_text(yaml, is_yaml=True) == []
+
+
+def test_yaml_non_description_key_is_still_scanned():
+    # source_view and other keys must NOT be suppressed — only `description:`.
+    yaml = "    source_view: FROM gold_batch_lineage\n"
+    assert scan_text(yaml, is_yaml=True)  # must still flag
+
+
+def test_yaml_description_suppression_does_not_affect_surrounding_keys():
+    # Keys above and below the description block are still scanned.
+    yaml = (
+        "    source_view: vw_consumption_ok\n"
+        "    description: >\n"
+        "      sourced from gold_foo\n"
+        "    grain: one row per plant (FROM gold_actual_violation)\n"
+    )
+    violations = scan_text(yaml, is_yaml=True)
+    # The grain line must still be flagged.
+    assert any("grain" in v[1] or "FROM gold_actual_violation" in v[1] for v in violations)
+    # The description prose must not be flagged.
+    assert not any("gold_foo" in v[1] for v in violations)
+
+
+def test_non_yaml_description_line_is_scanned_without_is_yaml():
+    # Without is_yaml=True the description line is scanned normally.
+    src = "description: sourced from gold_x"
+    assert scan_text(src) != []  # must flag
+    assert scan_text(src, is_yaml=True) == []  # must NOT flag with YAML mode
