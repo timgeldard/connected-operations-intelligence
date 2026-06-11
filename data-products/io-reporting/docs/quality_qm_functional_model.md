@@ -1,6 +1,10 @@
 # Quality (QM) Silver — Functional Model
 
-**Status:** Design resolved · **NOT run-eligible** (see §6) · 2026-06-07
+**Status:** Design resolved · 2026-06-07 · **Lot + UD tables run-eligible since 2026-06-11**
+(deliberate, approved flip — plant gate verified + configurable `qm_lookback_years` time gate,
+default 5y; see silver/tables/quality.py. Data findings vs this doc: QAVE.VWERKS is the central
+plant 'R001', NOT the lot's plant → UD is gated via the parent lot, not VWERKS (§9 amendment);
+VBEWERTUNG domain confirmed A/R from UAT data. The result-grain family (§8) remains ON HOLD.)
 **Scope:** Resolves the open functional items that source-guard `quality_inspection_lot`
 (inspection start/end date semantics, deletion flag, usage-decision modelling, snapshot-vs-CDC).
 

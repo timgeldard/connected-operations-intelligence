@@ -19,6 +19,13 @@ resources:
       configuration:
         source_catalog: ${var.source_catalog}
         source_schema: ${var.source_schema}
+        # Plant stage-gate config (quality product area = qm_enabled_flag). The slow pipeline
+        # must have built site_config_plant before this pipeline runs (same dependency as fast).
+        site_config_plant_table: ${var.catalog}.${var.schema}.site_config_plant
+        # Time gate for the very large QM sources (inspection_qals is 16.7M lots all-plants in
+        # UAT): lots older than this many years (by ENSTEHDAT lot creation) are excluded at the
+        # source read. Snapshot-MV recompute self-corrects when this changes — no full refresh.
+        qm_lookback_years: "5"
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting
