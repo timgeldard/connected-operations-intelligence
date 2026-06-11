@@ -190,6 +190,11 @@ export function OrderJourneyView({ request }: OrderJourneyViewProps) {
   const [filter, setFilter] = useState('')
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
   const [limit, setLimit] = useState(300)
+  const [prevPlantId, setPrevPlantId] = useState(request.plantId)
+  if (request.plantId !== prevPlantId) {
+    setPrevPlantId(request.plantId)
+    setSelectedOrderId(null)
+  }
 
   // Consume deep-link on mount (in effect — never in render)
   useEffect(() => {
@@ -316,49 +321,61 @@ export function OrderJourneyView({ request }: OrderJourneyViewProps) {
 
         {/* Right: selected order detail */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {!selectedRow && (
+          {selectedOrderId === null && (
             <EmptyNote>Select an order on the left to view its journey timeline.</EmptyNote>
           )}
-          {selectedRow && (
+          {selectedOrderId !== null && (
             <div>
               <div className="kw-card" style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                  <div>
-                    <div className="kw-eyebrow">Order</div>
-                    <div className="kw-mono" style={{ fontSize: 18, fontWeight: 700 }}>{selectedRow.orderId}</div>
-                    <div style={{ fontSize: 13, color: 'var(--kw-text-secondary, #444)', marginTop: 2 }}>
-                      {selectedRow.materialName ?? selectedRow.materialCode ?? '—'}
-                      {selectedRow.orderQty != null && (
-                        <span style={{ marginLeft: 8 }}>
-                          {selectedRow.orderQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} {selectedRow.uom ?? ''}
-                        </span>
-                      )}
-                      {selectedRow.productionLine && (
-                        <span style={{ marginLeft: 8, color: 'var(--kw-text-muted, #888)' }}>
-                          {selectedRow.productionLine}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
-                    {selectedRow.qmLotCount != null && (
+                {selectedRow ? (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                       <div>
-                        <div className="kw-eyebrow">QM lots</div>
-                        <div style={{ fontWeight: 700 }}>
-                          {selectedRow.qmOpenLotCount ?? 0} open / {selectedRow.qmLotCount}
+                        <div className="kw-eyebrow">Order</div>
+                        <div className="kw-mono" style={{ fontSize: 18, fontWeight: 700 }}>{selectedRow.orderId}</div>
+                        <div style={{ fontSize: 13, color: 'var(--kw-text-secondary, #444)', marginTop: 2 }}>
+                          {selectedRow.materialName ?? selectedRow.materialCode ?? '—'}
+                          {selectedRow.orderQty != null && (
+                            <span style={{ marginLeft: 8 }}>
+                              {selectedRow.orderQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} {selectedRow.uom ?? ''}
+                            </span>
+                          )}
+                          {selectedRow.productionLine && (
+                            <span style={{ marginLeft: 8, color: 'var(--kw-text-muted, #888)' }}>
+                              {selectedRow.productionLine}
+                            </span>
+                          )}
                         </div>
                       </div>
-                    )}
-                    {selectedRow.deliveryCount != null && selectedRow.deliveryCount > 0 && (
-                      <div>
-                        <div className="kw-eyebrow">Deliveries</div>
-                        <div style={{ fontWeight: 700 }}>{selectedRow.deliveryCount}</div>
+                      <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
+                        {selectedRow.qmLotCount != null && (
+                          <div>
+                            <div className="kw-eyebrow">QM lots</div>
+                            <div style={{ fontWeight: 700 }}>
+                              {selectedRow.qmOpenLotCount ?? 0} open / {selectedRow.qmLotCount}
+                            </div>
+                          </div>
+                        )}
+                        {selectedRow.deliveryCount != null && selectedRow.deliveryCount > 0 && (
+                          <div>
+                            <div className="kw-eyebrow">Deliveries</div>
+                            <div style={{ fontWeight: 700 }}>{selectedRow.deliveryCount}</div>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
+                    <MilestoneHeader row={selectedRow} />
+                    <LagStrip row={selectedRow} />
+                  </>
+                ) : (
+                  <div>
+                    <div className="kw-eyebrow">Order</div>
+                    <div className="kw-mono" style={{ fontSize: 18, fontWeight: 700 }}>{selectedOrderId}</div>
+                    <div style={{ fontSize: 12, color: 'var(--kw-text-muted, #888)', marginTop: 4 }}>
+                      not in the loaded list — showing its timeline
+                    </div>
                   </div>
-                </div>
-                <MilestoneHeader row={selectedRow} />
-                <LagStrip row={selectedRow} />
+                )}
               </div>
 
               <div className="kw-card">

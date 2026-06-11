@@ -1571,14 +1571,16 @@ def gold_wm_order_journey_summary():
     # -- Staging milestones from TR/TO (same TBNUM linkage as worklist) --------
     tr_by_order = (
         trs.filter(F.col("source_reference_type") == TR_ORDER_REFERENCE_TYPE)
-        .groupBy(F.col("source_reference_number").alias("order_number"))
+        .groupBy("plant_code", F.col("source_reference_number").alias("order_number"))
         .agg(
             F.min("created_datetime").alias("first_tr_created_ts"),
             F.count_distinct("transfer_requirement_number").alias("tr_count"),
         )
     )
 
-    to_staging = (
+    # Single TR↔TO join produces both confirmed-ts fields and item counts in one pass,
+    # grouping on plant_code + order_number to avoid cross-plant fan-out.
+    to_agg = (
         tos.filter(F.col("transfer_requirement_number").isNotNull())
         .join(
             trs.filter(F.col("source_reference_type") == TR_ORDER_REFERENCE_TYPE)
@@ -1591,29 +1593,19 @@ def gold_wm_order_journey_summary():
             "transfer_requirement_number",
             "inner",
         )
-        .filter(F.col("item_status") == "Fully Confirmed")
-        .groupBy("order_number")
+        .groupBy("plant_code", "order_number")
         .agg(
-            F.min("confirmed_datetime").alias("staging_first_confirmed_ts"),
-            F.max("confirmed_datetime").alias("staging_last_confirmed_ts"),
-            F.count(F.lit(1)).alias("staging_confirmed_item_count"),
+            F.min(
+                F.when(F.col("item_status") == "Fully Confirmed", F.col("confirmed_datetime"))
+            ).alias("staging_first_confirmed_ts"),
+            F.max(
+                F.when(F.col("item_status") == "Fully Confirmed", F.col("confirmed_datetime"))
+            ).alias("staging_last_confirmed_ts"),
+            F.sum(
+                F.when(F.col("item_status") == "Fully Confirmed", F.lit(1)).otherwise(F.lit(0))
+            ).alias("staging_confirmed_item_count"),
+            F.count(F.lit(1)).alias("staging_total_item_count"),
         )
-    )
-
-    to_total_items = (
-        tos.filter(F.col("transfer_requirement_number").isNotNull())
-        .join(
-            trs.filter(F.col("source_reference_type") == TR_ORDER_REFERENCE_TYPE)
-            .select(
-                F.col("transfer_requirement_number"),
-                F.col("source_reference_number").alias("order_number"),
-            )
-            .distinct(),
-            "transfer_requirement_number",
-            "inner",
-        )
-        .groupBy("order_number")
-        .agg(F.count(F.lit(1)).alias("staging_total_item_count"))
     )
 
     # -- Production milestones from process_order_operation --------------------
@@ -1707,9 +1699,8 @@ def gold_wm_order_journey_summary():
     result = (
         orders
         .join(F.broadcast(material), ["plant_code", "material_code"], "left")
-        .join(tr_by_order, "order_number", "left")
-        .join(to_staging, "order_number", "left")
-        .join(to_total_items, "order_number", "left")
+        .join(tr_by_order, ["plant_code", "order_number"], "left")
+        .join(to_agg, ["plant_code", "order_number"], "left")
         .join(ops_agg, "order_number", "left")
         .join(gr_agg, "order_number", "left")
         .join(issue_agg, "order_number", "left")
