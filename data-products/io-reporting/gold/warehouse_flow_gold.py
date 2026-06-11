@@ -250,7 +250,7 @@ def gold_delivery_pick_status():
     ),
     cluster_by=["plant_code", "expected_receipt_date"],
 ))
-@dlt.expect("pick fraction bounded", "pick_fraction IS NULL OR (pick_fraction >= 0.0 AND pick_fraction <= 2.0)")
+@dlt.expect("receipt fraction bounded", "receipt_fraction IS NULL OR (receipt_fraction >= 0.0 AND receipt_fraction <= 2.0)")
 def gold_wm_inbound_deliveries():
     spark = get_spark_session()
     silver_schema = get_silver_schema(spark)

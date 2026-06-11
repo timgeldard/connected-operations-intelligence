@@ -61,7 +61,10 @@ export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrd
   const distinctLines = Array.from(
     new Set(allOrders.map(o => o.productionLine).filter((l): l is string => l != null))
   ).sort()
-  const orders = lineFilter ? allOrders.filter(o => o.productionLine === lineFilter) : allOrders
+  // Derived (not setState-in-render): a stale selection simply stops filtering when its line
+  // disappears from the loaded dataset (horizon/plant change).
+  const effectiveLineFilter = lineFilter && distinctLines.includes(lineFilter) ? lineFilter : ''
+  const orders = effectiveLineFilter ? allOrders.filter(o => o.productionLine === effectiveLineFilter) : allOrders
 
   const atRisk = orders.filter(o => o.readinessBand === 'red').length
   const watch = orders.filter(o => o.readinessBand === 'amber').length
@@ -89,7 +92,7 @@ export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrd
             <select
               aria-label="Filter by production line"
               style={{ marginLeft: 8, fontWeight: 400, fontSize: 12 }}
-              value={lineFilter}
+              value={effectiveLineFilter}
               onChange={e => setLineFilter(e.target.value)}
             >
               <option value="">All lines</option>
