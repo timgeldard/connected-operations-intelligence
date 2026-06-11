@@ -468,3 +468,15 @@ SELECT
   comment
 FROM connected_plant_uat.gold_io_reporting.gold_wm_downtime_event_detail_secured
 WHERE plant_code IS NOT NULL;
+
+-- 29. Onboarded plants (command-palette plant picker)
+-- Grain: 1 row per plant_id + warehouse_id. Derived from the worklist summary secured view
+-- (already RLS-governed); no new gold object. Used by the frontend command palette to
+-- enumerate onboarded plants dynamically without hardcoding.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_plants AS
+SELECT
+  plant_id,
+  warehouse_id,
+  SUM(tr_count) AS worklist_tr_count
+FROM connected_plant_uat.gold_io_reporting.vw_consumption_wm_operations_worklist_summary
+GROUP BY plant_id, warehouse_id;

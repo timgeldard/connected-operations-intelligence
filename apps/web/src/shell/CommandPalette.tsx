@@ -19,6 +19,24 @@ interface Command {
   readonly action: () => void
 }
 
+/** Shape of a row returned by /api/wm-operations/plants. */
+interface PlantRow {
+  readonly plantId: string
+  readonly warehouseId: string
+}
+
+/**
+ * Fallback plant list used when the /api/wm-operations/plants fetch fails or
+ * returns an empty result.  Kept in sync with the last known onboarded plants
+ * so the palette never shows zero plant shortcuts.
+ */
+const FALLBACK_PLANTS: PlantRow[] = [
+  { plantId: 'C061', warehouseId: '104' },
+  { plantId: 'P817', warehouseId: '208' },
+  { plantId: 'P806', warehouseId: '190' },
+  { plantId: 'C351', warehouseId: '105' },
+]
+
 /**
  * Global command palette (Ctrl+K / Cmd+K).
  *
@@ -27,12 +45,18 @@ interface Command {
  * actions. Rendered as a full-viewport overlay with an auto-focused search
  * input. Commands are filtered by the current query string.
  *
+ * Plant shortcuts (WM Operations + Warehouse 360) are generated dynamically
+ * from /api/wm-operations/plants so that onboarding a new plant requires no
+ * frontend changes.  On fetch error or empty result the component falls back
+ * to FALLBACK_PLANTS so shortcuts are always present.
+ *
  * Accessibility: traps focus within the overlay; Escape closes; Arrow keys
  * navigate the command list; Enter activates the highlighted command.
  */
 export function CommandPalette({ onClose }: CommandPaletteProps) {
   const [query, setQuery] = useState('')
   const [highlighted, setHighlighted] = useState(0)
+  const [plants, setPlants] = useState<PlantRow[]>(FALLBACK_PLANTS)
   const inputRef = useRef<HTMLInputElement>(null)
   const { setWorkspace, navigateToTraceInvestigation } = useWorkspaceShellState()
   const { setActiveScope } = useAuthScope()
@@ -40,6 +64,22 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   /** Auto-focus the input on mount. */
   useEffect(() => {
     inputRef.current?.focus()
+  }, [])
+
+  /** Fetch onboarded plants from the API; fall back to the hardcoded list on any error. */
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/wm-operations/plants?limit=50')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then((rows: PlantRow[]) => {
+        if (!cancelled && Array.isArray(rows) && rows.length > 0) {
+          setPlants(rows)
+        }
+      })
+      .catch(() => {
+        // Silently keep FALLBACK_PLANTS — error already in default state.
+      })
+    return () => { cancelled = true }
   }, [])
 
   /** Admin tool pages (not in workspace registry). */
@@ -85,6 +125,34 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     { id: 'help-scenarios', label: 'Scenario Review Guide', description: 'Step-by-step training scenarios by role', category: 'Help & Training', action: () => { setWorkspace('help-scenarios'); onClose() } },
   ]
 
+  /** Plant shortcuts generated from the API response (or fallback). */
+  const plantCommands: Command[] = plants.flatMap(p => {
+    if (!p || typeof p.plantId !== 'string' || !p.plantId || typeof p.warehouseId !== 'string' || !p.warehouseId) return []
+    return [
+    {
+      id: `wm-ops-${p.plantId.toLowerCase()}`,
+      label: `Open WM Operations — ${p.warehouseId} · ${p.plantId}`,
+      description: `Staging & dispensary manager tools · Plant ${p.plantId} · Warehouse ${p.warehouseId}`,
+      category: 'Plant Shortcuts',
+      action: () => {
+        setActiveScope({ warehouseId: p.warehouseId, plantId: p.plantId })
+        setWorkspace('wm-operations')
+        onClose()
+      },
+    },
+    {
+      id: `wh360-${p.plantId.toLowerCase()}`,
+      label: `Open Warehouse 360 — ${p.warehouseId} · ${p.plantId}`,
+      description: `Main warehouse · Plant ${p.plantId} · Warehouse ${p.warehouseId}`,
+      category: 'Plant Shortcuts',
+      action: () => {
+        setActiveScope({ warehouseId: p.warehouseId, plantId: p.plantId })
+        setWorkspace('warehouse-360-overview')
+        onClose()
+      },
+    },
+  ]})
+
   /** Build the full command list from registered workspaces + quick actions. */
   const allCommands: Command[] = [
     ...workspaceRegistry
@@ -102,72 +170,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     ...adminCommands,
     ...pilotAdminCommands,
     ...helpCommands,
-    {
-      id: 'wh360-c061',
-      label: 'Open Warehouse 360 — 104 · Portbury [MFG]',
-      description: 'Main warehouse · Plant C061 · Warehouse 104',
-      category: 'Recent Investigations',
-      action: () => {
-        setActiveScope({ warehouseId: '104', plantId: 'C061' })
-        setWorkspace('warehouse-360-overview')
-        onClose()
-      },
-    },
-    {
-      id: 'wh360-p817',
-      label: 'Open Warehouse 360 — 208 · Jackson [MFG]',
-      description: 'Main warehouse · Plant P817 · Warehouse 208',
-      category: 'Recent Investigations',
-      action: () => {
-        setActiveScope({ warehouseId: '208', plantId: 'P817' })
-        setWorkspace('warehouse-360-overview')
-        onClose()
-      },
-    },
-    {
-      id: 'wm-ops-c061',
-      label: 'Open WM Operations — 104 · Portbury [MFG]',
-      description: 'Staging & dispensary manager tools · Plant C061 · Warehouse 104',
-      category: 'Recent Investigations',
-      action: () => {
-        setActiveScope({ warehouseId: '104', plantId: 'C061' })
-        setWorkspace('wm-operations')
-        onClose()
-      },
-    },
-    {
-      id: 'wm-ops-p817',
-      label: 'Open WM Operations — 208 · Jackson [MFG]',
-      description: 'Staging & dispensary manager tools · Plant P817 · Warehouse 208',
-      category: 'Recent Investigations',
-      action: () => {
-        setActiveScope({ warehouseId: '208', plantId: 'P817' })
-        setWorkspace('wm-operations')
-        onClose()
-      },
-    },
-    {
-      id: 'wm-ops-p806',
-      label: 'Open WM Operations — 190 · Clark North [MFG]',
-      description: 'Staging & dispensary manager tools · Plant P806 · Warehouse 190',
-      category: 'Recent Investigations',
-      action: () => {
-        setActiveScope({ warehouseId: '190', plantId: 'P806' })
-        setWorkspace('wm-operations')
-        onClose()
-      },
-    },
-    {
-      id: 'wm-ops-c351',
-      label: 'Open WM Operations — 105 · Olesnica [MFG]',
-      description: 'Staging & dispensary manager tools · Plant C351 · Warehouse 105',
-      category: 'Recent Investigations',
-      action: () => {
-        setActiveScope({ warehouseId: '105', plantId: 'C351' })
-        setWorkspace('wm-operations')
-        onClose()
-      },
-    },
+    ...plantCommands,
     {
       id: 'por-mock',
       label: 'Open Process Order — PO-240308-3847',

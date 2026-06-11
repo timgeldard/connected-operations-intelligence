@@ -592,3 +592,49 @@ class TestDowntimeRoutes:
         assert row["durationMinutes"] == 90.0
         assert row["orderNumber"] == "900001"
         assert response.headers.get("x-contract-id") == "wm_operations.downtime_events"
+
+
+class TestPlantsRoute:
+    async def test_plants_returns_mapped_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "warehouse_id": "104",
+            "worklist_tr_count": 42,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/plants",
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["plantId"] == "C061"
+        assert row["warehouseId"] == "104"
+        assert row["worklistTrCount"] == 42
+        assert response.headers.get("x-contract-id") == "wm_operations.plants"
+
+    async def test_plants_accepts_plant_id_filter(self, wm_ops_databricks_env) -> None:
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/plants",
+                    params={"plant_id": "P817"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "plant_id = :plant_id" in executed_sql
+
+    async def test_plants_returns_401_when_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get("/api/wm-operations/plants")
+        assert response.status_code == 401
+
+    async def test_plants_returns_503_in_legacy_mode(self, monkeypatch) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get("/api/wm-operations/plants", headers=_HEADERS_WITH_TOKEN)
+        assert response.status_code == 503
