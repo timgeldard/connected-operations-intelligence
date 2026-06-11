@@ -97,9 +97,9 @@ Source: `connected_plant.sap.inspection_qave`. PK = PRUEFLOS + KZART + ZAEHLER.
 **Resolved functional items:**
 - *Usage-decision accept/reject*: derive from **VBEWERTUNG** (valuation code), not VCODE. The imported
   `VCODE isin('A','AA') → Accepted` is unsound — VCODE is a free, plant-configurable catalog code.
-  **VBEWERTUNG value domain (A=accepted / R=rejected) is design-intent pending data confirmation** —
-  confirm actual codes against `inspection_qave` data once run-eligible. Until then, surface
-  VBEWERTUNG raw and derive the label in a clearly-marked, confirmable mapping.
+  **VBEWERTUNG value domain CONFIRMED from UAT data (2026-06-11): 'A' = accepted / 'R' = rejected /
+  blank** (C061: 964k A, 4.4k R; P817: 123k A, 4.6k R). The silver transform surfaces VBEWERTUNG raw
+  alongside the derived label so the mapping stays auditable.
 - *UD-on-QALS vs QAVE*: VCODE/VDATUM are **QAVE** fields. The imported code reads them off QALS (`l.*`),
   which is simply wrong-table. They move to this child table.
 
@@ -350,5 +350,5 @@ verified in — so the result-grain producer can never materialise all-138-plant
   `spc_criterion` — a correctness *and* volume question.
 - **History/retention window** (§9): 4+ years at result grain; confirm SPC baselining needs before
   trimming hot history.
-- VBEWERTUNG value domain (A/R) — confirm against `inspection_qave` data (§4).
+- ~~VBEWERTUNG value domain (A/R)~~ — RESOLVED 2026-06-11: confirmed A/R/blank from UAT data (§4).
 - Whether to retain qmih for QMNUM enrichment (§5) — deliberate call, model as 1:many if kept.

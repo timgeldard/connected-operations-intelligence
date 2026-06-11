@@ -11,7 +11,7 @@ function Overlay({ title, subtitle, onClose, children }: {
 }) {
   return (
     <div className="kw-overlay-backdrop" onClick={onClose}>
-      <div className="kw-overlay" role="dialog" aria-label={title} onClick={e => e.stopPropagation()}>
+      <div className="kw-overlay" role="dialog" aria-modal="true" aria-label={title} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ flex: 1 }}>
             <div className="kw-eyebrow">{subtitle ?? 'WM Operations'}</div>

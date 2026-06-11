@@ -11,9 +11,13 @@ export function setWorklistDeepLink(link: WorklistDeepLink): void {
   pending = link
 }
 
-/** Returns the pending deep link once, then clears it. */
-export function consumeWorklistDeepLink(): WorklistDeepLink | null {
-  const link = pending
+/** Read the pending deep link WITHOUT clearing it — safe to call during render
+ * (no side effect, so abandoned/re-run concurrent renders cannot drop the link). */
+export function peekWorklistDeepLink(): WorklistDeepLink | null {
+  return pending
+}
+
+/** Clear the pending deep link. Call from an effect after the consumer has committed. */
+export function clearWorklistDeepLink(): void {
   pending = null
-  return link
 }

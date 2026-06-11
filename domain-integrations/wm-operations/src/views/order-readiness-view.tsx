@@ -47,7 +47,7 @@ const HORIZONS = [
 
 export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrder }: OrderReadinessViewProps) {
   const [horizon, setHorizon] = useState('')
-  const [drillOrder, setDrillOrder] = useState<{ orderId: string; label?: string } | null>(null)
+  const [drillOrder, setDrillOrder] = useState<{ plantId: string; orderId: string; label?: string } | null>(null)
   const result = useWmOrderReadiness({
     ...request,
     startFromDaysAgo: horizon ? 2 : undefined,
@@ -117,7 +117,7 @@ export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrd
                   <tr key={`${order.plantId}-${order.orderId}`}>
                     <td><BandDot band={order.readinessBand} /></td>
                     <td className="kw-mono">
-                      <button type="button" className="kw-link" onClick={() => setDrillOrder({ orderId: order.orderId, label: order.materialName ?? undefined })}>{order.orderId}</button>
+                      <button type="button" className="kw-link" onClick={() => setDrillOrder({ plantId: order.plantId, orderId: order.orderId, label: order.materialName ?? undefined })}>{order.orderId}</button>
                     </td>
                     <td title={order.materialId ?? undefined}>
                       {order.materialName ?? order.materialId ?? '—'}
@@ -150,9 +150,9 @@ export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrd
           </div>
         )}
       </div>
-      {drillOrder && request.plantId && (
+      {drillOrder && (
         <OrderDetailOverlay
-          plantId={request.plantId}
+          plantId={drillOrder.plantId}
           orderId={drillOrder.orderId}
           orderLabel={drillOrder.label}
           onClose={() => setDrillOrder(null)}

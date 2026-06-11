@@ -21,9 +21,9 @@ meta:
   canonical_gate_plant: site_config_plant
   canonical_gate_warehouse: site_config_warehouse
   helper: silver/_plant_gate.py
-  phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; + quality source-guarded
-  enforced_count: 12           # + stock_at_location (plant axis) + storage_bin (warehouse axis) — fixed the overview/im_wm consumption-view leak
-  source_guarded_count: 4      # process_order_operation / pi_sheet_execution / downtime_event + quality_inspection_lot — gate-ready/CDC-blocked
+  phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; QM lot+UD enforced 2026-06-11
+  enforced_count: 14           # + quality_inspection_lot + quality_inspection_usage_decision (QM hold flipped, plant+time gated)
+  source_guarded_count: 3      # process_order_operation / pi_sheet_execution / downtime_event — gate-ready/CDC-blocked
   exempt_count: 17
   needs_mapping_count: 8
   blocked_count: 0
@@ -74,28 +74,32 @@ silver_outputs:
     current_status: ENFORCED
     owner_action_required: none
 
-  # ── NEEDS_MAPPING (operational; Phase 2 enforcement) ──────────────────────
+  # ── ENFORCED (QM lot + usage decision — corrected model enabled 2026-06-11) ──
   - table_name: quality_inspection_lot
     file: silver/tables/quality.py
-    source_tables: [inspection_qals, qualitymessage_qmih]
-    gating_category: DIRECT_PLANT   # plant is WERK on inspection_qals (NOT WERKS) — direct, once the contract is reconciled
+    source_tables: [inspection_qals]
+    gating_category: DIRECT_PLANT   # plant is WERK on inspection_qals (NOT WERKS)
     gate_field: plant_code
     gate_join_path: "inspection_qals.WERK (direct)"
     gate_config_table: site_config_plant
     product_area: quality
-    current_status: SOURCE_GUARDED
-    owner_action_required: >-
-      Source-guarded off (inspection_qals lacks AERUNID/AERECNO CDC metadata → no deterministic SCD1; only
-      AEDATTM present). Does NOT materialise, so it is NOT a recurring-cost flow. A plant gate is NOT yet
-      applied (deliberate): the transform's field contract mismatches the replicated inspection_qals, so a
-      gate/WERK fix in isolation gives no runtime benefit. FULL QM RECONCILIATION required before enabling:
-      (1) CDC metadata on inspection_qals (AERUNID/AERECNO) OR an approved snapshot/current-state design;
-      (2) field contract — plant WERK (not WERKS); LOTORIGIN/MENGE/MEINH appear renamed (HERKUNFT/LOSMENGE/
-      MENGENEINH — confirm via DD03L); VCODE/VENDAT (usage decision) are NOT on QALS (QAVE); ENSTDE/EENDDE/
-      KZLOESCH absent. MANDANT/client already fixed (#27). See sap_unresolved_sources.yml
-      (quality_inspection_qals_field_contract_and_cdc_gap) + validation/quality_qm_field_contract_check.sql.
-      Then add apply_plant_gate(quality) and reclassify ENFORCED. NOT a Warehouse360 feeder; no gold reads it.
-    validation_query_reference: validation/quality_qm_field_contract_check.sql
+    current_status: ENFORCED
+    owner_action_required: none   # corrected model per docs/quality_qm_functional_model.md; snapshot MV,
+                                  # apply_plant_gate(quality) + configurable qm_lookback_years time gate (default 5y)
+
+  - table_name: quality_inspection_usage_decision
+    file: silver/tables/quality.py
+    source_tables: [inspection_qave, inspection_qals]
+    gating_category: DIRECT_PLANT   # gated VIA PARENT LOT: QAVE.VWERKS is the central QM plant ('R001'), NOT the lot's plant
+    gate_field: plant_code
+    gate_join_path: "inspection_qave.PRUEFLOS -> gated inspection_qals.WERK (gate-via-parent)"
+    gate_config_table: site_config_plant
+    product_area: quality
+    current_status: ENFORCED
+    owner_action_required: none   # inherits plant + time gate from the gated QALS parent join; final
+                                  # apply_plant_gate(quality) kept on the derived plant_code (authoritative)
+
+  # ── NEEDS_MAPPING (operational; Phase 2 enforcement) ──────────────────────
 
   - table_name: reservation_requirement
     file: silver/tables/warehouse_flow.py

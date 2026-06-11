@@ -4,7 +4,7 @@ import type { WmDrillRequest, WmOperationsAdapterRequest } from './wm-operations
 
 export function useWmOrderComponents(request: WmDrillRequest, enabled = true) {
   return useQuery({
-    queryKey: ['wm-ops-order-components', request.plantId ?? null, request.orderId ?? null],
+    queryKey: ['wm-ops-order-components', request.plantId ?? null, request.orderId ?? null, request.limit ?? null],
     queryFn: () => wmOperationsAdapter.getOrderComponents(request),
     staleTime: 60 * 1000,
     enabled: enabled && Boolean(request.plantId && request.orderId),
@@ -13,7 +13,7 @@ export function useWmOrderComponents(request: WmDrillRequest, enabled = true) {
 
 export function useWmOperatorActivity(request: WmDrillRequest) {
   return useQuery({
-    queryKey: ['wm-ops-operator-activity', request.plantId ?? null, request.warehouseId ?? null, request.days ?? 14],
+    queryKey: ['wm-ops-operator-activity', request.plantId ?? null, request.warehouseId ?? null, request.days ?? 14, request.limit ?? null],
     queryFn: () => wmOperationsAdapter.getOperatorActivity(request),
     staleTime: 60 * 1000,
   })
@@ -21,7 +21,7 @@ export function useWmOperatorActivity(request: WmDrillRequest) {
 
 export function useWmQueueWorkload(request: WmDrillRequest) {
   return useQuery({
-    queryKey: ['wm-ops-queue-workload', request.plantId ?? null, request.warehouseId ?? null],
+    queryKey: ['wm-ops-queue-workload', request.plantId ?? null, request.warehouseId ?? null, request.limit ?? null],
     queryFn: () => wmOperationsAdapter.getQueueWorkload(request),
     staleTime: 60 * 1000,
   })
@@ -29,7 +29,7 @@ export function useWmQueueWorkload(request: WmDrillRequest) {
 
 export function useWmOutbound(request: WmDrillRequest) {
   return useQuery({
-    queryKey: ['wm-ops-outbound', request.plantId ?? null, request.warehouseId ?? null, request.includeShipped ?? false],
+    queryKey: ['wm-ops-outbound', request.plantId ?? null, request.warehouseId ?? null, request.includeShipped ?? false, request.limit ?? null],
     queryFn: () => wmOperationsAdapter.getOutbound(request),
     staleTime: 60 * 1000,
   })
@@ -37,7 +37,7 @@ export function useWmOutbound(request: WmDrillRequest) {
 
 export function useWmReconAlerts(request: WmDrillRequest) {
   return useQuery({
-    queryKey: ['wm-ops-recon-alerts', request.plantId ?? null, request.warehouseId ?? null],
+    queryKey: ['wm-ops-recon-alerts', request.plantId ?? null, request.warehouseId ?? null, request.limit ?? null],
     queryFn: () => wmOperationsAdapter.getReconAlerts(request),
     staleTime: 60 * 1000,
   })
@@ -59,7 +59,7 @@ export function useWmList<T>(
 
 export function useWmBatchMovements(request: WmDrillRequest, enabled = true) {
   return useQuery({
-    queryKey: ['wm-ops-batch-movements', request.plantId ?? null, request.materialId ?? null, request.batchId ?? null],
+    queryKey: ['wm-ops-batch-movements', request.plantId ?? null, request.materialId ?? null, request.batchId ?? null, request.days ?? null, request.limit ?? null],
     queryFn: () => wmOperationsAdapter.getBatchMovements(request),
     staleTime: 60 * 1000,
     enabled: enabled && Boolean(request.plantId && request.materialId),
@@ -97,7 +97,7 @@ export function useWmWorklistSummary(request: WmOperationsAdapterRequest) {
 
 export function useWmOrderReadiness(request: WmOperationsAdapterRequest) {
   return useQuery({
-    queryKey: ['wm-ops-order-readiness', request.plantId ?? null, request.warehouseId ?? null, request.startFromDaysAgo ?? null, request.startToDaysAhead ?? null],
+    queryKey: ['wm-ops-order-readiness', request.plantId ?? null, request.warehouseId ?? null, request.startFromDaysAgo ?? null, request.startToDaysAhead ?? null, request.limit ?? null],
     queryFn: () => wmOperationsAdapter.getOrderReadiness(request),
     staleTime: STALE,
   })
@@ -114,6 +114,7 @@ export function useWmBinStock(request: WmOperationsAdapterRequest) {
       request.materialId ?? null,
       request.binId ?? null,
       request.expiringWithinDays ?? null,
+      request.limit ?? null,
     ],
     queryFn: () => wmOperationsAdapter.getBinStock(request),
     staleTime: STALE,

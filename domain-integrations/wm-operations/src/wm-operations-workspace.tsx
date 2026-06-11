@@ -140,6 +140,7 @@ function ViewNav({
             type="button"
             className={`kw-viewnav-tab${live ? ' kw-viewnav-tab--active' : ''}`}
             title="Refresh all data every 60 seconds (wall-screen mode)"
+            aria-pressed={live}
             onClick={onToggleLive}
           >
             {live ? 'Live 60s' : 'Live off'}
@@ -172,6 +173,7 @@ export function WmOperationsWorkspace({
     plantId: scope.plantId,
     warehouseId: scope.warehouseId,
   }
+  const activeViewId = isValidViewId(viewId) ? viewId : 'staging-worklist'
   const queryClient = useQueryClient()
   const [live, setLive] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<string | null>(null)
@@ -190,12 +192,12 @@ export function WmOperationsWorkspace({
     <StandardWorkspaceTemplate
       registration={wmOperationsRegistration}
       scope={scope}
-      defaultViewId={isValidViewId(viewId) ? viewId : 'staging-worklist'}
+      defaultViewId={activeViewId}
     >
       <div className="kerry-wm" data-testid="wm-operations-workspace">
-        <ViewNav activeViewId={viewId} onNavigate={onNavigateToView} live={live} onToggleLive={() => setLive(v => !v)} lastRefresh={lastRefresh} />
+        <ViewNav activeViewId={activeViewId} onNavigate={onNavigateToView} live={live} onToggleLive={() => setLive(v => !v)} lastRefresh={lastRefresh} />
         {scope.plantId || scope.warehouseId ? (
-          resolveView(viewId, request, onNavigateToView, onOpenProcessOrder)
+          resolveView(activeViewId, request, onNavigateToView, onOpenProcessOrder)
         ) : (
           <>
             <ViewHeader

@@ -11,8 +11,11 @@ import os
 from typing import Optional
 
 from adapters.wm_operations.wm_operations_databricks_adapter import (
+    SIMPLE_DATASETS,
     WmBatchMovementsRequest,
     WmBinStockRequest,
+    WmDeliveryPicksRequest,
+    WmMovementsRequest,
     WmOperationsRepository,
     WmOperatorActivityRequest,
     WmOrderComponentsRequest,
@@ -21,22 +24,19 @@ from adapters.wm_operations.wm_operations_databricks_adapter import (
     WmQueueWorkloadRequest,
     WmReconAlertsRequest,
     WmSimpleRequest,
-    SIMPLE_DATASETS,
-    map_wm_simple_rows,
-    WmDeliveryPicksRequest,
-    map_wm_delivery_picks_rows,
-    WmMovementsRequest,
-    map_wm_movements_rows,
     WmWorklistRequest,
     WmWorklistSummaryRequest,
     map_wm_batch_movements_rows,
     map_wm_bin_stock_rows,
+    map_wm_delivery_picks_rows,
+    map_wm_movements_rows,
     map_wm_operator_activity_rows,
     map_wm_order_components_rows,
     map_wm_order_readiness_rows,
     map_wm_outbound_rows,
     map_wm_queue_workload_rows,
     map_wm_recon_alerts_rows,
+    map_wm_simple_rows,
     map_wm_worklist_rows,
     map_wm_worklist_summary_rows,
 )
@@ -213,6 +213,9 @@ async def wm_operations_worklist(
     _require_databricks_mode("WM Operations worklist")
     _validate_limit(limit, 500)
 
+    # Repository construction stays OUTSIDE the 422 guard: a missing Databricks config is a
+    # server-side error (500), not a client validation failure.
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
     try:
         req = WmWorklistRequest(
             plant_id=plant_id.strip() if plant_id else None,
@@ -226,7 +229,6 @@ async def wm_operations_worklist(
             limit=limit,
             offset=max(0, offset),
         )
-        repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
         rows, spec = await run_repository_fetch(lambda: repo.fetch_worklist(req))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -246,12 +248,15 @@ async def wm_operations_worklist_summary(
     """Worklist KPI strip (counts by work area and status) — databricks-api only."""
     _require_databricks_mode("WM Operations worklist summary")
 
-    req = WmWorklistSummaryRequest(
-        plant_id=plant_id.strip() if plant_id else None,
-        warehouse_id=warehouse_id.strip() if warehouse_id else None,
-    )
     repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
-    rows, spec = await run_repository_fetch(lambda: repo.fetch_worklist_summary(req))
+    try:
+        req = WmWorklistSummaryRequest(
+            plant_id=plant_id.strip() if plant_id else None,
+            warehouse_id=warehouse_id.strip() if warehouse_id else None,
+        )
+        rows, spec = await run_repository_fetch(lambda: repo.fetch_worklist_summary(req))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     set_databricks_response_headers(response, spec)
     return map_wm_worklist_summary_rows(rows)
 
@@ -275,15 +280,18 @@ async def wm_operations_order_readiness(
     for bound in (start_from_days_ago, start_to_days_ahead):
         if bound is not None and (bound < 0 or bound > 3650):
             raise HTTPException(status_code=422, detail="day bounds must be between 0 and 3650")
-    req = WmOrderReadinessRequest(
-        plant_id=plant_id.strip() if plant_id else None,
-        warehouse_id=warehouse_id.strip() if warehouse_id else None,
-        start_from_days_ago=start_from_days_ago,
-        start_to_days_ahead=start_to_days_ahead,
-        limit=limit,
-    )
     repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
-    rows, spec = await run_repository_fetch(lambda: repo.fetch_order_readiness(req))
+    try:
+        req = WmOrderReadinessRequest(
+            plant_id=plant_id.strip() if plant_id else None,
+            warehouse_id=warehouse_id.strip() if warehouse_id else None,
+            start_from_days_ago=start_from_days_ago,
+            start_to_days_ahead=start_to_days_ahead,
+            limit=limit,
+        )
+        rows, spec = await run_repository_fetch(lambda: repo.fetch_order_readiness(req))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     set_databricks_response_headers(response, spec)
     return map_wm_order_readiness_rows(rows)
 
@@ -307,6 +315,7 @@ async def wm_operations_bin_stock(
     _require_databricks_mode("WM Operations bin stock")
     _validate_limit(limit, 1000)
 
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
     try:
         req = WmBinStockRequest(
             plant_id=plant_id.strip() if plant_id else None,
@@ -318,7 +327,6 @@ async def wm_operations_bin_stock(
             expiring_within_days=expiring_within_days,
             limit=limit,
         )
-        repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
         rows, spec = await run_repository_fetch(lambda: repo.fetch_bin_stock(req))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

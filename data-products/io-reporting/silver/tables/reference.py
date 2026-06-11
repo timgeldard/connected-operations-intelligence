@@ -8,7 +8,6 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import BooleanType, StringType, StructField, StructType
 
 from silver._plant_gate import apply_plant_gate
-
 from silver.helpers import (
     BRONZE,
     PROCESS_LINE_ATINN,

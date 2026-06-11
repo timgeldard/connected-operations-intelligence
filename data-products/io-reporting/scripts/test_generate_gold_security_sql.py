@@ -4,7 +4,6 @@ Spark-free: the generator is pure string generation. Each test runs in a tmp cwd
 the committed resources/sql files.
 """
 import importlib.util
-import os
 import pathlib
 
 import pytest

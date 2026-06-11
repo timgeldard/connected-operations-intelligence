@@ -125,7 +125,7 @@ if bronze_columns_exist("inspection_qals", _QALS_REQUIRED) and bronze_columns_ex
     def quality_inspection_lot():
         spark = get_spark()
         lots = _gated_qals(spark)
-        return lots.select(
+        out = lots.select(
             # QM inspection objects use MANDANT, not MANDT (replicated-source convention, #27).
             F.col("MANDANT").alias("client"),
             F.col("PRUEFLOS").alias("inspection_lot_number"),
@@ -158,6 +158,9 @@ if bronze_columns_exist("inspection_qals", _QALS_REQUIRED) and bronze_columns_ex
             # Extraction timestamp only — NOT an event-ordering column (MCHB note).
             F.col("AEDATTM").cast("timestamp").alias("_replicated_at"),
         )
+        # Authoritative output gate (pre-gated in _gated_qals on the same axis; kept as the
+        # belt-and-braces final gate, same as batch_stock).
+        return apply_plant_gate(out, "plant_code", "quality", spark=spark)
 
     # ── 2. QUALITY INSPECTION USAGE DECISION (QAVE, UD grain — 1:many per lot) ──
 

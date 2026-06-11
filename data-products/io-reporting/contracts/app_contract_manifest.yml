@@ -370,8 +370,8 @@ contracts:
     lifecycle: draft
     description: >
       Material shortfalls — open transfer-requirement backlog aggregated to plant x material
-      (ADR-0004 D2; sourced from gold_transfer_requirement_material_backlog /
-      silver.warehouse_transfer_requirement). Candidate contract pending DEV profiling.
+      (ADR-0004 D2; upstream lineage: the transfer-requirement material-backlog gold MV over
+      the silver warehouse transfer requirements). Candidate contract pending DEV profiling.
     source_view: vw_consumption_warehouse360_shortfalls
     grain: one row per plant_id and material_id
     primary_key:
@@ -1727,12 +1727,13 @@ contracts:
       RF operator pick activity per day from confirmed transfer-order items. Quantity totals
       mix base UoMs — item counts are the comparable measure. Candidate contract pending DEV profiling.
     source_view: vw_consumption_wm_operations_operator_activity
-    grain: one row per plant_id, warehouse_id, operator and activity_date
+    grain: one row per plant_id, warehouse_id, operator, activity_date and shift
     primary_key:
       - plant_id
       - warehouse_id
       - operator
       - activity_date
+      - shift
     freshness:
       expected_minutes: 30
       warning_minutes: 60
@@ -2746,6 +2747,7 @@ contracts:
       - plant_id
       - warehouse_id
       - work_area
+      - production_supply_area
       - demand_hour
     freshness:
       expected_minutes: 30

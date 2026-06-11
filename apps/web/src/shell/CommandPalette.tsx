@@ -104,7 +104,7 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
     ...helpCommands,
     {
       id: 'wh360-c061',
-      label: 'Open Warehouse 360 — 104 · Kerry Cork',
+      label: 'Open Warehouse 360 — 104 · Portbury [MFG]',
       description: 'Main warehouse · Plant C061 · Warehouse 104',
       category: 'Recent Investigations',
       action: () => {

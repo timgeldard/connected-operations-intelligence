@@ -27,6 +27,7 @@ export function InboundView({ request }: { readonly request: WmOperationsAdapter
   const lines = backlog.data?.ok ? backlog.data.data : []
   const huRows = hus.data?.ok ? hus.data.data : []
   const error = backlog.data && !backlog.data.ok ? backlog.data.error : null
+  const husError = hus.data && !hus.data.ok ? hus.data.error : null
 
   const aged = lines.filter(l => l.inboundBacklogRiskBand === 'red').length
   const watch = lines.filter(l => l.inboundBacklogRiskBand === 'amber').length
@@ -79,7 +80,8 @@ export function InboundView({ request }: { readonly request: WmOperationsAdapter
 
       <div className="kw-card">
         <div className="kw-card-title">Handling units by status</div>
-        {hus.isLoading ? <LoadingRows rows={3} /> : huRows.length === 0 ? (
+        {husError ? <EmptyNote>Could not load handling units — {husError.message}</EmptyNote>
+          : hus.isLoading ? <LoadingRows rows={3} /> : huRows.length === 0 ? (
           <EmptyNote>No handling-unit data for this scope.</EmptyNote>
         ) : (
           <div className="kw-table-wrap">

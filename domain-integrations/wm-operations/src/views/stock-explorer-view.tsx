@@ -97,12 +97,19 @@ export function StockExplorerView({ request }: StockExplorerViewProps) {
             disabled={lines.length === 0}
             onClick={() => {
               const cols = ['plantId', 'warehouseId', 'storageType', 'storageZone', 'binId', 'quantId', 'materialId', 'materialName', 'batchId', 'stockCategory', 'totalQty', 'availableQty', 'uom', 'goodsReceiptDate', 'expiryDate'] as const
-              const csv = [cols.join(','), ...lines.map(l => cols.map(c => JSON.stringify((l as unknown as Record<string, unknown>)[c] ?? '')).join(','))].join('\n')
+              // RFC-4180 escaping (JSON.stringify would emit JSON \" and \n escapes, not CSV quoting).
+              const escapeCsv = (value: unknown): string => {
+                const text = value == null ? '' : String(value)
+                return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+              }
+              const csv = [cols.join(','), ...lines.map(l => cols.map(c => escapeCsv((l as unknown as Record<string, unknown>)[c])).join(','))].join('\r\n')
+              const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
               const a = document.createElement('a')
-              a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+              a.href = url
               a.download = 'wm-bin-stock.csv'
               a.click()
-              URL.revokeObjectURL(a.href)
+              // Revoke after the download has started — revoking synchronously can cancel it.
+              setTimeout(() => URL.revokeObjectURL(url), 10_000)
             }}
           >
             Export CSV

@@ -137,11 +137,11 @@ SELECT
 FROM connected_plant_prod.gold_io_reporting.gold_wm_bin_stock_detail_live
 WHERE plant_code IS NOT NULL;
 
--- TODO_SECURITY: replace with approved group.
--- GRANT SELECT ON VIEW vw_consumption_wm_operations_worklist TO `warehouse360_app_users`;
--- GRANT SELECT ON VIEW vw_consumption_wm_operations_worklist_summary TO `warehouse360_app_users`;
--- GRANT SELECT ON VIEW vw_consumption_wm_operations_order_readiness TO `warehouse360_app_users`;
--- GRANT SELECT ON VIEW vw_consumption_wm_operations_bin_stock TO `warehouse360_app_users`;
+-- TODO_SECURITY: grants pending the approved consumer group. Applies to EVERY
+-- vw_consumption_wm_operations_* view in this file (not just the first four) — grant in one
+-- block once the principal is approved. The deployed app reads via its own identity flow
+-- (fixture/RLS scripts), so these grants gate ad-hoc/pilot user access only. Example:
+-- GRANT SELECT ON VIEW vw_consumption_wm_operations_worklist TO `<approved_group>`;  -- repeat per view
 
 
 -- 5. Order component detail (drill-through behind Order Readiness)

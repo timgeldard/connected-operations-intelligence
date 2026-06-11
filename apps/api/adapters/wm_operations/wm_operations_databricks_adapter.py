@@ -88,6 +88,16 @@ def _opt_str(row: dict, key: str) -> Optional[str]:
     return str(value) if value not in (None, "") else None
 
 
+def _safe_bool(value: object) -> Optional[bool]:
+    """Statements-API booleans arrive as strings ("true"/"false") — bool("false") is True,
+    so flags must be parsed, not cast (same coercion map_rows_generic applies)."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() == "true"
+
+
 def _scope_where(request, params: dict, clauses: Optional[list[str]] = None) -> str:
     """Shared optional plant/warehouse predicate."""
     where_clauses: list[str] = list(clauses or [])
@@ -171,7 +181,7 @@ def get_wm_worklist_spec(request: WmWorklistRequest) -> QuerySpec:
     FROM {view}
     {where_str}
     ORDER BY planned_execution_ts ASC NULLS LAST, created_ts ASC
-    LIMIT {request.limit} OFFSET {int(request.offset)}
+    LIMIT {int(request.limit)} OFFSET {int(request.offset)}
     """
     return QuerySpec(
         name="wm_operations.get_worklist",
@@ -218,8 +228,7 @@ def map_wm_worklist_rows(rows: list[dict]) -> list[dict]:
             "requiredQty": _safe_float(row.get("required_qty")),
             "openQty": _safe_float(row.get("open_qty")),
             "uom": _opt_str(row, "uom"),
-            "hasMixedBaseUom": bool(row.get("has_mixed_base_uom"))
-            if row.get("has_mixed_base_uom") is not None else None,
+            "hasMixedBaseUom": _safe_bool(row.get("has_mixed_base_uom")),
             "toItemCount": _safe_int(row.get("to_item_count")),
             "toItemsConfirmed": _safe_int(row.get("to_items_confirmed")),
             "toConfirmedQty": _safe_float(row.get("to_confirmed_qty")),
@@ -227,7 +236,7 @@ def map_wm_worklist_rows(rows: list[dict]) -> list[dict]:
             "latestToConfirmedTs": _opt_str(row, "latest_to_confirmed_ts"),
             "cycleHours": _safe_float(row.get("cycle_hours")),
             "ageHours": _safe_float(row.get("age_hours")),
-            "isOverdue": bool(row.get("is_overdue")) if row.get("is_overdue") is not None else None,
+            "isOverdue": _safe_bool(row.get("is_overdue")),
         })
     return result
 
@@ -330,7 +339,7 @@ def get_wm_order_readiness_spec(request: WmOrderReadinessRequest) -> QuerySpec:
     FROM {view}
     {where_str}
     ORDER BY scheduled_start_date ASC NULLS LAST, order_id ASC
-    LIMIT {request.limit}
+    LIMIT {int(request.limit)}
     """
     return QuerySpec(
         name="wm_operations.get_order_readiness",
@@ -429,7 +438,7 @@ def get_wm_bin_stock_spec(request: WmBinStockRequest) -> QuerySpec:
     FROM {view}
     {where_str}
     ORDER BY storage_type ASC, bin_id ASC, quant_id ASC
-    LIMIT {request.limit}
+    LIMIT {int(request.limit)}
     """
     return QuerySpec(
         name="wm_operations.get_bin_stock",
@@ -466,15 +475,12 @@ def map_wm_bin_stock_rows(rows: list[dict]) -> list[dict]:
             "uom": _opt_str(row, "uom"),
             "goodsReceiptDate": _opt_str(row, "goods_receipt_date"),
             "expiryDate": _opt_str(row, "expiry_date"),
-            "isBlockedForStockRemoval": bool(row.get("is_blocked_for_stock_removal"))
-            if row.get("is_blocked_for_stock_removal") is not None else None,
-            "isBlockedForPutaway": bool(row.get("is_blocked_for_putaway"))
-            if row.get("is_blocked_for_putaway") is not None else None,
-            "isBinBlocked": bool(row.get("is_bin_blocked"))
-            if row.get("is_bin_blocked") is not None else None,
+            "isBlockedForStockRemoval": _safe_bool(row.get("is_blocked_for_stock_removal")),
+            "isBlockedForPutaway": _safe_bool(row.get("is_blocked_for_putaway")),
+            "isBinBlocked": _safe_bool(row.get("is_bin_blocked")),
             "blockingReasonCode": _opt_str(row, "blocking_reason_code"),
             "daysToExpiry": _safe_int(row.get("days_to_expiry")),
-            "isExpired": bool(row.get("is_expired")) if row.get("is_expired") is not None else None,
+            "isExpired": _safe_bool(row.get("is_expired")),
         })
     return result
 
@@ -540,7 +546,7 @@ def map_wm_order_components_rows(rows: list[dict]) -> list[dict]:
         "toConfirmedQty": _safe_float(r.get("to_confirmed_qty")),
         "pickProgressFraction": _safe_float(r.get("pick_progress_fraction")),
         "psaSuppliedQty": _safe_float(r.get("psa_supplied_qty")),
-        "isSupplied": bool(r.get("is_supplied")) if r.get("is_supplied") is not None else None,
+        "isSupplied": _safe_bool(r.get("is_supplied")),
     } for r in rows]
 
 
@@ -673,7 +679,7 @@ def get_wm_outbound_spec(request: WmOutboundRequest) -> QuerySpec:
     FROM {view}
     {where_str}
     ORDER BY planned_goods_issue_date ASC NULLS LAST, delivery_id ASC
-    LIMIT {request.limit}
+    LIMIT {int(request.limit)}
     """
     return QuerySpec(
         name="wm_operations.get_outbound",
@@ -699,11 +705,10 @@ def map_wm_outbound_rows(rows: list[dict]) -> list[dict]:
         "deliveryQty": _safe_float(r.get("delivery_qty")),
         "pickedQty": _safe_float(r.get("picked_qty")),
         "pickFraction": _safe_float(r.get("pick_fraction")),
-        "hasMixedBaseUom": bool(r.get("has_mixed_base_uom"))
-        if r.get("has_mixed_base_uom") is not None else None,
+        "hasMixedBaseUom": _safe_bool(r.get("has_mixed_base_uom")),
         "plannedGoodsIssueDate": _opt_str(r, "planned_goods_issue_date"),
         "actualGoodsIssueDate": _opt_str(r, "actual_goods_issue_date"),
-        "isShipped": bool(r.get("is_shipped")) if r.get("is_shipped") is not None else None,
+        "isShipped": _safe_bool(r.get("is_shipped")),
         "daysToGoodsIssue": _safe_int(r.get("days_to_goods_issue")),
         "riskBand": _opt_str(r, "risk_band"),
     } for r in rows]
@@ -729,7 +734,7 @@ def get_wm_recon_alerts_spec(request: WmReconAlertsRequest) -> QuerySpec:
     FROM {view}
     {where_str}
     ORDER BY alert_priority ASC, delta_value DESC NULLS LAST
-    LIMIT {request.limit}
+    LIMIT {int(request.limit)}
     """
     return QuerySpec(
         name="wm_operations.get_recon_alerts",
@@ -793,7 +798,7 @@ def get_wm_batch_movements_spec(request: WmBatchMovementsRequest) -> QuerySpec:
       AND posting_date >= date_sub(current_date(), :days)
       {batch_clause}
     ORDER BY posting_date DESC
-    LIMIT {request.limit}
+    LIMIT {int(request.limit)}
     """
     return QuerySpec(
         name="wm_operations.get_batch_movements",
@@ -905,7 +910,7 @@ def get_wm_movements_spec(request: WmMovementsRequest) -> QuerySpec:
     FROM {view}
     WHERE {" AND ".join(clauses)}
     ORDER BY posting_date DESC, document_number DESC
-    LIMIT {request.limit}
+    LIMIT {int(request.limit)}
     """
     return QuerySpec(
         name="wm_operations.get_movements",
@@ -1239,7 +1244,7 @@ def get_wm_simple_spec(dataset: str, request: WmSimpleRequest) -> QuerySpec:
     where_str = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     sql = (
         f"\n    SELECT {cfg['columns']}\n    FROM {view}\n    {where_str}\n"
-        f"    ORDER BY {cfg['order_by']}\n    LIMIT {request.limit}\n    "
+        f"    ORDER BY {cfg['order_by']}\n    LIMIT {int(request.limit)}\n    "
     )
     return QuerySpec(
         name=f"wm_operations.get_{dataset}",

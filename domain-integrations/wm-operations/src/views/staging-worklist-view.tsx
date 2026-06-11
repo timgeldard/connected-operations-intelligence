@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type {
   WmOperationsAdapterRequest,
   WmWorkArea,
@@ -8,7 +8,7 @@ import { useWmWorklist, useWmWorklistSummary } from '../adapters/wm-operations-q
 import { ViewHeader, EmptyNote } from '../components/kerry.js'
 import { WorklistTable } from '../panels/worklist-table.js'
 import { OrderDetailOverlay } from '../components/overlays.js'
-import { consumeWorklistDeepLink } from '../state/deep-link.js'
+import { clearWorklistDeepLink, peekWorklistDeepLink } from '../state/deep-link.js'
 import { WorklistSummaryStrip } from '../panels/worklist-summary-strip.js'
 
 export interface StagingWorklistViewProps {
@@ -44,8 +44,12 @@ function restoreFilters(): { workArea: string; status: string; queue: string; ca
 }
 
 export function StagingWorklistView({ request, onOpenProcessOrder }: StagingWorklistViewProps) {
-  const deepLink = consumeWorklistDeepLink()
-  const saved = restoreFilters()
+  // Lazy initialisers: peek (no mutation) is render-safe; localStorage is read once per mount,
+  // not on every render. The deep link is cleared in an effect AFTER the mount commits, so
+  // concurrent/StrictMode re-renders cannot drop it.
+  const [deepLink] = useState(peekWorklistDeepLink)
+  const [saved] = useState(restoreFilters)
+  useEffect(() => { clearWorklistDeepLink() }, [])
   const [workArea, setWorkArea] = useState<WmWorkArea | ''>(saved.workArea as WmWorkArea | '')
   const [status, setStatus] = useState<WmWorklistStatus | ''>(saved.status as WmWorklistStatus | '')
   const [queue, setQueue] = useState(saved.queue)

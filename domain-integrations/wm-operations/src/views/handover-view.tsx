@@ -29,6 +29,14 @@ export function HandoverView({ request }: { readonly request: WmOperationsAdapte
   const alertRows = alerts.data?.ok ? alerts.data.data : []
   const piRows = pi.data?.ok ? pi.data.data : []
   const exceptions = [...noStockRows, ...parkedRows]
+  // Failed queries must surface as errors, not as reassuring zero KPIs / empty handover cards.
+  const errOf = (q: { data?: { ok: true } | { ok: false; error: { message: string } } }) =>
+    q.data && !q.data.ok ? q.data.error : null
+  const stuckError = errOf(parked) ?? errOf(noStock)
+  const inProgressError = errOf(inProgress)
+  const stockError = errOf(stock)
+  const piError = errOf(pi)
+  const alertsError = errOf(alerts)
 
   return (
     <section>
@@ -49,25 +57,29 @@ export function HandoverView({ request }: { readonly request: WmOperationsAdapte
 
       <div className="kw-card">
         <div className="kw-card-title">Stuck jobs (no stock first, then parked)</div>
-        <WorklistTable
-          items={exceptions}
-          isLoading={parked.isLoading || noStock.isLoading}
-          emptyMessage="Nothing parked or blocked — clean handover."
-        />
+        {stuckError ? <EmptyNote>Could not load stuck jobs — {stuckError.message}</EmptyNote> : (
+          <WorklistTable
+            items={exceptions}
+            isLoading={parked.isLoading || noStock.isLoading}
+            emptyMessage="Nothing parked or blocked — clean handover."
+          />
+        )}
       </div>
 
       <div className="kw-card">
         <div className="kw-card-title">Work in flight</div>
-        <WorklistTable
-          items={inProgressRows}
-          isLoading={inProgress.isLoading}
-          emptyMessage="No jobs in progress."
-        />
+        {inProgressError ? <EmptyNote>Could not load work in flight — {inProgressError.message}</EmptyNote> : (
+          <WorklistTable
+            items={inProgressRows}
+            isLoading={inProgress.isLoading}
+            emptyMessage="No jobs in progress."
+          />
+        )}
       </div>
 
       <div className="kw-card">
         <div className="kw-card-title">Stock expiring within 7 days</div>
-        {stock.isLoading ? <LoadingRows rows={3} /> : expiring.length === 0 ? (
+        {stockError ? <EmptyNote>Could not load expiring stock — {stockError.message}</EmptyNote> : stock.isLoading ? <LoadingRows rows={3} /> : expiring.length === 0 ? (
           <EmptyNote>Nothing expiring this week.</EmptyNote>
         ) : (
           <div className="kw-table-wrap">
@@ -94,7 +106,7 @@ export function HandoverView({ request }: { readonly request: WmOperationsAdapte
 
       <div className="kw-card">
         <div className="kw-card-title">Physical inventory — open items</div>
-        {pi.isLoading ? <LoadingRows rows={3} /> : piRows.length === 0 ? (
+        {piError ? <EmptyNote>Could not load physical inventory — {piError.message}</EmptyNote> : pi.isLoading ? <LoadingRows rows={3} /> : piRows.length === 0 ? (
           <EmptyNote>No counts due, recounts, or unposted differences.</EmptyNote>
         ) : (
           <div className="kw-table-wrap">
@@ -122,7 +134,7 @@ export function HandoverView({ request }: { readonly request: WmOperationsAdapte
 
       <div className="kw-card">
         <div className="kw-card-title">Reconciliation alerts</div>
-        {alerts.isLoading ? <LoadingRows rows={3} /> : alertRows.length === 0 ? (
+        {alertsError ? <EmptyNote>Could not load reconciliation alerts — {alertsError.message}</EmptyNote> : alerts.isLoading ? <LoadingRows rows={3} /> : alertRows.length === 0 ? (
           <EmptyNote>No severe reconciliation variances.</EmptyNote>
         ) : (
           <div className="kw-table-wrap">

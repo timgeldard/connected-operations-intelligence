@@ -48,9 +48,9 @@
   /* Type */
   --kw-font-sans:   "Noto Sans", ui-sans-serif, system-ui, sans-serif;
   --kw-font-impact: "Noto Sans Condensed", "Noto Sans", ui-sans-serif, sans-serif;
-  --kw-font-serif:  "Noto Serif", ui-serif, Georgia, serif;
+  --kw-font-serif:  "Noto Serif", ui-serif, georgia, serif;
   /* Plex Mono is the brand's data face; ui-monospace is the graceful offline fallback. */
-  --kw-font-mono:   "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --kw-font-mono:   "IBM Plex Mono", ui-monospace, sfmono-regular, menlo, monospace;
 
   /* Shape & motion (radii 4/8/16, two-layer Forest-alpha shadows, ease-out) */
   --kw-r-sm: 4px;
@@ -206,7 +206,7 @@
   border: 1px solid transparent;
 }
 
-.kerry-wm .kw-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.kerry-wm .kw-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: currentcolor; }
 
 .kerry-wm .kw-chip--open        { color: var(--kw-valentia-slate); background: var(--kw-slate-10); border-color: var(--kw-slate-20); }
 .kerry-wm .kw-chip--in-progress { color: #1d6e74; background: color-mix(in srgb, var(--kw-sage) 14%, white); border-color: color-mix(in srgb, var(--kw-sage) 35%, white); }

@@ -25,7 +25,8 @@ by the *_live views (scripts/generate_gold_serving_views_sql.py). See ADR 012.
 """
 
 import dlt
-from pyspark.sql import DataFrame, Window, functions as F
+from pyspark.sql import DataFrame, Window
+from pyspark.sql import functions as F
 
 from gold._shared import (
     anti_join_optional_deleted_headers,
@@ -66,6 +67,19 @@ def _storage_zone_mapping(spark, silver_schema: str) -> DataFrame:
         .when(F.col("role") == "INTERIM", F.lit("INTERIM"))
         .otherwise(F.lit("WAREHOUSE"))
         .alias("storage_zone"),
+    )
+
+
+def _material_lookup(spark, silver_schema: str) -> DataFrame:
+    """(plant_code, material_code) -> material_description, guaranteed unique per key.
+
+    groupBy + first(non-null) rather than distinct(): if silver ever carries more than one
+    description for a material (historical churn), distinct() on all three columns would keep
+    both rows and fan out every join below."""
+    return (
+        spark.read.table(f"{silver_schema}.material")
+        .groupBy("plant_code", "material_code")
+        .agg(F.first("material_description", ignorenulls=True).alias("material_description"))
     )
 
 
@@ -111,11 +125,7 @@ def gold_wm_staging_worklist():
         F.col("material_code").alias("order_material_code"),
         "scheduled_start_date",
     )
-    material = (
-        spark.read.table(f"{ss}.material")
-        .select("plant_code", "material_code", "material_description")
-        .distinct()
-    )
+    material = _material_lookup(spark, ss)
 
     bool_int = lambda c: F.coalesce(c, F.lit(False)).cast("int")  # noqa: E731
 
@@ -377,11 +387,7 @@ def gold_wm_order_readiness():
     trs = spark.read.table(f"{ss}.warehouse_transfer_requirement")
     storage_bin = spark.read.table(f"{ss}.storage_bin")
     mapping = _storage_zone_mapping(spark, ss)
-    material = (
-        spark.read.table(f"{ss}.material")
-        .select("plant_code", "material_code", "material_description")
-        .distinct()
-    )
+    material = _material_lookup(spark, ss)
 
     # Release evidence: PHAS1 (is_released) where populated, else FTRMI (actual_release_date)
     # — the WM Cockpit's own definition of released (WMA-E-19: status I0002 or FTRMI not
@@ -554,11 +560,7 @@ def gold_wm_bin_stock_detail():
 
     storage_bin = spark.read.table(f"{ss}.storage_bin")
     mapping = _storage_zone_mapping(spark, ss)
-    material = (
-        spark.read.table(f"{ss}.material")
-        .select("plant_code", "material_code", "material_description")
-        .distinct()
-    )
+    material = _material_lookup(spark, ss)
 
     stock_category = F.when(F.coalesce(F.col("stock_category_code"), F.lit("")) == "", F.lit("UNRESTRICTED")) \
         .when(F.col("stock_category_code") == "Q", F.lit("QUALITY")) \
@@ -648,11 +650,7 @@ def gold_wm_order_component_detail():
     )
     storage_bin = spark.read.table(f"{ss}.storage_bin")
     mapping = _storage_zone_mapping(spark, ss)
-    material = (
-        spark.read.table(f"{ss}.material")
-        .select("plant_code", "material_code", "material_description")
-        .distinct()
-    )
+    material = _material_lookup(spark, ss)
 
     # Same activity filter as gold_wm_order_readiness (PHAS flags blank in replication).
     active_orders = orders.filter(
@@ -966,11 +964,7 @@ def gold_wm_slow_movers():
     ss = get_silver_schema(spark)
     storage_bin = spark.read.table(f"{ss}.storage_bin")
     mapping = _storage_zone_mapping(spark, ss)
-    material = (
-        spark.read.table(f"{ss}.material")
-        .select("plant_code", "material_code", "material_description")
-        .distinct()
-    )
+    material = _material_lookup(spark, ss)
     price = (
         spark.read.table(f"{ss}.material_valuation")
         .groupBy(F.col("valuation_area").alias("plant_code"), "material_code")
