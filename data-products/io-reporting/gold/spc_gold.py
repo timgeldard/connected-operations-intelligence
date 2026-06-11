@@ -377,8 +377,10 @@ def gold_spc_quality_metric_subgroup():
 
     # ── Material name enrichment ────────────────────────────────────────────
     # Left join: material silver keyed by (plant_code, material_code).
+    # Material lookup left to the optimizer (no broadcast hint) — house precedent from
+    # batch_stock's MARA join; material master can be large in other environments.
     material_enriched = enriched.join(
-        F.broadcast(material),
+        material,
         (enriched["plant_id"] == material["plant_code"])
         & (enriched["material_id"] == material["material_code"]),
         "left",
@@ -396,6 +398,10 @@ def gold_spc_quality_metric_subgroup():
     ).select(
         material_enriched["*"],
         plant_names["plant_name"],
+        # The generated row-level-security views (generate_gold_security_sql.py) filter on
+        # plant_code; the SPC adapter contract uses plant_id. Expose BOTH (same value) so the
+        # _secured layer resolves and the adapter keeps its column name.
+        material_enriched["plant_id"].alias("plant_code"),
     )
 
     return result
