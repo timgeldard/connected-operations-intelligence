@@ -57,8 +57,8 @@ added to the fast pipeline in this change). **There is no second source** — `w
 
 ## Logical contract → physical mapping
 
-The recommended logical fields map onto the **existing** `site_config_plant` columns (no schema change in
-Phase 1 — derived in `silver/_plant_gate.py`):
+The recommended logical fields map onto the `site_config_plant` columns (derived in
+`silver/_plant_gate.py`):
 
 | Logical field | Physical derivation |
 |---|---|
@@ -69,10 +69,19 @@ Phase 1 — derived in `silver/_plant_gate.py`):
 | `active_for_process_order` | `active_for_ioreporting AND process_manufacturing_flag` |
 | `active_for_quality` | `active_for_ioreporting AND qm_enabled_flag` |
 | `active_for_stock` | `active_for_ioreporting AND batch_managed_flag` |
+| `active_for_spc` | `active_for_quality AND spc_enabled_flag` |
 | `stage_gate_status` | `go_live_status` (e.g. PRODUCTION, PILOT, BLOCKED) |
 | `valid_from` / `valid_to` | `site_config_plant.valid_from` / `valid_to` |
 | `technical_validated` | **Not yet a first-class column.** Closest signal: `deployment_mode` (dev_shakedown vs full_validation) + `last_validated_at`. **Phase-2 schema addition** — NOT silently assumed true. |
 | `business_validated` | **Not yet a first-class column** (see above). DEV shakedown ≠ business-validated; UAT is the first business validation. **Phase-2 schema addition.** |
+
+**Two-tier QM rule** (Tim Geldard, 2026-06-11): "A site may need QM reporting but not WM reporting;
+above that, a site might have QM reporting but not SPC." The `quality` area therefore gates on
+`qm_enabled_flag` alone (independent of `wm_enabled_flag`), while the `spc` area is a further tier
+requiring BOTH `qm_enabled_flag` AND `spc_enabled_flag`. Set `spc_enabled_flag = false` in
+`site_config_plant` to give a site QM-reporting access without SPC result-grain data. The column
+is added to `site_config_plant`; the slow pipeline must rebuild that table before any spc-area
+flow first runs (fail-loud if column is absent).
 
 ## How a plant enters / leaves Silver
 
