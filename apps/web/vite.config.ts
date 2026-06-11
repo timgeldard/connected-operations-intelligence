@@ -24,6 +24,7 @@ const workspaceAliases = {
   '@connectio/di-spc': r('domain-integrations/spc/src/index.ts'),
   '@connectio/di-operations': r('domain-integrations/operations/src/index.ts'),
   '@connectio/di-warehouse': r('domain-integrations/warehouse/src/index.ts'),
+  '@connectio/di-wm-operations': r('domain-integrations/wm-operations/src/index.ts'),
   '@connectio/di-envmon': r('domain-integrations/envmon/src/index.ts'),
   '@connectio/di-maintenance': r('domain-integrations/maintenance/src/index.ts'),
 }
@@ -59,6 +60,7 @@ export default defineConfig({
           // Phase 5 pilot domain packages
           'di-spc': ['@connectio/di-spc'],
           'di-maintenance': ['@connectio/di-maintenance'],
+          'di-wm-operations': ['@connectio/di-wm-operations'],
         },
       },
     },

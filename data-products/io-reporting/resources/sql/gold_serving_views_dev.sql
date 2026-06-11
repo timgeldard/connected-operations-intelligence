@@ -88,6 +88,38 @@ SELECT
 FROM connected_plant_dev.gold_io_reporting.gold_warehouse_kpi_snapshot_secured AS b;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_warehouse_kpi_snapshot_live TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_staging_worklist_live AS
+SELECT
+  b.*,
+  CASE WHEN b.created_datetime IS NOT NULL THEN (unix_timestamp(current_timestamp()) - unix_timestamp(b.created_datetime)) / 3600.0 END AS age_hours,
+  b.planned_execution_datetime IS NOT NULL AND b.planned_execution_datetime < current_timestamp() AND b.worklist_status NOT IN ('COMPLETE') AS is_overdue
+FROM connected_plant_dev.gold_io_reporting.gold_wm_staging_worklist_secured AS b;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_staging_worklist_live TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_readiness_live AS
+SELECT
+  b.*,
+  datediff(b.scheduled_start_date, current_date()) AS days_to_start,
+  CASE WHEN b.readiness_status = 'NO_WM_DEMAND' THEN 'grey' WHEN datediff(b.scheduled_start_date, current_date()) IS NULL THEN 'grey' WHEN b.supply_status = 'SUPPLIED' THEN 'green' WHEN b.readiness_status IN ('NOT_STARTED', 'PARTIALLY_PLANNED') AND datediff(b.scheduled_start_date, current_date()) <= 0 THEN 'red' WHEN b.readiness_status <> 'SUPPLIED' AND datediff(b.scheduled_start_date, current_date()) <= 1 THEN 'amber' ELSE 'green' END AS readiness_band
+FROM connected_plant_dev.gold_io_reporting.gold_wm_order_readiness_secured AS b;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_readiness_live TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_bin_stock_detail_live AS
+SELECT
+  b.*,
+  CASE WHEN b.expiry_date IS NOT NULL THEN datediff(b.expiry_date, current_date()) END AS days_to_expiry,
+  b.expiry_date IS NOT NULL AND b.expiry_date < current_date() AS is_expired
+FROM connected_plant_dev.gold_io_reporting.gold_wm_bin_stock_detail_secured AS b;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_bin_stock_detail_live TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_slow_movers_live AS
+SELECT
+  b.*,
+  CASE WHEN b.last_movement_datetime IS NOT NULL THEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) END AS days_since_last_movement,
+  CASE WHEN b.last_movement_datetime IS NULL THEN 'NO_MOVEMENT_RECORD' WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 365 THEN 'OVER_365D' WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 180 THEN 'D180_365' WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 90 THEN 'D90_180' ELSE 'ACTIVE' END AS age_bucket
+FROM connected_plant_dev.gold_io_reporting.gold_wm_slow_movers_secured AS b;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_slow_movers_live TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_warehouse_exceptions_live AS
 SELECT
   b.*,

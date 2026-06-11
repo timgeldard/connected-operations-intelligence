@@ -6,6 +6,7 @@ import { envmonRegistration, envmonConsumerRegistration } from '@connectio/di-en
 import { productionStagingRegistration } from '@connectio/di-warehouse'
 import { spcMonitoringRegistration, spcConsumerRegistration } from '@connectio/di-spc'
 import { warehouse360Registration } from '@connectio/di-warehouse'
+import { wmOperationsRegistration } from '@connectio/di-wm-operations'
 import { maintenanceReliabilityRegistration } from '@connectio/di-maintenance'
 
 /**
@@ -60,6 +61,9 @@ export const workspaceRegistry: readonly WorkspaceRegistration[] = [
 
   // Phase 5 — Warehouse 360 Overview (pilot)
   warehouse360Registration,
+
+  // Phase 5 — WM Operations (pilot, Kerry-branded manager tools)
+  wmOperationsRegistration,
 
   // Phase 5 — Maintenance & Reliability (pilot)
   maintenanceReliabilityRegistration,

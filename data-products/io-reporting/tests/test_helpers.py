@@ -133,6 +133,19 @@ class TestSapDate:
         result = df.withColumn("out", sap_date("d")).collect()[0]["out"]
         assert result is None
 
+    def test_iso_format_date(self, spark):
+        """Some replication flows deliver ISO 'yyyy-MM-dd' (verified live on
+        connected_plant_uat AUFK/AFKO/LTBK, 2026-06-10)."""
+        df = spark.createDataFrame([Row(d="2026-04-01")])
+        result = df.withColumn("out", sap_date("d")).collect()[0]["out"]
+        assert result == date(2026, 4, 1)
+
+    def test_iso_sentinel_returns_null(self, spark):
+        """ISO-format SAP initial date '0000-00-00' must map to NULL."""
+        df = spark.createDataFrame([Row(d="0000-00-00")])
+        result = df.withColumn("out", sap_date("d")).collect()[0]["out"]
+        assert result is None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # sap_datetime — YYYYMMDD + HHMMSS → TIMESTAMP
@@ -163,6 +176,18 @@ class TestSapDatetime:
 
     def test_null_time_returns_null(self, spark):
         df = spark.createDataFrame([Row(d="20241215", t=None)], "d STRING, t STRING")
+        result = df.withColumn("out", sap_datetime("d", "t")).collect()[0]["out"]
+        assert result is None
+
+    def test_iso_format_datetime(self, spark):
+        """ISO replication format: 'yyyy-MM-dd' date + 'HH:mm:ss' time
+        (verified live on connected_plant_uat LTBK BDATU/BZEIT, 2026-06-10)."""
+        df = spark.createDataFrame([Row(d="2026-04-01", t="09:53:38")])
+        result = df.withColumn("out", sap_datetime("d", "t")).collect()[0]["out"]
+        assert result == datetime(2026, 4, 1, 9, 53, 38)
+
+    def test_iso_sentinel_date_returns_null(self, spark):
+        df = spark.createDataFrame([Row(d="0000-00-00", t="09:53:38")])
         result = df.withColumn("out", sap_datetime("d", "t")).collect()[0]["out"]
         assert result is None
 

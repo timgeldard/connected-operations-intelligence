@@ -56,6 +56,8 @@ resources:
             path: ../gold/warehouse_kpi_snapshot.py
         - file:
             path: ../gold/warehouse_kpis.py
+        - file:
+            path: ../gold/wm_operations_gold.py
 
       # Editable-install the synced bundle root so the `gold` package is importable at DLT runtime
       # (each gold module does `from gold._shared import ...`). Without this: ModuleNotFoundError.

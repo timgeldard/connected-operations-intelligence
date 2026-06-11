@@ -1519,6 +1519,2554 @@
           "description": "SAP transaction code"
         }
       ]
+    },
+    {
+      "id": "wm_operations.worklist",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Supervisor staging/picking worklist at transfer-requirement (job) grain for the WM Operations workspace \u2014 read-only mirror of the SAP WM Cockpit (WMA-E-19) Job Assignment grid: work area, RF pick status, assigned operator, queue, campaign and pick progress from linked transfer orders. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_worklist",
+      "grain": "one row per plant_id, warehouse_id and transfer requirement",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "tr_id"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP plant ID"
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP warehouse number (LGNUM)"
+        },
+        {
+          "name": "tr_id",
+          "type": "string",
+          "required": true,
+          "description": "Transfer requirement number (LTBK TBNUM)"
+        },
+        {
+          "name": "work_area",
+          "type": "string",
+          "required": true,
+          "description": "PRODUCTION_STAGING | DISPENSARY_REPLENISHMENT | DISPENSARY_PICKING | WAREHOUSE_OTHER"
+        },
+        {
+          "name": "worklist_status",
+          "type": "string",
+          "required": true,
+          "description": "OPEN | IN_PROGRESS | PARKED | NO_STOCK | COMPLETE (from site RF pick-status fields)"
+        },
+        {
+          "name": "reference_type",
+          "type": "string",
+          "required": false,
+          "description": "Source reference type (LTBK BETYP; 'P' = process order)"
+        },
+        {
+          "name": "reference_id",
+          "type": "string",
+          "required": false,
+          "description": "Source reference number (process order for BETYP='P')"
+        },
+        {
+          "name": "order_material_id",
+          "type": "string",
+          "required": false,
+          "description": "Finished-good material of the referenced process order"
+        },
+        {
+          "name": "order_scheduled_start_date",
+          "type": "date",
+          "required": false,
+          "description": "Scheduled start of the referenced process order"
+        },
+        {
+          "name": "source_storage_type",
+          "type": "string",
+          "required": false,
+          "description": "Source storage type (LTBK VLTYP)"
+        },
+        {
+          "name": "source_zone",
+          "type": "string",
+          "required": false,
+          "description": "Storage zone of the source storage type"
+        },
+        {
+          "name": "destination_storage_type",
+          "type": "string",
+          "required": false,
+          "description": "Destination storage type (LTBK NLTYP)"
+        },
+        {
+          "name": "destination_zone",
+          "type": "string",
+          "required": false,
+          "description": "Storage zone of the destination storage type"
+        },
+        {
+          "name": "destination_bin",
+          "type": "string",
+          "required": false,
+          "description": "Destination bin (LTBK NLPLA)"
+        },
+        {
+          "name": "queue",
+          "type": "string",
+          "required": false,
+          "description": "RF queue (ZZQUEUE)"
+        },
+        {
+          "name": "campaign_id",
+          "type": "string",
+          "required": false,
+          "description": "Campaign reference (ZZ_CAMPAIGN)"
+        },
+        {
+          "name": "assigned_operator",
+          "type": "string",
+          "required": false,
+          "description": "Assigned RF operator ('~' park prefix stripped)"
+        },
+        {
+          "name": "job_sequence",
+          "type": "string",
+          "required": false,
+          "description": "Supervisor-assigned job sequence"
+        },
+        {
+          "name": "transfer_priority",
+          "type": "string",
+          "required": false,
+          "description": "Transfer priority (TBPRI)"
+        },
+        {
+          "name": "created_by_user",
+          "type": "string",
+          "required": false,
+          "description": "TR creator (BNAME)"
+        },
+        {
+          "name": "created_ts",
+          "type": "timestamp",
+          "required": false,
+          "description": "TR creation timestamp"
+        },
+        {
+          "name": "planned_execution_ts",
+          "type": "timestamp",
+          "required": false,
+          "description": "Planned execution timestamp (PDATU/PZEIT)"
+        },
+        {
+          "name": "item_count",
+          "type": "long",
+          "required": false,
+          "description": "TR item count"
+        },
+        {
+          "name": "open_item_count",
+          "type": "long",
+          "required": false,
+          "description": "Items still open (not ELIKZ, open qty > 0)"
+        },
+        {
+          "name": "material_count",
+          "type": "long",
+          "required": false,
+          "description": "Distinct materials on the TR"
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": false,
+          "description": "Material (single-material TRs only)"
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false,
+          "description": "Material description (single-material TRs only)"
+        },
+        {
+          "name": "required_qty",
+          "type": "double",
+          "required": false,
+          "description": "Total required quantity (MENGE)"
+        },
+        {
+          "name": "open_qty",
+          "type": "double",
+          "required": false,
+          "description": "Total open quantity (MENGE - TAMEN, clamped >= 0)"
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false,
+          "description": "Base unit of measure (first item)"
+        },
+        {
+          "name": "has_mixed_base_uom",
+          "type": "boolean",
+          "required": false,
+          "description": "True when items mix base UoMs (quantity totals approximate)"
+        },
+        {
+          "name": "to_item_count",
+          "type": "long",
+          "required": false,
+          "description": "Linked transfer-order items (LTAK TBNUM)"
+        },
+        {
+          "name": "to_items_confirmed",
+          "type": "long",
+          "required": false,
+          "description": "Linked TO items fully confirmed"
+        },
+        {
+          "name": "to_confirmed_qty",
+          "type": "double",
+          "required": false,
+          "description": "Confirmed (picked) quantity across linked TOs"
+        },
+        {
+          "name": "latest_to_confirmed_date",
+          "type": "date",
+          "required": false,
+          "description": "Latest TO confirmation date"
+        },
+        {
+          "name": "pick_progress_fraction",
+          "type": "double",
+          "required": false,
+          "description": "Confirmed TO qty / required qty (0..1; null for mixed-UoM TRs)"
+        },
+        {
+          "name": "latest_to_confirmed_ts",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "cycle_hours",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "age_hours",
+          "type": "double",
+          "required": false,
+          "description": "Hours since TR creation (query-time, _live view)"
+        },
+        {
+          "name": "is_overdue",
+          "type": "boolean",
+          "required": false,
+          "description": "Planned execution time passed and job not complete (query-time)"
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.worklist_summary",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "WM worklist rolled up by plant, warehouse, work area and status \u2014 the WM Operations manager KPI strip. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_worklist_summary",
+      "grain": "one row per plant_id, warehouse_id, work_area and worklist_status",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "work_area",
+        "worklist_status"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP plant ID"
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP warehouse number (LGNUM)"
+        },
+        {
+          "name": "work_area",
+          "type": "string",
+          "required": true,
+          "description": "PRODUCTION_STAGING | DISPENSARY_REPLENISHMENT | DISPENSARY_PICKING | WAREHOUSE_OTHER"
+        },
+        {
+          "name": "worklist_status",
+          "type": "string",
+          "required": true,
+          "description": "OPEN | IN_PROGRESS | PARKED | NO_STOCK | COMPLETE"
+        },
+        {
+          "name": "tr_count",
+          "type": "long",
+          "required": false,
+          "description": "Transfer requirements in this bucket"
+        },
+        {
+          "name": "total_open_qty",
+          "type": "double",
+          "required": false,
+          "description": "Sum of open quantity"
+        },
+        {
+          "name": "total_required_qty",
+          "type": "double",
+          "required": false,
+          "description": "Sum of required quantity"
+        },
+        {
+          "name": "operator_count",
+          "type": "long",
+          "required": false,
+          "description": "Distinct assigned operators"
+        },
+        {
+          "name": "earliest_planned_ts",
+          "type": "timestamp",
+          "required": false,
+          "description": "Earliest planned execution timestamp in the bucket"
+        },
+        {
+          "name": "earliest_created_ts",
+          "type": "timestamp",
+          "required": false,
+          "description": "Earliest TR creation timestamp in the bucket"
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.order_readiness",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Released process orders with derived TR coverage (component demand converted to TRs \u2014 the WM Cockpit 'TR' status) and PSA supply status (stock in order-keyed Production Supply bins \u2014 the cockpit 'ST' status), plus a query-time readiness band. Coverage denominators use WM-managed components only; quantity comparisons assume base-UoM consistency. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_order_readiness",
+      "grain": "one row per plant_id and process order",
+      "primary_key": [
+        "plant_id",
+        "order_id"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP plant ID"
+        },
+        {
+          "name": "order_id",
+          "type": "string",
+          "required": true,
+          "description": "Process order number (AUFNR)"
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": false,
+          "description": "Warehouse serving the order's WM components"
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": false,
+          "description": "Finished-good material"
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false,
+          "description": "Finished-good material description"
+        },
+        {
+          "name": "order_qty",
+          "type": "double",
+          "required": false,
+          "description": "Order quantity (GAMNG)"
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false,
+          "description": "Order quantity UoM"
+        },
+        {
+          "name": "scheduled_start_date",
+          "type": "date",
+          "required": false,
+          "description": "Scheduled start (GSTRS)"
+        },
+        {
+          "name": "scheduled_finish_date",
+          "type": "date",
+          "required": false,
+          "description": "Scheduled finish"
+        },
+        {
+          "name": "production_supply_area",
+          "type": "string",
+          "required": false,
+          "description": "Production supply area (RESB PRVBE, first non-null)"
+        },
+        {
+          "name": "component_count",
+          "type": "long",
+          "required": false,
+          "description": "Production-consumption component reservations"
+        },
+        {
+          "name": "wm_component_count",
+          "type": "long",
+          "required": false,
+          "description": "Components carrying a WM warehouse number"
+        },
+        {
+          "name": "wm_component_required_qty",
+          "type": "double",
+          "required": false,
+          "description": "Required quantity across WM-managed components"
+        },
+        {
+          "name": "component_open_qty",
+          "type": "double",
+          "required": false,
+          "description": "Open (unissued) component quantity"
+        },
+        {
+          "name": "tr_count",
+          "type": "long",
+          "required": false,
+          "description": "Transfer requirements created for the order"
+        },
+        {
+          "name": "tr_required_qty",
+          "type": "double",
+          "required": false,
+          "description": "Quantity covered by TRs"
+        },
+        {
+          "name": "tr_open_qty",
+          "type": "double",
+          "required": false,
+          "description": "TR quantity not yet converted to TOs"
+        },
+        {
+          "name": "tr_coverage_status",
+          "type": "string",
+          "required": true,
+          "description": "NONE | PARTIAL | FULL (cockpit 'TR' status)"
+        },
+        {
+          "name": "psa_supplied_qty",
+          "type": "double",
+          "required": false,
+          "description": "Stock in order-keyed Production Supply bins"
+        },
+        {
+          "name": "supply_status",
+          "type": "string",
+          "required": true,
+          "description": "NOT_SUPPLIED | PARTIAL | SUPPLIED (cockpit 'ST' status)"
+        },
+        {
+          "name": "readiness_status",
+          "type": "string",
+          "required": true,
+          "description": "SUPPLIED | STAGING_PLANNED | PARTIALLY_PLANNED | NOT_STARTED | NO_WM_DEMAND"
+        },
+        {
+          "name": "days_to_start",
+          "type": "long",
+          "required": false,
+          "description": "Days until scheduled start (query-time, _live view)"
+        },
+        {
+          "name": "readiness_band",
+          "type": "string",
+          "required": false,
+          "description": "red | amber | green | grey (query-time traffic light)"
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.bin_stock",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Quant-grain stock & bin explorer with storage-zone classification (dispensary / production supply / palletising / interim / warehouse), stock category, block flags and expiry. The dispensary stock-health view is this contract filtered to storage_zone = 'DISPENSARY'. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_bin_stock",
+      "grain": "one row per plant_id, warehouse_id and quant",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "quant_id"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP plant ID"
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP warehouse number (LGNUM)"
+        },
+        {
+          "name": "storage_type",
+          "type": "string",
+          "required": false,
+          "description": "WM storage type (LGTYP)"
+        },
+        {
+          "name": "storage_zone",
+          "type": "string",
+          "required": false,
+          "description": "DISPENSARY | PRODUCTION_SUPPLY | PALLETISING | INTERIM | WAREHOUSE"
+        },
+        {
+          "name": "bin_id",
+          "type": "string",
+          "required": false,
+          "description": "Storage bin (LGPLA)"
+        },
+        {
+          "name": "picking_area",
+          "type": "string",
+          "required": false,
+          "description": "Picking area (KOBER)"
+        },
+        {
+          "name": "quant_id",
+          "type": "string",
+          "required": true,
+          "description": "Quant number (LQNUM)"
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": false,
+          "description": "Material"
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false,
+          "description": "Material description"
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": false,
+          "description": "Batch (CHARG, exact SAP identifier)"
+        },
+        {
+          "name": "stock_category",
+          "type": "string",
+          "required": false,
+          "description": "UNRESTRICTED | QUALITY | BLOCKED | OTHER (from BESTQ)"
+        },
+        {
+          "name": "total_qty",
+          "type": "double",
+          "required": false,
+          "description": "Total quant quantity (GESME)"
+        },
+        {
+          "name": "available_qty",
+          "type": "double",
+          "required": false,
+          "description": "Available quantity (VERME)"
+        },
+        {
+          "name": "putaway_qty",
+          "type": "double",
+          "required": false,
+          "description": "Open putaway quantity (EINME)"
+        },
+        {
+          "name": "pick_qty",
+          "type": "double",
+          "required": false,
+          "description": "Open pick quantity (AUSME)"
+        },
+        {
+          "name": "open_transfer_qty",
+          "type": "double",
+          "required": false,
+          "description": "Open transfer quantity (TRAME)"
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false,
+          "description": "Base unit of measure"
+        },
+        {
+          "name": "goods_receipt_date",
+          "type": "date",
+          "required": false,
+          "description": "Goods receipt date (WDATU)"
+        },
+        {
+          "name": "expiry_date",
+          "type": "date",
+          "required": false,
+          "description": "Shelf-life expiry date (VFDAT)"
+        },
+        {
+          "name": "last_movement_ts",
+          "type": "timestamp",
+          "required": false,
+          "description": "Last movement timestamp"
+        },
+        {
+          "name": "is_blocked_for_stock_removal",
+          "type": "boolean",
+          "required": false,
+          "description": "Quant blocked for stock removal (SKZUA)"
+        },
+        {
+          "name": "is_blocked_for_putaway",
+          "type": "boolean",
+          "required": false,
+          "description": "Quant blocked for putaway (SKZUE)"
+        },
+        {
+          "name": "is_bin_blocked",
+          "type": "boolean",
+          "required": false,
+          "description": "Bin carries a blocking reason (SPGRU)"
+        },
+        {
+          "name": "blocking_reason_code",
+          "type": "string",
+          "required": false,
+          "description": "Bin blocking reason code"
+        },
+        {
+          "name": "days_to_expiry",
+          "type": "long",
+          "required": false,
+          "description": "Days until expiry (query-time, _live view)"
+        },
+        {
+          "name": "is_expired",
+          "type": "boolean",
+          "required": false,
+          "description": "Expiry date in the past (query-time)"
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.order_components",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Component-level staging detail for active process orders \u2014 the drill-through behind Order Readiness. TR/TO/PSA rollups are at order x material grain; components sharing a material are flagged via material_component_count. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_order_components",
+      "grain": "one row per plant_id, order_id, reservation_id and reservation_item",
+      "primary_key": [
+        "plant_id",
+        "order_id",
+        "reservation_id",
+        "reservation_item"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "order_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "reservation_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "reservation_item",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "operation_number",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "required_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "open_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "production_supply_area",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "requirement_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "material_component_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "tr_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "tr_required_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "tr_open_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "tr_coverage_status",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "to_item_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "to_items_confirmed",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "to_confirmed_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "pick_progress_fraction",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "psa_supplied_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "is_supplied",
+          "type": "boolean",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.operator_activity",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "RF operator pick activity per day from confirmed transfer-order items. Quantity totals mix base UoMs \u2014 item counts are the comparable measure. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_operator_activity",
+      "grain": "one row per plant_id, warehouse_id, operator and activity_date",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "operator",
+        "activity_date"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "operator",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "activity_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "shift",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "items_confirmed",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "transfer_orders",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "materials",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "transfer_requirements",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "confirmed_qty",
+          "type": "double",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.queue_workload",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Current open WM workload by queue and work area (non-complete worklist jobs). Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_queue_workload",
+      "grain": "one row per plant_id, warehouse_id, queue and work_area",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "queue",
+        "work_area"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "queue",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "work_area",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "open_jobs",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "in_progress_jobs",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "parked_jobs",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "no_stock_jobs",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "operator_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "earliest_planned_ts",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "earliest_created_ts",
+          "type": "timestamp",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.outbound",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Outbound delivery picking board \u2014 pick progress and goods-issue risk per open delivery (reuses gold_delivery_pick_status with query-time risk bands). Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_outbound",
+      "grain": "one row per plant_id and delivery_id",
+      "primary_key": [
+        "plant_id",
+        "delivery_id"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "delivery_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "delivery_type",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "ship_to_customer_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "ship_to_customer_name",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "line_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "delivery_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "picked_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "pick_fraction",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "has_mixed_base_uom",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "planned_goods_issue_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "actual_goods_issue_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "is_shipped",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "days_to_goods_issue",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "risk_band",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.recon_alerts",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Severe reconciliation alerts (IM-WM stock, HU, physical inventory) for the shift-handover digest. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_recon_alerts",
+      "grain": "one row per alert_key",
+      "primary_key": [
+        "alert_key"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "alert_key",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "alert_type",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "alert_priority",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "reason_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "delta_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "delta_value",
+          "type": "double",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.handling_units",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Handling-unit (SSCC) counts by status for the inbound/putaway board. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_handling_units",
+      "grain": "one row per plant_id, warehouse_id, handling_unit_status and reference_document_category",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "handling_unit_status",
+        "reference_document_category"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "handling_unit_status",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "reference_document_category",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "hu_item_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "distinct_sscc_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "distinct_hu_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "linked_delivery_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "distinct_material_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "total_gross_weight",
+          "type": "double",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.expiry_risk",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Batch-level shelf-life risk with query-time expiry buckets. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_expiry_risk",
+      "grain": "one row per plant_id, material_id and batch_id",
+      "primary_key": [
+        "plant_id",
+        "material_id",
+        "batch_id"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "minimum_expiry_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "shelf_life_days",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "minimum_remaining_shelf_life_days",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "total_stock_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "minimum_days_to_expiry",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "expired_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "highest_expiry_risk_bucket",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "has_minimum_shelf_life_breach",
+          "type": "boolean",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.stock_holds",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Quant-level QI/blocked/restricted holds with query-time age. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_stock_holds",
+      "grain": "one row per plant_id, warehouse_id and quant_id",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "quant_id"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "storage_type",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "bin_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "quant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "hold_type",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "goods_receipt_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "age_hours",
+          "type": "double",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.exceptions",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Aged warehouse exceptions (expired-with-stock, aged QI/blocked, aged open TOs). Served from the _live view ONLY \u2014 base rows are unconfirmed candidates. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_exceptions",
+      "grain": "one row per confirmed exception",
+      "primary_key": [
+        "plant_id",
+        "exception_type",
+        "reference_id"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "exception_type",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "severity",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "sla_hours",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "reference_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "aging_reference_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "age_days",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "detail",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.recon_exceptions",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "IM-WM stock reconciliation exceptions at batch/category grain (workbench detail). Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_recon_exceptions",
+      "grain": "one row per plant_id, warehouse_id, material_id, batch_id and stock_category",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "material_id",
+        "batch_id",
+        "stock_category"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "stock_category",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "im_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "wm_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "delta_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "delta_percent",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "delta_value",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "mismatch_reason",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "mismatch_severity",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "is_trusted",
+          "type": "boolean",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.recon_value_summary",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Value-control rollup of reconciliation exceptions by reason and severity. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_recon_value_summary",
+      "grain": "one row per plant_id, warehouse_id, mismatch_reason and mismatch_severity",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "mismatch_reason",
+        "mismatch_severity"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "mismatch_reason",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "mismatch_severity",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "row_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "tolerance_exceeded_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "net_delta_value",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "abs_delta_value",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "abs_delta_quantity",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "value_reconciliation_status",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.campaigns",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Campaign-grouped picking progress (LTBK ZZ_CAMPAIGN). Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_campaigns",
+      "grain": "one row per plant_id, warehouse_id and campaign_id",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "campaign_id"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "campaign_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "tr_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "complete_trs",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "in_progress_trs",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "parked_trs",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "no_stock_trs",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "order_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "operator_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "work_area",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "required_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "open_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "earliest_planned_ts",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "earliest_created_ts",
+          "type": "timestamp",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.daily_activity",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Daily warehouse activity series (TO confirmations, TRs created, IM receipts/issues) for trend charts. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_daily_activity",
+      "grain": "one row per plant_id and activity_date",
+      "primary_key": [
+        "plant_id",
+        "activity_date"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "activity_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "to_items_confirmed",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "active_operators",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "trs_created",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "goods_receipt_lines",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "goods_issue_lines",
+          "type": "long",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.physical_inventory",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Physical inventory count-vs-book detail (counts due, recounts, unposted differences). Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_physical_inventory",
+      "grain": "one row per plant_id, pi_document_id, fiscal_year and item_number",
+      "primary_key": [
+        "plant_id",
+        "pi_document_id",
+        "fiscal_year",
+        "item_number"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "pi_document_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "fiscal_year",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "item_number",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "storage_location_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "planned_count_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "count_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "book_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "counted_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "delta_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "delta_value",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "is_counted",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "is_recount_required",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "is_difference_posted",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "physical_inventory_status",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.bin_occupancy",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Bin occupancy and capacity by storage type and bin type (putaway planning). Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_bin_occupancy",
+      "grain": "one row per plant_id, warehouse_id, storage_type and bin_type",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "storage_type",
+        "bin_type"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "storage_type",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "bin_type",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "bin_record_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "occupied_bin_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "empty_bin_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "blocked_bin_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "stock_removal_blocked_bin_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "putaway_blocked_bin_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "occupancy_rate",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "total_stock_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "available_stock_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "open_transfer_stock_qty",
+          "type": "double",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.slow_movers",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Value-weighted stock aging by material and batch with query-time age buckets. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_slow_movers",
+      "grain": "one row per plant_id, warehouse_id, material_id and batch_id",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "material_id",
+        "batch_id"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "quant_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "total_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "stock_value",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "standard_price",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "last_movement_ts",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "earliest_goods_receipt_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "earliest_expiry_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "days_since_last_movement",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "age_bucket",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.movement_control",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "IM goods-movement postings reconciled to WM confirmed-TO activity per posting date. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_movement_control",
+      "grain": "one row per plant_id, warehouse_id, posting_date, material_id, batch_id and movement_type_code",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "posting_date",
+        "material_id",
+        "batch_id",
+        "movement_type_code"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "posting_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "movement_type_code",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "im_document_line_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "im_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "im_value",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "wm_to_line_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "wm_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "delta_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "abs_delta_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "movement_reconciliation_status",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.staging_pace",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Hourly staged-in throughput (confirmed TO items into palletising/production-supply zones) \u2014 derived from TO flows pending bulk-drop log replication. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_staging_pace",
+      "grain": "one row per plant_id, warehouse_id, destination_zone and activity_hour",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "destination_zone",
+        "activity_hour"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "destination_zone",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "activity_hour",
+          "type": "timestamp",
+          "required": true
+        },
+        {
+          "name": "items_staged",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "qty_staged",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "operators",
+          "type": "long",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.staging_demand",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Planned staging demand wave: open TR quantity by planned execution hour and work area. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_staging_demand",
+      "grain": "one row per plant_id, warehouse_id, work_area, production_supply_area and demand_hour",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "work_area",
+        "demand_hour"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "work_area",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "production_supply_area",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "demand_hour",
+          "type": "timestamp",
+          "required": true
+        },
+        {
+          "name": "open_trs",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "open_qty",
+          "type": "double",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.buffer_flow",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Hourly flows in/out of the palletising (bulk-drop) buffer from confirmed TO items \u2014 input for client-side B(t) buffer reconstruction. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_buffer_flow",
+      "grain": "one row per plant_id, warehouse_id and activity_hour",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id",
+        "activity_hour"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "activity_hour",
+          "type": "timestamp",
+          "required": true
+        },
+        {
+          "name": "items_in",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "qty_in",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "items_out",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "qty_out",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "net_qty",
+          "type": "double",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.qm_lots",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Quality inspection-lot context per material and batch (open lots, latest usage decision) for held-stock and inbound enrichment. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_qm_lots",
+      "grain": "one row per plant_id, material_id and batch_id",
+      "primary_key": [
+        "plant_id",
+        "material_id",
+        "batch_id"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "lot_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "open_lot_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "latest_lot_number",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "lot_origin_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "oldest_open_start_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "last_usage_decision",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "last_usage_decision_date",
+          "type": "string",
+          "required": false
+        }
+      ]
     }
   ]
 }

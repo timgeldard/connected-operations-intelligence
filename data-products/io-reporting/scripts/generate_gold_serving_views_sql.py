@@ -148,6 +148,50 @@ SERVING_VIEWS = {
     "gold_warehouse_kpi_snapshot": [
         ("snapshot_date", "current_date()"),
     ],
+    # WM Operations worklist: job age + overdue flag vs the TR planned execution datetime.
+    "gold_wm_staging_worklist": [
+        ("age_hours",
+         "CASE WHEN b.created_datetime IS NOT NULL "
+         "THEN (unix_timestamp(current_timestamp()) - unix_timestamp(b.created_datetime)) / 3600.0 END"),
+        ("is_overdue",
+         "b.planned_execution_datetime IS NOT NULL "
+         "AND b.planned_execution_datetime < current_timestamp() "
+         "AND b.worklist_status NOT IN ('COMPLETE')"),
+    ],
+    # WM Operations order readiness: days-to-start + cockpit-style traffic light. Red when the
+    # order starts today-or-earlier without full PSA supply; amber when it starts within a day
+    # and staging is not fully planned; grey when unscheduled or without WM demand.
+    "gold_wm_order_readiness": [
+        ("days_to_start", _DAYS_TO_START),
+        ("readiness_band",
+         "CASE "
+         "WHEN b.readiness_status = 'NO_WM_DEMAND' THEN 'grey' "
+         f"WHEN {_DAYS_TO_START} IS NULL THEN 'grey' "
+         "WHEN b.supply_status = 'SUPPLIED' THEN 'green' "
+         f"WHEN b.readiness_status IN ('NOT_STARTED', 'PARTIALLY_PLANNED') AND {_DAYS_TO_START} <= 0 THEN 'red' "
+         f"WHEN b.readiness_status <> 'SUPPLIED' AND {_DAYS_TO_START} <= 1 THEN 'amber' "
+         "ELSE 'green' END"),
+    ],
+    # WM Operations bin/stock explorer: expiry age served live (base MV stays deterministic).
+    "gold_wm_bin_stock_detail": [
+        ("days_to_expiry",
+         "CASE WHEN b.expiry_date IS NOT NULL THEN datediff(b.expiry_date, current_date()) END"),
+        ("is_expired",
+         "b.expiry_date IS NOT NULL AND b.expiry_date < current_date()"),
+    ],
+    # WM slow movers: stock age served live so the base MV stays deterministic.
+    "gold_wm_slow_movers": [
+        ("days_since_last_movement",
+         "CASE WHEN b.last_movement_datetime IS NOT NULL "
+         "THEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) END"),
+        ("age_bucket",
+         "CASE "
+         "WHEN b.last_movement_datetime IS NULL THEN 'NO_MOVEMENT_RECORD' "
+         "WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 365 THEN 'OVER_365D' "
+         "WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 180 THEN 'D180_365' "
+         "WHEN datediff(current_date(), CAST(b.last_movement_datetime AS DATE)) >= 90 THEN 'D90_180' "
+         "ELSE 'ACTIVE' END"),
+    ],
     # Warehouse exceptions: the base MV stores ALL aging candidates with their reference date
     # (deterministic, incrementally refreshable); the per-type age thresholds, age_days and
     # detected_date are evaluated here at query time. Consumers must read _live, not _secured —

@@ -129,6 +129,21 @@ GOLD_TABLES = [
     "gold_warehouse_exceptions",
     # warehouse_kpi_snapshot.py
     "gold_warehouse_kpi_snapshot",
+    # wm_operations_gold.py
+    "gold_wm_staging_worklist",
+    "gold_wm_worklist_summary",
+    "gold_wm_order_readiness",
+    "gold_wm_bin_stock_detail",
+    "gold_wm_order_component_detail",
+    "gold_wm_operator_activity",
+    "gold_wm_queue_workload",
+    "gold_wm_campaign_summary",
+    "gold_wm_daily_activity",
+    "gold_wm_slow_movers",
+    "gold_wm_staging_pace_hourly",
+    "gold_wm_staging_demand_hourly",
+    "gold_wm_staging_buffer_flow_hourly",
+    "gold_wm_qm_lot_context",
 ]
 
 TEMPLATE = """-- Unity Catalog Gold row-level security — secured serving views ({env_upper}).

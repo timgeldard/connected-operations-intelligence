@@ -41,3 +41,17 @@ REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_inbound_po_bac
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_inbound_po_line_backlog FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_warehouse_exceptions FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_warehouse_kpi_snapshot FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_staging_worklist FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_worklist_summary FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_order_readiness FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_bin_stock_detail FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_order_component_detail FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_operator_activity FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_queue_workload FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_campaign_summary FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_daily_activity FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_slow_movers FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_staging_pace_hourly FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_staging_demand_hourly FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_staging_buffer_flow_hourly FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_qm_lot_context FROM `users`;

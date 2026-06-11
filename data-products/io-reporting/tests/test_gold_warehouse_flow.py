@@ -960,8 +960,9 @@ def test_stock_reconciliation_summary_alias_adds_status(spark, monkeypatch):
 
 
 def test_gold_stock_holds(spark):
-    from gold.warehouse_flow_gold import gold_stock_holds
     from datetime import date
+
+    from gold.warehouse_flow_gold import gold_stock_holds
 
     # 1. Populating batch_stock with a restricted batch and unrestricted batch
     _save(spark, [
@@ -1046,8 +1047,8 @@ def test_gold_stock_holds_restricted_is_batch_level(spark):
 
 
 def test_gold_transfer_order_open_items(spark):
+
     from gold.warehouse_flow_gold import gold_transfer_order_open_items
-    from datetime import date
 
     # 1. Populating warehouse_transfer_order
     _save(spark, [
@@ -1132,8 +1133,9 @@ def test_gold_transfer_requirement_open_items(spark):
     assert results[0]["open_quantity"] == 10.0
 
 def test_gold_goods_movement_activity(spark):
-    from gold.warehouse_flow_gold import gold_goods_movement_activity
     from datetime import date
+
+    from gold.warehouse_flow_gold import gold_goods_movement_activity
 
     _save(spark, [
         Row(plant_code="PL10", storage_location_code="0001", material_document_number="5000000001",

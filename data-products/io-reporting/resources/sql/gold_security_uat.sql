@@ -651,6 +651,230 @@ CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_warehouse_kpi_
   );
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_warehouse_kpi_snapshot_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_worklist_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_staging_worklist
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_worklist_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_worklist_summary_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_worklist_summary
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_worklist_summary_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_readiness_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_order_readiness
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_readiness_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_bin_stock_detail_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_bin_stock_detail
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_bin_stock_detail_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_component_detail_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_order_component_detail
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_component_detail_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_operator_activity_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_operator_activity
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_operator_activity_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_queue_workload_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_queue_workload
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_queue_workload_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_campaign_summary_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_campaign_summary
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_campaign_summary_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_daily_activity_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_daily_activity
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_daily_activity_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_slow_movers_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_slow_movers
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_slow_movers_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_pace_hourly_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_staging_pace_hourly
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_pace_hourly_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_demand_hourly_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_staging_demand_hourly
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_demand_hourly_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_buffer_flow_hourly_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_staging_buffer_flow_hourly
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_staging_buffer_flow_hourly_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_context_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_context
+  WHERE EXISTS (
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_uat.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_qm_lot_context_secured TO `users`;
+
 -- ── Base-table access hardening ──
 -- The actual REVOKE statements are generated as a SEPARATE admin script
 -- (resources/sql/gold_security_harden_uat.sql). Apply it AFTER this script so plant-scoped users

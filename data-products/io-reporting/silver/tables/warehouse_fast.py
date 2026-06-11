@@ -347,6 +347,7 @@ def stg_warehouse_transfer_order():
             sap_datetime("h.BDATU", "h.BZEIT").alias("created_datetime"),
             sap_date("h.PLDAT").alias("planned_execution_date"),
             sap_date("i.QDATU").alias("confirmed_date"),
+            sap_datetime("i.QDATU", "i.QZEIT").alias("confirmed_datetime"),
             sap_datetime("h.STDAT", "h.STUZT").alias("start_datetime"),
             sap_datetime("h.ENDAT", "h.ENUZT").alias("end_datetime"),
 
@@ -361,6 +362,12 @@ def stg_warehouse_transfer_order():
             F.col("h.BENUM").alias("source_reference_number_raw"),
             strip_zeros("h.VBELN").alias("delivery_number"),
             F.col("h.VBELN").alias("delivery_number_raw"),
+            # LTAK.TBNUM links a TO back to its transfer requirement (blank/zero for
+            # delivery- or posting-change-sourced TOs). Kept raw to match the TR key.
+            F.when(
+                F.coalesce(F.col("h.TBNUM"), F.lit("")).isin("", "0000000000"), F.lit(None)
+            ).otherwise(F.col("h.TBNUM")).alias("transfer_requirement_number"),
+            F.col("h.QUEUE").alias("queue"),
             F.col("h.TBPRI").alias("transfer_priority"),
 
             # ── Users
@@ -536,10 +543,17 @@ def stg_warehouse_transfer_requirement():
             F.col("h.BENUM").alias("source_reference_number_raw"),
             F.col("h.RSNUM").alias("reservation_number"),
 
-            # ── Custom fields (site-specific campaign / pick status)
+            # ── Custom fields (site-specific campaign / pick status / RF operator assignment)
+            # ZZ_UNAME_M / ZZ_RF_SEQ_M drive the warehouse (manual) RF flow ZWMAE0050;
+            # ZZ_UNAME_D / ZZ_RF_SEQ_D drive the dispensary RF flow ZPEXE0061. Parked/complete
+            # jobs keep the operator with a '~' prefix (SAP convention — preserved as-is).
             F.col("h.ZZ_CAMPAIGN").alias("campaign_reference"),
             F.col("h.ZZ_PICK_STAT_M").alias("manual_pick_status"),
             F.col("h.ZZ_PICK_STAT_D").alias("direct_pick_status"),
+            F.col("h.ZZ_UNAME_M").alias("assigned_operator_manual"),
+            F.col("h.ZZ_UNAME_D").alias("assigned_operator_direct"),
+            F.col("h.ZZ_RF_SEQ_M").alias("job_sequence_manual"),
+            F.col("h.ZZ_RF_SEQ_D").alias("job_sequence_direct"),
             F.col("h.ZZQUEUE").alias("queue"),
 
             F.col("h.BNAME").alias("created_by_user"),
