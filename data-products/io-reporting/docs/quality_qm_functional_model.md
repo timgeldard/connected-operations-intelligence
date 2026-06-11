@@ -4,7 +4,10 @@
 (deliberate, approved flip — plant gate verified + configurable `qm_lookback_years` time gate,
 default 5y; see silver/tables/quality.py. Data findings vs this doc: QAVE.VWERKS is the central
 plant 'R001', NOT the lot's plant → UD is gated via the parent lot, not VWERKS (§9 amendment);
-VBEWERTUNG domain confirmed A/R from UAT data. The result-grain family (§8) remains ON HOLD.)
+VBEWERTUNG domain confirmed A/R from UAT data. **Result-grain family (§8) hold LIFTED 2026-06-11**
+(SPC Phase 1, WP1.2 — Tim Geldard): all four result tables (QAMV/QAMR/QASR/QASE) now
+run-eligible under the two-tier spc gate (qm_enabled_flag AND spc_enabled_flag, PR #79);
+gate-via-parent on PRUEFLOS to the spc-gated lot set. History of hold preserved in §6/§9 below.)
 **Scope:** Resolves the open functional items that source-guard `quality_inspection_lot`
 (inspection start/end date semantics, deletion flag, usage-decision modelling, snapshot-vs-CDC).
 
@@ -337,10 +340,16 @@ materialisation small from the start, so the full-refresh caveat only bites if i
 The same applies to `quality_inspection_usage_decision` (QAVE): plant gate on `VWERKS`, project the
 curated columns, stream once, `apply_changes` keyed PRUEFLOS+KZART+ZAEHLER sequenced by AEDATTM.
 
-**Run-eligibility hold extends to the result family.** The result-grain tables (§8) and the governed SPC
-gold MV (§8e) are subject to the same hold as the lot (§6): they carry the AEDATTM design and the
+~~**Run-eligibility hold extends to the result family.**~~ The result-grain tables (§8) and the governed SPC
+gold MV (§8e) were subject to the same hold as the lot (§6): they carried the AEDATTM design and the
 `PRUEFLOS` semi-join plant gate, but must **not** become run-eligible until the **quality plant gate** is
 verified in — so the result-grain producer can never materialise all-138-plants by accident either.
+
+**UPDATE 2026-06-11 (SPC Phase 1, WP1.2 — Tim Geldard):** the result-family hold is LIFTED. The two
+preconditions were satisfied: (1) the spc gate (two-tier: qm_enabled_flag AND spc_enabled_flag) landed
+in PR #79; (2) UAT volume verified (gated 4 plants × 5y: qamv 8.3M, qamr 7.0M, qasr 10.3M, qase 0.7M).
+All four result tables are now ENFORCED in silver/tables/quality.py with `_gated_qals(product_area="spc")`
+gate-via-parent and `apply_plant_gate("spc")` output gate.
 
 ## 10. Open items (do not block the model; confirm when run-eligible)
 

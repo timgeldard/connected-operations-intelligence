@@ -32,7 +32,7 @@ meta:
   canonical_gate_warehouse: site_config_warehouse
   helper: silver/_plant_gate.py
   phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; QM lot+UD + PP/PI snapshots enforced 2026-06-11
-  enforced_count: 18           # + QM lot/UD + process_order_operation + downtime_event + pi_sheet_execution (snapshot remodels) + work_centre (published CRHD/CRTX)
+  enforced_count: 22           # +4 QM result family (characteristic/result/sample_result/individual_result) enforced 2026-06-11 (SPC Phase 1)
   source_guarded_count: 0      # all PP/PI flows now enforced — no remaining CDC-blocked flows
   exempt_count: 17
   needs_mapping_count: 7
@@ -108,6 +108,53 @@ silver_outputs:
     current_status: ENFORCED
     owner_action_required: none   # inherits plant + time gate from the gated QALS parent join; final
                                   # apply_plant_gate(quality) kept on the derived plant_code (authoritative)
+
+  # ── ENFORCED (QM result family — SPC Phase 1, two-tier spc gate, 2026-06-11) ──
+  - table_name: quality_inspection_characteristic
+    file: silver/tables/quality.py
+    source_tables: [inspection_qamv, inspection_qals]
+    gating_category: DIRECT_PLANT   # no WERK on QAMV; gated VIA PARENT LOT (PRUEFLOS -> gated inspection_qals.WERK)
+    gate_field: plant_code
+    gate_join_path: "PRUEFLOS -> gated inspection_qals.WERK (gate-via-parent)"
+    gate_config_table: site_config_plant
+    product_area: spc
+    current_status: ENFORCED
+    owner_action_required: none   # SPC Phase 1 (2026-06-11): spc gate (qm_enabled_flag AND
+                                  # spc_enabled_flag, PR #79) verified; result-family hold lifted.
+                                  # snapshot MV, gate-via-parent + apply_plant_gate("spc") output gate.
+
+  - table_name: quality_inspection_result
+    file: silver/tables/quality.py
+    source_tables: [inspection_qamr, inspection_qals]
+    gating_category: DIRECT_PLANT   # no WERK on QAMR; gated VIA PARENT LOT (PRUEFLOS -> gated inspection_qals.WERK)
+    gate_field: plant_code
+    gate_join_path: "PRUEFLOS -> gated inspection_qals.WERK (gate-via-parent)"
+    gate_config_table: site_config_plant
+    product_area: spc
+    current_status: ENFORCED
+    owner_action_required: none   # SPC Phase 1 (2026-06-11): as above. UAT volume ~7.0M gated rows.
+
+  - table_name: quality_inspection_sample_result
+    file: silver/tables/quality.py
+    source_tables: [inspection_qasr, inspection_qals]
+    gating_category: DIRECT_PLANT   # no WERK on QASR; gated VIA PARENT LOT (PRUEFLOS -> gated inspection_qals.WERK)
+    gate_field: plant_code
+    gate_join_path: "PRUEFLOS -> gated inspection_qals.WERK (gate-via-parent)"
+    gate_config_table: site_config_plant
+    product_area: spc
+    current_status: ENFORCED
+    owner_action_required: none   # SPC Phase 1 (2026-06-11): as above. UAT volume ~10.3M gated rows.
+
+  - table_name: quality_inspection_individual_result
+    file: silver/tables/quality.py
+    source_tables: [inspection_qase, inspection_qals]
+    gating_category: DIRECT_PLANT   # no WERK on QASE; gated VIA PARENT LOT (PRUEFLOS -> gated inspection_qals.WERK)
+    gate_field: plant_code
+    gate_join_path: "PRUEFLOS -> gated inspection_qals.WERK (gate-via-parent)"
+    gate_config_table: site_config_plant
+    product_area: spc
+    current_status: ENFORCED
+    owner_action_required: none   # SPC Phase 1 (2026-06-11): as above. UAT volume ~0.7M gated rows.
 
   # ── NEEDS_MAPPING (operational; Phase 2 enforcement) ──────────────────────
 
