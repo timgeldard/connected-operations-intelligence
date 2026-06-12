@@ -51,9 +51,14 @@ TABLE-EXISTS GUARD:
 """
 
 import dlt
+from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from gold._shared import get_silver_schema, get_spark_session, gold_table_args, table_exists
+
+_MATERIAL_SCHEMA = (
+    "plant_code string, material_code string, material_description string"
+)
 
 _QUALITY_LAB_RESULT_SCHEMA = (
     "plant_code string, inspection_lot_number string, operation_id string, mic_id string, "
@@ -81,7 +86,7 @@ _PROCESS_ORDER_SCHEMA = (
 )
 
 
-def _read_or_empty(spark, fq_table: str, ddl_schema: str):
+def _read_or_empty(spark, fq_table: str, ddl_schema: str) -> DataFrame:
     """Read table if it exists; else return an empty DataFrame with the given schema.
 
     Used to guard QM silver tables that may be absent in dev environments without QM data
@@ -89,6 +94,23 @@ def _read_or_empty(spark, fq_table: str, ddl_schema: str):
     if table_exists(spark, fq_table):
         return spark.read.table(fq_table)
     return spark.createDataFrame([], ddl_schema)
+
+
+def _material_lookup(spark, silver_schema: str) -> DataFrame:
+    """(plant_code, material_code) -> material_description, deduplicated.
+
+    Follows the same pattern as wm_operations_gold._material_lookup and
+    spc_gold._material_lookup: groupBy + first(non-null) so historical description
+    churn does not fan out joins. Falls back to an empty DataFrame when the silver
+    material table is absent (dev environments without reference data)."""
+    fq_table = f"{silver_schema}.material"
+    if not table_exists(spark, fq_table):
+        return spark.createDataFrame([], _MATERIAL_SCHEMA)
+    return (
+        spark.read.table(fq_table)
+        .groupBy("plant_code", "material_code")
+        .agg(F.first("material_description", ignorenulls=True).alias("material_description"))
+    )
 
 
 @dlt.table(**gold_table_args(
@@ -129,6 +151,13 @@ def gold_qm_lab_result_signal():
     ).select("order_number", "production_line", "production_line_description",
              F.col("material_code").alias("po_material_code")).distinct()
 
+    # Material description: left-joined from silver.material on (plant_code, material_code).
+    # Follows wm_operations_gold / spc_gold pattern: groupBy+first(non-null) deduplicates
+    # historical description churn without fanning out joins.
+    # Fallback: COALESCE(material_description, material_code) so the field is never NULL
+    # even in dev environments or for materials not yet in the silver master.
+    material = _material_lookup(spark, silver_schema)
+
     # Join spec onto result (left — results without spec still surface as 'fail').
     joined = results.join(
         specs,
@@ -147,6 +176,20 @@ def gold_qm_lab_result_signal():
         joined["lot_order_number"] == process_orders["order_number"],
         "left",
     )
+
+    # Left join material for description; alias material columns before the join to avoid
+    # ambiguity with the result material_code column (same name, different table).
+    material_slim = material.select(
+        F.col("plant_code").alias("_mat_plant"),
+        F.col("material_code").alias("_mat_code"),
+        F.col("material_description"),
+    )
+    joined = joined.join(
+        material_slim,
+        (F.col("plant_code") == F.col("_mat_plant"))
+        & (F.col("material_code") == F.col("_mat_code")),
+        "left",
+    ).drop("_mat_plant", "_mat_code")
 
     # ── Severity rule ─────────────────────────────────────────────────────────────────────
     # R = quantitative_result, LSL/USL = spec limits, lsl_warn/usl_warn = optional warn limits.
@@ -204,8 +247,12 @@ def gold_qm_lab_result_signal():
 
     return filtered.select(
         F.col("plant_code"),
-        # Material code (from lot, used as fallback description).
+        # Material code (from lot — strip_zeros applied in silver via _gated_qals_for_lab).
         F.col("material_code"),
+        # Material description from silver.material; falls back to material_code when absent.
+        # V1 FailSpec.mat = material description (not the code); consumption view maps this
+        # column to `mat` and material_code to `mat_no` for the FailSpec contract.
+        F.coalesce(F.col("material_description"), F.col("material_code")).alias("material_description"),
         F.col("inspection_lot_number"),
         # Batch from lot-level carry-through (QALS.CHARG).
         F.col("batch_number"),
