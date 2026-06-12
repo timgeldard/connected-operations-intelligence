@@ -47,9 +47,16 @@ export function WorklistTable({
     return [...items].sort((a, b) => {
       const scoreDelta = (b.priorityScore ?? -1) - (a.priorityScore ?? -1)
       if (scoreDelta !== 0) return scoreDelta
-      const dueDelta = dueTime(a.demandDueTs) - dueTime(b.demandDueTs)
-      if (dueDelta !== 0) return dueDelta
-      return dueTime(a.plannedExecutionTs) - dueTime(b.plannedExecutionTs)
+
+      const dueA = dueTime(a.demandDueTs)
+      const dueB = dueTime(b.demandDueTs)
+      if (dueA !== dueB) return dueA < dueB ? -1 : 1
+
+      const plannedA = dueTime(a.plannedExecutionTs)
+      const plannedB = dueTime(b.plannedExecutionTs)
+      if (plannedA !== plannedB) return plannedA < plannedB ? -1 : 1
+
+      return 0
     })
   }, [items])
 
