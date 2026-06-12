@@ -110,7 +110,7 @@ export const wmOperationsRegistration: WorkspaceRegistration = {
     { viewId: 'order-journey', displayName: 'Order Journey', lifecycle: 'pilot', sortOrder: 20, defaultPanels: [{ panelId: 'wm-order-journey', defaultVisible: true, defaultOrder: 0 }] },
     { viewId: 'production-progress', displayName: 'Production Progress', lifecycle: 'pilot', sortOrder: 21, defaultPanels: [{ panelId: 'wm-production-progress', defaultVisible: true, defaultOrder: 0 }] },
     { viewId: 'yield-loss', displayName: 'Yield & Loss', lifecycle: 'pilot', sortOrder: 22, defaultPanels: [{ panelId: 'wm-yield-loss', defaultVisible: true, defaultOrder: 0 }] },
-    { viewId: 'shortage-projection', displayName: 'Shortage Projection', lifecycle: 'pilot', sortOrder: 6, defaultPanels: [{ panelId: 'wm-shortage-projection', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'shortage-projection', displayName: 'Shortage Projection', lifecycle: 'pilot', sortOrder: 23, defaultPanels: [{ panelId: 'wm-shortage-projection', defaultVisible: true, defaultOrder: 0 }] },
   ],
   defaultPanels: [
     { panelId: 'wm-worklist-summary', defaultVisible: true, defaultOrder: 0 },

@@ -2703,7 +2703,11 @@ def _build_supply_demand_events(spark, ss: str) -> DataFrame:
             F.lit("INBOUND_DELIVERY").alias("event_subtype"),
             F.col("planned_goods_issue_date").alias("event_date"),
             open_inbound_qty.alias("quantity"),
-            F.col("delivery_number").alias("source_document_id"),
+            F.concat_ws(
+                "-",
+                F.col("delivery_number").cast("string"),
+                F.col("item_number").cast("string"),
+            ).alias("source_document_id"),
             F.lit(None).cast("string").alias("order_number"),
             F.lit(_LEDGER_SORT_INBOUND).alias("sort_seq"),
             F.col("base_uom"),
