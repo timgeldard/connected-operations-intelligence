@@ -186,8 +186,8 @@ def gold_qm_lab_result_signal():
     )
     joined = joined.join(
         material_slim,
-        (joined["plant_code"] == F.col("_mat_plant"))
-        & (joined["material_code"] == F.col("_mat_code")),
+        (F.col("plant_code") == F.col("_mat_plant"))
+        & (F.col("material_code") == F.col("_mat_code")),
         "left",
     ).drop("_mat_plant", "_mat_code")
 
