@@ -1,13 +1,19 @@
 """
 Lakeflow Spark Declarative Pipeline — Trace Gold.
 
-T2 of the governed traceability migration (ADR 016: traceability window, estate lifecycle scope,
-and two-tier Unity Catalog security).
+T2 and T3 of the governed traceability migration (ADR 016: traceability window, estate lifecycle
+scope, and two-tier Unity Catalog security).
 
-Produces ``gold_batch_lineage``: a deterministic MV of directed batch traceability EDGES built
+T2 — ``gold_batch_lineage``: a deterministic MV of directed batch traceability EDGES built
 by a UNION ALL of five named legs sourced from silver.batch_where_used (CHVW) and
 silver.goods_movement (MSEG).  The MV is the heart of the Final Trace migration and serves as
 the base table for the T3 graph-traversal search views.
+
+T3 — ``gold_trace_anchor``: the anchor-tier search MV.  Aggregates the edge list to a
+(MATERIAL_ID, BATCH_ID, PLANT_ID) grain, exposing date-range and directional edge counts,
+and gated to ACTIVE plants only (ADR 016 §3 — anchors may only be initiated from a
+reviewed-active plant; CLOSED/unconfirmed-review plants are traversable but not anchorable).
+Carries ``plant_code`` for the RLS-secured serving-view predicate.
 
 COLUMN CONTRACT — verbatim legacy names (deliberate exception to snake_case per ADR 016 §3):
   PARENT_MATERIAL_ID, PARENT_BATCH_ID, PARENT_PLANT_ID,
@@ -30,9 +36,10 @@ LIFECYCLE GATING (ADR 016 §2):
   as ACTIVE; unknown plants are kept pending full estate review).
 
 SECURITY (ADR 016 §3):
-  NOT added to generate_gold_security_sql.py / GOLD_TABLES RLS.
-  A dedicated capability-tier GRANT is provided in resources/sql/trace_security_{dev,uat,prod}.sql.
-  The anchor-tier row-level search views (T3) carry their own per-user predicate.
+  gold_batch_lineage: NOT added to generate_gold_security_sql.py / GOLD_TABLES RLS.
+    A dedicated capability-tier GRANT is provided in resources/sql/trace_security_{dev,uat,prod}.sql.
+  gold_trace_anchor: ADDED to generate_gold_security_sql.py / GOLD_TABLES — anchor tier carries
+    per-user RLS via the generated *_secured view (standard plant_code predicate).
 
 DETERMINISM:
   No current_date / current_timestamp in any @dlt.table function — passes CI guard.
@@ -552,3 +559,142 @@ def gold_batch_lineage():  # noqa: C901 — five-leg UNION; complexity is struct
     )
 
     return gated
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gold_trace_anchor
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Governed batch traceability anchor index — T3 of the Final Trace migration (ADR 016). "
+        "One row per (MATERIAL_ID, BATCH_ID, PLANT_ID) entry point that a user may initiate a "
+        "trace from.  Built by unioning the parent and child endpoint sides of gold_batch_lineage "
+        "and aggregating to a batch-plant grain with date-range and directional edge counts. "
+        "ANCHORABILITY GATE (ADR 016 §3): only plants with effective_lifecycle = 'ACTIVE' are "
+        "retained.  This is deliberately the OPPOSITE default from the edge MV's keep-unknowns "
+        "policy — edges keep unknown plants for graph continuity (ADR 016 §2 pass-through), but "
+        "anchors require explicit ACTIVE because a trace may only be INITIATED from a reviewed-"
+        "active plant; CLOSED and unconfirmed-review plants are traversable but not anchorable. "
+        "Null/blank BATCH_ID rows are excluded (an anchor is a batch-level entry point). "
+        "Null PLANT_ID rows are excluded (RLS predicate cannot apply to a null plant). "
+        "plant_code = PLANT_ID (lowercase contract column for the RLS predicate). "
+        "Security: ADDED to generate_gold_security_sql.py GOLD_TABLES — served via "
+        "gold_trace_anchor_secured with standard plant_code CSM predicate (application_key = "
+        "'io_reporting'). "
+        "Deterministic base (no current_date / current_timestamp). "
+        "NOTE: app batch-search switchover from the legacy search surface to this anchor tier "
+        "is a separate follow-up task."
+    ),
+    cluster_by=["plant_code", "MATERIAL_ID"],
+))
+def gold_trace_anchor():
+    """Anchor-tier search MV: one row per (MATERIAL_ID, BATCH_ID, PLANT_ID) active anchor.
+
+    Source: dlt.read("gold_batch_lineage") — standard DLT intra-pipeline dependency.
+    An MV cannot read another MV in the same pipeline via spark.read.table reliably;
+    dlt.read() declares the dependency and lets the DLT runtime manage materialisation order.
+
+    Anchorability gate (ADR 016 §3):
+      Inner join to silver.site_lifecycle, keeping ONLY effective_lifecycle == 'ACTIVE'.
+      This is the OPPOSITE default from the edge MV's keep-unknowns policy:
+        - Edge MV (gold_batch_lineage): unknown plants KEPT — silently dropping them would
+          create invisible gaps in the traceability graph (ADR 016 §2).
+        - Anchor MV (gold_trace_anchor): unknown plants DROPPED — a trace may only be
+          INITIATED from a plant that has been explicitly confirmed as ACTIVE after business
+          review.  CLOSED and unconfirmed-review plants (which default to CLOSED) are
+          traversable via the edge product but cannot serve as anchor entry points.
+    """
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+
+    # ── Read the edge MV via DLT intra-pipeline dependency ────────────────────
+    # dlt.read() is the correct pattern for same-pipeline MV → MV dependencies;
+    # spark.read.table on another MV in the same pipeline is unreliable during
+    # incremental planning (the target table may not yet be visible in the catalog).
+    edges = dlt.read("gold_batch_lineage")
+
+    # ── Build endpoint-union: two sides tagged with role ──────────────────────
+    # Parent side: edges where the batch appears as the UPSTREAM node.
+    parent_side = edges.select(
+        F.col("PARENT_MATERIAL_ID").alias("MATERIAL_ID"),
+        F.col("PARENT_BATCH_ID").alias("BATCH_ID"),
+        F.col("PARENT_PLANT_ID").alias("PLANT_ID"),
+        F.col("POSTING_DATE"),
+        F.lit("parent").alias("_role"),
+    )
+
+    # Child side: edges where the batch appears as the DOWNSTREAM node.
+    child_side = edges.select(
+        F.col("CHILD_MATERIAL_ID").alias("MATERIAL_ID"),
+        F.col("CHILD_BATCH_ID").alias("BATCH_ID"),
+        F.col("CHILD_PLANT_ID").alias("PLANT_ID"),
+        F.col("POSTING_DATE"),
+        F.lit("child").alias("_role"),
+    )
+
+    endpoint_union = parent_side.unionAll(child_side)
+
+    # ── Exclude null / blank BATCH_ID and null PLANT_ID ───────────────────────
+    # An anchor is a batch-level entry point; rows with no batch identity cannot
+    # be anchored.  One-sided edges (e.g. VENDOR_RECEIPT has NULL PARENT_*;
+    # DELIVERY has NULL CHILD_*) contribute null-BATCH_ID rows here — they are
+    # deliberately excluded from the anchor index.
+    # Null PLANT_ID rows are also excluded: the RLS predicate (array_contains on
+    # filter_plant) cannot apply to a null plant, so serving them as anchors would
+    # either silently expose data outside the entitlement boundary or require
+    # special-casing in every consumer.
+    filtered = endpoint_union.filter(
+        F.col("BATCH_ID").isNotNull()
+        & (F.trim(F.col("BATCH_ID")) != "")
+        & F.col("PLANT_ID").isNotNull()
+    )
+
+    # ── Aggregate to (MATERIAL_ID, BATCH_ID, PLANT_ID) grain ─────────────────
+    aggregated = (
+        filtered
+        .groupBy("MATERIAL_ID", "BATCH_ID", "PLANT_ID")
+        .agg(
+            F.min("POSTING_DATE").alias("first_posting_date"),
+            F.max("POSTING_DATE").alias("last_posting_date"),
+            F.count(
+                F.when(F.col("_role") == "parent", F.lit(1))
+            ).alias("edge_count_as_parent"),
+            F.count(
+                F.when(F.col("_role") == "child", F.lit(1))
+            ).alias("edge_count_as_child"),
+        )
+    )
+
+    # ── Anchorability gate: ACTIVE plants only (ADR 016 §3) ──────────────────
+    # Inner join to site_lifecycle — plants absent from the dimension are excluded
+    # (the deliberate opposite of the edge MV's left-join keep-unknowns default).
+    lc = _site_lifecycle_lookup(spark, silver_schema)
+    active_lc = lc.filter(F.col("effective_lifecycle") == "ACTIVE")
+
+    anchored = (
+        aggregated
+        .join(
+            F.broadcast(active_lc.select("plant_code")),
+            aggregated["PLANT_ID"] == active_lc["plant_code"],
+            "inner",
+        )
+        .drop("plant_code")
+    )
+
+    # ── Expose plant_code (lowercase contract column for the RLS predicate) ───
+    # Precedent: gold_spc_quality_metric_subgroup exposes plant_code alongside
+    # plant_id so the generate_gold_security_sql.py predicate (array_contains on
+    # filter_plant, plant_code) applies without aliasing in the secured view.
+    result = anchored.select(
+        F.col("MATERIAL_ID"),
+        F.col("BATCH_ID"),
+        F.col("PLANT_ID"),
+        F.col("PLANT_ID").alias("plant_code"),
+        F.col("first_posting_date"),
+        F.col("last_posting_date"),
+        F.col("edge_count_as_parent"),
+        F.col("edge_count_as_child"),
+    )
+
+    return result
