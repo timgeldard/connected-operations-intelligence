@@ -10,12 +10,28 @@ from shared.query_service.object_resolver import resolve_domain_object
 
 
 def _resolve_manifest_path() -> str:
-    # 1. Environment variable override
+    # 1. Environment variable override (set in app.yaml for deployed Databricks App).
+    #    When APP_MANIFEST_PATH is set, the file MUST exist — it is a gitignored build
+    #    artefact that must be copied from data-products/io-reporting/contracts/ before
+    #    deploying.  Run `make prep-app-deploy` (or the equivalent copy step) BEFORE
+    #    `databricks bundle deploy`; the root databricks.yml carries a sync.include
+    #    override so the file is uploaded despite being gitignored.
     env_path = os.environ.get("APP_MANIFEST_PATH")
     if env_path:
-        return os.path.abspath(env_path)
+        abs_path = os.path.abspath(env_path)
+        if not os.path.exists(abs_path):
+            raise FileNotFoundError(
+                f"APP_MANIFEST_PATH is set to '{env_path}' but the file does not exist at "
+                f"'{abs_path}'.  This is a deploy-time build artefact — copy it from the "
+                f"data-products manifest before deploying:\n"
+                f"  make prep-app-deploy          # then: databricks bundle deploy\n"
+                f"  # or manually:\n"
+                f"  cp data-products/io-reporting/contracts/app_contract_manifest.yml "
+                f"apps/api/contracts/app_contract_manifest.yml"
+            )
+        return abs_path
 
-    # 2. Walk up to find repo root
+    # 2. Walk up to find repo root (local dev / CI path — does NOT use APP_MANIFEST_PATH).
     current = os.path.abspath(os.path.dirname(__file__))
     markers = {".git", "pyproject.toml", "pnpm-workspace.yaml"}
     while True:
