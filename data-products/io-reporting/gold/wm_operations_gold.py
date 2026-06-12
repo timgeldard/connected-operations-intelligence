@@ -120,7 +120,8 @@ def _build_order_quality_release(
         .withColumn("open_lot_count", F.coalesce(F.col("open_lot_count"), F.lit(0)))
         .withColumn(
             "is_material_blocked",
-            F.col("qty_unrestricted") < F.col("material_required_qty"),
+            (F.col("held_qty") > 0)
+            & (F.col("qty_unrestricted") < F.col("material_required_qty")),
         )
     )
 
