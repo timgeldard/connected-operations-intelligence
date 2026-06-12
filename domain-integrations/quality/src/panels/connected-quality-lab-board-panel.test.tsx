@@ -394,4 +394,78 @@ describe('ConnectedQualityLabBoardPanel', () => {
       expect(labCalls.some((u) => u.includes('plant_id=C061'))).toBe(true)
     })
   })
+
+  // ── Prop-change sync ────────────────────────────────────────────────────────
+
+  it('syncs selectedPlantId when request.plantId prop changes', async () => {
+    const capturedUrls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        capturedUrls.push(String(url))
+        if (String(url).includes('/api/wm-operations/plants')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => FAKE_PLANTS })
+        }
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => ({ fails: [], dataAvailable: true }),
+        })
+      }),
+    )
+    const qc = makeQueryClient()
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <ConnectedQualityLabBoardPanel request={{ plantId: 'C061' }} />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => {
+      const labCalls = capturedUrls.filter((u) => u.includes('/api/cq/lab/fails'))
+      expect(labCalls.some((u) => u.includes('plant_id=C061'))).toBe(true)
+    })
+    rerender(
+      <QueryClientProvider client={qc}>
+        <ConnectedQualityLabBoardPanel request={{ plantId: 'P817' }} />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => {
+      const labCalls = capturedUrls.filter((u) => u.includes('/api/cq/lab/fails'))
+      expect(labCalls.some((u) => u.includes('plant_id=P817'))).toBe(true)
+    })
+  })
+
+  it('syncs selectedLotType when request.lotType prop changes', async () => {
+    const capturedUrls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        capturedUrls.push(String(url))
+        if (String(url).includes('/api/wm-operations/plants')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => FAKE_PLANTS })
+        }
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => ({ fails: [], dataAvailable: true }),
+        })
+      }),
+    )
+    const qc = makeQueryClient()
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <ConnectedQualityLabBoardPanel request={{ lotType: '89' }} />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => {
+      const labCalls = capturedUrls.filter((u) => u.includes('/api/cq/lab/fails'))
+      expect(labCalls.some((u) => u.includes('lot_type=89'))).toBe(true)
+    })
+    rerender(
+      <QueryClientProvider client={qc}>
+        <ConnectedQualityLabBoardPanel request={{ lotType: '04' }} />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => {
+      const labCalls = capturedUrls.filter((u) => u.includes('/api/cq/lab/fails'))
+      expect(labCalls.some((u) => u.includes('lot_type=04'))).toBe(true)
+    })
+  })
 })
