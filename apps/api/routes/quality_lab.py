@@ -15,7 +15,7 @@ import os
 from typing import Optional
 
 from adapters.quality_lab.quality_lab_databricks_adapter import (
-    _ALLOWED_DAYS,
+    ALLOWED_DAYS,
     QualityLabRepository,
 )
 from fastapi import APIRouter, Header, HTTPException, Response
@@ -89,10 +89,10 @@ async def lab_fails(
     clean_lot_type = lot_type.strip() or None if lot_type is not None else None
 
     # Validate days: must be one of the allowed values when provided.
-    if days is not None and days not in _ALLOWED_DAYS:
+    if days is not None and days not in ALLOWED_DAYS:
         raise HTTPException(
             status_code=422,
-            detail=f"days must be one of {sorted(_ALLOWED_DAYS)} or absent (ALL).",
+            detail=f"days must be one of {sorted(ALLOWED_DAYS)} or absent (ALL).",
         )
     clean_days = days  # already int | None; None = ALL
 

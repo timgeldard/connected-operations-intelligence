@@ -30,7 +30,7 @@ from shared.query_service.query_executor import DatabricksRepository
 from shared.query_service.query_spec import QuerySpec
 
 # Allowed values for the `days` UI filter (30 / 180 / 360 / absent = ALL).
-_ALLOWED_DAYS = frozenset({30, 180, 360})
+ALLOWED_DAYS = frozenset({30, 180, 360})
 
 
 def map_lab_fails_rows(rows: list[dict]) -> dict:
@@ -98,7 +98,7 @@ def get_lab_fails_spec(
 
     plant_clause = "AND plant_code = :plant_id" if plant_id else ""
     lot_type_clause = "AND lot_type = :lot_type" if lot_type else ""
-    days_clause = "AND ts >= CAST(date_sub(current_date(), :days) AS STRING)" if days else ""
+    days_clause = "AND ts >= CAST(date_sub(current_date(), :days) AS STRING)" if days is not None else ""
 
     sql = f"""
     SELECT
@@ -131,7 +131,7 @@ def get_lab_fails_spec(
         params["plant_id"] = plant_id
     if lot_type:
         params["lot_type"] = lot_type
-    if days:
+    if days is not None:
         params["days"] = days
 
     return QuerySpec(

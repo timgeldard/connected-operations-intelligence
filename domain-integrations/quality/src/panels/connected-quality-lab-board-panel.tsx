@@ -233,6 +233,19 @@ export function ConnectedQualityLabBoardPanel({ request }: ConnectedQualityLabBo
   const [page, setPage] = useState(0)
   const [countdown, setCountdown] = useState(ROTATION_SECONDS)
 
+  // Sync local filter state when the request props change (e.g. host navigates to new plant/lotType context).
+  useEffect(() => {
+    setSelectedPlantId(request.plantId)
+    setPage(0)
+    setCountdown(ROTATION_SECONDS)
+  }, [request.plantId])
+
+  useEffect(() => {
+    setSelectedLotType(request.lotType)
+    setPage(0)
+    setCountdown(ROTATION_SECONDS)
+  }, [request.lotType])
+
   // Plant list from /api/wm-operations/plants (same endpoint used by CommandPalette).
   const { plants } = useLabBoardPlants()
 

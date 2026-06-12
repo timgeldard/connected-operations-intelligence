@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type {
   ConnectedQualityLabFailuresResponse,
@@ -33,26 +32,19 @@ const FALLBACK_PLANTS: WmPlantRow[] = [
  * picker always has options.
  */
 export function useLabBoardPlants(): { plants: WmPlantRow[] } {
-  const [plants, setPlants] = useState<WmPlantRow[]>(FALLBACK_PLANTS)
+  const { data } = useQuery<WmPlantRow[]>({
+    queryKey: ['wm-operations', 'plants'] as const,
+    queryFn: async () => {
+      const r = await fetch('/api/wm-operations/plants?limit=50', { credentials: 'include' })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const rows: WmPlantRow[] = await r.json()
+      if (!Array.isArray(rows) || rows.length === 0) throw new Error('empty')
+      return rows
+    },
+    staleTime: LAB_PLANTS_STALE_TIME_MS,
+  })
 
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/wm-operations/plants?limit=50', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((rows: WmPlantRow[]) => {
-        if (!cancelled && Array.isArray(rows) && rows.length > 0) {
-          setPlants(rows)
-        }
-      })
-      .catch(() => {
-        // Keep FALLBACK_PLANTS on any error.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return { plants }
+  return { plants: data ?? FALLBACK_PLANTS }
 }
 
 export function useConnectedQualityLabFailures(request: ConnectedQualityLabAdapterRequest) {
