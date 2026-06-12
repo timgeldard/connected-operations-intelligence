@@ -103,6 +103,11 @@ export interface WmOrderReadinessItem {
     | 'NO_WM_DEMAND'
   readonly daysToStart: number | null
   readonly readinessBand: 'red' | 'amber' | 'green' | 'grey' | null
+  readonly qtyUnrestricted: number | null
+  readonly qualityHoldQty: number | null
+  readonly openLotCount: number | null
+  readonly qualityReleaseStatus: 'RELEASED' | 'PARTIAL_HOLD' | 'QUALITY_BLOCKED' | 'NO_QM_DATA' | null
+  readonly readinessReason: string | null
   readonly productionLine: string | null
 }
 
