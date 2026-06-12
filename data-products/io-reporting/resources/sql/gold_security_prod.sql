@@ -1035,22 +1035,6 @@ CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_wm_order_yiel
   );
 GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_wm_order_yield_secured TO `users`;
 
-CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_wm_recipe_run_benchmark_secured AS
-  SELECT * FROM connected_plant_prod.gold_io_reporting.gold_wm_recipe_run_benchmark
-  WHERE EXISTS (
-    SELECT 1 FROM published_prod.security.model
-    WHERE current_user() = email
-      AND application_key = 'io_reporting'
-      AND LOWER(access_type) = 'full view'
-    UNION ALL
-    SELECT 1 FROM published_prod.security.model
-    WHERE current_user() = email
-      AND application_key = 'io_reporting'
-      AND LOWER(access_type) = 'filter'
-      AND array_contains(filter_plant, plant_code)
-  );
-GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_wm_recipe_run_benchmark_secured TO `users`;
-
 CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_wm_order_component_variance_secured AS
   SELECT * FROM connected_plant_prod.gold_io_reporting.gold_wm_order_component_variance
   WHERE EXISTS (

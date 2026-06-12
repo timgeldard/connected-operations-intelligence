@@ -626,20 +626,6 @@ export interface WmOrderYieldItem {
   readonly lastGrDate: string | null
 }
 
-export interface WmRecipeBenchmarkItem {
-  readonly plantId: string
-  readonly materialId: string
-  readonly productionLine: string
-  readonly runCount: number | null
-  readonly medianYieldPct: number | null
-  readonly p10YieldPct: number | null
-  readonly p90YieldPct: number | null
-  readonly medianDurationHours: number | null
-  readonly p10DurationHours: number | null
-  readonly p90DurationHours: number | null
-  readonly lastRunFinishDate: string | null
-}
-
 export interface WmComponentVarianceItem {
   readonly plantId: string
   readonly orderId: string

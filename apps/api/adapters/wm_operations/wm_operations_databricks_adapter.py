@@ -1479,24 +1479,6 @@ SIMPLE_DATASETS: dict[str, dict] = {
         has_warehouse=False,
         open_only_clause="has_goods_receipt OR is_complete",
     ),
-    "recipe_benchmark": dict(
-        contract="wm_operations.recipe_benchmark",
-        endpoint="/api/wm-operations/recipe-benchmark",
-        columns=(
-            "plant_id, material_id, production_line, run_count, "
-            "median_yield_pct, p10_yield_pct, p90_yield_pct, "
-            "median_duration_hours, p10_duration_hours, p90_duration_hours, "
-            "last_run_finish_date"
-        ),
-        order_by="plant_id ASC, material_id ASC, production_line ASC",
-        numeric=(
-            "median_yield_pct", "p10_yield_pct", "p90_yield_pct",
-            "median_duration_hours", "p10_duration_hours", "p90_duration_hours",
-        ),
-        integer=("run_count",),
-        boolean=(),
-        has_warehouse=False,
-    ),
     "component_variance": dict(
         contract="wm_operations.component_variance",
         endpoint="/api/wm-operations/component-variance",

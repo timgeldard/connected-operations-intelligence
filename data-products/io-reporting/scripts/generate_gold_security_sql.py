@@ -156,7 +156,6 @@ GOLD_TABLES = [
     "gold_wm_order_journey_events",
     "gold_wm_order_wip_stage",
     "gold_wm_order_yield",
-    "gold_wm_recipe_run_benchmark",
     "gold_wm_order_component_variance",
     # spc_gold.py
     "gold_spc_quality_metric_subgroup",

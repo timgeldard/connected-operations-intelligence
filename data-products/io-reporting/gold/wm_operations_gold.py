@@ -14,7 +14,6 @@ Tables:
                               (the WM Cockpit TR / ST traffic-light logic, derived read-only)
   gold_wm_bin_stock_detail  — quant-grain stock & bin explorer with storage-zone classification
   gold_wm_order_yield       — order-grain yield summary (planned vs delivered qty, yield %)
-  gold_wm_recipe_run_benchmark — recipe-line benchmark percentiles for complete GR runs
   gold_wm_order_component_variance — order+component grain material variance (issued vs required)
 
 Storage-zone classification: derived from the governed storage_type_role_mapping table
@@ -2374,78 +2373,7 @@ def gold_wm_order_yield():
     )
 
 
-# -- 24. RECIPE RUN BENCHMARK (recipe-line benchmark distribution) -----------
-
-@dlt.table(**gold_table_args(
-    comment=(
-        "Recipe-line benchmark distribution for completed production runs. One row per "
-        "plant_code × material_code × production_line, where null production_line is grouped "
-        "as UNASSIGNED. Source: gold_wm_order_yield via dlt.read. Distribution includes only "
-        "complete orders with goods receipt evidence (is_complete AND has_goods_receipt). "
-        "run_count counts qualifying runs; yield percentiles ignore null yield_pct. Duration "
-        "is last_gr_date - first_gr_date in hours and is null for zero/negative or missing GR "
-        "date spans. No current_date()/current_timestamp() — deterministic base MV. "
-        "cluster_by plant_code, material_code."
-    ),
-    cluster_by=["plant_code", "material_code"],
-))
-@dlt.expect("run_count positive", "run_count > 0")
-def gold_wm_recipe_run_benchmark():
-    runs = dlt.read("gold_wm_order_yield")
-
-    duration_hours = (
-        (
-            F.unix_timestamp(F.to_timestamp("last_gr_date"))
-            - F.unix_timestamp(F.to_timestamp("first_gr_date"))
-        ) / F.lit(3600.0)
-    )
-
-    qualified = (
-        runs
-        .filter(
-            F.coalesce(F.col("is_complete"), F.lit(False))
-            & F.coalesce(F.col("has_goods_receipt"), F.lit(False))
-        )
-        .withColumn(
-            "production_line_group",
-            F.coalesce(F.col("production_line"), F.lit("UNASSIGNED")),
-        )
-        .withColumn(
-            "duration_hours",
-            F.when(duration_hours > 0, duration_hours).otherwise(F.lit(None).cast("double")),
-        )
-    )
-
-    return (
-        qualified
-        .groupBy("plant_code", "material_code", "production_line_group")
-        .agg(
-            F.count(F.lit(1)).alias("run_count"),
-            F.percentile_approx("yield_pct", 0.5).cast("double").alias("median_yield_pct"),
-            F.percentile_approx("yield_pct", 0.1).cast("double").alias("p10_yield_pct"),
-            F.percentile_approx("yield_pct", 0.9).cast("double").alias("p90_yield_pct"),
-            F.percentile_approx("duration_hours", 0.5).cast("double").alias("median_duration_hours"),
-            F.percentile_approx("duration_hours", 0.1).cast("double").alias("p10_duration_hours"),
-            F.percentile_approx("duration_hours", 0.9).cast("double").alias("p90_duration_hours"),
-            F.max("last_gr_date").alias("last_run_finish_date"),
-        )
-        .select(
-            "plant_code",
-            "material_code",
-            F.col("production_line_group").alias("production_line"),
-            "run_count",
-            "median_yield_pct",
-            "p10_yield_pct",
-            "p90_yield_pct",
-            "median_duration_hours",
-            "p10_duration_hours",
-            "p90_duration_hours",
-            "last_run_finish_date",
-        )
-    )
-
-
-# -- 25. ORDER COMPONENT VARIANCE (order+component grain, loss waterfall) -----
+# -- 24. ORDER COMPONENT VARIANCE (order+component grain, loss waterfall) -----
 
 @dlt.table(**gold_table_args(
     comment=(
