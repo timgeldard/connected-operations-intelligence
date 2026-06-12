@@ -694,3 +694,260 @@ def gold_trace_anchor():
     )
 
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gold_batch_stock_summary  (T4 — governed trace2 fan-out foundation)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Batch-grain stock position from silver.batch_stock (MCHB-derived). "
+        "One row per (plant_code, material_code, batch_number) with the six SAP stock-category "
+        "quantities: unrestricted, quality_inspection, blocked, restricted_use, in_transfer, "
+        "blocked_returns — plus total_quantity (sum of all categories) and base_unit_of_measure. "
+        "Source: silver.batch_stock (plant-gated current-state MCHB snapshot; one row per "
+        "material × plant × storage_location × batch). "
+        "Grain: this MV aggregates across storage locations, collapsing to the batch level "
+        "so each (plant_code, material_code, batch_number) appears once. "
+        "Use case: batch-level stock position for the trace2 fan-out — the Phase 2 "
+        "recall-readiness and mass-balance panels need a governed batch-stock position "
+        "rather than the ungated legacy gold_batch_stock_v. "
+        "Standard plant RLS: expose plant_code; governed via gold_batch_stock_summary_secured "
+        "(scripts/generate_gold_security_sql.py GOLD_TABLES). "
+        "NOTE: quantities are summed across all storage locations for a given plant/material/batch. "
+        "Phase 2 consumers requiring storage-location granularity should read silver.batch_stock. "
+        "Deterministic base (no current_date / current_timestamp)."
+    ),
+    cluster_by=["plant_code", "material_code"],
+))
+@dlt.expect_all_or_drop({
+    "plant_code present": "plant_code IS NOT NULL",
+    "material_code present": "material_code IS NOT NULL",
+    "batch_number present": "batch_number IS NOT NULL",
+})
+@dlt.expect_all({
+    "total_quantity non-negative": "total_quantity IS NULL OR total_quantity >= 0",
+})
+def gold_batch_stock_summary():
+    """Batch-grain stock position: one row per (plant_code, material_code, batch_number).
+
+    Source: silver.batch_stock — plant-gated MCHB current-state snapshot.
+    Aggregates the six SAP stock-category quantity columns across storage locations.
+    Phase 2 (mass-balance, recall-readiness) queries against this MV rather than the
+    ungated legacy gold_batch_stock_v.
+    """
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+
+    bs = spark.read.table(f"{silver_schema}.batch_stock")
+
+    agg = (
+        bs
+        .groupBy(
+            F.col("plant_code"),
+            F.col("material_code"),
+            F.col("batch_number"),
+        )
+        .agg(
+            F.max("base_uom").alias("base_unit_of_measure"),
+            F.sum(F.col("unrestricted_quantity").cast("double")).alias("unrestricted_quantity"),
+            F.sum(F.col("quality_inspection_quantity").cast("double")).alias("quality_inspection_quantity"),
+            F.sum(F.col("blocked_quantity").cast("double")).alias("blocked_quantity"),
+            F.sum(F.col("restricted_use_quantity").cast("double")).alias("restricted_use_quantity"),
+            F.sum(F.col("in_transfer_quantity").cast("double")).alias("in_transfer_quantity"),
+            F.sum(F.col("blocked_returns_quantity").cast("double")).alias("blocked_returns_quantity"),
+        )
+    )
+
+    return agg.select(
+        F.col("plant_code"),
+        F.col("material_code"),
+        F.col("batch_number"),
+        F.col("base_unit_of_measure"),
+        F.col("unrestricted_quantity"),
+        F.col("quality_inspection_quantity"),
+        F.col("blocked_quantity"),
+        F.col("restricted_use_quantity"),
+        F.col("in_transfer_quantity"),
+        F.col("blocked_returns_quantity"),
+        (
+            F.coalesce(F.col("unrestricted_quantity"), F.lit(0.0))
+            + F.coalesce(F.col("quality_inspection_quantity"), F.lit(0.0))
+            + F.coalesce(F.col("blocked_quantity"), F.lit(0.0))
+            + F.coalesce(F.col("restricted_use_quantity"), F.lit(0.0))
+            + F.coalesce(F.col("in_transfer_quantity"), F.lit(0.0))
+            + F.coalesce(F.col("blocked_returns_quantity"), F.lit(0.0))
+        ).alias("total_quantity"),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gold_batch_event_ledger  (T4 — governed trace2 fan-out foundation)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Directional per-batch event ledger derived from gold_batch_lineage. "
+        "One row per (batch × plant × direction) event, exploding each directed edge "
+        "into per-batch rows so a single batch's full movement history is queryable without "
+        "graph traversal. "
+        "DIRECTION SEMANTICS: "
+        "  PRODUCTION — parent side: OUT (batch consumed into child order); "
+        "               child  side: IN  (batch produced by the process order). "
+        "  STO_TRANSFER / BATCH_TRANSFER / MATERIAL_TRANSFER — "
+        "               parent side: OUT (batch sent); child side: IN (batch received). "
+        "  VENDOR_RECEIPT — child side only: IN (received from supplier; parent NULL). "
+        "  DELIVERY       — parent side only: OUT (shipped to customer; child NULL). "
+        "  ADJUSTMENT_IN  — child side: IN (stock write-on). "
+        "  ADJUSTMENT_OUT — parent side: OUT (stock write-off). "
+        "COUNTERPART columns carry the opposite endpoint identity: "
+        "  COUNTERPART_MATERIAL_ID / COUNTERPART_BATCH_ID / COUNTERPART_PLANT_ID. "
+        "VENDOR_RECEIPT IN rows: SUPPLIER_ID + PURCHASE_ORDER_ID populated. "
+        "DELIVERY OUT rows: CUSTOMER_ID + DELIVERY_ID + SALES_ORDER_ID populated. "
+        "PRODUCTION / TRANSFER rows: PROCESS_ORDER_ID + MATERIAL_DOCUMENT_NUMBER populated. "
+        "Source: dlt.read('gold_batch_lineage') — intra-pipeline DLT dependency. "
+        "Security: capability tier — NOT in GOLD_TABLES; GRANT added to "
+        "resources/sql/trace_security_{env}.sql (traceability-readers group, tolerated failure). "
+        "Grain: two rows per two-sided edge (OUT for parent, IN for child); "
+        "one row per one-sided edge (VENDOR_RECEIPT IN only; DELIVERY OUT only). "
+        "Phase 2 use cases: mass-balance timeline, supplier-batch panel, recall-readiness counts. "
+        "Deterministic base (no current_date / current_timestamp)."
+    ),
+    cluster_by=["plant_code", "MATERIAL_ID"],
+))
+@dlt.expect_all_or_drop({
+    "MATERIAL_ID present": "MATERIAL_ID IS NOT NULL",
+    "BATCH_ID present": "BATCH_ID IS NOT NULL",
+    "direction present": "direction IS NOT NULL",
+    "LINK_TYPE present": "LINK_TYPE IS NOT NULL",
+})
+@dlt.expect_all({
+    "QUANTITY non-negative if present": "QUANTITY IS NULL OR QUANTITY >= 0",
+})
+def gold_batch_event_ledger():  # noqa: C901 — two-sided fan-out; structural complexity
+    """Directional per-batch event ledger exploded from gold_batch_lineage edges.
+
+    Each directed edge is split into at most two rows:
+      - parent side (OUT): the batch that was consumed or sent in this event.
+      - child  side (IN):  the batch that was produced or received.
+
+    One-sided edges (VENDOR_RECEIPT has NULL PARENT; DELIVERY has NULL CHILD) contribute
+    only the populated side.  NULL BATCH_ID or NULL PLANT_ID rows are dropped — they cannot
+    be attributed to a specific batch in a specific plant and would break Phase 2 queries.
+
+    Reads gold_batch_lineage via dlt.read() (intra-pipeline DLT dependency pattern —
+    same as gold_trace_anchor).
+    """
+    edges = dlt.read("gold_batch_lineage")
+
+    # ── Parent side (OUT) ────────────────────────────────────────────────────
+    # VENDOR_RECEIPT has NULL PARENT_BATCH_ID/PARENT_PLANT_ID — excluded by filter.
+    parent_out = edges.filter(
+        F.col("PARENT_BATCH_ID").isNotNull()
+        & (F.trim(F.col("PARENT_BATCH_ID")) != "")
+        & F.col("PARENT_PLANT_ID").isNotNull()
+    ).select(
+        F.col("PARENT_MATERIAL_ID").alias("MATERIAL_ID"),
+        F.col("PARENT_BATCH_ID").alias("BATCH_ID"),
+        F.col("PARENT_PLANT_ID").alias("PLANT_ID"),
+        F.col("PARENT_PLANT_ID").alias("plant_code"),
+        F.lit("OUT").alias("direction"),
+        F.col("LINK_TYPE"),
+        F.col("QUANTITY"),
+        F.col("BASE_UNIT_OF_MEASURE"),
+        F.col("POSTING_DATE"),
+        # counterpart: the child batch / plant
+        F.col("CHILD_MATERIAL_ID").alias("COUNTERPART_MATERIAL_ID"),
+        F.col("CHILD_BATCH_ID").alias("COUNTERPART_BATCH_ID"),
+        F.col("CHILD_PLANT_ID").alias("COUNTERPART_PLANT_ID"),
+        # reference IDs
+        F.col("SUPPLIER_ID"),
+        F.col("CUSTOMER_ID"),
+        F.col("DELIVERY_ID"),
+        F.col("PURCHASE_ORDER_ID"),
+        F.col("PROCESS_ORDER_ID"),
+        F.col("SALES_ORDER_ID"),
+        F.col("MATERIAL_DOCUMENT_NUMBER"),
+    )
+
+    # ── Child side (IN) ──────────────────────────────────────────────────────
+    # DELIVERY has NULL CHILD_BATCH_ID/CHILD_PLANT_ID — excluded by filter.
+    child_in = edges.filter(
+        F.col("CHILD_BATCH_ID").isNotNull()
+        & (F.trim(F.col("CHILD_BATCH_ID")) != "")
+        & F.col("CHILD_PLANT_ID").isNotNull()
+    ).select(
+        F.col("CHILD_MATERIAL_ID").alias("MATERIAL_ID"),
+        F.col("CHILD_BATCH_ID").alias("BATCH_ID"),
+        F.col("CHILD_PLANT_ID").alias("PLANT_ID"),
+        F.col("CHILD_PLANT_ID").alias("plant_code"),
+        F.lit("IN").alias("direction"),
+        F.col("LINK_TYPE"),
+        F.col("QUANTITY"),
+        F.col("BASE_UNIT_OF_MEASURE"),
+        F.col("POSTING_DATE"),
+        # counterpart: the parent batch / plant
+        F.col("PARENT_MATERIAL_ID").alias("COUNTERPART_MATERIAL_ID"),
+        F.col("PARENT_BATCH_ID").alias("COUNTERPART_BATCH_ID"),
+        F.col("PARENT_PLANT_ID").alias("COUNTERPART_PLANT_ID"),
+        # reference IDs
+        F.col("SUPPLIER_ID"),
+        F.col("CUSTOMER_ID"),
+        F.col("DELIVERY_ID"),
+        F.col("PURCHASE_ORDER_ID"),
+        F.col("PROCESS_ORDER_ID"),
+        F.col("SALES_ORDER_ID"),
+        F.col("MATERIAL_DOCUMENT_NUMBER"),
+    )
+
+    return parent_out.unionByName(child_in)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gold_trace_vendor  (T4 — governed trace2 fan-out foundation)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Vendor lookup for traceability fan-out: vendor_code → vendor_name, country_key. "
+        "Source: silver.vendor (LFA1 via published_<env>.central_services.vendormaster_lfa1). "
+        "One row per vendor_code. Vendor names are used in the Phase 2 supplier-batch panel "
+        "to resolve SUPPLIER_ID → display name without a per-query join to the heavy LFA1 table. "
+        "SUPPLIER_ID in gold_batch_lineage / gold_batch_event_ledger is the vendor_code from "
+        "silver.purchase_order (EKKO.LIFNR → vendor_code after strip_zeros), which matches "
+        "the vendor_code PK of silver.vendor. "
+        "Grain: one row per vendor_code (deduped). "
+        "Security: capability tier — NOT in GOLD_TABLES; GRANT added to "
+        "resources/sql/trace_security_{env}.sql (traceability-readers group, tolerated failure). "
+        "NOTE: silver.vendor is built by the slow reference pipeline. This gold MV reads it "
+        "via spark.read.table (cross-pipeline Delta read). "
+        "Deterministic base (no current_date / current_timestamp)."
+    ),
+    cluster_by=["vendor_code"],
+))
+@dlt.expect_all_or_drop({
+    "vendor_code present": "vendor_code IS NOT NULL",
+})
+def gold_trace_vendor():
+    """Vendor lookup: vendor_code → vendor_name, country_key.
+
+    Source: silver.vendor (LFA1 via published central_services).
+    One row per vendor code (deduped).
+    """
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+
+    return (
+        spark.read.table(f"{silver_schema}.vendor")
+        .select(
+            F.col("vendor_code"),
+            F.col("vendor_name"),
+            F.col("country_key"),
+        )
+        .groupBy("vendor_code")
+        .agg(
+            F.max("vendor_name").alias("vendor_name"),
+            F.max("country_key").alias("country_key"),
+        )
+    )

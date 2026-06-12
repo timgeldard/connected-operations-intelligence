@@ -161,6 +161,8 @@ GOLD_TABLES = [
     "gold_spc_quality_metric_subgroup",
     # trace_gold.py — anchor tier only (capability-tier edge MV uses trace_security_*.sql instead)
     "gold_trace_anchor",
+    # trace_gold.py — T4 batch-stock position (standard plant RLS; capability-tier ledger/vendor use trace_security_*.sql)
+    "gold_batch_stock_summary",
     # quality_lab.py — lab-board result signal (quality-batch-release workspace)
     "gold_qm_lab_result_signal",
 ]

@@ -1083,6 +1083,22 @@ CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_trace_anchor_
   );
 GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_trace_anchor_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_batch_stock_summary_secured AS
+  SELECT * FROM connected_plant_prod.gold_io_reporting.gold_batch_stock_summary
+  WHERE EXISTS (
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_batch_stock_summary_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_qm_lab_result_signal_secured AS
   SELECT * FROM connected_plant_prod.gold_io_reporting.gold_qm_lab_result_signal
   WHERE EXISTS (

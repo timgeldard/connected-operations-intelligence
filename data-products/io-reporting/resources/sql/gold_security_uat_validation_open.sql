@@ -286,6 +286,10 @@ CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_trace_anchor_s
   SELECT * FROM connected_plant_uat.gold_io_reporting.gold_trace_anchor;
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_trace_anchor_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_batch_stock_summary_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_batch_stock_summary;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_batch_stock_summary_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_qm_lab_result_signal_secured AS
   SELECT * FROM connected_plant_uat.gold_io_reporting.gold_qm_lab_result_signal;
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_qm_lab_result_signal_secured TO `users`;

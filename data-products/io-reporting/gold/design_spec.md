@@ -190,6 +190,82 @@ Managed via Declarative Automation Bundle (DAB).
   separate follow-up task.
 - **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
 
+### T4 — governed trace2 fan-out foundations (Phase 1)
+
+> These MVs form the governed base layer for migrating the trace2 API fan-out routes
+> off the legacy ungated gold views (`gold_batch_stock_v`, `gold_batch_mass_balance_v`,
+> `gold_batch_delivery_v`). Phase 2 will wire the trace2 adapter layer to these MVs.
+
+#### `gold_batch_stock_summary`  *(T4 — standard plant RLS)*
+- **Granularity:** 1 row per (plant_code, material_code, batch_number) — aggregated across storage locations.
+- **Description:** Batch-grain stock position from `silver.batch_stock` (MCHB-derived current-state
+  snapshot). Exposes the six SAP stock-category quantities: `unrestricted_quantity`,
+  `quality_inspection_quantity`, `blocked_quantity`, `restricted_use_quantity`,
+  `in_transfer_quantity`, `blocked_returns_quantity`, plus `total_quantity` (sum of all six) and
+  `base_unit_of_measure` (from MARA via the silver join).
+- **Note:** Quantities are summed across all storage locations for a given plant/material/batch.
+  Phase 2 consumers requiring storage-location granularity should read `silver.batch_stock` directly.
+- **Phase 2 use cases:** recall-readiness stock-position check, mass-balance current-balance.
+- **Legacy contract target:** `gold_batch_stock_v` — plant_code, material_code, batch_number, plus
+  stock-category quantities (unrestricted, quality-inspection, blocked) + UOM. This MV extends that
+  with restricted_use, in_transfer, and blocked_returns categories and adds a `total_quantity`.
+- **Security:** Added to `generate_gold_security_sql.py` `GOLD_TABLES` — served via
+  `gold_batch_stock_summary_secured` with the standard `plant_code` CSM predicate
+  (`application_key = 'io_reporting'`).
+- **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
+
+#### `gold_batch_event_ledger`  *(T4 — capability tier)*
+- **Granularity:** 1 row per (batch × plant × direction) per edge — two rows for two-sided edges
+  (PRODUCTION / TRANSFER), one row for one-sided edges (VENDOR_RECEIPT IN; DELIVERY OUT).
+- **Description:** Directional per-batch event ledger exploded from `gold_batch_lineage` edges.
+  Each directed edge is split into per-batch rows so a single batch's full movement history is
+  queryable without graph traversal. Direction semantics: PRODUCTION parent→OUT, child→IN;
+  TRANSFER legs parent→OUT, child→IN; VENDOR_RECEIPT→IN only; DELIVERY→OUT only;
+  ADJUSTMENT_IN→IN only; ADJUSTMENT_OUT→OUT only.
+  `COUNTERPART_MATERIAL_ID / COUNTERPART_BATCH_ID / COUNTERPART_PLANT_ID` carry the opposite
+  endpoint identity. Reference columns: `SUPPLIER_ID`, `CUSTOMER_ID`, `DELIVERY_ID`,
+  `PURCHASE_ORDER_ID`, `PROCESS_ORDER_ID`, `SALES_ORDER_ID`, `MATERIAL_DOCUMENT_NUMBER`.
+- **Source:** `dlt.read("gold_batch_lineage")` — intra-pipeline DLT dependency.
+- **Phase 2 use cases:** mass-balance timeline (`gold_batch_mass_balance_v` replacement),
+  supplier-batch panel, recall-readiness delivery counts.
+- **Legacy contract targets:**
+  - `gold_batch_mass_balance_v`: MATERIAL_ID, BATCH_ID, PLANT_ID, MOVEMENT_TYPE, QUANTITY, UOM,
+    PROCESS_ORDER_ID, POSTING_DATE, ABS_QUANTITY, BALANCE_QTY, MOVEMENT_CATEGORY.
+  - `gold_batch_delivery_v`: MATERIAL_ID, BATCH_ID, PLANT_ID, CUSTOMER_ID, CUSTOMER_NAME, STREET,
+    CITY, POSTCODE, COUNTRY_ID, COUNTRY_NAME, DELIVERY, SALES_ORDER_ID, QUANTITY, ABS_QUANTITY,
+    UOM, POSTING_DATE, MOVEMENT_TYPE.
+  - `gold_supplier`: SUPPLIER_ID, SUPPLIER_NAME, COUNTRY_ID, COUNTRY_NAME (partially — see
+    gold_trace_vendor below; customer name / address join deferred to Phase 2).
+  The event ledger provides MATERIAL_ID, BATCH_ID, PLANT_ID, LINK_TYPE (replaces MOVEMENT_CATEGORY),
+  QUANTITY, BASE_UNIT_OF_MEASURE, POSTING_DATE, PROCESS_ORDER_ID, DELIVERY_ID, SALES_ORDER_ID,
+  CUSTOMER_ID, SUPPLIER_ID, PURCHASE_ORDER_ID, MATERIAL_DOCUMENT_NUMBER plus COUNTERPART columns.
+  ABS_QUANTITY, BALANCE_QTY, and MOVEMENT_TYPE are not on this MV — Phase 2 derives them from
+  QUANTITY and LINK_TYPE in the serving layer.
+- **Security:** Capability tier — NOT in `GOLD_TABLES`; `GRANT SELECT` to `traceability-readers`
+  in `resources/sql/trace_security_{env}.sql` (tolerated failure if group absent).
+- **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
+
+#### `gold_trace_vendor`  *(T4 — capability tier)*
+- **Granularity:** 1 row per `vendor_code` (deduped).
+- **Description:** Vendor lookup for the trace2 supplier-batch panel. Maps `vendor_code` (which
+  equals `SUPPLIER_ID` in `gold_batch_lineage` / `gold_batch_event_ledger`) to `vendor_name` and
+  `country_key`. Source: `silver.vendor` (LFA1 via `published_<env>.central_services.vendormaster_lfa1`).
+  This replaces the legacy `gold_supplier` (SUPPLIER_ID, SUPPLIER_NAME, COUNTRY_ID, COUNTRY_NAME)
+  used by `supplier_adapter.py`; Phase 2 join is `SUPPLIER_ID = vendor_code`.
+- **Vendor-master decision:** `silver.vendor` (LFA1) IS available in the pipeline — confirmed by
+  `data-products/io-reporting/silver/tables/reference.py` section 11 and `docs/ingestion_requests.md`
+  item 2 (`vendormaster_lfa1` listed as verified present in UAT central_services). A dedicated
+  gold lookup is built here rather than exposing `silver.vendor` directly (which would bypass the
+  capability-tier boundary).
+- **Legacy contract target:** `gold_supplier` — SUPPLIER_ID, SUPPLIER_NAME, COUNTRY_ID, COUNTRY_NAME.
+  This MV exposes `vendor_code`, `vendor_name`, `country_key` (country_key = LAND1, equivalent to
+  COUNTRY_ID; COUNTRY_NAME text is in `silver.vendor.city`/`region_code` — the resolved display
+  name is deferred to Phase 2 if needed, matching the current `gold_supplier` pattern which also
+  does not carry a country name string natively).
+- **Security:** Capability tier — NOT in `GOLD_TABLES`; `GRANT SELECT` to `traceability-readers`
+  in `resources/sql/trace_security_{env}.sql` (tolerated failure if group absent).
+- **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
+
 ---
 
 ### Access-tier foundation
