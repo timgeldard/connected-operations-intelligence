@@ -31,3 +31,13 @@ CREATE SCHEMA IF NOT EXISTS connected_plant_uat.gold_io_reporting;
 
 GRANT SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_batch_lineage
   TO `traceability-readers`;
+
+-- T4 (Phase 1 fan-out foundations): gold_batch_event_ledger and gold_trace_vendor.
+-- Same capability-tier pattern as gold_batch_lineage above.
+-- TOLERATED FAILURE: if the traceability-readers group is absent, these GRANTs will fail
+-- gracefully — expected; re-run after provisioning.
+GRANT SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_batch_event_ledger
+  TO `traceability-readers`;
+
+GRANT SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_trace_vendor
+  TO `traceability-readers`;
