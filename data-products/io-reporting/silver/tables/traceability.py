@@ -138,8 +138,9 @@ if bronze_columns_exist("batchwhereusedlist_chvw", _CHVW_REQUIRED):
         #      F.length(F.trim(...)) == 8 vs 10 discriminates format unambiguously.
         # determinism-exempt: rolling trace window (ADR 016) is intentionally evaluated at
         # refresh time — same pattern as the qm_lookback_years window in quality.py.
-        cutoff_compact = F.date_format(F.add_months(F.current_date(), -12 * lookback), "yyyyMMdd")  # determinism-exempt
-        cutoff_iso = F.date_format(F.add_months(F.current_date(), -12 * lookback), "yyyy-MM-dd")  # determinism-exempt
+        base_date = F.add_months(F.current_date(), -12 * lookback)  # determinism-exempt: rolling trace window (ADR 016)
+        cutoff_compact = F.date_format(base_date, "yyyyMMdd")
+        cutoff_iso = F.date_format(base_date, "yyyy-MM-dd")
         keep = (
             F.col("BUDAT").isNull()
             | F.col("BUDAT").isin(*_SAP_NULL_DATES)
