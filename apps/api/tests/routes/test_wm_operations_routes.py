@@ -1108,6 +1108,71 @@ class TestScheduleAdherenceDailyRoute:
 
 
 # ---------------------------------------------------------------------------
+# Adherence Root Cause (Production Progress — miss classification)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+class TestAdherenceRootCauseRoute:
+    async def test_returns_mapped_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "order_id": "900001",
+            "material_id": "FG1",
+            "material_name": "Finished Good",
+            "order_qty": 100.0,
+            "uom": "KG",
+            "production_line": "LINE_A",
+            "scheduled_start_date": "2026-06-01",
+            "scheduled_finish_date": "2026-06-10",
+            "actual_release_date": "2026-06-03",
+            "actual_finish_date": "2026-06-12",
+            "root_cause_class": "LATE_RELEASE",
+            "is_late_release": True,
+            "has_material_short": False,
+            "shortfall_component_count": 0,
+            "min_variance_qty": None,
+            "release_to_production_hours": 48.0,
+            "production_first_actual_start": "2026-06-05T08:00:00",
+            "is_finish_late": True,
+            "is_open_late": False,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/adherence-root-cause",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["orderId"] == "900001"
+        assert row["rootCauseClass"] == "LATE_RELEASE"
+        assert row["isLateRelease"] is True
+        assert response.headers.get("x-contract-id") == "wm_operations.adherence_root_cause"
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "plant_id = :plant_id" in executed_sql
+
+    async def test_returns_401_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/adherence-root-cause", params={"plant_id": "C061"}
+            )
+        assert response.status_code == 401
+
+    async def test_returns_503_legacy(self, monkeypatch) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/adherence-root-cause",
+                params={"plant_id": "C061"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
 # QM characteristic / UD Pareto (Command Centre drill)
 # ---------------------------------------------------------------------------
 

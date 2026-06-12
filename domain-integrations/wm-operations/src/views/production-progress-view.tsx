@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react'
-import type { WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem } from '../adapters/wm-operations-adapter.js'
-import { useWmWipStages, useWmScheduleAdherenceDaily } from '../adapters/wm-operations-queries.js'
+import type {
+  WmOperationsAdapterRequest,
+  WmWipStageItem,
+  WmScheduleAdherenceDailyItem,
+  WmAdherenceRootCauseItem,
+  WmAdherenceRootCauseClass,
+} from '../adapters/wm-operations-adapter.js'
+import { useWmWipStages, useWmScheduleAdherenceDaily, useWmAdherenceRootCause } from '../adapters/wm-operations-queries.js'
 import { setOrderJourneyDeepLink } from '../state/deep-link.js'
 import { EmptyNote, KpiTile, LoadingRows, ViewHeader, formatDate, formatQty } from '../components/kerry.js'
 
@@ -235,6 +241,119 @@ function SCurveChart({ items, maxActual, isLoading, error }: SCurveProps) {
   )
 }
 
+// ── Root-cause breakdown + late-order list ────────────────────────────────────
+
+const ROOT_CAUSE_ORDER: WmAdherenceRootCauseClass[] = [
+  'LATE_RELEASE', 'MATERIAL_SHORT', 'CAPACITY', 'UNCLASSIFIED',
+]
+
+const ROOT_CAUSE_LABEL: Record<WmAdherenceRootCauseClass, string> = {
+  LATE_RELEASE: 'Late release',
+  MATERIAL_SHORT: 'Material short',
+  CAPACITY: 'Capacity',
+  UNCLASSIFIED: 'Unclassified',
+}
+
+const ROOT_CAUSE_COLOR: Record<WmAdherenceRootCauseClass, string> = {
+  LATE_RELEASE: 'var(--kw-warning, #e07b00)',
+  MATERIAL_SHORT: 'var(--kw-error, #c00)',
+  CAPACITY: 'var(--kw-primary, #005eb8)',
+  UNCLASSIFIED: 'var(--kw-text-muted, #888)',
+}
+
+function RootCauseChip({ cause }: { readonly cause: WmAdherenceRootCauseClass }) {
+  return (
+    <span style={{
+      display: 'inline-block', fontSize: 10, fontWeight: 700, padding: '2px 6px',
+      borderRadius: 4, color: '#fff', background: ROOT_CAUSE_COLOR[cause],
+    }}>
+      {ROOT_CAUSE_LABEL[cause]}
+    </span>
+  )
+}
+
+interface RootCausePanelProps {
+  readonly items: WmAdherenceRootCauseItem[]
+  readonly cutoff: string | null
+  readonly isLoading: boolean
+  readonly error: string | null
+  readonly onOpenJourney?: (orderId: string) => void
+}
+
+function RootCausePanel({ items, cutoff, isLoading, error, onOpenJourney }: RootCausePanelProps) {
+  const { counts, lateOrders } = useMemo(() => {
+    const misses = items.filter(r => {
+      if (!(r.isFinishLate || r.isOpenLate)) return false
+      if (cutoff && r.scheduledFinishDate && r.scheduledFinishDate < cutoff) return false
+      return true
+    })
+    const byClass = new Map<WmAdherenceRootCauseClass, number>()
+    for (const c of ROOT_CAUSE_ORDER) byClass.set(c, 0)
+    for (const r of misses) {
+      byClass.set(r.rootCauseClass, (byClass.get(r.rootCauseClass) ?? 0) + 1)
+    }
+    const sorted = [...misses].sort((a, b) =>
+      (b.scheduledFinishDate ?? '').localeCompare(a.scheduledFinishDate ?? ''),
+    )
+    return { counts: byClass, lateOrders: sorted }
+  }, [items, cutoff])
+
+  if (isLoading) return <LoadingRows rows={4} />
+  if (error) return <EmptyNote>Could not load root-cause data: {error}</EmptyNote>
+  if (lateOrders.length === 0) return <EmptyNote>No adherence misses in the {WEEKS_TO_SHOW}-week window.</EmptyNote>
+
+  const total = [...counts.values()].reduce((s, n) => s + n, 0)
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        {ROOT_CAUSE_ORDER.map(cause => {
+          const n = counts.get(cause) ?? 0
+          const pct = total > 0 ? Math.round((n / total) * 100) : 0
+          return (
+            <div key={cause} style={{
+              flex: '1 1 100px', padding: '8px 10px', borderRadius: 6,
+              border: '1px solid var(--kw-border, #e8e8e8)',
+              background: 'var(--kw-card-bg, #fafafa)',
+            }}>
+              <div style={{ fontSize: 11, color: 'var(--kw-text-muted, #888)' }}>{ROOT_CAUSE_LABEL[cause]}</div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{n}</div>
+              <div style={{ fontSize: 10, color: 'var(--kw-text-muted, #888)' }}>{pct}%</div>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+        {lateOrders.map(r => (
+          <div key={r.orderId} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px',
+            fontSize: 12, borderBottom: '1px solid var(--kw-border, #e8e8e8)',
+          }}>
+            <span className="kw-mono" style={{ fontWeight: 700, minWidth: 90 }}>{r.orderId}</span>
+            <RootCauseChip cause={r.rootCauseClass} />
+            <span style={{ flex: 1, color: 'var(--kw-text-secondary, #444)' }}>
+              {r.materialName ?? r.materialId ?? '—'}
+            </span>
+            <span style={{ color: 'var(--kw-text-muted, #888)', minWidth: 70 }}>
+              {formatDate(r.scheduledFinishDate)}
+            </span>
+            {onOpenJourney && (
+              <button
+                type="button"
+                className="kw-viewnav-tab"
+                style={{ fontSize: 11, padding: '2px 6px' }}
+                onClick={() => onOpenJourney(r.orderId)}
+              >
+                Journey
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── KPI strip ─────────────────────────────────────────────────────────────────
 
 function ProductionProgressKpiStrip({
@@ -287,12 +406,15 @@ export function ProductionProgressView({
 }: ProductionProgressViewProps) {
   const wipResult = useWmWipStages(request.plantId, 500, Boolean(request.plantId))
   const adherenceResult = useWmScheduleAdherenceDaily(request.plantId, Boolean(request.plantId))
+  const rootCauseResult = useWmAdherenceRootCause(request.plantId, 500, Boolean(request.plantId))
 
   const wipItems: WmWipStageItem[] = wipResult.data?.ok ? wipResult.data.data : []
   const adherenceItems: WmScheduleAdherenceDailyItem[] = adherenceResult.data?.ok ? adherenceResult.data.data : []
+  const rootCauseItems: WmAdherenceRootCauseItem[] = rootCauseResult.data?.ok ? rootCauseResult.data.data : []
 
   const wipError = wipResult.data && !wipResult.data.ok ? wipResult.data.error.message : null
   const adherenceError = adherenceResult.data && !adherenceResult.data.ok ? adherenceResult.data.error.message : null
+  const rootCauseError = rootCauseResult.data && !rootCauseResult.data.ok ? rootCauseResult.data.error.message : null
 
   // Compute the shared 8-week window here so both the KPI strip and the S-curve chart
   // show the same adherence figure (rather than the strip showing all-time vs the chart
@@ -302,14 +424,18 @@ export function ProductionProgressView({
     return dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : null
   }, [adherenceItems])
 
-  const visibleAdherence = useMemo(() => {
-    const sorted = [...adherenceItems].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate))
-    if (!maxActual) return sorted
+  const adherenceCutoff = useMemo(() => {
+    if (!maxActual) return null
     const d = new Date(maxActual)
     d.setDate(d.getDate() - WEEKS_TO_SHOW * 7)
-    const cutoff = d.toISOString().slice(0, 10)
-    return sorted.filter(r => r.scheduledDate >= cutoff)
-  }, [adherenceItems, maxActual])
+    return d.toISOString().slice(0, 10)
+  }, [maxActual])
+
+  const visibleAdherence = useMemo(() => {
+    const sorted = [...adherenceItems].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate))
+    if (!adherenceCutoff) return sorted
+    return sorted.filter(r => r.scheduledDate >= adherenceCutoff)
+  }, [adherenceItems, adherenceCutoff])
 
   function handleOpenJourney(orderId: string) {
     if (!onNavigateToView) return
@@ -359,6 +485,19 @@ export function ProductionProgressView({
             error={adherenceError}
           />
         </div>
+      </div>
+
+      <div className="kw-card" style={{ marginTop: 20 }}>
+        <div className="kw-card-title" style={{ marginBottom: 12 }}>
+          Adherence Miss Root Cause ({WEEKS_TO_SHOW}w window)
+        </div>
+        <RootCausePanel
+          items={rootCauseItems}
+          cutoff={adherenceCutoff}
+          isLoading={rootCauseResult.isLoading}
+          error={rootCauseError}
+          onOpenJourney={onNavigateToView ? handleOpenJourney : undefined}
+        />
       </div>
     </section>
   )

@@ -773,3 +773,33 @@ SELECT
   is_final_issue
 FROM connected_plant_uat.gold_io_reporting.gold_wm_order_component_variance_secured
 WHERE plant_code IS NOT NULL;
+
+-- 37. Adherence root cause (Production Progress — late-order classification)
+-- Grain: 1 row per plant_id + order_id (miss candidates only).
+-- Source: gold_wm_adherence_root_cause_secured.
+-- is_open_late uses CURRENT_DATE (query-time) for unfinished orders past schedule;
+-- gold carries dates only (deterministic MV).
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_adherence_root_cause AS
+SELECT
+  plant_code AS plant_id,
+  order_number AS order_id,
+  material_code AS material_id,
+  material_name,
+  order_qty,
+  uom,
+  production_line,
+  CAST(scheduled_start_date AS DATE) AS scheduled_start_date,
+  CAST(scheduled_finish_date AS DATE) AS scheduled_finish_date,
+  CAST(actual_release_date AS DATE) AS actual_release_date,
+  CAST(actual_finish_date AS DATE) AS actual_finish_date,
+  root_cause_class,
+  is_late_release,
+  has_material_short,
+  shortfall_component_count,
+  min_variance_qty,
+  release_to_production_hours,
+  production_first_actual_start,
+  (actual_finish_date IS NOT NULL AND actual_finish_date > scheduled_finish_date) AS is_finish_late,
+  (actual_finish_date IS NULL AND scheduled_finish_date < CURRENT_DATE()) AS is_open_late
+FROM connected_plant_uat.gold_io_reporting.gold_wm_adherence_root_cause_secured
+WHERE plant_code IS NOT NULL;

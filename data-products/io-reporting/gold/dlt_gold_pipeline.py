@@ -104,8 +104,13 @@ def gold_process_order_schedule_adherence():
     silver_schema = get_silver_schema(spark)
     orders = spark.read.table(f"{silver_schema}.process_order")
 
-    # Filter completed or closed orders
-    completed_orders = orders.filter("is_completed = true OR is_closed = true")
+    # Completed/closed scope: PHAS2/PHAS3 flags (is_completed/is_closed) arrive blank in UAT
+    # replication — use date evidence instead (mirrors gold_wm_order_readiness, d8912d6).
+    completed_orders = orders.filter(
+        F.col("actual_finish_date").isNotNull()
+        | F.coalesce(F.col("is_closed"), F.lit(False))
+        | F.coalesce(F.col("is_completed"), F.lit(False))
+    )
 
     return (
         completed_orders.select(

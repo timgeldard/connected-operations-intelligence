@@ -1537,6 +1537,22 @@ SIMPLE_DATASETS: dict[str, dict] = {
         boolean=("is_final_issue",),
         has_warehouse=False,
     ),
+    "adherence_root_cause": dict(
+        contract="wm_operations.adherence_root_cause",
+        endpoint="/api/wm-operations/adherence-root-cause",
+        columns=(
+            "plant_id, order_id, material_id, material_name, order_qty, uom, production_line, "
+            "scheduled_start_date, scheduled_finish_date, actual_release_date, actual_finish_date, "
+            "root_cause_class, is_late_release, has_material_short, shortfall_component_count, "
+            "min_variance_qty, release_to_production_hours, production_first_actual_start, "
+            "is_finish_late, is_open_late"
+        ),
+        order_by="scheduled_finish_date DESC NULLS LAST",
+        numeric=("order_qty", "min_variance_qty", "release_to_production_hours"),
+        integer=("shortfall_component_count",),
+        boolean=("is_late_release", "has_material_short", "is_finish_late", "is_open_late"),
+        has_warehouse=False,
+    ),
 }
 
 

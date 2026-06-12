@@ -282,6 +282,10 @@ CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_compo
   SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_order_component_variance;
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_component_variance_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_adherence_root_cause_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_adherence_root_cause;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_adherence_root_cause_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_spc_quality_metric_subgroup_secured AS
   SELECT * FROM connected_plant_uat.gold_io_reporting.gold_spc_quality_metric_subgroup;
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_spc_quality_metric_subgroup_secured TO `users`;
