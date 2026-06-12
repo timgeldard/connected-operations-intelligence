@@ -9,7 +9,10 @@ from __future__ import annotations
 from typing import Optional
 
 from shared.query_service.cache_policy import CacheTier
-from shared.query_service.object_resolver import resolve_domain_object
+from shared.query_service.object_resolver import (
+    resolve_domain_object,
+    resolve_governed_trace2_object,
+)
 from shared.query_service.query_spec import QuerySpec
 
 from ._types import Trace2BatchHeaderRequest, Trace2BatchSearchRequest
@@ -169,11 +172,23 @@ def get_batch_search_spec(request: Trace2BatchSearchRequest) -> QuerySpec:
     are returned as null (both are optional in BatchSearchItem).
 
     Trace-graph traversal continues to read gold_batch_lineage unchanged.
+
+    Schema resolution:
+      • gold_trace_anchor_secured — TRACE_GOVERNED_SCHEMA (default: "gold_io_reporting").
+          This is the governed RLS-enforced MV that the app.yaml TRACE_SCHEMA: gold setting
+          would resolve incorrectly (gold schema has no gold_trace_anchor_secured object).
+      • gold_batch_lineage (po_match CTE) — TRACE_GOVERNED_SCHEMA (same governed schema).
+          Anchor search and po_match must use the same edge universe as trace-graph.
+      • gold_material, gold_plant — legacy TRACE_SCHEMA ("gold").  No governed equivalents
+          exist for these enrichment tables yet; they stay on the legacy schema.
     """
-    tbl_anchor = resolve_domain_object("trace2", "gold_trace_anchor_secured")
+    # Governed objects: live in TRACE_GOVERNED_SCHEMA (gold_io_reporting), not TRACE_SCHEMA.
+    tbl_anchor = resolve_governed_trace2_object("gold_trace_anchor_secured")
+    # gold_batch_lineage in po_match must use the same edge universe as trace-graph traversal.
+    tbl_lineage = resolve_governed_trace2_object("gold_batch_lineage")
+    # Legacy enrichment joins — no governed equivalents exist yet.
     tbl_material = resolve_domain_object("trace2", "gold_material")
     tbl_plant = resolve_domain_object("trace2", "gold_plant")
-    tbl_lineage = resolve_domain_object("trace2", "gold_batch_lineage")
 
     sql = f"""
     WITH `po_match` AS (

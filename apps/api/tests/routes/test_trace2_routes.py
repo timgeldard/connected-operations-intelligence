@@ -597,6 +597,30 @@ class TestBatchSearchDatabricksMode:
         assert item.get("quantity") is None
         assert item.get("uom") is None
 
+    def test_search_spec_governed_objects_resolve_to_gold_io_reporting(self, monkeypatch) -> None:
+        """Governed schema fix: gold_trace_anchor_secured and gold_batch_lineage must
+        resolve to TRACE_GOVERNED_SCHEMA (default "gold_io_reporting"), NOT to
+        TRACE_SCHEMA ("gold").  The legacy TRACE_SCHEMA: gold in app.yaml would
+        cause connected_plant_uat.gold.gold_trace_anchor_secured which does not exist —
+        this is the deployment-blocking gap that this change closes."""
+        from adapters.trace2.trace2_databricks_adapter import (
+            Trace2BatchSearchRequest,
+            get_batch_search_spec,
+        )
+
+        monkeypatch.setenv("TRACE_CATALOG", "connected_plant_uat")
+        monkeypatch.setenv("TRACE_SCHEMA", "gold")
+        # TRACE_GOVERNED_SCHEMA not set → must default to "gold_io_reporting"
+
+        spec = get_batch_search_spec(Trace2BatchSearchRequest(query="cheese"))
+
+        # Both governed objects must be in gold_io_reporting, not gold.
+        assert "`connected_plant_uat`.`gold_io_reporting`.`gold_trace_anchor_secured`" in spec.sql
+        assert "`connected_plant_uat`.`gold_io_reporting`.`gold_batch_lineage`" in spec.sql
+        # Legacy enrichment joins must stay on gold.
+        assert "`connected_plant_uat`.`gold`.`gold_material`" in spec.sql
+        assert "`connected_plant_uat`.`gold`.`gold_plant`" in spec.sql
+
     async def test_search_requires_databricks_mode(self, monkeypatch) -> None:
         monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
         async with _make_client() as client:
@@ -1063,6 +1087,34 @@ class TestCustomerExposureSuccess:
         data = response.json()
         assert "nodes" not in data
         assert "edges" not in data
+
+    def test_trace_graph_spec_gold_batch_lineage_resolves_to_governed_schema(self, monkeypatch) -> None:
+        """T2 cutover: gold_batch_lineage in trace-graph must resolve to TRACE_GOVERNED_SCHEMA
+        (default "gold_io_reporting"), not TRACE_SCHEMA ("gold").  Anchor search and traversal
+        must use the same edge universe — both batch-search po_match and trace-graph read the
+        same governed gold_batch_lineage MV."""
+        from adapters.trace2.trace2_databricks_adapter import (
+            TraceGraphRequest,
+            get_trace_graph_recursive_spec,
+        )
+
+        _databricks_env(monkeypatch)
+        # TRACE_GOVERNED_SCHEMA not set → must default to "gold_io_reporting"
+
+        spec = get_trace_graph_recursive_spec(
+            TraceGraphRequest(
+                material_id="000000000020052009",
+                batch_id="0008602411",
+                plant_id="C061",
+                direction="both",
+                max_depth=4,
+            )
+        )
+
+        # gold_batch_lineage must be in the governed schema.
+        assert "`connected_plant_uat`.`gold_io_reporting`.`gold_batch_lineage`" in spec.sql
+        # gold_material enrichment must remain on legacy gold schema.
+        assert "`connected_plant_uat`.`gold`.`gold_material`" in spec.sql
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,15 @@ V1-compatible fallback chains (verified from ConnectIO-RAD source):
   POH_CATALOG → no fallback (empty string if unset)
   POH_SCHEMA  → defaults to "csm_process_order_history"
   TRACE_CATALOG → no fallback (empty string if unset)
-  TRACE_SCHEMA  → defaults to "gold"
+  TRACE_SCHEMA  → defaults to "gold" (LEGACY schema for trace2 views and EnvMon)
+  TRACE_GOVERNED_SCHEMA → defaults to "gold_io_reporting" (governed io-reporting schema).
+    Used only for the two governed trace2 objects that live in gold_io_reporting:
+      • gold_trace_anchor_secured  (RLS-enforced anchor MV, batch-search primary source)
+      • gold_batch_lineage          (T2 governed MV, batch-search po_match + trace-graph)
+    All other trace2 objects (gold_material, gold_plant, gold_batch_stock_v, …) remain
+    on TRACE_SCHEMA ("gold") — no governed equivalents exist for those yet.
+    app.yaml must set TRACE_GOVERNED_SCHEMA: gold_io_reporting explicitly because
+    DAB ${var.*} substitution does not apply to app.yaml (per-environment literals only).
   ENVMON domain → shares TRACE_CATALOG / TRACE_SCHEMA (confirmed from V1 em_config.py:
     LOT_TBL_NAME, POINT_TBL_NAME, RESULT_TBL_NAME all use f"{TRACE_CATALOG}.{TRACE_SCHEMA}.*")
   SPC domain → uses SPC_CATALOG / SPC_SCHEMA (default: "gold"); falls back to TRACE_CATALOG
@@ -58,6 +66,29 @@ def qualify_object(catalog: str, schema: str, object_name: str) -> str:
     Produces: `catalog`.`schema`.`object_name`
     """
     return f"`{catalog}`.`{schema}`.`{object_name}`"
+
+
+def resolve_governed_trace2_object(object_name: str) -> str:
+    """Return a fully-qualified reference for a governed trace2 object.
+
+    Governed trace2 objects live in TRACE_GOVERNED_SCHEMA (default: "gold_io_reporting")
+    rather than TRACE_SCHEMA (default: "gold", the legacy schema).  The two governed
+    objects are:
+      • gold_trace_anchor_secured  — RLS-enforced anchor MV (batch-search primary source)
+      • gold_batch_lineage          — T2 governed MV (batch-search po_match + trace-graph)
+
+    The catalog is still read from TRACE_CATALOG (same workspace, same catalog — only the
+    schema differs).  All other trace2 objects (gold_material, gold_plant, …) continue to
+    resolve via resolve_domain_object("trace2", …) on TRACE_SCHEMA.
+
+    CAVEAT: end-user reads of governed gold_batch_lineage require the `traceability-readers`
+    UC group (not yet provisioned in UAT as of 2026-06-12).  Owner/admin identities work
+    today.  This is an accepted track-level gate, not a blocker for this change.
+
+    Raises DatabricksConfigError if TRACE_CATALOG is not set.
+    """
+    governed_schema = os.getenv("TRACE_GOVERNED_SCHEMA", "gold_io_reporting")
+    return resolve_domain_object("trace2", object_name, schema_override=governed_schema)
 
 
 def resolve_domain_object(
