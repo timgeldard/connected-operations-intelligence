@@ -748,9 +748,9 @@ def gold_batch_stock_summary():
             F.col("plant_code"),
             F.col("material_code"),
             F.col("batch_number"),
-            F.col("base_uom").alias("base_unit_of_measure"),
         )
         .agg(
+            F.max("base_uom").alias("base_unit_of_measure"),
             F.sum(F.col("unrestricted_quantity").cast("double")).alias("unrestricted_quantity"),
             F.sum(F.col("quality_inspection_quantity").cast("double")).alias("quality_inspection_quantity"),
             F.sum(F.col("blocked_quantity").cast("double")).alias("blocked_quantity"),
@@ -901,7 +901,7 @@ def gold_batch_event_ledger():  # noqa: C901 — two-sided fan-out; structural c
         F.col("MATERIAL_DOCUMENT_NUMBER"),
     )
 
-    return parent_out.unionAll(child_in)
+    return parent_out.unionByName(child_in)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -945,5 +945,9 @@ def gold_trace_vendor():
             F.col("vendor_name"),
             F.col("country_key"),
         )
-        .dropDuplicates(["vendor_code"])
+        .groupBy("vendor_code")
+        .agg(
+            F.max("vendor_name").alias("vendor_name"),
+            F.max("country_key").alias("country_key"),
+        )
     )
