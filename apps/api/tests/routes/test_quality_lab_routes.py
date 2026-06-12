@@ -456,3 +456,95 @@ class TestLabFailsErrorPropagation:
 
         executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
         assert "lot_type = :lot_type" in executed_sql
+
+    async def test_days_filter_binds_sql_param(self, quality_lab_databricks_env) -> None:
+        """days must be passed as a SQL parameter, not string-interpolated."""
+        with patch(
+            _EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]
+        ) as mock_exec:
+            async with _make_client() as client:
+                await client.get(
+                    "/api/cq/lab/fails",
+                    params={"days": "30"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert ":days" in executed_sql
+
+
+# ---------------------------------------------------------------------------
+# days param — allowed values, echo, and default ALL
+# ---------------------------------------------------------------------------
+
+class TestLabFailsDaysParam:
+    async def test_days_30_echoed_in_response(self, quality_lab_databricks_env) -> None:
+        """days=30 is a valid value — echoed in response."""
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/cq/lab/fails",
+                    params={"days": "30"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        assert response.json().get("days") == 30
+
+    async def test_days_180_echoed_in_response(self, quality_lab_databricks_env) -> None:
+        """days=180 is a valid value — echoed in response."""
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/cq/lab/fails",
+                    params={"days": "180"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        assert response.json().get("days") == 180
+
+    async def test_days_360_echoed_in_response(self, quality_lab_databricks_env) -> None:
+        """days=360 is a valid value — echoed in response."""
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/cq/lab/fails",
+                    params={"days": "360"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        assert response.json().get("days") == 360
+
+    async def test_days_absent_returns_all_no_echo(self, quality_lab_databricks_env) -> None:
+        """Absent days = ALL — no days key in response, no date filter in SQL."""
+        with patch(
+            _EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]
+        ) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get("/api/cq/lab/fails", headers=_HEADERS_WITH_TOKEN)
+
+        assert response.status_code == 200
+        assert "days" not in response.json()
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert ":days" not in executed_sql
+
+    async def test_days_invalid_value_returns_422(self, quality_lab_databricks_env) -> None:
+        """days=90 is not in the allowed set — must return 422."""
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/cq/lab/fails",
+                    params={"days": "90"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 422
+
+    async def test_days_zero_returns_422(self, quality_lab_databricks_env) -> None:
+        """days=0 is not in the allowed set — must return 422."""
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/cq/lab/fails",
+                    params={"days": "0"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 422
