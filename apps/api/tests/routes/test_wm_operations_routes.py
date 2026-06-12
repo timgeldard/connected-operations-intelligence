@@ -1173,6 +1173,55 @@ class TestAdherenceRootCauseRoute:
 
 
 # ---------------------------------------------------------------------------
+# QM characteristic / UD Pareto (Command Centre drill)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+class TestQmParetoRoutes:
+    async def test_qm_characteristic_pareto(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "material_id": "RM1",
+            "characteristic_id": "MIC1",
+            "characteristic_text": "Moisture",
+            "unit": "%",
+            "result_count": 100,
+            "fail_count": 12,
+            "warn_count": 3,
+            "fail_rate": 0.12,
+            "last_result_date": "2026-03-25",
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/qm-characteristic-pareto",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        assert response.headers.get("x-contract-id") == "wm_operations.qm_characteristic_pareto"
+
+    async def test_qm_ud_code_pareto(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "usage_decision_code": "A1",
+            "usage_decision": "Accepted",
+            "usage_decision_valuation": "A",
+            "lot_count": 42,
+            "last_decision_date": "2026-04-01",
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/qm-ud-code-pareto",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        assert response.headers.get("x-contract-id") == "wm_operations.qm_ud_code_pareto"
+
+
+# ---------------------------------------------------------------------------
 # Order Yield (SIMPLE_DATASETS declarative route)
 # ---------------------------------------------------------------------------
 

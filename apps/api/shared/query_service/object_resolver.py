@@ -16,8 +16,12 @@ V1-compatible fallback chains (verified from ConnectIO-RAD source):
       • gold_batch_stock_summary_secured(RLS-enforced governed stock position)
       • gold_trace_vendor               (vendor_code → vendor_name, country_key)
       • gold_wm_qm_lot_status           (QM lot status + latest UD, estate-wide)
-    All other trace2 objects (gold_material, gold_plant, gold_batch_quality_result_v, …)
-    remain on TRACE_SCHEMA ("gold") — no governed equivalents exist for those yet.
+      Phase 3 enrichment lookups (trace-governed-lookups):
+      • gold_trace_material             (material_code → MATERIAL_NAME, BASE_UNIT_OF_MEASURE, LANGUAGE_ID)
+      • gold_trace_plant                (plant_code → PLANT_NAME, country_key; estate-wide)
+      • gold_trace_batch_material       (material_code + batch_number → SUPPLIER_BATCH_ID)
+    gold_batch_quality_result_v remains on TRACE_SCHEMA ("gold") — see CoA decision note in
+    quality_passport_adapter.py for the full rationale (governed result-grain is lab-gated).
     app.yaml must set TRACE_GOVERNED_SCHEMA: gold_io_reporting explicitly because
     DAB ${var.*} substitution does not apply to app.yaml (per-environment literals only).
   ENVMON domain → shares TRACE_CATALOG / TRACE_SCHEMA (confirmed from V1 em_config.py:
@@ -85,18 +89,27 @@ def resolve_governed_trace2_object(object_name: str) -> str:
     """Return a fully-qualified reference for a governed trace2 object.
 
     Governed trace2 objects live in TRACE_GOVERNED_SCHEMA (default: "gold_io_reporting")
-    rather than TRACE_SCHEMA (default: "gold", the legacy schema).  The two governed
-    objects are:
-      • gold_trace_anchor_secured  — RLS-enforced anchor MV (batch-search primary source)
-      • gold_batch_lineage          — T2 governed MV (batch-search po_match + trace-graph)
+    rather than TRACE_SCHEMA (default: "gold", the legacy schema).  Governed objects:
+      T2/T3:
+        • gold_trace_anchor_secured  — RLS-enforced anchor MV (batch-search primary source)
+        • gold_batch_lineage          — T2 governed MV (batch-search po_match + trace-graph)
+      Phase 2 fan-out foundations:
+        • gold_batch_event_ledger         — directional per-batch event ledger
+        • gold_batch_stock_summary_secured— RLS-enforced governed stock position
+        • gold_trace_vendor               — vendor_code → vendor_name, country_key
+        • gold_wm_qm_lot_status           — QM lot status + latest UD, estate-wide
+      Phase 3 enrichment lookups:
+        • gold_trace_material             — material_code → MATERIAL_NAME, BASE_UNIT_OF_MEASURE
+        • gold_trace_plant                — plant_code → PLANT_NAME, country_key (estate-wide)
+        • gold_trace_batch_material       — (material_code, batch_number) → SUPPLIER_BATCH_ID
 
     The catalog is still read from TRACE_CATALOG (same workspace, same catalog — only the
-    schema differs).  All other trace2 objects (gold_material, gold_plant, …) continue to
-    resolve via resolve_domain_object("trace2", …) on TRACE_SCHEMA.
+    schema differs).  gold_batch_quality_result_v remains on TRACE_SCHEMA ("gold") — see
+    CoA decision note in quality_passport_adapter.py for the full rationale.
 
-    CAVEAT: end-user reads of governed gold_batch_lineage require the `traceability-readers`
-    UC group (not yet provisioned in UAT as of 2026-06-12).  Owner/admin identities work
-    today.  This is an accepted track-level gate, not a blocker for this change.
+    CAVEAT: end-user reads of governed objects require the `traceability-readers` UC group
+    (not yet provisioned in UAT as of 2026-06-12).  Owner/admin identities work today.
+    This is an accepted track-level gate, not a blocker for this change.
 
     Raises DatabricksConfigError if TRACE_CATALOG is not set.
     """

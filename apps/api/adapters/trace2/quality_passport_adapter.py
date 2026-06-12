@@ -29,19 +29,20 @@ from ._utils import _classify_coa_status
 #
 # The Quality Passport response has 7 sections (identity, quality, stock,
 # production, lotHistory, massBalance, signoff).  Governed sources:
-#   identity   ← gold_batch_stock_summary_secured + gold_material + gold_plant +
+#   identity   ← gold_batch_stock_summary_secured + gold_trace_material + gold_trace_plant +
 #                gold_batch_event_ledger (latest PRODUCTION event for process order / date)
 #   stock      ← gold_batch_stock_summary_secured
 #   production ← gold_batch_event_ledger (PRODUCTION IN rows for production history)
 #   lotHistory ← gold_wm_qm_lot_status
 #   massBalance← gold_batch_event_ledger (aggregate KPIs)
-#   quality/coa← gold_batch_quality_result_v (still on legacy TRACE_SCHEMA — no governed
-#                  equivalent yet; kept unchanged)
+#   quality/coa← gold_batch_quality_result_v (legacy TRACE_SCHEMA — see CoA decision note
+#                  in get_batch_quality_passport_coa_spec docstring)
 #   quality KPIs← gold_wm_qm_lot_status aggregate
 #
 # gold_batch_summary_v and gold_batch_production_history_v are replaced by the
 # governed equivalents.  The legacy gold_batch_stock_v is replaced by
 # gold_batch_stock_summary_secured.
+# Phase 3: gold_material/gold_plant legacy reads replaced by gold_trace_material/gold_trace_plant.
 
 def get_batch_quality_passport_partial_spec(request: Trace2BatchQualityPassportRequest) -> QuerySpec:
     """Return a QuerySpec for the verified-source portion of the Quality Passport.
@@ -49,25 +50,27 @@ def get_batch_quality_passport_partial_spec(request: Trace2BatchQualityPassportR
     Sources:
       - gold_batch_stock_summary_secured (TRACE_GOVERNED_SCHEMA, RLS)
             → stock buckets, base_unit_of_measure
-      - gold_material (legacy TRACE_SCHEMA — no governed equivalent)
+      - gold_trace_material (TRACE_GOVERNED_SCHEMA — Phase 3 governed equivalent of gold_material)
             → material_name, BASE_UNIT_OF_MEASURE
-      - gold_plant (legacy TRACE_SCHEMA — no governed equivalent)
+      - gold_trace_plant (TRACE_GOVERNED_SCHEMA — Phase 3 governed equivalent of gold_plant)
             → plant_name
       - gold_batch_event_ledger (TRACE_GOVERNED_SCHEMA)
             → latest PRODUCTION IN event: PROCESS_ORDER_ID, POSTING_DATE, QUANTITY (batch qty)
 
     manufacture_date / expiry_date: these came from gold_batch_summary_v.
     gold_batch_stock_summary does not carry dates.  gold_batch_event_ledger has
-    POSTING_DATE but not manufacture/expiry dates.  These fields are emitted as
-    empty string (same as when the legacy view had no value) — no governed source
-    provides them yet.  The contract accepts empty string for these optional fields.
+    POSTING_DATE but not manufacture/expiry dates.  MCH1 (SAP batch master, carries
+    MFRGR/VFDAT) is not replicated in connected_plant.sap — see gold_trace_batch_material
+    comment for the ingestion request note.  These fields are emitted as empty string
+    (same as when the legacy view had no value) — no governed source provides them yet.
+    The contract accepts empty string for these optional fields.
 
     The production_lot_count (count of distinct process orders for this batch) is
     computed as a subquery over gold_batch_event_ledger PRODUCTION IN rows.
     """
     tbl_stock = resolve_governed_trace2_object("gold_batch_stock_summary_secured")
-    tbl_material = resolve_domain_object("trace2", "gold_material")
-    tbl_plant = resolve_domain_object("trace2", "gold_plant")
+    tbl_material = resolve_governed_trace2_object("gold_trace_material")
+    tbl_plant = resolve_governed_trace2_object("gold_trace_plant")
     tbl_ledger = resolve_governed_trace2_object("gold_batch_event_ledger")
 
     sql = f"""
@@ -217,8 +220,25 @@ def map_batch_quality_passport_partial(rows: list[dict]) -> Optional[dict]:
 def get_batch_quality_passport_coa_spec(request: Trace2BatchQualityPassportRequest) -> QuerySpec:
     """Fetch CoA characteristic results for the active batch.
 
-    Source: gold_batch_quality_result_v (still on legacy TRACE_SCHEMA — no governed
-    equivalent exists yet; kept unchanged from legacy adapter).
+    Source: gold_batch_quality_result_v (legacy TRACE_SCHEMA — intentionally NOT migrated in
+    this PR).
+
+    COA DECISION NOTE (Phase 3 / feature/trace-governed-lookups):
+    A governed equivalent of gold_batch_quality_result_v is deliberately deferred.
+    The governed inspection-result grain (silver.quality_inspection_result, feeding
+    gold.spc_quality_metric_subgroup_mv) is currently gated to the 4 QM-enabled pilot plants
+    (C061, P817, P806, C351).  Building a governed CoA lookup from that source would silently
+    narrow the CoA panel to only those 4 plants, breaking the estate-wide scope that the legacy
+    view provides today (gold_batch_quality_result_v is ungated and covers all 138 plants).
+    Three options for a future decision:
+      (a) Accept gated scope — migrate now, knowing the CoA panel is plant-gated;
+          communicate to product that CoA is only available for QM-pilot plants.
+      (b) Widen the result grain — remove the QM-pilot gate from the silver inspection-result
+          pipeline (requires verifying data quality for all 138 plants first).
+      (c) Retire the CoA panel — replace it with the lot-history panel (gold_wm_qm_lot_status
+          already covers all onboarded plants and provides pass/fail summary).
+    Until one of these options is agreed, the legacy legacy read is left in place.
+    The only remaining legacy TRACE_SCHEMA reference in apps/api after this PR is this one.
     """
     tbl = resolve_domain_object("trace2", "gold_batch_quality_result_v")
     sql = f"""

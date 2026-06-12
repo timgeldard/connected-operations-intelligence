@@ -528,7 +528,35 @@ SELECT
 FROM connected_plant_uat.gold_io_reporting.gold_wm_qm_disposition_queue_live
 WHERE plant_code IS NOT NULL;
 
--- 31. Onboarded plants (command-palette plant picker)
+-- 31. QM characteristic Pareto (MIC fail counts — Command Centre drill)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_qm_characteristic_pareto AS
+SELECT
+  plant_code AS plant_id,
+  material_code AS material_id,
+  characteristic_id,
+  characteristic_text,
+  unit,
+  result_count,
+  fail_count,
+  warn_count,
+  fail_rate,
+  CAST(last_result_date AS DATE) AS last_result_date
+FROM connected_plant_uat.gold_io_reporting.gold_qm_characteristic_pareto_secured
+WHERE plant_code IS NOT NULL;
+
+-- 32. QM usage-decision code Pareto (Command Centre drill)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_qm_ud_code_pareto AS
+SELECT
+  plant_code AS plant_id,
+  usage_decision_code,
+  usage_decision,
+  usage_decision_valuation,
+  lot_count,
+  CAST(last_decision_date AS DATE) AS last_decision_date
+FROM connected_plant_uat.gold_io_reporting.gold_qm_ud_code_pareto_secured
+WHERE plant_code IS NOT NULL;
+
+-- 33. Onboarded plants (command-palette plant picker)
 
 -- 29. Inbound deliveries (EL/ELST SAP delivery types — expected-receipt board)
 -- Grain: 1 row per plant_id + delivery_number.

@@ -1372,6 +1372,30 @@ SIMPLE_DATASETS: dict[str, dict] = {
         boolean=("is_overdue",), has_warehouse=False,
         origin_col="inspection_lot_origin_code",
     ),
+    "qm_characteristic_pareto": dict(
+        contract="wm_operations.qm_characteristic_pareto",
+        endpoint="/api/wm-operations/qm-characteristic-pareto",
+        columns=(
+            "plant_id, material_id, characteristic_id, characteristic_text, unit, "
+            "result_count, fail_count, warn_count, fail_rate, last_result_date"
+        ),
+        order_by="fail_count DESC, result_count DESC",
+        numeric=("fail_rate",),
+        integer=("result_count", "fail_count", "warn_count"),
+        boolean=(), has_warehouse=False,
+    ),
+    "qm_ud_code_pareto": dict(
+        contract="wm_operations.qm_ud_code_pareto",
+        endpoint="/api/wm-operations/qm-ud-code-pareto",
+        columns=(
+            "plant_id, usage_decision_code, usage_decision, usage_decision_valuation, "
+            "lot_count, last_decision_date"
+        ),
+        order_by="lot_count DESC",
+        numeric=(),
+        integer=("lot_count",),
+        boolean=(), has_warehouse=False,
+    ),
     "downtime_pareto": dict(
         contract="wm_operations.downtime_pareto", endpoint="/api/wm-operations/downtime-pareto",
         columns="plant_id, week_start, downtime_reason_code, sub_reason_code, work_centre_code, "
