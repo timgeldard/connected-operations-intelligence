@@ -61,7 +61,7 @@ const PILOT_SUMMARY: PilotSummary = {
   targetEndDate: '2026-08-31',
   pilotScope: 'Kerry Listowel (IE10) — single plant controlled pilot',
   pilotRoles: ['quality-lead', 'qa-technician', 'food-safety-lead', 'operations-supervisor', 'warehouse-manager', 'plant-manager'],
-  pilotWorkspaces: ['trace-investigation', 'quality-batch-release', 'operations-plan-risk', 'envmon-monitoring', 'production-staging', 'spc-monitoring', 'process-order-review', 'warehouse-360-overview', 'maintenance-reliability'],
+  pilotWorkspaces: ['trace-investigation', 'quality-batch-release', 'spc-monitoring', 'process-order-review', 'warehouse-360-overview'],
   pilotPlants: ['IE10 — Kerry Listowel'],
   activeBlockers: [
     'SCN-001 (Batch Release cross-domain scenario) in-progress — not yet passed',

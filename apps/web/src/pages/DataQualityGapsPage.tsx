@@ -14,19 +14,10 @@ const DATA_QUALITY_GAPS: readonly DataQualityGap[] = [
     gapId: 'DQG-002', sourceSystem: 'eDMS', workspaceId: 'trace-investigation', panelId: 'event-timeline-panel', description: 'EventTimelinePanel uses mock timestamps — ERP event log integration not connected to eDMS.', severity: 'warning', owner: 'data-team', status: 'open', workaround: 'Mock timestamps clearly labelled as demo data. Not blocking pilot scenario execution.', targetResolution: '2026-07-01', blocksProduction: true,
   },
   {
-    gapId: 'DQG-003', sourceSystem: 'PhaseManager (MES)', workspaceId: 'operations-plan-risk', panelId: 'material-shortage-panel', description: 'PhaseManager batch schedule data not available in IE10 pilot environment. MaterialShortagePanel uses seeded mock data.', severity: 'warning', owner: 'integration-team', status: 'open', workaround: 'Seeded mock data used. Risk is that mock data does not reflect real production schedule shape.', targetResolution: '2026-06-30', blocksProduction: true,
-  },
-  {
     gapId: 'DQG-004', sourceSystem: 'SPC Connector (OSIsoft PI)', workspaceId: 'spc-monitoring', panelId: 'spc-summary-panel', description: 'SPC source connector not deployed to IE10. All SPC data is simulated from static mock fixtures.', severity: 'warning', owner: 'spc-team', status: 'workaround-in-place', workaround: 'Simulated SPC data clearly labelled in UI. Users aware this is non-production data during pilot.', targetResolution: '2026-06-15', blocksProduction: false,
   },
   {
-    gapId: 'DQG-005', sourceSystem: 'SAP PM (CMMS)', workspaceId: 'maintenance-reliability', panelId: 'work-order-panel', description: 'SAP PM integration not started. Workspace cannot be piloted. All Maintenance Reliability data is placeholder.', severity: 'blocker', owner: 'procurement-team', status: 'open', workaround: 'Workspace excluded from pilot scope until contract signed.', targetResolution: '2026-06-01', blocksProduction: true,
-  },
-  {
     gapId: 'DQG-006', sourceSystem: 'WM System (SAP WM)', workspaceId: 'warehouse-360-overview', panelId: 'staging-allocation-panel', description: 'Warehouse staging allocation data sourced from mock — SAP WM connector configured but data refresh not enabled.', severity: 'info', owner: 'warehouse-team', status: 'workaround-in-place', workaround: 'Mock data covers the main scenarios. Confirm Staging action wired to correct workflow endpoint.', targetResolution: '2026-07-01', blocksProduction: false,
-  },
-  {
-    gapId: 'DQG-007', sourceSystem: 'EnvMon Sensor API', workspaceId: 'envmon-monitoring', panelId: 'sensor-status-panel', description: 'Environmental monitoring sensor readings use simulated data. Sensor API available but not yet connected to V2 data contract.', severity: 'warning', owner: 'qa-team', status: 'open', workaround: 'Simulated sensor readings. Users informed this is mock data for pilot evaluation only.', targetResolution: '2026-06-30', blocksProduction: true,
   },
   {
     gapId: 'DQG-008', sourceSystem: 'Coda (ERP) — Batch Master', workspaceId: 'quality-batch-release', panelId: 'batch-summary-panel', description: 'Batch master data comes from mock fixture. Some batch attributes (ingredient lots, yield) do not match live Coda values.', severity: 'info', owner: 'data-team', status: 'accepted-risk', workaround: 'Accepted for pilot. Batch master gap documented as known pilot limitation.', targetResolution: '2026-06-30', blocksProduction: false,
