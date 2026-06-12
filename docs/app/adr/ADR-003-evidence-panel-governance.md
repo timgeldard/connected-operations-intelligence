@@ -16,7 +16,7 @@ gave the shell a consistent set of display states to render regardless of which 
 
 ## Decision
 
-Evidence panels are governed by `EvidencePanelRegistration` (defined in `packages/product-model`). Each
+Evidence panels are governed by `EvidencePanelRegistration` (defined in `packages/domain-models`). Each
 registration declares its `ownerDomain` and the `allowedConsumerWorkspaces` that may host it. An empty
 `allowedConsumerWorkspaces` array means the panel is unrestricted; a non-empty array limits hosting to the
 listed workspace IDs.

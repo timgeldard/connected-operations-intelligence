@@ -1143,14 +1143,14 @@ def test_gold_goods_movement_activity(spark):
             movement_type_code="101", debit_credit_indicator="S", quantity=10.0, base_uom="KG",
             amount_local_currency=100.0, currency="EUR", posting_date=date(2026, 6, 9),
             document_date=date(2026, 6, 9), order_number=None, purchase_order_number="PO01",
-            delivery_number=None, sales_order_number=None, posted_by_user="USER1",
+            delivery_number=None, delivery_item_number=None, sales_order_number=None, posted_by_user="USER1",
             transaction_code="MIGO"),
         Row(plant_code="PL10", storage_location_code="0001", material_document_number="5000000002",
             fiscal_year="2026", document_line_item="1", material_code="M1", batch_number="B1",
             movement_type_code="261", debit_credit_indicator="H", quantity=4.0, base_uom="KG",
             amount_local_currency=40.0, currency="EUR", posting_date=date(2026, 6, 9),
             document_date=date(2026, 6, 9), order_number="700001", purchase_order_number=None,
-            delivery_number=None, sales_order_number=None, posted_by_user="USER2",
+            delivery_number=None, delivery_item_number=None, sales_order_number=None, posted_by_user="USER2",
             transaction_code="MB1A"),
         # Movement type with no classification row: flags must default to False, not null.
         Row(plant_code="PL10", storage_location_code="0001", material_document_number="5000000003",
@@ -1158,7 +1158,7 @@ def test_gold_goods_movement_activity(spark):
             movement_type_code="999", debit_credit_indicator="S", quantity=1.0, base_uom="EA",
             amount_local_currency=None, currency=None, posting_date=date(2026, 6, 8),
             document_date=date(2026, 6, 8), order_number=None, purchase_order_number=None,
-            delivery_number=None, sales_order_number=None, posted_by_user=None,
+            delivery_number=None, delivery_item_number=None, sales_order_number=None, posted_by_user=None,
             transaction_code=None),
     ], "goods_movement")
 

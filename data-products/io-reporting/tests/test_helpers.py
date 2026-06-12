@@ -154,20 +154,20 @@ class TestSapDate:
 class TestSapDatetime:
     def test_full_timestamp(self, spark):
         df = spark.createDataFrame([Row(d="20241215", t="143000")])
-        result = df.withColumn("out", sap_datetime("d", "t")).collect()[0]["out"]
-        assert result == datetime(2024, 12, 15, 14, 30, 0)
+        result = df.withColumn("out", sap_datetime("d", "t").cast("string")).collect()[0]["out"]
+        assert result == "2024-12-15 14:30:00"
 
     def test_midnight(self, spark):
         df = spark.createDataFrame([Row(d="20241215", t="000000")])
-        result = df.withColumn("out", sap_datetime("d", "t")).collect()[0]["out"]
-        assert result == datetime(2024, 12, 15, 0, 0, 0)
+        result = df.withColumn("out", sap_datetime("d", "t").cast("string")).collect()[0]["out"]
+        assert result == "2024-12-15 00:00:00"
 
     def test_time_without_leading_zero(self, spark):
         """SAP sometimes stores time as '90000' (9am) rather than '090000'.
         lpad to 6 ensures correct parsing."""
         df = spark.createDataFrame([Row(d="20241215", t="90000")])
-        result = df.withColumn("out", sap_datetime("d", "t")).collect()[0]["out"]
-        assert result == datetime(2024, 12, 15, 9, 0, 0)
+        result = df.withColumn("out", sap_datetime("d", "t").cast("string")).collect()[0]["out"]
+        assert result == "2024-12-15 09:00:00"
 
     def test_null_date_returns_null(self, spark):
         df = spark.createDataFrame([Row(d=None, t="143000")], "d STRING, t STRING")
@@ -183,8 +183,8 @@ class TestSapDatetime:
         """ISO replication format: 'yyyy-MM-dd' date + 'HH:mm:ss' time
         (verified live on connected_plant_uat LTBK BDATU/BZEIT, 2026-06-10)."""
         df = spark.createDataFrame([Row(d="2026-04-01", t="09:53:38")])
-        result = df.withColumn("out", sap_datetime("d", "t")).collect()[0]["out"]
-        assert result == datetime(2026, 4, 1, 9, 53, 38)
+        result = df.withColumn("out", sap_datetime("d", "t").cast("string")).collect()[0]["out"]
+        assert result == "2026-04-01 09:53:38"
 
     def test_iso_sentinel_date_returns_null(self, spark):
         df = spark.createDataFrame([Row(d="0000-00-00", t="09:53:38")])
@@ -193,8 +193,8 @@ class TestSapDatetime:
 
     def test_end_of_day(self, spark):
         df = spark.createDataFrame([Row(d="20241215", t="235959")])
-        result = df.withColumn("out", sap_datetime("d", "t")).collect()[0]["out"]
-        assert result == datetime(2024, 12, 15, 23, 59, 59)
+        result = df.withColumn("out", sap_datetime("d", "t").cast("string")).collect()[0]["out"]
+        assert result == "2024-12-15 23:59:59"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

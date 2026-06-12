@@ -57,5 +57,5 @@
 | Analytics domain is a Phase 0 stub with no adapters or panels | Low | `domain-integrations/analytics/src` has 2 files (registration.ts + index.ts); lifecycle = `concept-lab`; zero implementation |
 | `useManifestHydration` silently swallows all fetch errors | Low | API endpoint does not exist; hook is wired but intentionally no-op |
 | History.replaceState used for navigation (no browser back) | Low | `useWorkspaceShellState` uses `replaceState`, not `pushState`; intended for prototype, needs review for production |
-| Scope autoElevate order is hardcoded | Low | `packages/product-model/src/helpers/scope.ts`: `['global', 'region', 'plant', 'line', 'work-centre']` — not configurable |
+| Scope autoElevate order is hardcoded | Low | `packages/domain-models/src/helpers/scope.ts`: `['global', 'region', 'plant', 'line', 'work-centre']` — not configurable |
 | No retry logic in API client | Medium | `data-contracts/client.ts` throws immediately on non-OK; no backoff or retry for transient failures |

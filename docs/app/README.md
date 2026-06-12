@@ -96,7 +96,7 @@ cd apps/api && uv run pytest
 
 ```bash
 # Unit tests — pure logic packages
-npx vitest run packages/product-model packages/data-contracts
+npx vitest run packages/domain-models packages/data-contracts
 
 # Component tests — runtime packages
 npx vitest run packages/evidence-panel-runtime packages/workspace-runtime

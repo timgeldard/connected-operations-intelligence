@@ -14,14 +14,12 @@ This monorepo contains:
 
 ## 📈 Current Warehouse360 Migration Status
 
-Warehouse360 is in transition from legacy `wh360` runtime views to governed contract-backed `vw_consumption_warehouse360_*` views.
+Warehouse360 has completed its transition from legacy `wh360` runtime views to governed, contract-backed `vw_consumption_warehouse360_*` views.
 
-> [!WARNING]
-> **The governed path is prepared for DEV live validation but has not yet been live-validated.**
->
-> **Do not switch `WAREHOUSE360_SOURCE_MODE=governed_contracts` until DEV and UAT validation have passed.**
+* DEV and UAT validation have successfully passed (revalidated 2026-06-09).
+* The application runs in **governed contracts** mode (`WAREHOUSE360_SOURCE_MODE=governed_contracts`).
 
-For complete status, maps, and guides, see:
+For details on the validation results and contract coverage:
 * [Warehouse360 Governed Path Status](docs/architecture/warehouse360-governed-path-status.md)
 * [Warehouse360 Contract Status](docs/contracts/warehouse360-contract-status.md)
 * [Warehouse360 Route-to-Contract Map](docs/contracts/warehouse360-route-to-contract-map.md)
@@ -47,18 +45,32 @@ The repository is organized as a monorepo using `pnpm` workspaces for frontend/N
 │   ├── deployment/                 # Deployment guides, hardening plan, reconciliation controls
 │   ├── app/                        # Application roadmap, business rules, user stories, index
 │   └── runbooks/                   # Runbooks for operations and onboarding
-├── domain-integrations/            # Domain integrations / adapters
-│   ├── operations/
-│   ├── quality/
-│   ├── spc/
-│   ├── traceability/
-│   └── warehouse/
+├── domain-integrations/            # Domain integrations / workspaces
+│   ├── analytics/                  # Cross-domain analytics panel
+│   ├── envmon/                     # Environmental monitoring panel
+│   ├── maintenance/                # Maintenance and reliability panel
+│   ├── operations/                 # Operations plan and risk panels
+│   ├── quality/                    # Quality batch release and inspection panels
+│   ├── spc/                        # Nelson alarm SPC chart panel
+│   ├── traceability/               # Traceability graph and supplier exposure panels
+│   ├── warehouse/                  # Warehouse 360 overview, staging and inbound panels
+│   └── wm-operations/              # Warehouse operations and worklists panels
 ├── packages/                       # Shared packages inside the workspace
+│   ├── auth-scope/                 # Permission checking and scope resolution
 │   ├── config/                     # Shared configurations
 │   ├── data-contracts/             # Approved client-facing data contract schemas and types
 │   ├── domain-models/              # Domain entities and business model schemas
+│   ├── evidence-panel-runtime/     # 7-state display machine and panel host components
+│   ├── feature-flags/              # Flag evaluation hooks
+│   ├── personalization/            # Pinned and recent workspace persistence
+│   ├── python-db/                  # Shared Python DB (Databricks SQL executor) utility
 │   ├── queryspecs/                 # Query specifications and filter logic builders
-│   └── ui/                         # Shared UI component library
+│   ├── shared-playwright/          # E2E test helpers
+│   ├── source-adapters/            # Typed adapters for upstream data sources
+│   ├── telemetry/                  # Structured event logging
+│   ├── test-support/               # Test utility library
+│   ├── ui/                         # Shared UI component library (Kerry-branded Radix/shadcn)
+│   └── workspace-runtime/          # Layout and provider runtime package
 ├── scripts/                        # Repository helper and automation scripts
 │   ├── ci/                         # CI-specific scripts
 │   └── contracts/                  # Contract validation and code generation scripts

@@ -222,6 +222,8 @@ def test_bin_occupancy_current_state_counts_and_stock(spark: SparkSession):
             total_quantity=10.0,
             available_quantity=8.0,
             open_transfer_quantity=2.0,
+            max_quant_count=1,
+            maximum_weight=100.0,
         ),
         Row(
             warehouse_number="001",
@@ -236,6 +238,8 @@ def test_bin_occupancy_current_state_counts_and_stock(spark: SparkSession):
             total_quantity=5.0,
             available_quantity=5.0,
             open_transfer_quantity=0.0,
+            max_quant_count=1,
+            maximum_weight=100.0,
         ),
         Row(
             warehouse_number="001",
@@ -250,6 +254,8 @@ def test_bin_occupancy_current_state_counts_and_stock(spark: SparkSession):
             total_quantity=None,
             available_quantity=None,
             open_transfer_quantity=None,
+            max_quant_count=None,
+            maximum_weight=None,
         ),
         Row(
             warehouse_number="001",
@@ -264,6 +270,8 @@ def test_bin_occupancy_current_state_counts_and_stock(spark: SparkSession):
             total_quantity=5.0,
             available_quantity=5.0,
             open_transfer_quantity=0.0,
+            max_quant_count=1,
+            maximum_weight=100.0,
         ),
     ]
     spark.createDataFrame(storage_bin_data).write.mode("overwrite").saveAsTable(

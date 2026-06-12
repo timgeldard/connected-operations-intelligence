@@ -23,20 +23,20 @@ Additionally, stakeholder sign-off needed to be domain-scoped rather than worksp
 
 ### Scenario-Based Validation
 
-Validation uses 6 `ValidationScenario` records typed in `packages/product-model/src/types/pilot.ts`. Each scenario defines:
+Validation uses 6 `ValidationScenario` records typed in `packages/domain-models/src/types/pilot.ts`. Each scenario defines:
 - A named persona role and primary workspace
 - A starting context (what the user knows when they begin)
 - Expected evidence panels, actions, and drill-throughs
 - Acceptance criteria (pass/fail observable outcomes)
 - `blocksPilotExit` and `blocksProduction` flags
 
-Scenarios are managed in `ScenarioValidationPage.tsx` as the `VALIDATION_SCENARIOS` constant. The `scenarioPilotBlockers()` helper in `packages/product-model/src/helpers/pilot.ts` returns scenarios that are pilot-exit-blocking and not yet passed.
+Scenarios are managed in `ScenarioValidationPage.tsx` as the `VALIDATION_SCENARIOS` constant. The `scenarioPilotBlockers()` helper in `packages/domain-models/src/helpers/pilot.ts` returns scenarios that are pilot-exit-blocking and not yet passed.
 
 Scenario IDs follow the `SCN-NNN` convention. Six scenarios (SCN-001 through SCN-006) are defined for Phase 7. Four block pilot exit: SCN-001, SCN-002, SCN-004, SCN-006.
 
 ### Domain-Scoped Sign-Off
 
-Sign-off is managed via 8 `StakeholderSignoff` records (SO-001 through SO-008) typed in `packages/product-model/src/types/pilot.ts`. Each record captures:
+Sign-off is managed via 8 `StakeholderSignoff` records (SO-001 through SO-008) typed in `packages/domain-models/src/types/pilot.ts`. Each record captures:
 - `stakeholderName`, `stakeholderRole`, `domain`
 - `workspaceIds` — the workspaces in scope for this sign-off
 - `status` — one of `not-requested | requested | in-progress | approved | approved-with-conditions | rejected | blocked`

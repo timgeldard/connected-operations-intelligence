@@ -117,5 +117,5 @@ PYTHONPATH=. pytest
 - [`silver/design_spec.md`](silver/design_spec.md) — Silver architecture, table catalogue, expectations strategy
 - [`gold/design_spec.md`](gold/design_spec.md) — Gold architecture, table catalogue, status & limitations
 - [`docs/data_contracts.md`](docs/data_contracts.md) — grain/keys/source/freshness contracts per table
-- [`docs/adr/`](docs/adr/) — Architecture decision records (001–012)
+- [`docs/adr/`](docs/adr/) — Architecture decision records (001–016)
 - [`docs/runbook.md`](docs/runbook.md) — Operational runbook for Silver & Gold pipelines
