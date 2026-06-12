@@ -2030,6 +2030,35 @@ class TestGetBatchSearchSpec:
         assert "gold_trace_anchor_secured" in sql
         assert "gold_batch_stock_v" not in sql
 
+    def test_po_match_cte_uses_row_number_not_select_distinct(self) -> None:
+        """PR #110 accept: if a batch links to multiple matching process orders,
+        SELECT DISTINCT cannot deduplicate them (different PROCESS_ORDER_ID values
+        produce distinct rows, fanning out the anchor LEFT JOIN).  The fix wraps the
+        CTE in a ROW_NUMBER() OVER (PARTITION BY child batch key ORDER BY
+        POSTING_DATE DESC NULLS LAST, PROCESS_ORDER_ID DESC) = 1 sub-select so each
+        batch keeps at most one process-order row — the most recent."""
+        sql = get_batch_search_spec(self._req()).sql
+        assert "ROW_NUMBER()" in sql
+        assert "PARTITION BY" in sql
+        assert "POSTING_DATE DESC NULLS LAST" in sql
+        assert "PROCESS_ORDER_ID DESC" in sql
+        assert "rn = 1" in sql
+        # SELECT DISTINCT must be gone from the po_match CTE — it cannot deduplicate
+        # rows that differ only in PROCESS_ORDER_ID.
+        assert "SELECT DISTINCT" not in sql
+
+    def test_po_match_plant_join_uses_equality_not_null_safe(self) -> None:
+        """PR #110 decline: the null-safe <=> operator was proposed for the anchor
+        plant join but must NOT be used.  gold_trace_anchor_secured excludes null
+        PLANT_ID rows by design (anchors require a non-null plant for RLS), so
+        lineage rows with NULL CHILD_PLANT_ID correctly cannot match an anchor.
+        Using <=> would imply null-matching semantics that do not apply and would
+        change nothing in practice — the explicit = join is the correct form."""
+        sql = get_batch_search_spec(self._req()).sql
+        assert "<=>" not in sql
+        # The explicit equality join must still be present.
+        assert "CHILD_PLANT_ID    = a.PLANT_ID" in sql
+
     def test_missing_trace_catalog_raises_config_error(self, monkeypatch) -> None:
         monkeypatch.delenv("TRACE_CATALOG", raising=False)
         with pytest.raises(DatabricksConfigError):

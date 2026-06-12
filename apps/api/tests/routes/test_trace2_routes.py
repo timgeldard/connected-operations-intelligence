@@ -621,6 +621,28 @@ class TestBatchSearchDatabricksMode:
         assert "`connected_plant_uat`.`gold`.`gold_material`" in spec.sql
         assert "`connected_plant_uat`.`gold`.`gold_plant`" in spec.sql
 
+    def test_search_spec_po_match_deduplicates_with_row_number(self, monkeypatch) -> None:
+        """PR #110 accept: a batch linked to multiple matching process orders must not
+        fan out the anchor LEFT JOIN.  SELECT DISTINCT cannot prevent this because each
+        matching process order is a distinct row; ROW_NUMBER() OVER (PARTITION BY child
+        batch key) is required to keep at most one row per batch (the most recent by
+        POSTING_DATE DESC, PROCESS_ORDER_ID DESC as tiebreak)."""
+        from adapters.trace2.trace2_databricks_adapter import (
+            Trace2BatchSearchRequest,
+            get_batch_search_spec,
+        )
+
+        monkeypatch.setenv("TRACE_CATALOG", "connected_plant_uat")
+        monkeypatch.setenv("TRACE_SCHEMA", "gold")
+
+        spec = get_batch_search_spec(Trace2BatchSearchRequest(query="cheese"))
+
+        assert "ROW_NUMBER()" in spec.sql
+        assert "PARTITION BY" in spec.sql
+        assert "POSTING_DATE DESC NULLS LAST" in spec.sql
+        assert "rn = 1" in spec.sql
+        assert "SELECT DISTINCT" not in spec.sql
+
     async def test_search_requires_databricks_mode(self, monkeypatch) -> None:
         monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
         async with _make_client() as client:

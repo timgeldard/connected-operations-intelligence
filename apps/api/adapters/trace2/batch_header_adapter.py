@@ -195,18 +195,33 @@ def get_batch_search_spec(request: Trace2BatchSearchRequest) -> QuerySpec:
         -- Scoped process-order lookup: find child batch endpoints that were produced
         -- under the searched process order, then join to the anchor to enforce RLS.
         -- Only batches visible to the requesting user (ACTIVE plant) survive.
-        SELECT DISTINCT
-            a.MATERIAL_ID,
-            a.BATCH_ID,
-            a.PLANT_ID,
-            l.PROCESS_ORDER_ID
-        FROM {tbl_lineage} l
-        JOIN {tbl_anchor} a
-            ON l.CHILD_MATERIAL_ID = a.MATERIAL_ID
-           AND l.CHILD_BATCH_ID    = a.BATCH_ID
-           AND l.CHILD_PLANT_ID    = a.PLANT_ID
-        WHERE l.PROCESS_ORDER_ID IS NOT NULL
-          AND UPPER(l.PROCESS_ORDER_ID) LIKE :search_pattern
+        -- ROW_NUMBER deduplicates: a batch that links to multiple matching process
+        -- orders keeps only the most-recent one (POSTING_DATE DESC, then
+        -- PROCESS_ORDER_ID DESC as tiebreak) so the anchor LEFT JOIN cannot fan out.
+        SELECT
+            MATERIAL_ID,
+            BATCH_ID,
+            PLANT_ID,
+            PROCESS_ORDER_ID
+        FROM (
+            SELECT
+                a.MATERIAL_ID,
+                a.BATCH_ID,
+                a.PLANT_ID,
+                l.PROCESS_ORDER_ID,
+                ROW_NUMBER() OVER (
+                    PARTITION BY l.CHILD_MATERIAL_ID, l.CHILD_BATCH_ID, l.CHILD_PLANT_ID
+                    ORDER BY l.POSTING_DATE DESC NULLS LAST, l.PROCESS_ORDER_ID DESC
+                ) AS rn
+            FROM {tbl_lineage} l
+            JOIN {tbl_anchor} a
+                ON l.CHILD_MATERIAL_ID = a.MATERIAL_ID
+               AND l.CHILD_BATCH_ID    = a.BATCH_ID
+               AND l.CHILD_PLANT_ID    = a.PLANT_ID
+            WHERE l.PROCESS_ORDER_ID IS NOT NULL
+              AND UPPER(l.PROCESS_ORDER_ID) LIKE :search_pattern
+        ) ranked
+        WHERE rn = 1
     )
     SELECT
         a.MATERIAL_ID          AS material_id,
