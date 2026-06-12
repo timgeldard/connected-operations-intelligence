@@ -11,11 +11,13 @@ USE SCHEMA gold_io_reporting;
 -- Lab Board result signal view.
 -- Grain: 1 row per plant + inspection lot + operation + MIC (failed/warned results only).
 -- RLS inherited from gold_qm_lab_result_signal_secured via the CSM security model.
+-- mat = material description (V1 FailSpec); mat_no = material code.
+-- material_description is COALESCE(silver.material.description, material_code) in gold.
 CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.vw_consumption_quality_lab_fails AS
 SELECT
   plant_code                                          AS plant_code,
   material_code                                       AS mat_no,
-  material_code                                       AS mat,
+  material_description                                AS mat,
   inspection_lot_number                               AS lot,
   batch_number                                        AS batch,
   production_line                                     AS line,

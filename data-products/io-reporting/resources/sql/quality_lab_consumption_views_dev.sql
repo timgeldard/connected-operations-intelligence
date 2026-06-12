@@ -13,13 +13,13 @@ USE SCHEMA gold_io_reporting;
 -- RLS inherited from gold_qm_lab_result_signal_secured (pass-through in dev — no security model).
 -- App route resolves via resolve_domain_object("quality_lab", "vw_consumption_quality_lab_fails")
 -- using QUALITY_LAB_CATALOG / QUALITY_LAB_SCHEMA env vars (see apps/api/shared/query_service/object_resolver.py).
+-- mat = material description (V1 FailSpec); mat_no = material code.
+-- material_description is COALESCE(silver.material.description, material_code) in gold.
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.vw_consumption_quality_lab_fails AS
 SELECT
   plant_code                                          AS plant_code,
   material_code                                       AS mat_no,
-  -- material description: sourced from process_order join; falls back to material_code.
-  -- The route-layer mapper uses mat_no as fallback when mat is absent.
-  material_code                                       AS mat,
+  material_description                                AS mat,
   inspection_lot_number                               AS lot,
   batch_number                                        AS batch,
   production_line                                     AS line,
