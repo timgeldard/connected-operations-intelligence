@@ -105,11 +105,11 @@ def _first_paragraph(text: str) -> str:
 
 def _build_view_comment(contract: dict) -> str:
     """Compose the view-level COMMENT text from contract metadata."""
-    desc = _first_paragraph(str(contract.get("description", "")).strip())
-    grain = str(contract.get("grain", "")).strip()
-    cid = contract.get("id", "")
-    version = contract.get("version", "")
-    freshness = contract.get("freshness", {})
+    desc = _first_paragraph(str(contract.get("description", "") or "").strip())
+    grain = str(contract.get("grain", "") or "").strip()
+    cid = contract.get("id", "") or ""
+    version = contract.get("version", "") or ""
+    freshness = contract.get("freshness") or {}
     expected = freshness.get("expected_minutes", "")
     warning = freshness.get("warning_minutes", "")
     critical = freshness.get("critical_minutes", "")
@@ -138,16 +138,36 @@ def _build_view_comment(contract: dict) -> str:
     return " ".join(parts)
 
 
+def _strip_sql_comments(text: str) -> str:
+    """Remove SQL comments from text so CREATE statements inside comments are ignored.
+
+    Removes:
+      - Block comments: /* ... */ (including multi-line)
+      - Line comments:  everything from -- to end of line
+    """
+    # Remove block comments first (they can span lines).
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    # Remove line comments (-- to end of line).
+    text = re.sub(r"--[^\n]*", "", text)
+    return text
+
+
 def _collect_view_names_from_sql(env: str, base_dir: pathlib.Path) -> set[str]:
     """Parse all *consumption_views_<env>.sql files and return the set of view names
-    defined via 'CREATE OR REPLACE VIEW <name>' (unqualified name only)."""
+    defined via 'CREATE OR REPLACE VIEW <name>' (unqualified name only).
+
+    Comments (both -- line comments and /* */ block comments) are stripped before
+    matching so that commented-out CREATE statements are not collected.
+    Catalog and schema prefix segments may contain hyphens (e.g. connected-plant-uat).
+    """
     pattern = CONSUMPTION_VIEW_GLOB.format(env=env)
     sql_files = list(base_dir.glob(pattern))
     view_names: set[str] = set()
     for sql_file in sql_files:
-        text = sql_file.read_text(encoding="utf-8")
+        raw_text = sql_file.read_text(encoding="utf-8")
+        text = _strip_sql_comments(raw_text)
         for m in re.finditer(
-            r"CREATE\s+OR\s+REPLACE\s+VIEW\s+(?:\w+\.)*(\w+)\s+AS",
+            r"CREATE\s+OR\s+REPLACE\s+VIEW\s+(?:`?[\w-]+`?\.)*`?(\w+)`?\s+AS",
             text,
             re.IGNORECASE,
         ):
@@ -177,9 +197,9 @@ def generate_sql(env_filter: str | None = None, base_dir: pathlib.Path | None = 
         raise SystemExit(f"Manifest not found: {manifest_path}")
 
     with open(manifest_path, encoding="utf-8") as f:
-        manifest = yaml.safe_load(f)
+        manifest = yaml.safe_load(f) or {}
 
-    contracts = manifest.get("contracts", [])
+    contracts = manifest.get("contracts") or []
 
     (base_dir / "resources" / "sql").mkdir(parents=True, exist_ok=True)
 
@@ -218,7 +238,7 @@ def generate_sql(env_filter: str | None = None, base_dir: pathlib.Path | None = 
             qualified_view = f"{qualified_schema}.{source_view}"
             section: list[str] = []
             section.append(
-                f"-- ── Contract: {contract.get('id', '')} v{contract.get('version', '')} ──"
+                f"-- ── Contract: {contract.get('id', '') or ''} v{contract.get('version', '') or ''} ──"
             )
 
             # 1. COMMENT ON VIEW
@@ -230,11 +250,12 @@ def generate_sql(env_filter: str | None = None, base_dir: pathlib.Path | None = 
             )
 
             # 2. SET TAGS
-            cid = _escape_sql_string(str(contract.get("id", "")))
-            cver = _escape_sql_string(str(contract.get("version", "")))
-            grain_val = _escape_sql_string(str(contract.get("grain", "")))
-            freshness = contract.get("freshness", {})
-            expected_min = str(freshness.get("expected_minutes", ""))
+            cid = _escape_sql_string(str(contract.get("id", "") or ""))
+            cver = _escape_sql_string(str(contract.get("version", "") or ""))
+            grain_val = _escape_sql_string(str(contract.get("grain", "") or ""))
+            freshness = contract.get("freshness") or {}
+            _exp_raw = freshness.get("expected_minutes")
+            expected_min = str(_exp_raw) if _exp_raw is not None else ""
             section.append(
                 f"ALTER VIEW {qualified_view} SET TAGS (\n"
                 f"  'contract_id' = '{cid}',\n"
