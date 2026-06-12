@@ -1582,6 +1582,9 @@ def gold_wm_order_journey_summary():
     # grouping on plant_code + order_number to avoid cross-plant fan-out.
     to_agg = (
         tos.filter(F.col("transfer_requirement_number").isNotNull())
+        # Drop the TO-side plant_code so the grouping below unambiguously uses the TR
+        # (order demand) plant — the same plant axis tr_by_order groups on.
+        .drop("plant_code")
         .join(
             trs.filter(F.col("source_reference_type") == TR_ORDER_REFERENCE_TYPE)
             .select(
@@ -1627,8 +1630,8 @@ def gold_wm_order_journey_summary():
             spark.read.table(f"{ss}.pi_sheet_execution")
             .groupBy("order_number")
             .agg(
-                F.min("start_datetime").alias("pi_first_start"),
-                F.max("end_datetime").alias("pi_last_end"),
+                F.min("pi_sheet_start_datetime").alias("pi_first_start"),
+                F.max("pi_sheet_end_datetime").alias("pi_last_end"),
             )
         )
 
@@ -1680,15 +1683,31 @@ def gold_wm_order_journey_summary():
     # -- QM lot context (source-guarded) ---------------------------------------
     qm_agg = None
     if table_exists(spark, f"{ss}.quality_inspection_lot"):
-        qm_agg = (
+        # A lot is "decided" when a usage-decision row exists for it (same rule as
+        # gold_wm_qm_lot_status) — the lot table carries no usage_decision_taken flag.
+        qm_lots = (
             spark.read.table(f"{ss}.quality_inspection_lot")
             .filter(F.col("order_number").isNotNull())
+            .select("order_number", "inspection_lot_number")
+        )
+        if table_exists(spark, f"{ss}.quality_inspection_usage_decision"):
+            decided = (
+                spark.read.table(f"{ss}.quality_inspection_usage_decision")
+                .select("inspection_lot_number")
+                .distinct()
+                .withColumn("_ud_taken", F.lit(True))
+            )
+            qm_lots = qm_lots.join(decided, "inspection_lot_number", "left")
+        else:
+            qm_lots = qm_lots.withColumn("_ud_taken", F.lit(None).cast("boolean"))
+        qm_agg = (
+            qm_lots
             .groupBy("order_number")
             .agg(
                 F.count_distinct("inspection_lot_number").alias("qm_lot_count"),
                 F.count_distinct(
                     F.when(
-                        ~F.coalesce(F.col("usage_decision_taken"), F.lit(False)),
+                        F.col("_ud_taken").isNull(),
                         F.col("inspection_lot_number"),
                     )
                 ).alias("qm_open_lot_count"),
@@ -1734,7 +1753,7 @@ def gold_wm_order_journey_summary():
         F.col("order_quantity").alias("order_qty"),
         F.col("order_quantity_uom").alias("uom"),
         "production_line",
-        F.col("created_datetime").alias("order_created_ts"),
+        F.col("created_date").cast("timestamp").alias("order_created_ts"),
         F.col("actual_release_date").alias("release_date"),
         F.col("scheduled_start_date"),
         F.col("scheduled_finish_date"),
@@ -1821,11 +1840,11 @@ def gold_wm_order_journey_events():
     # -- ORDER_CREATED ---------------------------------------------------------
     ev_created = (
         orders
-        .filter(F.col("created_datetime").isNotNull())
+        .filter(F.col("created_date").isNotNull())
         .select(
             "plant_code",
             "order_number",
-            F.col("created_datetime").alias("event_ts"),
+            F.col("created_date").cast("timestamp").alias("event_ts"),
             F.lit("ORDER_CREATED").alias("event_type"),
             F.lit(None).cast("double").alias("qty"),
             F.lit(None).cast("string").alias("uom"),
@@ -1884,6 +1903,9 @@ def gold_wm_order_journey_events():
             & (F.col("item_status") == "Fully Confirmed")
             & F.col("confirmed_datetime").isNotNull()
         )
+        # Drop the TO-side plant_code so the select below unambiguously uses the TR
+        # (order demand) plant from tr_order_map.
+        .drop("plant_code")
         .join(tr_order_map, "transfer_requirement_number", "inner")
         .select(
             "plant_code",
@@ -1898,7 +1920,7 @@ def gold_wm_order_journey_events():
                 F.lit("TO"),
                 F.col("transfer_order_number"),
                 F.lit("item"),
-                F.col("transfer_order_item").cast("string"),
+                F.col("item_number").cast("string"),
             ).alias("detail"),
         )
     )
@@ -1910,6 +1932,8 @@ def gold_wm_order_journey_events():
             F.coalesce(F.col("is_confirmed"), F.lit(False))
             & F.col("actual_start_datetime").isNotNull()
         )
+        # Drop the operation-side plant_code: the order's plant is the event axis.
+        .drop("plant_code")
         .join(
             orders.select("order_number", "plant_code"),
             "order_number",
@@ -1934,31 +1958,41 @@ def gold_wm_order_journey_events():
     pi_events: list = []
     if table_exists(spark, f"{ss}.pi_sheet_execution"):
         pi = spark.read.table(f"{ss}.pi_sheet_execution")
+        # pi_sheet_execution has no sheet-number column — operation_number is the
+        # finest reference it carries. Drop its plant_code: the order's plant is the axis.
         pi_start = (
-            pi.filter(F.col("start_datetime").isNotNull() & F.col("order_number").isNotNull())
+            pi.filter(
+                F.col("pi_sheet_start_datetime").isNotNull()
+                & F.col("order_number").isNotNull()
+            )
+            .drop("plant_code")
             .join(orders.select("order_number", "plant_code"), "order_number", "inner")
             .select(
                 "plant_code",
                 "order_number",
-                F.col("start_datetime").alias("event_ts"),
+                F.col("pi_sheet_start_datetime").alias("event_ts"),
                 F.lit("PI_START").alias("event_type"),
                 F.lit(None).cast("double").alias("qty"),
                 F.lit(None).cast("string").alias("uom"),
-                F.col("pi_sheet_number").alias("reference_id"),
+                F.col("operation_number").alias("reference_id"),
                 F.lit("PI sheet started").alias("detail"),
             )
         )
         pi_end = (
-            pi.filter(F.col("end_datetime").isNotNull() & F.col("order_number").isNotNull())
+            pi.filter(
+                F.col("pi_sheet_end_datetime").isNotNull()
+                & F.col("order_number").isNotNull()
+            )
+            .drop("plant_code")
             .join(orders.select("order_number", "plant_code"), "order_number", "inner")
             .select(
                 "plant_code",
                 "order_number",
-                F.col("end_datetime").alias("event_ts"),
+                F.col("pi_sheet_end_datetime").alias("event_ts"),
                 F.lit("PI_END").alias("event_type"),
                 F.lit(None).cast("double").alias("qty"),
                 F.lit(None).cast("string").alias("uom"),
-                F.col("pi_sheet_number").alias("reference_id"),
+                F.col("operation_number").alias("reference_id"),
                 F.lit("PI sheet ended").alias("detail"),
             )
         )
@@ -1971,6 +2005,8 @@ def gold_wm_order_journey_events():
             & F.col("order_number").isNotNull()
             & F.col("posting_date").isNotNull()
         )
+        # Drop the movement-side plant_code: the order's plant is the event axis.
+        .drop("plant_code")
         .join(orders.select("order_number", "plant_code"), "order_number", "inner")
         .select(
             "plant_code",
@@ -1991,6 +2027,8 @@ def gold_wm_order_journey_events():
             & F.col("order_number").isNotNull()
             & F.col("posting_date").isNotNull()
         )
+        # Drop the movement-side plant_code: the order's plant is the event axis.
+        .drop("plant_code")
         .join(orders.select("order_number", "plant_code"), "order_number", "inner")
         .select(
             "plant_code",
@@ -2013,6 +2051,8 @@ def gold_wm_order_journey_events():
                 F.col("order_number").isNotNull()
                 & F.col("lot_created_date").isNotNull()
             )
+            # Drop the lot-side plant_code: the order's plant is the event axis.
+            .drop("plant_code")
             .join(orders.select("order_number", "plant_code"), "order_number", "inner")
             .select(
                 "plant_code",
@@ -2030,6 +2070,8 @@ def gold_wm_order_journey_events():
             uds = spark.read.table(f"{ss}.quality_inspection_usage_decision")
             ev_qm_ud = (
                 uds.filter(F.col("usage_decision_date").isNotNull())
+                # Drop the UD-side plant_code: the order's plant is the event axis.
+                .drop("plant_code")
                 .join(
                     qml.filter(F.col("order_number").isNotNull())
                     .select("inspection_lot_number", "order_number")
