@@ -154,34 +154,21 @@ const WEEKS_TO_SHOW = 8  // weeks of data to display in the S-curve
 
 interface SCurveProps {
   readonly items: WmScheduleAdherenceDailyItem[]
+  readonly maxActual: string | null
   readonly isLoading: boolean
   readonly error: string | null
 }
 
-function SCurveChart({ items, isLoading, error }: SCurveProps) {
-  // Sort by scheduled_date ascending.
-  const sorted = useMemo(() => [...items].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate)), [items])
+function SCurveChart({ items, maxActual, isLoading, error }: SCurveProps) {
+  // items is already the visible (windowed) slice — sorted ascending by the parent.
+  const visible = items
 
-  // Anchor to max_actual_date in data (NOT wall-clock). Use the max across all rows.
-  const maxActual = useMemo(() => {
-    const dates = items.map(r => r.maxActualDate).filter(Boolean) as string[]
-    return dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : null
-  }, [items])
-
-  // Show the last N weeks from the max actual date. If no data, show everything.
-  const cutoffDate = useMemo(() => {
-    if (!maxActual) return null
-    const d = new Date(maxActual)
-    d.setDate(d.getDate() - WEEKS_TO_SHOW * 7)
-    return d.toISOString().slice(0, 10)
-  }, [maxActual])
-
-  const visible = useMemo(
-    () => cutoffDate ? sorted.filter(r => r.scheduledDate >= cutoffDate) : sorted,
-    [sorted, cutoffDate],
+  // Scale bars against the tallest column across BOTH planned and completed so that
+  // a day where completedCount > plannedCount does not overflow 100%.
+  const maxVal = useMemo(
+    () => Math.max(...visible.flatMap(r => [r.plannedCount, r.completedCount]), 1),
+    [visible],
   )
-
-  const maxPlanned = useMemo(() => Math.max(...visible.map(r => r.plannedCount), 1), [visible])
 
   if (isLoading) return <LoadingRows rows={4} />
   if (error) return <EmptyNote>Could not load schedule adherence: {error}</EmptyNote>
@@ -211,8 +198,8 @@ function SCurveChart({ items, isLoading, error }: SCurveProps) {
       {/* Bar chart: ghost bars = planned, solid bars = completed, colour = on-time */}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 120, overflowX: 'auto' }}>
         {visible.map(row => {
-          const plannedH = maxPlanned > 0 ? Math.round((row.plannedCount / maxPlanned) * 100) : 0
-          const completedH = maxPlanned > 0 ? Math.round((row.completedCount / maxPlanned) * 100) : 0
+          const plannedH = maxVal > 0 ? Math.round((row.plannedCount / maxVal) * 100) : 0
+          const completedH = maxVal > 0 ? Math.round((row.completedCount / maxVal) * 100) : 0
           const onTimeFrac = row.completedCount > 0 ? row.onTimeCount / row.completedCount : 0
           const barColor = onTimeFrac >= 0.8
             ? 'var(--kw-success, #007a33)'
@@ -252,10 +239,10 @@ function SCurveChart({ items, isLoading, error }: SCurveProps) {
 
 function ProductionProgressKpiStrip({
   wipItems,
-  adherenceItems,
+  visibleAdherence,
 }: {
   readonly wipItems: WmWipStageItem[]
-  readonly adherenceItems: WmScheduleAdherenceDailyItem[]
+  readonly visibleAdherence: WmScheduleAdherenceDailyItem[]
 }) {
   const ordersInWip = wipItems.length
 
@@ -264,8 +251,8 @@ function ProductionProgressKpiStrip({
   ).length
   const pastStagedPct = ordersInWip > 0 ? Math.round((pastStagedCount / ordersInWip) * 100) : null
 
-  const totalPlanned = adherenceItems.reduce((s, r) => s + r.plannedCount, 0)
-  const totalOnTime = adherenceItems.reduce((s, r) => s + r.onTimeCount, 0)
+  const totalPlanned = visibleAdherence.reduce((s, r) => s + r.plannedCount, 0)
+  const totalOnTime = visibleAdherence.reduce((s, r) => s + r.onTimeCount, 0)
   const adherencePct = totalPlanned > 0 ? Math.round((totalOnTime / totalPlanned) * 100) : null
 
   return (
@@ -307,6 +294,23 @@ export function ProductionProgressView({
   const wipError = wipResult.data && !wipResult.data.ok ? wipResult.data.error.message : null
   const adherenceError = adherenceResult.data && !adherenceResult.data.ok ? adherenceResult.data.error.message : null
 
+  // Compute the shared 8-week window here so both the KPI strip and the S-curve chart
+  // show the same adherence figure (rather than the strip showing all-time vs the chart
+  // showing the rolling window).
+  const maxActual = useMemo(() => {
+    const dates = adherenceItems.map(r => r.maxActualDate).filter(Boolean) as string[]
+    return dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : null
+  }, [adherenceItems])
+
+  const visibleAdherence = useMemo(() => {
+    const sorted = [...adherenceItems].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate))
+    if (!maxActual) return sorted
+    const d = new Date(maxActual)
+    d.setDate(d.getDate() - WEEKS_TO_SHOW * 7)
+    const cutoff = d.toISOString().slice(0, 10)
+    return sorted.filter(r => r.scheduledDate >= cutoff)
+  }, [adherenceItems, maxActual])
+
   function handleOpenJourney(orderId: string) {
     if (!onNavigateToView) return
     setOrderJourneyDeepLink({ plantId: request.plantId ?? undefined, orderId })
@@ -330,7 +334,7 @@ export function ProductionProgressView({
         subtitle="WIP funnel by stage and schedule adherence S-curve for active process orders."
       />
 
-      <ProductionProgressKpiStrip wipItems={wipItems} adherenceItems={adherenceItems} />
+      <ProductionProgressKpiStrip wipItems={wipItems} visibleAdherence={visibleAdherence} />
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* WIP Funnel card */}
@@ -349,7 +353,8 @@ export function ProductionProgressView({
         <div className="kw-card" style={{ flex: '1 1 340px', minWidth: 280 }}>
           <div className="kw-card-title" style={{ marginBottom: 12 }}>Schedule Adherence</div>
           <SCurveChart
-            items={adherenceItems}
+            items={visibleAdherence}
+            maxActual={maxActual}
             isLoading={adherenceResult.isLoading}
             error={adherenceError}
           />
