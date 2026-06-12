@@ -1,3 +1,5 @@
+import type { CSSProperties, ReactNode } from 'react'
+
 /**
  * Shared action-sheet UI primitives reused across workspace action panels.
  */
@@ -10,7 +12,7 @@ export function ActionSheet({
 }: {
   title: string
   onClose: () => void
-  children: React.ReactNode
+  children: ReactNode
   'aria-label'?: string
 }) {
   return (
@@ -27,7 +29,7 @@ export function ActionSheet({
       >
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--shell-line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--shell-fg)' }}>{title}</h2>
-          <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--shell-fg-3)', padding: '4px 8px' }}>✕</button>
+          <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--shell-fg-3)', padding: '4px 8px' }}>âœ•</button>
         </div>
         <div style={{ padding: '20px', flex: 1 }}>{children}</div>
       </div>
@@ -35,7 +37,7 @@ export function ActionSheet({
   )
 }
 
-export function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+export function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
     <div>
       <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--shell-fg-2)', marginBottom: 4 }}>{label}</label>
@@ -57,7 +59,7 @@ export function SheetActions({ onClose, submitLabel }: { onClose: () => void; su
 export function SuccessMessage({ message, onClose }: { message: string; onClose: () => void }) {
   return (
     <div style={{ display: 'grid', gap: 12, textAlign: 'center' }}>
-      <div style={{ fontSize: 32 }} aria-hidden="true">✓</div>
+      <div style={{ fontSize: 32 }} aria-hidden="true">âœ“</div>
       <p style={{ margin: 0, fontSize: 14, color: 'var(--shell-fg)' }}>{message}</p>
       <button type="button" onClick={onClose} style={{ padding: '8px 20px', background: 'var(--shell-rail-active, #005776)', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#fff', margin: '0 auto' }}>Done</button>
     </div>
@@ -67,7 +69,7 @@ export function SuccessMessage({ message, onClose }: { message: string; onClose:
 export type ActionButtonVariant = 'primary' | 'secondary' | 'warning' | 'danger'
 
 export function ActionButton({ label, onClick, disabled, variant }: { label: string; onClick: () => void; disabled: boolean; variant: ActionButtonVariant }) {
-  const VARIANT: Record<ActionButtonVariant, React.CSSProperties> = {
+  const VARIANT: Record<ActionButtonVariant, CSSProperties> = {
     primary: { background: 'var(--shell-rail-active, #005776)', color: '#fff', border: 'none' },
     secondary: { background: 'transparent', color: 'var(--shell-fg)', border: '1px solid var(--shell-line)' },
     warning: { background: 'transparent', color: '#D97706', border: '1px solid #D97706' },
