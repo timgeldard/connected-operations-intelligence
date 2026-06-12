@@ -261,6 +261,10 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_spc_quality_me
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_spc_quality_metric_subgroup;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_spc_quality_metric_subgroup_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_trace_anchor_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_trace_anchor;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_trace_anchor_secured TO `users`;
+
 -- ── Base-table access hardening ──
 -- The actual REVOKE statements are generated as a SEPARATE admin script
 -- (resources/sql/gold_security_harden_dev.sql). Apply it AFTER this script so plant-scoped users

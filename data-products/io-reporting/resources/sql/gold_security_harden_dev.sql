@@ -65,3 +65,4 @@ REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_order_journ
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_order_journey_events FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_wm_order_wip_stage FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_spc_quality_metric_subgroup FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_dev.gold_io_reporting.gold_trace_anchor FROM `users`;

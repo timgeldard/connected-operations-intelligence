@@ -149,6 +149,49 @@ Managed via Declarative Automation Bundle (DAB).
 - **Description:** Flattened reporting source optimized for plant readiness dashboards, joining rollup status with conformed plant details.
 - **Freshness:** Recomputed during each Gold run.
 
+---
+
+## Traceability Gold — Final Trace migration (ADR 016)
+
+> T2 (edge MV) and T3 (anchor tier) of the governed traceability rebuild. The Final Trace
+> migration replaces the legacy `gold_batch_lineage` (168M edges, ~390 plants, 16 years, ungated).
+> New tables are estate-wide (not gated to WM pilot plants) but lifecycle-scoped per ADR 016 §2.
+> Security is two-tier: capability-tier for the edge product, row-level (plant_code CSM) for the
+> anchor tier.
+
+### `gold_batch_lineage`  *(T2 — capability tier)*
+- **Granularity:** 1 row per directed traceability edge (PARENT_* → CHILD_*).
+- **Description:** Five-leg UNION of batch traceability edges from `silver.batch_where_used`
+  (CHVW) and `silver.goods_movement` (MSEG). Legs: PRODUCTION (CHVW × MSEG GR), STO/BATCH/
+  MATERIAL_TRANSFER (CHVW receiving side), VENDOR_RECEIPT (MSEG PO receipt), DELIVERY (MSEG
+  outbound issue), ADJUSTMENT_IN / ADJUSTMENT_OUT (MSEG stock adjustments). Lifecycle-gated:
+  SOLD / DIVESTED_ON_SAP endpoint plants excluded; unknown plants kept for graph continuity.
+- **Security:** Capability-tier GRANT via `resources/sql/trace_security_{env}.sql` (NOT in
+  `generate_gold_security_sql.py` / `GOLD_TABLES` — no per-user RLS row filter on this MV; the
+  T3 anchor views carry the per-user predicate).
+- **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
+
+### `gold_trace_anchor`  *(T3 — anchor tier, delivered)*
+- **Granularity:** 1 row per (MATERIAL_ID, BATCH_ID, PLANT_ID) anchorable entry point.
+- **Description:** Aggregated anchor index built from `gold_batch_lineage`. The parent and child
+  endpoint sides of the edge MV are unioned, filtered to non-null/non-blank (BATCH_ID, PLANT_ID),
+  then grouped to a batch-plant grain with `first_posting_date`, `last_posting_date`,
+  `edge_count_as_parent`, and `edge_count_as_child`. Exposes `plant_code` = PLANT_ID for the RLS
+  predicate.
+- **Anchorability gate (ADR 016 §3):** Inner join to `silver.site_lifecycle` — only plants with
+  `effective_lifecycle = 'ACTIVE'` are kept. CLOSED and unconfirmed-review plants (which default
+  to CLOSED) are traversable via the edge product but not anchorable. This is the deliberate
+  OPPOSITE of the edge MV's keep-unknowns default: the anchor requires explicit ACTIVE
+  confirmation because a trace may only be INITIATED from a reviewed-active plant.
+- **Security:** Added to `generate_gold_security_sql.py` `GOLD_TABLES` — served via
+  `gold_trace_anchor_secured` with the standard `plant_code` CSM predicate
+  (`application_key = 'io_reporting'`).
+- **Note:** App batch-search switchover from the legacy search surface to this anchor tier is a
+  separate follow-up task.
+- **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
+
+---
+
 ### Access-tier foundation
 - **Current state:** Operative and supervisor access remains plant-scoped through Silver `plant_access_filter`.
 - **Cluster-lead tier:** Documented in ADR-005. Execution is blocked until a governed plant-to-cluster source is selected.
