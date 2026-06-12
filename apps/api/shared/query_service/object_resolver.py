@@ -21,6 +21,10 @@ V1-compatible fallback chains (verified from ConnectIO-RAD source):
     because connected_plant_uat.gold.spc_quality_metric_subgroup_mv is in the same
     catalog as the TRACE/EnvMon views (UAT confirmed 2026-05-22 — pp.txt)
   WH360 domain → uses WH360_CATALOG / WH360_SCHEMA (default: "wh360")
+  QUALITY_LAB domain → uses QUALITY_LAB_CATALOG / QUALITY_LAB_SCHEMA (default: "gold_io_reporting")
+    Points to the governed gold_io_reporting schema where vw_consumption_quality_lab_*
+    consumption views live. Falls back to WH360_CATALOG (same catalog as the io-reporting
+    product — connected_plant_uat / _prod).
 
 Object names passed to these functions must be code constants — never user-supplied
 request parameters. Caller is responsible for this invariant.
@@ -43,6 +47,8 @@ _CATALOG_ENV: dict[str, str] = {
     "envmon": "TRACE_CATALOG",
     "spc": "SPC_CATALOG",
     "wh360": "WH360_CATALOG",
+    # quality_lab: governed io-reporting gold schema; same catalog as wh360 / io-reporting product.
+    "quality_lab": "QUALITY_LAB_CATALOG",
 }
 
 _SCHEMA_ENV: dict[str, tuple[str, str]] = {
@@ -52,6 +58,8 @@ _SCHEMA_ENV: dict[str, tuple[str, str]] = {
     "envmon": ("TRACE_SCHEMA", "gold"),
     "spc": ("SPC_SCHEMA", "gold"),
     "wh360": ("WH360_SCHEMA", "wh360"),
+    # quality_lab: consumption views live in gold_io_reporting (same schema as all io-reporting gold).
+    "quality_lab": ("QUALITY_LAB_SCHEMA", "gold_io_reporting"),
 }
 
 
@@ -105,7 +113,7 @@ def resolve_domain_object(
     catalog cannot be resolved (missing env var and no override).
 
     Args:
-        domain: One of "poh", "cq", "trace2", "envmon", "spc", "wh360".
+        domain: One of "poh", "cq", "trace2", "envmon", "spc", "wh360", "quality_lab".
         object_name: Code constant — the table/view name without qualification.
             Must never be a user-supplied value.
         schema_override: When set, bypasses the schema env var (e.g., "gold" for
@@ -134,8 +142,17 @@ def resolve_domain_object(
     if not catalog and domain in ("cq", "envmon", "spc"):
         catalog = os.getenv("TRACE_CATALOG", "")
 
+    # QUALITY_LAB_CATALOG falls back to WH360_CATALOG (both target the io-reporting product catalog)
+    if not catalog and domain == "quality_lab":
+        catalog = os.getenv("WH360_CATALOG", "")
+
     if not catalog:
-        fallback_note = " (or TRACE_CATALOG for cq/envmon/spc domain)" if domain in ("cq", "envmon", "spc") else ""
+        if domain in ("cq", "envmon", "spc"):
+            fallback_note = " (or TRACE_CATALOG for cq/envmon/spc domain)"
+        elif domain == "quality_lab":
+            fallback_note = " (or WH360_CATALOG for quality_lab domain)"
+        else:
+            fallback_note = ""
         raise DatabricksConfigError(
             [catalog_env],
             detail=(

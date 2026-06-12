@@ -1,5 +1,5 @@
 import { ConnectedQualityLabBoardPanel } from '../panels/connected-quality-lab-board-panel.js'
-import type { ConnectedQualityLabAdapterRequest } from '../adapters/connected-quality-lab-adapter.js'
+import type { ConnectedQualityLabAdapterRequest } from '../adapters/connected-quality-lab-databricks-adapter.js'
 
 export interface LabBoardViewProps {
   readonly request: ConnectedQualityLabAdapterRequest

@@ -26,6 +26,10 @@ resources:
         # UAT): lots older than this many years (by ENSTEHDAT lot creation) are excluded at the
         # source read. Snapshot-MV recompute self-corrects when this changes — no full refresh.
         qm_lookback_years: "5"
+        # Short lookback window for the lab-board result/spec tables (quality_lab_inspection_result
+        # + quality_lab_characteristic_spec). 30 days keeps scans tiny for a real-time wallboard.
+        # Snapshot MV self-corrects on change. Independent of qm_lookback_years.
+        lab_board_lookback_days: "30"
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting
