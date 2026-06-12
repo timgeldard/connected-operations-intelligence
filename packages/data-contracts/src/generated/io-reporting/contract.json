@@ -496,7 +496,7 @@
       "domain": "warehouse",
       "owner": "warehouse-operations",
       "lifecycle": "draft",
-      "description": "Material shortfalls \u2014 open transfer-requirement backlog aggregated to plant x material (ADR-0004 D2; sourced from gold_transfer_requirement_material_backlog / silver.warehouse_transfer_requirement). Candidate contract pending DEV profiling.\n",
+      "description": "Material shortfalls \u2014 open transfer-requirement backlog aggregated to plant x material (ADR-0004 D2; upstream lineage: the transfer-requirement material-backlog gold MV over the silver warehouse transfer requirements). Candidate contract pending DEV profiling.\n",
       "source_view": "vw_consumption_warehouse360_shortfalls",
       "grain": "one row per plant_id and material_id",
       "primary_key": [
@@ -746,25 +746,25 @@
         },
         {
           "name": "bin_record_count",
-          "type": "integer",
+          "type": "long",
           "required": true,
           "description": "Total bin count"
         },
         {
           "name": "occupied_bin_count",
-          "type": "integer",
+          "type": "long",
           "required": true,
           "description": "Occupied bin count"
         },
         {
           "name": "empty_bin_count",
-          "type": "integer",
+          "type": "long",
           "required": true,
           "description": "Empty bin count"
         },
         {
           "name": "blocked_bin_count",
-          "type": "integer",
+          "type": "long",
           "required": true,
           "description": "Blocked bin count"
         },
@@ -912,31 +912,31 @@
         },
         {
           "name": "total_orders",
-          "type": "integer",
+          "type": "long",
           "required": true,
           "description": "Total number of scheduled process orders"
         },
         {
           "name": "fully_staged",
-          "type": "integer",
+          "type": "long",
           "required": true,
           "description": "Count of fully staged orders"
         },
         {
           "name": "partially_staged",
-          "type": "integer",
+          "type": "long",
           "required": true,
           "description": "Count of partially staged orders"
         },
         {
           "name": "not_staged",
-          "type": "integer",
+          "type": "long",
           "required": true,
           "description": "Count of not staged orders"
         },
         {
           "name": "blocked",
-          "type": "integer",
+          "type": "long",
           "required": true,
           "description": "Count of orders in the red staging-risk band (staging_fraction and scheduled-start derived) \u2014 a staging-risk classification, NOT a QM/blocking-hold count (hold provenance is a documented data gap).\n"
         }
@@ -1501,6 +1501,12 @@
           "description": "Linked IM delivery (VBELN_IM)"
         },
         {
+          "name": "delivery_item_number",
+          "type": "string",
+          "required": false,
+          "description": "Linked IM delivery item (VBELP_IM); NULL on pre-existing rows until next full refresh/churn"
+        },
+        {
           "name": "sales_order_number",
           "type": "string",
           "required": false,
@@ -1522,7 +1528,7 @@
     },
     {
       "id": "wm_operations.worklist",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "domain": "warehouse",
       "owner": "warehouse-operations",
       "lifecycle": "draft",
@@ -1677,6 +1683,18 @@
           "description": "Planned execution timestamp (PDATU/PZEIT)"
         },
         {
+          "name": "demand_due_ts",
+          "type": "timestamp",
+          "required": false,
+          "description": "Demand-wave due timestamp used for worklist urgency ranking. For order-linked TRs (BETYP='P') this is the linked process order scheduled start; otherwise it falls back to the TR planned execution timestamp.\n"
+        },
+        {
+          "name": "priority_score",
+          "type": "integer",
+          "required": false,
+          "description": "Query-time urgency score for default worklist ranking: overdue demand=100, due within 2h=80, within 8h=60, within 24h=40, later=20, no demand date=10, plus +10 for PARKED or NO_STOCK intervention statuses.\n"
+        },
+        {
           "name": "item_count",
           "type": "long",
           "required": false,
@@ -1763,12 +1781,14 @@
         {
           "name": "latest_to_confirmed_ts",
           "type": "timestamp",
-          "required": false
+          "required": false,
+          "description": "Timestamp of the most recent TO item confirmation (query-time, _live view)"
         },
         {
           "name": "cycle_hours",
           "type": "double",
-          "required": false
+          "required": false,
+          "description": "Hours from TR creation to latest TO confirmation (cycle time proxy \u2014 null until at least one TO item is confirmed for the TR)\n"
         },
         {
           "name": "age_hours",
@@ -1781,6 +1801,24 @@
           "type": "boolean",
           "required": false,
           "description": "Planned execution time passed and job not complete (query-time)"
+        },
+        {
+          "name": "short_pick_qty",
+          "type": "double",
+          "required": false,
+          "description": "Sum of absolute difference quantities across TO items with a non-zero discrepancy"
+        },
+        {
+          "name": "short_pick_item_count",
+          "type": "long",
+          "required": false,
+          "description": "Count of TO line items with a non-zero difference quantity (short-pick signal)"
+        },
+        {
+          "name": "order_production_line",
+          "type": "string",
+          "required": false,
+          "description": "Production line (AUFK CRVER) of the linked process order \u2014 99.99% populated at C061/P817 (35 lines / 18-19 lines respectively, verified UAT 2026-06-11). NULL when the TR source is not a process order or the order is not found.\n"
         }
       ]
     },
@@ -2031,6 +2069,12 @@
           "type": "string",
           "required": false,
           "description": "red | amber | green | grey (query-time traffic light)"
+        },
+        {
+          "name": "production_line",
+          "type": "string",
+          "required": false,
+          "description": "Production line (AUFK CRVER) of the process order \u2014 99.99% populated at C061/P817 (35 lines / 18-19 lines respectively, verified UAT 2026-06-11).\n"
         }
       ]
     },
@@ -2376,12 +2420,13 @@
       "lifecycle": "draft",
       "description": "RF operator pick activity per day from confirmed transfer-order items. Quantity totals mix base UoMs \u2014 item counts are the comparable measure. Candidate contract pending DEV profiling.\n",
       "source_view": "vw_consumption_wm_operations_operator_activity",
-      "grain": "one row per plant_id, warehouse_id, operator and activity_date",
+      "grain": "one row per plant_id, warehouse_id, operator, activity_date and shift",
       "primary_key": [
         "plant_id",
         "warehouse_id",
         "operator",
-        "activity_date"
+        "activity_date",
+        "shift"
       ],
       "freshness": {
         "expected_minutes": 30,
@@ -2629,6 +2674,127 @@
           "name": "risk_band",
           "type": "string",
           "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.inbound_deliveries",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Inbound delivery expected-receipt board \u2014 EL (standard inbound) and ELST (inbound stock transport) SAP delivery types with expected receipt date, line counts, receipt progress, and query-time receipt_band. Counterpart to wm_operations.outbound; vendor/supplier columns are not available (LIKP ship_to/sold_to are customer fields; supplier not replicated). Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_inbound_deliveries",
+      "grain": "one row per plant_id and delivery_id",
+      "primary_key": [
+        "plant_id",
+        "delivery_id"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP plant ID"
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": false,
+          "description": "SAP warehouse number (LGNUM)"
+        },
+        {
+          "name": "delivery_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP inbound delivery number (VBELN)"
+        },
+        {
+          "name": "delivery_type",
+          "type": "string",
+          "required": false,
+          "description": "SAP delivery type (EL = standard inbound; ELST = inbound stock transport)"
+        },
+        {
+          "name": "shipping_point",
+          "type": "string",
+          "required": false,
+          "description": "SAP shipping point (VSTEL)"
+        },
+        {
+          "name": "line_count",
+          "type": "long",
+          "required": false,
+          "description": "Number of delivery line items"
+        },
+        {
+          "name": "delivery_qty",
+          "type": "double",
+          "required": false,
+          "description": "Total delivery quantity (sum of line quantities; mix of base UoMs when has_mixed_base_uom)"
+        },
+        {
+          "name": "received_qty",
+          "type": "double",
+          "required": false,
+          "description": "Received quantity from confirmed GR transfer orders"
+        },
+        {
+          "name": "receipt_fraction",
+          "type": "double",
+          "required": false,
+          "description": "received_qty / delivery_qty (0..1; null when delivery_qty is zero or mixed UoM)"
+        },
+        {
+          "name": "has_mixed_base_uom",
+          "type": "boolean",
+          "required": false,
+          "description": "True when delivery lines carry more than one base unit of measure (quantity totals approximate)"
+        },
+        {
+          "name": "wm_status_code",
+          "type": "string",
+          "required": false,
+          "description": "WM overall status code from LIKP (overall WM activity status)"
+        },
+        {
+          "name": "expected_receipt_date",
+          "type": "date",
+          "required": false,
+          "description": "Expected goods receipt date (LIKP WADAT \u2014 SAP planned GI/GR date)"
+        },
+        {
+          "name": "actual_receipt_date",
+          "type": "date",
+          "required": false,
+          "description": "Actual goods receipt date (first confirmed GR TO confirmation date)"
+        },
+        {
+          "name": "is_received",
+          "type": "boolean",
+          "required": false,
+          "description": "True when the delivery has at least one confirmed GR transfer order"
+        },
+        {
+          "name": "days_until_expected_receipt",
+          "type": "long",
+          "required": false,
+          "description": "Days from today until expected_receipt_date (query-time, _live view; negative = overdue)"
+        },
+        {
+          "name": "receipt_band",
+          "type": "string",
+          "required": false,
+          "description": "Query-time receipt risk band (green = on track; amber = due soon; red = overdue; grey = received)"
         }
       ]
     },
@@ -3593,6 +3759,24 @@
           "name": "open_transfer_stock_qty",
           "type": "double",
           "required": false
+        },
+        {
+          "name": "total_max_quant_count",
+          "type": "long",
+          "required": false,
+          "description": "Sum of max_quant_count across bins (LAGP.MAXQU); NULL until full refresh/churn"
+        },
+        {
+          "name": "total_maximum_weight",
+          "type": "double",
+          "required": false,
+          "description": "Sum of maximum_weight across bins (LAGP.MGEWI); NULL until full refresh/churn"
+        },
+        {
+          "name": "quant_utilisation_fraction",
+          "type": "double",
+          "required": false,
+          "description": "occupied_bin_count / total_max_quant_count; NULL when denominator absent"
         }
       ]
     },
@@ -3877,6 +4061,7 @@
         "plant_id",
         "warehouse_id",
         "work_area",
+        "production_supply_area",
         "demand_hour"
       ],
       "freshness": {
@@ -4065,6 +4250,1311 @@
           "name": "last_usage_decision_date",
           "type": "string",
           "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.order_operations",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Process-order operations enriched with work-centre description \u2014 one row per plant_id, order_number, routing_number, and operation_counter. Drill-through behind the Order Detail overlay. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_order_operations",
+      "grain": "one row per plant_id, order_number, routing_number and operation_counter",
+      "primary_key": [
+        "plant_id",
+        "order_number",
+        "routing_number",
+        "operation_counter"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "order_number",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "routing_number",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "operation_counter",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "operation_number",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "operation_description",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "control_key",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "work_centre_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "work_centre_description",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "scheduled_start_datetime",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "scheduled_finish_datetime",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "actual_start_datetime",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "actual_finish_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "operation_quantity",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "confirmed_yield_quantity",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "confirmed_scrap_quantity",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "is_confirmed",
+          "type": "boolean",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.downtime_pareto",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Weekly production downtime pareto aggregated by plant, week, reason code, sub-reason code, and work centre. Feeds the Production Health view Pareto chart and KPI tiles. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_downtime_pareto",
+      "grain": "one row per plant_id, week_start, downtime_reason_code, sub_reason_code and work_centre_code",
+      "primary_key": [
+        "plant_id",
+        "week_start",
+        "downtime_reason_code",
+        "sub_reason_code",
+        "work_centre_code"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "week_start",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "downtime_reason_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "sub_reason_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "work_centre_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "downtime_reason_description",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "sub_reason_description",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "production_line_description",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "event_count",
+          "type": "long",
+          "required": false
+        },
+        {
+          "name": "total_duration_minutes",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "avg_duration_minutes",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "distinct_order_count",
+          "type": "long",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.plants",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Onboarded WM Operations plants \u2014 one row per plant_id and warehouse_id, derived from vw_consumption_wm_operations_worklist_summary (RLS inherited). Used by the command palette to enumerate plants dynamically. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_plants",
+      "grain": "one row per plant_id and warehouse_id",
+      "primary_key": [
+        "plant_id",
+        "warehouse_id"
+      ],
+      "freshness": {
+        "expected_minutes": 30,
+        "warning_minutes": 60,
+        "critical_minutes": 120
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP plant ID"
+        },
+        {
+          "name": "warehouse_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP warehouse number (LGNUM)"
+        },
+        {
+          "name": "worklist_tr_count",
+          "type": "long",
+          "required": false,
+          "description": "Total transfer requirements in the worklist summary (activity indicator)"
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.downtime_events",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Production downtime events at event grain \u2014 passthrough from silver.downtime_event. One row per downtime entry; multiple entries can share the same plant_id, order_number, operation_number, and item_number. Feeds the Production Health recent-events table. Candidate contract pending DEV profiling.\n",
+      "source_view": "vw_consumption_wm_operations_downtime_events",
+      "grain": "one row per downtime entry (plant_id + order_number + operation_number + item_number is the closest natural key; multiple downtime entries can share these fields)",
+      "primary_key": [
+        "plant_id",
+        "order_number",
+        "operation_number",
+        "item_number"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "work_centre_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "machine_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "machine_description",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "production_line_description",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "order_number",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "material_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "operation_number",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "item_number",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "downtime_reason_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "downtime_reason_description",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "sub_reason_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "sub_reason_description",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "start_datetime",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "end_datetime",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "duration_minutes",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "reported_by_user",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "comment",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.qm_lot_status",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "QM inspection lot status \u2014 one row per plant_id and lot_id (all lots in the silver lookback window). Carries lot header, material name, the latest usage decision, and query-time date-relative columns (lot_age_days, ud_lead_time_days, is_overdue). Source-guarded: view only exists when silver QM tables are present.\n",
+      "source_view": "vw_consumption_wm_operations_qm_lot_status",
+      "grain": "one row per plant_id and lot_id",
+      "primary_key": [
+        "plant_id",
+        "lot_id"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "lot_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "inspection_lot_origin_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "inspection_type",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "order_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "lot_created_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "inspection_start_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "inspection_end_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "lot_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "lot_uom",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "has_usage_decision",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "last_usage_decision",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "last_usage_decision_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "last_usage_decision_by",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "quality_score",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "lot_age_days",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "ud_lead_time_days",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "is_overdue",
+          "type": "boolean",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.qm_disposition_queue",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "QM disposition queue \u2014 open lots only (no usage decision), enriched with blocked stock quantity (MCHB.CINSM) and estimated blocked value (blocked_qty \u00d7 standard_price / price_unit). Grain: plant_id \u00d7 lot_id. Date-relative columns (lot_age_days, is_overdue) added at query time via the _live serving view. Source-guarded: view only exists when silver QM tables are present.\n",
+      "source_view": "vw_consumption_wm_operations_qm_disposition_queue",
+      "grain": "one row per plant_id and lot_id (open lots only)",
+      "primary_key": [
+        "plant_id",
+        "lot_id"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "lot_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "inspection_lot_origin_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "inspection_type",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "order_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "lot_created_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "inspection_start_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "inspection_end_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "lot_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "lot_uom",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "blocked_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "blocked_uom",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "est_blocked_value",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "lot_age_days",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "is_overdue",
+          "type": "boolean",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.order_journey",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Order/Batch Journey Timeline summary -- one row per plant_id x order_id. Milestones aggregated from five silver sources (process_order, TR/TO via TBNUM, process_order_operation, pi_sheet_execution, goods_movement) to populate the flagship per-order journey view. All milestone timestamps nullable; PI columns absent at plants without PI data (P806). Derived lag hours (release->staged->produced->GR) only populated when both endpoints exist. No date-relative columns -- no _live wrapper; reads _secured directly.\n",
+      "source_view": "vw_consumption_wm_operations_order_journey",
+      "grain": "one row per plant_id and order_id",
+      "primary_key": [
+        "plant_id",
+        "order_id"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP plant ID"
+        },
+        {
+          "name": "order_id",
+          "type": "string",
+          "required": true,
+          "description": "Process order number (AUFNR)"
+        },
+        {
+          "name": "material_code",
+          "type": "string",
+          "required": false,
+          "description": "Finished-good material code"
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false,
+          "description": "Finished-good material description"
+        },
+        {
+          "name": "order_qty",
+          "type": "double",
+          "required": false,
+          "description": "Order quantity (AFKO GAMNG)"
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false,
+          "description": "Order quantity unit of measure"
+        },
+        {
+          "name": "production_line",
+          "type": "string",
+          "required": false,
+          "description": "Production line (AUFK CRVER \u2014 work centre version / line assignment)"
+        },
+        {
+          "name": "order_created_ts",
+          "type": "timestamp",
+          "required": false,
+          "description": "Order creation timestamp (AUFK ERDAT/ERZET)"
+        },
+        {
+          "name": "release_date",
+          "type": "date",
+          "required": false,
+          "description": "Order release date (AUFK FTRMI \u2014 actual release date)"
+        },
+        {
+          "name": "scheduled_start_date",
+          "type": "date",
+          "required": false,
+          "description": "Scheduled production start date (AFKO GSTRS)"
+        },
+        {
+          "name": "scheduled_finish_date",
+          "type": "date",
+          "required": false,
+          "description": "Scheduled production finish date (AFKO GLTRS)"
+        },
+        {
+          "name": "first_tr_created_ts",
+          "type": "timestamp",
+          "required": false,
+          "description": "Timestamp of the first staging transfer requirement created for this order"
+        },
+        {
+          "name": "staging_tr_count",
+          "type": "long",
+          "required": false,
+          "description": "Number of staging transfer requirements linked to this order (LTBK BETYP='P')"
+        },
+        {
+          "name": "staging_first_confirmed_ts",
+          "type": "timestamp",
+          "required": false,
+          "description": "Timestamp of the first confirmed staging transfer order item (LTAK QDATU/QZEIT)"
+        },
+        {
+          "name": "staging_last_confirmed_ts",
+          "type": "timestamp",
+          "required": false,
+          "description": "Timestamp of the most recent confirmed staging transfer order item"
+        },
+        {
+          "name": "staged_item_count",
+          "type": "long",
+          "required": false,
+          "description": "Count of fully confirmed staging TO items linked to this order"
+        },
+        {
+          "name": "staged_item_total",
+          "type": "long",
+          "required": false,
+          "description": "Total staging TO items (confirmed + open) linked to this order"
+        },
+        {
+          "name": "production_first_actual_start",
+          "type": "timestamp",
+          "required": false,
+          "description": "Actual start timestamp of the first confirmed production operation (AFVC ISDD/ISTD)"
+        },
+        {
+          "name": "production_last_actual_finish",
+          "type": "timestamp",
+          "required": false,
+          "description": "Actual finish timestamp of the last confirmed production operation (AFVC IEDD/IETD)"
+        },
+        {
+          "name": "confirmed_yield_qty",
+          "type": "double",
+          "required": false,
+          "description": "Total confirmed yield quantity from production operations (AFVC LMNGA)"
+        },
+        {
+          "name": "confirmed_scrap_qty",
+          "type": "double",
+          "required": false,
+          "description": "Total confirmed scrap quantity from production operations (AFVC XMNGA)"
+        },
+        {
+          "name": "pi_first_start",
+          "type": "timestamp",
+          "required": false,
+          "description": "Timestamp of the first PI sheet execution start (absent at plants without PI replication, e.g. P806)"
+        },
+        {
+          "name": "pi_last_end",
+          "type": "timestamp",
+          "required": false,
+          "description": "Timestamp of the last PI sheet execution end (absent at plants without PI replication)"
+        },
+        {
+          "name": "first_gr_posting_date",
+          "type": "date",
+          "required": false,
+          "description": "Earliest goods receipt posting date (movement 101 against this order)"
+        },
+        {
+          "name": "last_gr_posting_date",
+          "type": "date",
+          "required": false,
+          "description": "Latest goods receipt posting date (movement 101 against this order)"
+        },
+        {
+          "name": "gr_qty",
+          "type": "double",
+          "required": false,
+          "description": "Net goods receipt quantity (movement 101 minus 102 reversals) against this order"
+        },
+        {
+          "name": "issue_qty",
+          "type": "double",
+          "required": false,
+          "description": "Net component issue quantity (movement 261 minus 262 reversals) against this order"
+        },
+        {
+          "name": "delivery_count",
+          "type": "long",
+          "required": false,
+          "description": "Count of distinct outbound deliveries linked to goods movements for this order"
+        },
+        {
+          "name": "qm_lot_count",
+          "type": "long",
+          "required": false,
+          "description": "Total QM inspection lots linked to this order"
+        },
+        {
+          "name": "qm_open_lot_count",
+          "type": "long",
+          "required": false,
+          "description": "Open QM inspection lots (no usage decision yet) linked to this order"
+        },
+        {
+          "name": "release_to_first_tr_hours",
+          "type": "double",
+          "required": false,
+          "description": "Hours from order release_date to first_tr_created_ts (null when either is absent)"
+        },
+        {
+          "name": "tr_to_staged_hours",
+          "type": "double",
+          "required": false,
+          "description": "Hours from first_tr_created_ts to staging_last_confirmed_ts (null when either is absent)"
+        },
+        {
+          "name": "staged_to_production_hours",
+          "type": "double",
+          "required": false,
+          "description": "Hours from staging_last_confirmed_ts to production_first_actual_start (null when either is absent)"
+        },
+        {
+          "name": "production_to_gr_hours",
+          "type": "double",
+          "required": false,
+          "description": "Hours from production_last_actual_finish to first_gr_posting_date (null when either is absent)"
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.order_journey_events",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Order/Batch Journey Timeline events -- long-format per-order event feed. One row per plant_id x order_id x event_seq. Event types: ORDER_CREATED, RELEASED, TR_CREATED, STAGING_CONFIRMED, PI_START, OPERATION_CONFIRMED, PI_END, GR_POSTED, COMPONENT_ISSUED, QM_LOT_CREATED, QM_UD_TAKEN. PI and QM events absent at plants without those silver tables. event_seq is row_number ordered by event_ts NULLS LAST within the order. No date-relative columns -- no _live wrapper; reads _secured directly.\n",
+      "source_view": "vw_consumption_wm_operations_order_journey_events",
+      "grain": "one row per plant_id, order_id, and event_seq",
+      "primary_key": [
+        "plant_id",
+        "order_id",
+        "event_seq"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "order_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "event_seq",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "event_ts",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "event_type",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "reference_id",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "detail",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.wip_stages",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Active process order WIP funnel \u2014 one row per plant_id x order_id for released, not-finished orders. stage values: RELEASED / STAGING / STAGED / IN_PRODUCTION / GR_PARTIAL / GR_COMPLETE, derived deterministically from journey milestones. Includes order qty, material, scheduled dates. No current_date/current_timestamp.\n",
+      "source_view": "vw_consumption_wm_operations_wip_stages",
+      "grain": "one row per plant_id and order_id (active orders only)",
+      "primary_key": [
+        "plant_id",
+        "order_id"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "order_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "material_code",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "order_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "scheduled_start_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "scheduled_finish_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "stage",
+          "type": "string",
+          "required": true,
+          "description": "RELEASED | STAGING | STAGED | IN_PRODUCTION | GR_PARTIAL | GR_COMPLETE"
+        },
+        {
+          "name": "first_tr_created_ts",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "staging_last_confirmed_ts",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "production_first_actual_start",
+          "type": "timestamp",
+          "required": false
+        },
+        {
+          "name": "first_gr_posting_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "gr_qty",
+          "type": "double",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.schedule_adherence_daily",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Schedule adherence aggregated to plant x scheduled_finish_date (day) grain. planned_count = orders scheduled to finish on this date; completed_count = orders that actually finished; on_time_count = completed on or before scheduled date. max_actual_date is the latest actual_finish_date in the source table \u2014 use this to anchor the S-curve chart instead of wall-clock date. No current_date/current_timestamp. Source: gold_process_order_schedule_adherence (completed/closed orders).\n",
+      "source_view": "vw_consumption_wm_operations_schedule_adherence_daily",
+      "grain": "one row per plant_id and scheduled_date",
+      "primary_key": [
+        "plant_id",
+        "scheduled_date"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "scheduled_date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "planned_count",
+          "type": "long",
+          "required": true
+        },
+        {
+          "name": "completed_count",
+          "type": "long",
+          "required": true
+        },
+        {
+          "name": "on_time_count",
+          "type": "long",
+          "required": true
+        },
+        {
+          "name": "max_actual_date",
+          "type": "date",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.order_yield",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Order-grain yield summary for the Yield & Loss analytics view. planned_qty = order_quantity (AFKO.GAMNG); delivered_qty = net GR (movement 101 minus 102). yield_pct = delivered_qty / planned_qty (null when planned_qty is zero/null). is_complete = actual_finish_date IS NOT NULL. Source: gold_wm_order_yield (process_order + goods_movement).\n",
+      "source_view": "vw_consumption_wm_operations_order_yield",
+      "grain": "one row per plant_id and order_id",
+      "primary_key": [
+        "plant_id",
+        "order_id"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP plant ID"
+        },
+        {
+          "name": "order_id",
+          "type": "string",
+          "required": true,
+          "description": "Process order number (AUFNR)"
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": false,
+          "description": "Finished-good material code"
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false,
+          "description": "Finished-good material description"
+        },
+        {
+          "name": "production_line",
+          "type": "string",
+          "required": false,
+          "description": "Production line (AUFK CRVER)"
+        },
+        {
+          "name": "planned_qty",
+          "type": "double",
+          "required": false,
+          "description": "Planned order quantity (AFKO GAMNG)"
+        },
+        {
+          "name": "delivered_qty",
+          "type": "double",
+          "required": false,
+          "description": "Net goods receipt quantity (movement 101 minus 102 reversals; clamped at 0)"
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false,
+          "description": "Order quantity unit of measure"
+        },
+        {
+          "name": "yield_pct",
+          "type": "double",
+          "required": false,
+          "description": "delivered_qty / planned_qty (null when planned_qty is zero or null)"
+        },
+        {
+          "name": "has_goods_receipt",
+          "type": "boolean",
+          "required": false,
+          "description": "True when delivered_qty > 0 (at least one GR movement 101 exists)"
+        },
+        {
+          "name": "is_complete",
+          "type": "boolean",
+          "required": false,
+          "description": "True when actual_finish_date is not null (order has an actual finish)"
+        },
+        {
+          "name": "is_released",
+          "type": "boolean",
+          "required": false,
+          "description": "True when the order has been released (AUFK is_released or actual_release_date present)"
+        },
+        {
+          "name": "is_completed",
+          "type": "boolean",
+          "required": false,
+          "description": "True when the order carries the TECO (technically complete) status flag"
+        },
+        {
+          "name": "is_closed",
+          "type": "boolean",
+          "required": false,
+          "description": "True when the order is closed (AUFK is_closed)"
+        },
+        {
+          "name": "scheduled_start_date",
+          "type": "date",
+          "required": false,
+          "description": "Scheduled production start date (AFKO GSTRS)"
+        },
+        {
+          "name": "scheduled_finish_date",
+          "type": "date",
+          "required": false,
+          "description": "Scheduled production finish date (AFKO GLTRS)"
+        },
+        {
+          "name": "actual_finish_date",
+          "type": "date",
+          "required": false,
+          "description": "Actual finish date (AFKO IEDD \u2014 the primary completion signal)"
+        },
+        {
+          "name": "first_gr_date",
+          "type": "date",
+          "required": false,
+          "description": "Earliest goods receipt posting date (movement 101 against this order)"
+        },
+        {
+          "name": "last_gr_date",
+          "type": "date",
+          "required": false,
+          "description": "Latest goods receipt posting date (movement 101 against this order)"
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.component_variance",
+      "version": "0.2.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Order + material grain material variance for the Yield & Loss waterfall. One row per plant_id, order_id, material_id (aggregated from reservation_requirement). Silver goods_movement carries no reservation references (MSEG has no RSNUM/RSPOS in the replication schema), so reservation grain would double-count issued_qty for orders with multiple RESB rows for the same material. Grain changed from reservation-item to order+material in v0.2.0. variance_qty = issued_qty - required_qty (positive = over-issue / loss; negative = under-issue). est_loss_value = over-issued qty \u00d7 standard_price / price_unit (null when no price data). Quantities stay in each row's own base_uom \u2014 no cross-material aggregation in gold. Source: gold_wm_order_component_variance (reservation_requirement + goods_movement + material_valuation).\n",
+      "source_view": "vw_consumption_wm_operations_component_variance",
+      "grain": "one row per plant_id, order_id, and material_id",
+      "primary_key": [
+        "plant_id",
+        "order_id",
+        "material_id"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP plant ID"
+        },
+        {
+          "name": "order_id",
+          "type": "string",
+          "required": true,
+          "description": "Process order number (AUFNR)"
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": true,
+          "description": "Component material code"
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false,
+          "description": "Component material description"
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false,
+          "description": "Base unit of measure for quantities in this row"
+        },
+        {
+          "name": "movement_type_code",
+          "type": "string",
+          "required": false,
+          "description": "SAP movement type code (261 = goods issue for production; 261X = batch-where variant)"
+        },
+        {
+          "name": "required_qty",
+          "type": "double",
+          "required": true,
+          "description": "Required component quantity aggregated from reservation_requirement (RESB) at order+material grain"
+        },
+        {
+          "name": "withdrawn_qty",
+          "type": "double",
+          "required": false,
+          "description": "Withdrawn quantity from reservations (RESB ENMNG \u2014 already-issued signal from planning)"
+        },
+        {
+          "name": "issued_qty",
+          "type": "double",
+          "required": false,
+          "description": "Net issued quantity from goods movements (261 minus 262 reversals) against this order+material"
+        },
+        {
+          "name": "variance_qty",
+          "type": "double",
+          "required": false,
+          "description": "issued_qty minus required_qty (positive = over-issue / loss; negative = under-issue)"
+        },
+        {
+          "name": "variance_pct",
+          "type": "double",
+          "required": false,
+          "description": "variance_qty / required_qty (null when required_qty is zero; positive = over-issued fraction)"
+        },
+        {
+          "name": "est_loss_value",
+          "type": "double",
+          "required": false,
+          "description": "Estimated over-issue value = MAX(variance_qty, 0) \u00d7 standard_price / price_unit (null when no standard_price available from material_valuation)\n"
+        },
+        {
+          "name": "standard_price",
+          "type": "double",
+          "required": false,
+          "description": "Standard price per price_unit from material_valuation (MBEW STPRS)"
+        },
+        {
+          "name": "is_final_issue",
+          "type": "boolean",
+          "required": false,
+          "description": "True when the reservation carries the final-issue flag (RESB KZEAR)"
         }
       ]
     }

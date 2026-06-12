@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import type { WmWorklistItem } from '../adapters/wm-operations-adapter.js'
 import { StatusChip, formatQty, formatTs, EmptyNote, LoadingRows } from '../components/kerry.js'
 
@@ -6,6 +7,18 @@ const WORK_AREA_LABEL: Record<string, string> = {
   DISPENSARY_REPLENISHMENT: 'Disp. replen',
   DISPENSARY_PICKING: 'Dispensary pick',
   WAREHOUSE_OTHER: 'Warehouse',
+}
+
+function priorityClass(score: number | null): string {
+  if (score == null) return 'kw-chip--neutral'
+  if (score >= 100) return 'kw-chip--no-stock'
+  if (score >= 80) return 'kw-chip--parked'
+  if (score >= 60) return 'kw-chip--priority-yellow'
+  return 'kw-chip--neutral'
+}
+
+function priorityLabel(score: number | null): string {
+  return score == null ? 'P —' : `P ${score}`
 }
 
 export interface WorklistTableProps {
@@ -25,6 +38,21 @@ export function WorklistTable({
   showWorkArea = true,
   onOrderClick,
 }: WorklistTableProps) {
+  const sortedItems = useMemo(() => {
+    const dueTime = (value: string | null) => {
+      if (!value) return Number.POSITIVE_INFINITY
+      const parsed = new Date(value).getTime()
+      return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed
+    }
+    return [...items].sort((a, b) => {
+      const scoreDelta = (b.priorityScore ?? -1) - (a.priorityScore ?? -1)
+      if (scoreDelta !== 0) return scoreDelta
+      const dueDelta = dueTime(a.demandDueTs) - dueTime(b.demandDueTs)
+      if (dueDelta !== 0) return dueDelta
+      return dueTime(a.plannedExecutionTs) - dueTime(b.plannedExecutionTs)
+    })
+  }, [items])
+
   if (isLoading) return <LoadingRows rows={6} />
   if (items.length === 0) return <EmptyNote>{emptyMessage}</EmptyNote>
 
@@ -34,6 +62,7 @@ export function WorklistTable({
         <thead>
           <tr>
             <th>Status</th>
+            <th>Priority</th>
             <th>TR</th>
             {showWorkArea && <th>Work area</th>}
             <th>Order / Ref</th>
@@ -49,7 +78,7 @@ export function WorklistTable({
           </tr>
         </thead>
         <tbody>
-          {items.map(item => (
+          {sortedItems.map(item => (
             <tr key={`${item.warehouseId}-${item.trId}`}>
               <td>
                 <StatusChip status={item.worklistStatus} />
@@ -62,6 +91,15 @@ export function WorklistTable({
                     Overdue
                   </span>
                 )}
+              </td>
+              <td>
+                <span
+                  className={`kw-chip ${priorityClass(item.priorityScore)}`}
+                  title={item.demandDueTs ? `Demand due ${formatTs(item.demandDueTs)}` : 'No demand due timestamp'}
+                >
+                  <span className="kw-chip-dot" />
+                  {priorityLabel(item.priorityScore)}
+                </span>
               </td>
               <td className="kw-mono">{item.trId}</td>
               {showWorkArea && <td>{WORK_AREA_LABEL[item.workArea] ?? item.workArea}</td>}
@@ -100,7 +138,7 @@ export function WorklistTable({
               <td>{item.assignedOperator ?? '—'}</td>
               <td className="kw-mono">{item.queue ?? '—'}</td>
               <td className="kw-mono">{item.campaignId ?? '—'}</td>
-              <td className="kw-num">{formatTs(item.plannedExecutionTs)}</td>
+              <td className="kw-num">{formatTs(item.demandDueTs ?? item.plannedExecutionTs)}</td>
               <td className="kw-num">{item.ageHours != null ? `${item.ageHours.toFixed(0)}h` : '—'}</td>
             </tr>
           ))}
