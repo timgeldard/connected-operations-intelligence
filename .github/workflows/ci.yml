@@ -210,6 +210,32 @@ jobs:
       - name: Run app migration registry guard
         run: python3 scripts/ci/check_app_migration_registry_guard.py
 
+  single-contract-manifest-guards:
+    name: Single-Manifest Contract Guards
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Guard — no tracked copy in apps/api/contracts/
+        run: python3 scripts/ci/check_no_tracked_app_manifest.py
+
+      - name: Guard — all adapter contract IDs present in data-products manifest
+        run: python3 scripts/ci/check_app_adapter_contract_ids.py
+
   silver-fast-mapping-check:
     name: Silver Fast Approved-Mapping Guard
     runs-on: ubuntu-latest

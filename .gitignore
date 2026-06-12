@@ -45,3 +45,9 @@ node_modules/
 .npm
 .pnpm-debug.log
 .uat_tmp/
+
+# Deploy-time build artefact: copied from data-products/io-reporting/contracts/
+# at deploy time via `make prep-app-deploy`. Never commit this file — it is
+# uploaded to the workspace by DAB sync via an explicit sync.include override
+# in databricks.yml (see root databricks.yml sync: section).
+apps/api/contracts/app_contract_manifest.yml

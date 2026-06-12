@@ -147,6 +147,13 @@ not add `shared-db` to `requirements.txt`.
 The repo root contains a `databricks.yml` bundle configuration. Use it for all deploys:
 
 ```bash
+# 0. Copy the single source-of-truth contract manifest into the deploy tree.
+#    apps/api/contracts/app_contract_manifest.yml is GITIGNORED — it is a build
+#    artefact that must exist on disk before `databricks bundle deploy`.
+#    The root databricks.yml sync.include override uploads it despite the .gitignore.
+#    Skipping this step means every contract route returns 500.
+make prep-app-deploy
+
 # 1. Build and package the frontend
 npm run prepare:databricks
 
@@ -164,7 +171,7 @@ databricks apps deploy connectio-v2 \
 For subsequent deploys (compute already running), steps 3–4 only:
 
 ```bash
-npm run prepare:databricks && databricks bundle deploy --target uat
+make prep-app-deploy && npm run prepare:databricks && databricks bundle deploy --target uat
 databricks apps deploy connectio-v2 \
   --source-code-path "/Workspace/Shared/.bundle/connectio-v2/uat/files/apps/api"
 ```
@@ -377,6 +384,9 @@ steps:
   - name: Install deps
     run: npm install
 
+  - name: Copy contract manifest artefact (REQUIRED before bundle deploy)
+    run: make prep-app-deploy
+
   - name: Build and package
     run: npm run prepare:databricks
     env:
@@ -385,8 +395,9 @@ steps:
 
   - name: Deploy to Databricks
     run: |
+      databricks bundle deploy --target uat
       databricks apps deploy connectio-v2 \
-        --source-code-path apps/api
+        --source-code-path "/Workspace/Shared/.bundle/connectio-v2/uat/files/apps/api"
     env:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
