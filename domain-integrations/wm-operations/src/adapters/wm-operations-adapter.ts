@@ -629,8 +629,6 @@ export interface WmOrderYieldItem {
 export interface WmComponentVarianceItem {
   readonly plantId: string
   readonly orderId: string
-  readonly reservationId: string
-  readonly reservationItem: string
   readonly materialId: string | null
   readonly materialName: string | null
   readonly uom: string | null

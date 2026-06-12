@@ -1483,7 +1483,7 @@ SIMPLE_DATASETS: dict[str, dict] = {
         contract="wm_operations.component_variance",
         endpoint="/api/wm-operations/component-variance",
         columns=(
-            "plant_id, order_id, reservation_id, reservation_item, "
+            "plant_id, order_id, "
             "material_id, material_name, uom, movement_type_code, "
             "required_qty, withdrawn_qty, issued_qty, "
             "variance_qty, variance_pct, est_loss_value, standard_price, is_final_issue"

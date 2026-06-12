@@ -141,7 +141,7 @@ class TestGoldWmOrderYield:
         rows = self._run(spark, [_order_row()], [_goods_row(quantity=90.0)])
         assert len(rows) == 1
         r = rows[0]
-        assert r.order_id == "900001" or r.order_number == "900001"
+        assert r.order_number == "900001"
         assert abs(r.delivered_qty - 90.0) < 0.001
         assert abs(r.yield_pct - 0.9) < 0.001
         assert r.has_goods_receipt is True
@@ -307,3 +307,32 @@ class TestGoldWmOrderComponentVariance:
         )
         assert len(rows) == 1
         assert rows[0].est_loss_value is None
+
+    def test_multiple_resb_rows_same_material_no_double_count(self, spark: SparkSession):
+        """Two RESB rows for the same order+material must aggregate to one output row.
+
+        Regression guard for the double-count bug: at reservation grain, issued_qty (55)
+        would be joined to each of the two RESB rows, yielding issued_qty = 55 per row
+        and total variance = 2×(55-25) = 60.  At order+material grain the RESB rows are
+        aggregated first (required = 25+25 = 50) and issued_qty is joined once (55), so
+        variance_qty = 55 - 50 = 5.
+        """
+        rows = self._run(
+            spark,
+            [_order_row()],
+            [
+                _resb_row(reservation_item="0001", required_quantity=25.0),
+                _resb_row(reservation_item="0002", required_quantity=25.0),
+            ],
+            [_issue_row(quantity=55.0)],
+        )
+        # Must be exactly one row (order+material grain, not reservation grain)
+        assert len(rows) == 1
+        r = rows[0]
+        assert r.order_number == "900001"
+        assert r.material_code == "RM1"
+        # required_qty should be the SUM of both RESB rows
+        assert abs(r.required_qty - 50.0) < 0.001
+        # issued_qty should be counted once (not multiplied per RESB row)
+        assert abs(r.issued_qty - 55.0) < 0.001
+        assert abs(r.variance_qty - 5.0) < 0.001

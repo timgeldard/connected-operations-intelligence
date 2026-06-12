@@ -702,8 +702,8 @@ SELECT
 FROM connected_plant_prod.gold_io_reporting.gold_wm_order_yield_secured
 WHERE plant_code IS NOT NULL;
 
--- 36. Order component variance (Yield & Loss analytics view — order+component grain)
--- Grain: 1 row per plant_id + order_id + reservation_id + reservation_item.
+-- 36. Order component variance (Yield & Loss analytics view — order+material grain)
+-- Grain: 1 row per plant_id + order_id + material_id.
 -- Source: gold_wm_order_component_variance_secured (no date-relative columns).
 -- variance_qty > 0 = over-issue (loss); < 0 = under-issue.
 -- est_loss_value: over-issued qty × standard_price/price_unit (null when no price data).
@@ -711,8 +711,6 @@ CREATE OR REPLACE VIEW vw_consumption_wm_operations_component_variance AS
 SELECT
   plant_code AS plant_id,
   order_number AS order_id,
-  reservation_number AS reservation_id,
-  reservation_item,
   material_code AS material_id,
   material_name,
   uom,

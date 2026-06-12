@@ -31,19 +31,20 @@ interface YieldKpiStripProps {
 }
 
 function YieldKpiStrip({ items }: YieldKpiStripProps) {
-  const completedWithGr = items.filter(r => r.isComplete && r.hasGoodsReceipt)
-  const yieldValues = completedWithGr.map(r => r.yieldPct).filter((v): v is number => v != null)
   const medianYield = useMemo(() => {
+    const completedWithGr = items.filter(r => r.isComplete && r.hasGoodsReceipt)
+    const yieldValues = completedWithGr.map(r => r.yieldPct).filter((v): v is number => v != null)
     if (yieldValues.length === 0) return null
     const sorted = [...yieldValues].sort((a, b) => a - b)
     const mid = Math.floor(sorted.length / 2)
     return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
-  }, [yieldValues])
+  }, [items])
+
+  const completedWithGr = items.filter(r => r.isComplete && r.hasGoodsReceipt)
 
   const belowThresholdCount = completedWithGr.filter(r => (r.yieldPct ?? 1) < 0.95).length
 
-  const varianceItems = items  // component variance KPI uses order count with positive variance
-  // (Not queried here — we compute from the order yield data as a proxy)
+  // ordersWithOverIssue: proxy using GR-confirmed orders from the yield dataset.
   const ordersWithOverIssue = items.filter(r => r.hasGoodsReceipt).length
 
   return (
@@ -248,7 +249,7 @@ function ComponentVarianceList({ items, isLoading, error }: ComponentVarianceLis
           </thead>
           <tbody>
             {overIssued.map(row => (
-              <tr key={`${row.plantId}-${row.orderId}-${row.reservationId}-${row.reservationItem}`} style={{ borderBottom: '1px solid var(--kw-border, #e8e8e8)' }}>
+              <tr key={`${row.plantId}-${row.orderId}-${row.materialId ?? ''}`} style={{ borderBottom: '1px solid var(--kw-border, #e8e8e8)' }}>
                 <td style={{ padding: '5px 8px' }}>
                   <span className="kw-mono" style={{ fontWeight: 700 }}>{row.orderId}</span>
                 </td>
@@ -293,8 +294,16 @@ export function YieldLossView({ request, onNavigateToView }: YieldLossViewProps)
   const yieldItems: WmOrderYieldItem[] = yieldResult.data?.ok ? yieldResult.data.data : []
   const varianceItems: WmComponentVarianceItem[] = varianceResult.data?.ok ? varianceResult.data.data : []
 
-  const yieldError = yieldResult.data && !yieldResult.data.ok ? yieldResult.data.error.message : null
-  const varianceError = varianceResult.data && !varianceResult.data.ok ? varianceResult.data.error.message : null
+  const yieldError = yieldResult.error
+    ? (yieldResult.error as Error).message
+    : yieldResult.data && !yieldResult.data.ok
+      ? yieldResult.data.error.message
+      : null
+  const varianceError = varianceResult.error
+    ? (varianceResult.error as Error).message
+    : varianceResult.data && !varianceResult.data.ok
+      ? varianceResult.data.error.message
+      : null
 
   function handleOpenJourney(orderId: string) {
     if (!onNavigateToView) return
