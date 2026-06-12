@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { wmOperationsAdapter } from './wm-operations-adapter.js'
-import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem } from './wm-operations-adapter.js'
+import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmOrderYieldItem, WmComponentVarianceItem } from './wm-operations-adapter.js'
 
 export function useWmOrderComponents(request: WmDrillRequest, enabled = true) {
   return useQuery({
@@ -148,6 +148,35 @@ export function useWmScheduleAdherenceDaily(plantId: string | null | undefined, 
     queryFn: () => wmOperationsAdapter.getList<WmScheduleAdherenceDailyItem>(
       '/api/wm-operations/schedule-adherence-daily',
       { plant_id: plantId ?? undefined, limit: 200 },
+    ),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(plantId),
+  })
+}
+
+export function useWmOrderYield(plantId: string | null | undefined, limit = 500, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-order-yield', plantId ?? null, limit],
+    queryFn: () => wmOperationsAdapter.getList<WmOrderYieldItem>(
+      '/api/wm-operations/order-yield',
+      { plant_id: plantId ?? undefined, limit },
+    ),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(plantId),
+  })
+}
+
+export function useWmComponentVariance(
+  plantId: string | null | undefined,
+  orderId?: string,
+  limit = 500,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['wm-ops-component-variance', plantId ?? null, orderId ?? null, limit],
+    queryFn: () => wmOperationsAdapter.getList<WmComponentVarianceItem>(
+      '/api/wm-operations/component-variance',
+      { plant_id: plantId ?? undefined, order_id: orderId, limit },
     ),
     staleTime: 60 * 1000,
     enabled: enabled && Boolean(plantId),

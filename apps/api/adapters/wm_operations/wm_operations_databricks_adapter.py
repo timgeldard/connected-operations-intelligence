@@ -1463,6 +1463,38 @@ SIMPLE_DATASETS: dict[str, dict] = {
         ),
         boolean=(), has_warehouse=False,
     ),
+    "order_yield": dict(
+        contract="wm_operations.order_yield", endpoint="/api/wm-operations/order-yield",
+        columns=(
+            "plant_id, order_id, material_id, material_name, production_line, "
+            "planned_qty, delivered_qty, uom, yield_pct, has_goods_receipt, "
+            "is_complete, is_released, is_completed, is_closed, "
+            "scheduled_start_date, scheduled_finish_date, actual_finish_date, "
+            "first_gr_date, last_gr_date"
+        ),
+        order_by="scheduled_finish_date DESC NULLS LAST",
+        numeric=("planned_qty", "delivered_qty", "yield_pct"),
+        integer=(),
+        boolean=("has_goods_receipt", "is_complete", "is_released", "is_completed", "is_closed"),
+        has_warehouse=False,
+        open_only_clause="has_goods_receipt OR is_complete",
+    ),
+    "component_variance": dict(
+        contract="wm_operations.component_variance",
+        endpoint="/api/wm-operations/component-variance",
+        columns=(
+            "plant_id, order_id, "
+            "material_id, material_name, uom, movement_type_code, "
+            "required_qty, withdrawn_qty, issued_qty, "
+            "variance_qty, variance_pct, est_loss_value, standard_price, is_final_issue"
+        ),
+        order_by="abs(coalesce(variance_qty, 0)) DESC",
+        numeric=("required_qty", "withdrawn_qty", "issued_qty",
+                 "variance_qty", "variance_pct", "est_loss_value", "standard_price"),
+        integer=(),
+        boolean=("is_final_issue",),
+        has_warehouse=False,
+    ),
 }
 
 

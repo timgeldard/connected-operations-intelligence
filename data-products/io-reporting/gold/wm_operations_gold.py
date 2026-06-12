@@ -13,6 +13,8 @@ Tables:
   gold_wm_order_readiness   — released process orders with TR coverage and PSA supply status
                               (the WM Cockpit TR / ST traffic-light logic, derived read-only)
   gold_wm_bin_stock_detail  — quant-grain stock & bin explorer with storage-zone classification
+  gold_wm_order_yield       — order-grain yield summary (planned vs delivered qty, yield %)
+  gold_wm_order_component_variance — order+component grain material variance (issued vs required)
 
 Storage-zone classification: derived from the governed storage_type_role_mapping table
 (role + storage_type_description). Dispensaries are identified by description
@@ -2254,4 +2256,294 @@ def gold_wm_order_wip_stage():
             F.coalesce(F.col("first_gr_posting_date"), F.lit(None).cast("date")).alias("first_gr_posting_date"),
             F.coalesce(F.col("gr_qty"), F.lit(0.0)).alias("gr_qty"),
         )
+    )
+
+
+# -- 23. ORDER YIELD SUMMARY (order-grain yield analytics) --------------------
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Order-grain yield summary for the Yield & Loss analytics view. One row per "
+        "plant_code × order_number. Sources: process_order (planned qty, status, dates, "
+        "production_line) and goods_movement (net GR: movement 101 minus 102 per order). "
+        "planned_qty = order_quantity (AFKO.GAMNG). delivered_qty = sum of movement-101 "
+        "quantities minus movement-102 quantities for the same order, null-safe. "
+        "yield_pct = delivered_qty / planned_qty (guarded for null/zero planned_qty). "
+        "has_goods_receipt = delivered_qty > 0. is_complete = actual_finish_date IS NOT NULL. "
+        "first/last_gr_date from goods_movement posting_date. "
+        "No current_date()/current_timestamp() — deterministic base MV. "
+        "cluster_by plant_code, scheduled_finish_date."
+    ),
+    cluster_by=["plant_code", "scheduled_finish_date"],
+))
+@dlt.expect("planned_qty non-negative", "planned_qty IS NULL OR planned_qty >= 0.0")
+@dlt.expect("delivered_qty non-negative", "delivered_qty IS NULL OR delivered_qty >= 0.0")
+@dlt.expect("yield_pct bounded", "yield_pct IS NULL OR (yield_pct >= 0.0 AND yield_pct <= 2.0)")
+def gold_wm_order_yield():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    orders = spark.read.table(f"{ss}.process_order")
+    goods = spark.read.table(f"{ss}.goods_movement")
+    material = _material_lookup(spark, ss)
+
+    # Net GR per order: 101 (positive) minus 102 (reversal, negative in the net).
+    # goods_movement.quantity is always stored as an absolute value with direction in
+    # debit_credit_indicator (H=credit/outbound, S=debit/inbound) — but movement type
+    # is the reliable signal for GR vs reversal:
+    #   101 = GR for production order (positive delivery)
+    #   102 = GR reversal (negative — reduce delivered total)
+    # Drop the movement-side plant_code before joining: order's plant is the canonical axis
+    # (same pattern as gold_wm_order_journey_events ev_gr).
+    gr_agg = (
+        goods
+        .filter(
+            F.col("movement_type_code").isin("101", "102")
+            & F.col("order_number").isNotNull()
+        )
+        .drop("plant_code")
+        .join(
+            orders.select("order_number", "plant_code"),
+            "order_number",
+            "inner",
+        )
+        .groupBy("plant_code", "order_number")
+        .agg(
+            F.sum(
+                F.when(F.col("movement_type_code") == "101", F.col("quantity"))
+                 .when(F.col("movement_type_code") == "102", -F.col("quantity"))
+                 .otherwise(F.lit(0.0))
+            ).alias("delivered_qty"),
+            F.min(
+                F.when(F.col("movement_type_code") == "101", F.col("posting_date"))
+            ).alias("first_gr_date"),
+            F.max(
+                F.when(F.col("movement_type_code") == "101", F.col("posting_date"))
+            ).alias("last_gr_date"),
+        )
+    )
+
+    return (
+        orders
+        .join(F.broadcast(material), ["plant_code", "material_code"], "left")
+        .join(gr_agg, ["plant_code", "order_number"], "left")
+        .select(
+            # ── Grain
+            "plant_code",
+            "order_number",
+
+            # ── Order attributes
+            F.col("material_code"),
+            F.col("material_description").alias("material_name"),
+            F.col("production_line"),
+            F.col("order_quantity").alias("planned_qty"),
+            F.col("order_quantity_uom").alias("uom"),
+
+            # ── Scheduling
+            F.col("scheduled_start_date"),
+            F.col("scheduled_finish_date"),
+            F.col("actual_finish_date"),
+
+            # ── Status flags
+            F.coalesce(F.col("is_released"), F.lit(False)).alias("is_released"),
+            F.coalesce(F.col("is_completed"), F.lit(False)).alias("is_completed"),
+            F.coalesce(F.col("is_closed"), F.lit(False)).alias("is_closed"),
+            F.col("actual_finish_date").isNotNull().alias("is_complete"),
+
+            # ── Delivered quantity (net GR: 101 minus 102)
+            F.greatest(
+                F.coalesce(F.col("delivered_qty"), F.lit(0.0)),
+                F.lit(0.0),
+            ).alias("delivered_qty"),
+
+            # ── Yield %: delivered / planned, guarded for null/zero denominator
+            F.when(
+                F.coalesce(F.col("order_quantity"), F.lit(0.0)) > 0,
+                F.greatest(
+                    F.coalesce(F.col("delivered_qty"), F.lit(0.0)),
+                    F.lit(0.0),
+                ) / F.col("order_quantity"),
+            ).otherwise(F.lit(None).cast("double")).alias("yield_pct"),
+
+            # ── GR activity flags
+            (F.coalesce(F.col("delivered_qty"), F.lit(0.0)) > 0).alias("has_goods_receipt"),
+            F.col("first_gr_date"),
+            F.col("last_gr_date"),
+        )
+    )
+
+
+# -- 24. ORDER COMPONENT VARIANCE (order+component grain, loss waterfall) -----
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Order + material grain material variance for the Yield & Loss analytics waterfall. "
+        "One row per plant_code × order_number × material_code. "
+        "Sources: reservation_requirement (RESB) aggregated to order+material grain "
+        "(sum required_quantity, sum withdrawn_quantity per order+material) then joined to "
+        "goods_movement net issues (261 minus 262 per order+material). "
+        "Silver goods_movement carries no reservation references (MSEG has no RSNUM/RSPOS "
+        "mapping in the replication schema), so joining at reservation grain would "
+        "double-count issued_qty when an order has multiple RESB rows for the same material. "
+        "Quantities stay in each row's own base_uom — no cross-material aggregation. "
+        "est_loss_value: (issued_qty - required_qty) × standard_price / price_unit from "
+        "material_valuation (same source as gold_wm_slow_movers / gold_wm_qm_disposition_queue). "
+        "NULL when standard_price is absent. "
+        "Deletion-flagged and zero-required-qty reservations are excluded. "
+        "No current_date()/current_timestamp() — deterministic base MV. "
+        "cluster_by plant_code, order_number."
+    ),
+    cluster_by=["plant_code", "order_number"],
+))
+@dlt.expect("required_qty positive", "required_qty > 0.0")
+@dlt.expect("material_code present", "material_code IS NOT NULL")
+@dlt.expect("order_number present", "order_number IS NOT NULL")
+@dlt.expect("plant_code present", "plant_code IS NOT NULL")
+def gold_wm_order_component_variance():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    orders = spark.read.table(f"{ss}.process_order")
+    reservations = spark.read.table(f"{ss}.reservation_requirement")
+    goods = spark.read.table(f"{ss}.goods_movement")
+    material = _material_lookup(spark, ss)
+
+    # Standard price / price unit — same pattern as gold_wm_slow_movers and
+    # gold_wm_qm_disposition_queue: groupBy plant+material, first non-null price.
+    price = (
+        spark.read.table(f"{ss}.material_valuation")
+        .groupBy(F.col("valuation_area").alias("plant_code"), "material_code")
+        .agg(
+            F.first("standard_price", ignorenulls=True).alias("standard_price"),
+            F.first("price_unit", ignorenulls=True).alias("price_unit"),
+        )
+    )
+
+    # Net component issues per order+plant+material:
+    #   261 = goods issue for production order (positive consumption)
+    #   262 = reversal of 261 (reduce the issued total)
+    # Drop the movement-side plant_code before joining: order's plant is the canonical axis.
+    issue_agg = (
+        goods
+        .filter(
+            F.col("movement_type_code").isin("261", "262")
+            & F.col("order_number").isNotNull()
+        )
+        .drop("plant_code")
+        .join(
+            orders.select("order_number", "plant_code"),
+            "order_number",
+            "inner",
+        )
+        .groupBy("plant_code", "order_number", "material_code")
+        .agg(
+            F.sum(
+                F.when(F.col("movement_type_code") == "261", F.col("quantity"))
+                 .when(F.col("movement_type_code") == "262", -F.col("quantity"))
+                 .otherwise(F.lit(0.0))
+            ).alias("issued_qty"),
+        )
+    )
+
+    # Reservations: production-order component demand (movement_type_code = '261' family).
+    # Exclude deletion-flagged and zero-required-qty rows, then aggregate to order+material
+    # grain BEFORE joining issues. Silver goods_movement has no RSNUM/RSPOS mapping
+    # (MSEG replication schema omits them), so joining at reservation-item grain would
+    # multiply issued_qty across every RESB row sharing the same order+material.
+    components = (
+        reservations
+        .filter(
+            (~F.coalesce(F.col("is_deletion_flagged"), F.lit(False)))
+            & (F.coalesce(F.col("required_quantity"), F.lit(0.0)) > 0)
+            & F.col("movement_type_code").isin("261", "261X")  # standard + batch-where variants
+        )
+        # Coalesce plant_code from reservation; if null, fall back to order's plant.
+        .join(
+            orders.select(
+                "order_number",
+                F.col("plant_code").alias("_order_plant"),
+            ),
+            "order_number",
+            "left",
+        )
+        .withColumn(
+            "plant_code",
+            F.coalesce(F.col("plant_code"), F.col("_order_plant")),
+        )
+        .drop("_order_plant")
+        .filter(F.col("plant_code").isNotNull())
+        # Aggregate to order+material grain: sum required_quantity and withdrawn_quantity.
+        # first(base_uom) is safe because RESB items for the same material use the same UoM.
+        .groupBy("plant_code", "order_number", "material_code")
+        .agg(
+            F.sum("required_quantity").alias("required_quantity"),
+            F.sum(F.coalesce(F.col("withdrawn_quantity"), F.lit(0.0))).alias("withdrawn_quantity"),
+            F.first("base_uom", ignorenulls=True).alias("base_uom"),
+            # Keep first non-null movement_type_code for reference (all rows are "261" family).
+            F.first("movement_type_code", ignorenulls=True).alias("movement_type_code"),
+            F.max(F.coalesce(F.col("is_final_issue"), F.lit(False))).alias("is_final_issue"),
+        )
+    )
+
+    joined = (
+        components
+        .join(
+            issue_agg,
+            ["plant_code", "order_number", "material_code"],
+            "left",
+        )
+        .join(F.broadcast(material), ["plant_code", "material_code"], "left")
+        .join(price, ["plant_code", "material_code"], "left")
+    )
+
+    # variance_qty: issued minus required (positive = over-issue; negative = under-issue)
+    issued_safe = F.coalesce(F.col("issued_qty"), F.lit(0.0))
+    required = F.col("required_quantity")
+
+    # est_loss_value: over-issued qty × standard_price / price_unit.
+    # Only meaningful when issued > required (a loss). NULL when no price.
+    # price_unit guard mirrors the slow-movers pattern (division by zero → NULL).
+    # standard_price is NOT coalesced to 0.0 — a missing price yields NULL, not 0.
+    price_per_unit = F.when(
+        F.coalesce(F.col("price_unit"), F.lit(0)).cast("double") == 0,
+        F.lit(None).cast("double"),
+    ).otherwise(
+        F.col("standard_price")
+        / F.col("price_unit").cast("double")
+    )
+
+    return joined.select(
+        # ── Grain (plant_code × order_number × material_code)
+        "plant_code",
+        "order_number",
+
+        # ── Component identification
+        F.col("material_code"),
+        F.col("material_description").alias("material_name"),
+        F.col("base_uom").alias("uom"),
+        F.col("movement_type_code"),
+
+        # ── Quantities
+        F.col("required_quantity").alias("required_qty"),
+        F.col("withdrawn_quantity").alias("withdrawn_qty"),
+        issued_safe.alias("issued_qty"),
+
+        # ── Variance (positive = over-issue / loss; negative = under-issue)
+        (issued_safe - required).alias("variance_qty"),
+        F.when(
+            required > 0,
+            (issued_safe - required) / required,
+        ).otherwise(F.lit(None).cast("double")).alias("variance_pct"),
+
+        # ── Estimated loss value (over-issued qty × price; null when no price)
+        F.when(
+            price_per_unit.isNotNull() & ((issued_safe - required) > 0),
+            (issued_safe - required) * price_per_unit,
+        ).otherwise(F.lit(None).cast("double")).alias("est_loss_value"),
+
+        # ── Standard price reference (for transparency / UI display)
+        F.col("standard_price"),
+
+        # ── Is final issue flag
+        F.col("is_final_issue"),
     )
