@@ -37,8 +37,8 @@ from shared.query_service.errors import DatabricksConfigError
 
 # NOTE: batch_status and process_order_id are included here to test the mapper's handling
 # when those keys are present (e.g. passed from a different source or future schema change).
-# The live SQL query no longer selects them from gold_batch_summary_v — they were not found
-# in that view during live validation (2026-05-19, connected_plant_uat).
+# The live SQL query does not select batch_status — not available in gold_batch_stock_summary.
+# process_order_id comes from gold_batch_event_ledger (latest PRODUCTION IN event).
 _FULL_BATCH_HEADER_ROW = {
     "material_id": "0000020582002",
     "batch_id": "BATCH001",
@@ -112,8 +112,8 @@ class TestGetBatchHeaderSummarySpec:
     def test_cache_policy_is_per_user(self) -> None:
         assert get_batch_header_summary_spec(self._req()).cache_policy == CacheTier.PER_USER_60S
 
-    def test_source_badge_is_gold_batch_summary_v(self) -> None:
-        assert get_batch_header_summary_spec(self._req()).source_badge == "view:gold_batch_summary_v"
+    def test_source_badge_is_governed_stock_plus_ledger(self) -> None:
+        assert get_batch_header_summary_spec(self._req()).source_badge == "mv:gold_batch_stock_summary+gold_batch_event_ledger"
 
     def test_tags(self) -> None:
         spec = get_batch_header_summary_spec(self._req())
@@ -126,17 +126,23 @@ class TestGetBatchHeaderSummarySpec:
         assert spec.params["material_id"] == "0000020582002"
         assert spec.params["batch_id"] == "BATCH001"
 
-    def test_sql_references_gold_batch_stock_v(self) -> None:
-        assert "gold_batch_stock_v" in get_batch_header_summary_spec(self._req()).sql
+    def test_sql_references_gold_batch_stock_summary_secured(self) -> None:
+        assert "gold_batch_stock_summary_secured" in get_batch_header_summary_spec(self._req()).sql
 
-    def test_sql_references_gold_batch_summary_v(self) -> None:
-        assert "gold_batch_summary_v" in get_batch_header_summary_spec(self._req()).sql
+    def test_sql_references_gold_batch_event_ledger(self) -> None:
+        assert "gold_batch_event_ledger" in get_batch_header_summary_spec(self._req()).sql
+
+    def test_sql_does_not_reference_legacy_stock_v(self) -> None:
+        assert "gold_batch_stock_v" not in get_batch_header_summary_spec(self._req()).sql
+
+    def test_sql_does_not_reference_legacy_summary_v(self) -> None:
+        assert "gold_batch_summary_v" not in get_batch_header_summary_spec(self._req()).sql
 
     def test_sql_uses_trace_catalog(self) -> None:
         assert "`connected_plant_uat`" in get_batch_header_summary_spec(self._req()).sql
 
-    def test_sql_uses_gold_schema(self) -> None:
-        assert "`gold`" in get_batch_header_summary_spec(self._req()).sql
+    def test_sql_uses_governed_schema(self) -> None:
+        assert "`gold_io_reporting`" in get_batch_header_summary_spec(self._req()).sql
 
     def test_sql_has_no_unqualified_from_gold_batch_stock_v(self) -> None:
         spec = get_batch_header_summary_spec(self._req())
@@ -149,20 +155,20 @@ class TestGetBatchHeaderSummarySpec:
         """Column names verified 2026-05-19 against connected_plant_uat — SQL must not carry TODO markers."""
         assert "TODO" not in get_batch_header_summary_spec(self._req()).sql
 
-    def test_sql_uses_shelf_life_expiration_date_not_expiry_date(self) -> None:
-        """gold_batch_summary_v has SHELF_LIFE_EXPIRATION_DATE, not expiry_date."""
+    def test_sql_does_not_use_shelf_life_expiration_date(self) -> None:
+        """manufacture_date/expiry_date not available from governed stock summary — must be absent."""
         sql = get_batch_header_summary_spec(self._req()).sql
-        assert "SHELF_LIFE_EXPIRATION_DATE" in sql
+        assert "SHELF_LIFE_EXPIRATION_DATE" not in sql
         assert "b.expiry_date" not in sql
 
-    def test_sql_sources_plant_id_from_stock_v_not_summary_v(self) -> None:
-        """PLANT_ID not in gold_batch_summary_v — must be sourced from gold_batch_stock_v."""
+    def test_sql_sources_plant_id_from_stock_summary(self) -> None:
+        """plant_code (plant_id) sourced from gold_batch_stock_summary_secured."""
         sql = get_batch_header_summary_spec(self._req()).sql
-        assert "s.PLANT_ID" in sql
+        assert "s.plant_code" in sql
         assert "b.plant_id" not in sql
 
-    def test_sql_sources_uom_from_material_not_summary_v(self) -> None:
-        """UOM not in gold_batch_summary_v — must be sourced from gold_material.BASE_UNIT_OF_MEASURE."""
+    def test_sql_sources_uom_from_material(self) -> None:
+        """UOM sourced from gold_material.BASE_UNIT_OF_MEASURE (no governed equivalent)."""
         sql = get_batch_header_summary_spec(self._req()).sql
         assert "BASE_UNIT_OF_MEASURE" in sql
         assert "b.uom" not in sql
@@ -174,7 +180,7 @@ class TestGetBatchHeaderSummarySpec:
         assert "'EN'" not in sql
 
     def test_sql_does_not_select_batch_status(self) -> None:
-        """batch_status not present in gold_batch_summary_v — must not be selected."""
+        """batch_status not present in gold_batch_stock_summary — must not be selected."""
         sql = get_batch_header_summary_spec(self._req()).sql
         assert "b.batch_status" not in sql
 
@@ -235,7 +241,7 @@ class TestMapBatchHeaderRows:
         assert result["processOrderId"] == "PO100001"
 
     def test_stock_bucket_quantities_surfaced(self) -> None:
-        """Individual stock buckets now surfaced from gold_batch_stock_v (verified live 2026-05-19)."""
+        """Individual stock buckets surfaced from gold_batch_stock_summary_secured."""
         row = {**_FULL_BATCH_HEADER_ROW, "unrestricted": 80.0, "blocked": 5.0,
                "quality_inspection": 15.0, "restricted": 2.0, "transit": 1.0}
         result = map_batch_header_rows([row])
@@ -371,7 +377,7 @@ class TestMapBatchHeaderRows:
         assert result["batchStatus"] == "blocked"
 
     def test_batch_status_none_returns_unknown(self) -> None:
-        """batch_status absent from gold_batch_summary_v — must return 'unknown', not 'active'.
+        """batch_status absent from governed stock summary — must return 'unknown', not 'active'.
 
         Returning 'active' for an unknown status would falsely signal release for blocked batches.
         'unknown' is the honest fallback; 'active' is a semantic regression (violates Gate 1.3).
@@ -776,23 +782,29 @@ class TestGetMassBalanceSpec:
     def test_cache_policy_is_per_user(self) -> None:
         assert get_mass_balance_spec(self._req()).cache_policy == CacheTier.PER_USER_60S
 
-    def test_source_badge_is_gold_batch_mass_balance_v(self) -> None:
-        assert get_mass_balance_spec(self._req()).source_badge == "view:gold_batch_mass_balance_v"
+    def test_source_badge_is_gold_batch_event_ledger(self) -> None:
+        assert get_mass_balance_spec(self._req()).source_badge == "mv:gold_batch_event_ledger"
 
     def test_tags(self) -> None:
         spec = get_mass_balance_spec(self._req())
         assert "trace2" in spec.tags
         assert "mass-balance" in spec.tags
 
-    def test_sql_references_gold_batch_mass_balance_v(self) -> None:
-        assert "gold_batch_mass_balance_v" in get_mass_balance_spec(self._req()).sql
+    def test_sql_references_gold_batch_event_ledger(self) -> None:
+        assert "gold_batch_event_ledger" in get_mass_balance_spec(self._req()).sql
+
+    def test_sql_does_not_reference_legacy_mass_balance_v(self) -> None:
+        assert "gold_batch_mass_balance_v" not in get_mass_balance_spec(self._req()).sql
 
     def test_sql_uses_trace_catalog(self) -> None:
         assert "`connected_plant_uat`" in get_mass_balance_spec(self._req()).sql
 
-    def test_sql_has_no_unqualified_from_gold_batch_mass_balance_v(self) -> None:
+    def test_sql_uses_governed_schema(self) -> None:
+        assert "`gold_io_reporting`" in get_mass_balance_spec(self._req()).sql
+
+    def test_sql_has_no_unqualified_from_gold_batch_event_ledger(self) -> None:
         spec = get_mass_balance_spec(self._req())
-        assert "FROM gold_batch_mass_balance_v" not in spec.sql
+        assert "FROM gold_batch_event_ledger" not in spec.sql
 
     def test_sql_has_order_by_posting_date(self) -> None:
         assert "ORDER BY posting_date" in get_mass_balance_spec(self._req()).sql
@@ -1486,16 +1498,16 @@ class TestGetSupplierExposureSpec:
 
     def test_source_badge(self) -> None:
         badge = get_supplier_exposure_spec(self._req()).source_badge
-        assert "gold_batch_lineage" in badge
-        assert "gold_supplier" in badge
+        assert "gold_batch_event_ledger" in badge
+        assert "gold_trace_vendor" in badge
 
     def test_cache_policy_is_per_user(self) -> None:
         assert get_supplier_exposure_spec(self._req()).cache_policy == CacheTier.PER_USER_60S
 
-    def test_sql_references_both_tables(self) -> None:
+    def test_sql_references_event_ledger_and_vendor(self) -> None:
         sql = get_supplier_exposure_spec(self._req()).sql
-        assert "gold_batch_lineage" in sql
-        assert "gold_supplier" in sql
+        assert "gold_batch_event_ledger" in sql
+        assert "gold_trace_vendor" in sql
 
     def test_sql_filters_vendor_receipt_only(self) -> None:
         assert "VENDOR_RECEIPT" in get_supplier_exposure_spec(self._req()).sql
@@ -1819,15 +1831,17 @@ class TestGetBatchQualityPassportPartialSpec:
             "batch_id": "BATCH001",
             "plant_id": "",
         }
-        # All five live views referenced.
-        for view in (
-            "gold_batch_stock_v",
-            "gold_batch_summary_v",
+        # Governed sources replace legacy stock/summary/production-history views.
+        for obj in (
+            "gold_batch_stock_summary_secured",
+            "gold_batch_event_ledger",
             "gold_material",
             "gold_plant",
-            "gold_batch_production_history_v",
         ):
-            assert view in spec.sql, f"missing view reference {view!r}"
+            assert obj in spec.sql, f"missing governed object reference {obj!r}"
+        # Legacy views must not appear.
+        for legacy in ("gold_batch_stock_v", "gold_batch_summary_v", "gold_batch_production_history_v"):
+            assert legacy not in spec.sql, f"legacy view {legacy!r} leaked into governed SQL"
 
     def test_spec_drops_columns_absent_from_live_ddl(self, _passport_catalog) -> None:
         """Audit Finding #2: columns absent from live DDL must NOT be
@@ -1845,16 +1859,18 @@ class TestGetBatchQualityPassportPartialSpec:
         ):
             assert absent not in spec.sql, f"removed column {absent!r} leaked back into SQL"
 
-    def test_spec_uses_live_production_history_columns(self, _passport_catalog) -> None:
-        """The post-audit SQL must source process_order_id, started_at, and
-        actual_qty from the live production-history view."""
+    def test_spec_uses_governed_event_ledger_production_columns(self, _passport_catalog) -> None:
+        """Governed SQL must source process_order_id, started_at, and actual_qty
+        from gold_batch_event_ledger (PRODUCTION IN subquery aliased as ph)."""
         spec = get_batch_quality_passport_partial_spec(_passport_request())
-        for expected in (
-            "ph.PROCESS_ORDER_ID          AS process_order_id",
-            "ph.POSTING_DATE              AS production_started_at",
-            "ph.BATCH_QTY                 AS production_actual_qty",
-        ):
-            assert expected in spec.sql, f"missing expected projection: {expected!r}"
+        # process_order_id comes from the PRODUCTION IN subquery
+        assert "ph.PROCESS_ORDER_ID" in spec.sql
+        assert "ph.POSTING_DATE" in spec.sql
+        # QUANTITY (not BATCH_QTY) from the governed ledger
+        assert "ph.QUANTITY" in spec.sql
+        # production_started_at alias
+        assert "production_started_at" in spec.sql
+        assert "production_actual_qty" in spec.sql
 
     def test_spec_placeholders_bound_symmetrically(self, _passport_catalog) -> None:
         """Every :placeholder must have a matching params key — no unbound

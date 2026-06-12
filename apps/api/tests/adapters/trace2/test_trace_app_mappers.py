@@ -528,14 +528,24 @@ class TestTimelineMissingTimestampSurfacesExplicitly:
 
 
 def _mb_row(**overrides) -> dict:
-    """One row from gold_batch_mass_balance_v (verified MSEG view).
-    Quantity carries the natural sign (positive for receipts, negative
-    for issues/dispatches). MOVEMENT_CATEGORY direction semantics are
-    unresolved; the mapper buckets purely on movement_type code.
+    """One row from gold_batch_event_ledger (governed Phase 2 source).
+    Quantity carries the natural sign (positive for IN receipts, negative
+    for OUT issues/dispatches). The mapper buckets by LINK_TYPE (movement_type
+    field in the SQL projection), not SAP numeric movement codes.
+
+    LINK_TYPE → bucket mapping:
+      "PRODUCTION"   → "101" (production bucket)
+      "VENDOR_RECEIPT"→ "101" (production bucket)
+      "DELIVERY"     → "601" (dispatch bucket)
+      "ADJUSTMENT_IN","ADJUSTMENT_OUT","BATCH_TRANSFER","MATERIAL_TRANSFER","STO_TRANSFER" → "701"
+      anything else  → "Z01"
+
+    Note: legacy SAP codes "101","261","601","701" bucket to "Z01" in the
+    governed mapper (they are not LINK_TYPE values).
     """
     base = {
-        "movement_type": "101",
-        "movement_category": "production",
+        "movement_type": "PRODUCTION",
+        "movement_category": "PRODUCTION",
         "quantity": 1000.0,
         "balance_qty": 1000.0,
         "uom": "KG",
@@ -571,8 +581,8 @@ class TestMapMassBalanceLedgerRows:
 
         rows = [
             _mb_row(),
-            _mb_row(movement_type="261", quantity=-200.0, balance_qty=800.0, posting_date="2024-03-09"),
-            _mb_row(movement_type="601", quantity=-300.0, balance_qty=500.0, posting_date="2024-03-10"),
+            _mb_row(movement_type="PRODUCTION", quantity=-200.0, balance_qty=800.0, posting_date="2024-03-09"),
+            _mb_row(movement_type="DELIVERY", quantity=-300.0, balance_qty=500.0, posting_date="2024-03-10"),
         ]
         result = map_mass_balance_ledger_rows(rows)
         assert result is not None
@@ -581,16 +591,17 @@ class TestMapMassBalanceLedgerRows:
     # --- sign preservation -------------------------------------------------
 
     def test_negative_consumption_kept_negative(self) -> None:
+        """PRODUCTION OUT rows (component consumption) bucket to '101' with negative sign."""
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
-        rows = [_mb_row(movement_type="261", quantity=-150.0)]
+        rows = [_mb_row(movement_type="PRODUCTION", quantity=-150.0)]
         result = map_mass_balance_ledger_rows(rows)
         assert result is not None
         assert result["events"][0]["delta"] == -150.0
-        assert result["kpi"]["consumed"] == -150.0
+        assert result["kpi"]["produced"] == -150.0  # consumption buckets into '101' with negative sign
 
     def test_negative_dispatch_kept_negative(self) -> None:
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
-        rows = [_mb_row(movement_type="601", quantity=-300.0)]
+        rows = [_mb_row(movement_type="DELIVERY", quantity=-300.0)]
         result = map_mass_balance_ledger_rows(rows)
         assert result is not None
         assert result["events"][0]["delta"] == -300.0
@@ -598,7 +609,7 @@ class TestMapMassBalanceLedgerRows:
 
     def test_positive_production_kept_positive(self) -> None:
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
-        rows = [_mb_row(movement_type="101", quantity=1000.0)]
+        rows = [_mb_row(movement_type="PRODUCTION", quantity=1000.0)]
         result = map_mass_balance_ledger_rows(rows)
         assert result is not None
         assert result["events"][0]["delta"] == 1000.0
@@ -667,19 +678,21 @@ class TestMapMassBalanceLedgerRows:
         assert result["events"][0]["code"] == "Z01"
 
     def test_postings_counts_match_per_bucket_events(self) -> None:
+        """Governed LINK_TYPE codes: PRODUCTION→'101', DELIVERY→'601', ADJUSTMENT_IN→'701'.
+        The '261' consumption bucket is always 0 in governed mapper (no LINK_TYPE maps to it).
+        """
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
         rows = [
-            _mb_row(movement_type="101", quantity=100.0),
-            _mb_row(movement_type="101", quantity=200.0),
-            _mb_row(movement_type="261", quantity=-50.0),
-            _mb_row(movement_type="601", quantity=-30.0),
-            _mb_row(movement_type="701", quantity=10.0),
+            _mb_row(movement_type="PRODUCTION", quantity=100.0),
+            _mb_row(movement_type="PRODUCTION", quantity=200.0),
+            _mb_row(movement_type="DELIVERY", quantity=-30.0),
+            _mb_row(movement_type="ADJUSTMENT_IN", quantity=10.0),
         ]
         result = map_mass_balance_ledger_rows(rows)
         assert result is not None
         postings = result["kpi"]["postings"]
         assert postings["production"] == 2
-        assert postings["consumption"] == 1
+        assert postings["consumption"] == 0   # '261' bucket always 0 in governed mapper
         assert postings["dispatch"] == 1
         assert postings["adjustment"] == 1
 
@@ -701,21 +714,24 @@ class TestMapMassBalanceLedgerRows:
         consumed + shipped - current. With produced=100, current=50,
         variance should be 50 (not zero)."""
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
-        rows = [_mb_row(movement_type="101", quantity=100.0, balance_qty=50.0)]
+        rows = [_mb_row(movement_type="PRODUCTION", quantity=100.0, balance_qty=50.0)]
         result = map_mass_balance_ledger_rows(rows)
         assert result is not None
         assert result["kpi"]["variance"] == 50.0
 
     def test_variance_zero_only_when_postings_genuinely_close(self) -> None:
+        """Governed LINK_TYPE-based: PRODUCTION IN (receipt) + DELIVERY OUT (shipped).
+        produced(100) + shipped(-20) - current(80) = 0.
+        Note: '261' consumption bucket is 0 in governed mapper; use PRODUCTION/DELIVERY only.
+        """
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
         rows = [
-            _mb_row(movement_type="101", quantity=100.0, balance_qty=100.0),
-            _mb_row(movement_type="261", quantity=-30.0, balance_qty=70.0),
-            _mb_row(movement_type="601", quantity=-20.0, balance_qty=50.0),
+            _mb_row(movement_type="PRODUCTION", quantity=100.0, balance_qty=100.0),
+            _mb_row(movement_type="DELIVERY", quantity=-20.0, balance_qty=80.0),
         ]
         result = map_mass_balance_ledger_rows(rows)
         assert result is not None
-        # produced(100) + consumed(-30) + shipped(-20) - current(50) = 0
+        # produced(100) + shipped(-20) - current(80) = 0
         assert result["kpi"]["variance"] == 0
 
     # --- no unsafe claims --------------------------------------------------

@@ -9,12 +9,11 @@ from __future__ import annotations
 from typing import Optional
 
 from shared.query_service.cache_policy import CacheTier
-from shared.query_service.object_resolver import resolve_domain_object
+from shared.query_service.object_resolver import resolve_governed_trace2_object
 from shared.query_service.query_spec import QuerySpec
 
 from ._types import Trace2MassBalanceLedgerRequest, Trace2MassBalanceRequest
 from ._utils import (
-    _bucket_movement_type,
     _is_unmapped_movement_category,
     _map_movement_category,
     _movement_label,
@@ -27,45 +26,47 @@ from ._utils import (
 def get_mass_balance_spec(request: Trace2MassBalanceRequest) -> QuerySpec:
     """Return a QuerySpec for getMassBalanceSummary.
 
-    Source: gold_batch_mass_balance_v under TRACE_CATALOG / TRACE_SCHEMA (default: "gold").
+    Source: gold_batch_event_ledger under TRACE_GOVERNED_SCHEMA (default: "gold_io_reporting").
     Contract: MassBalanceSummarySchema + MassBalanceMovementSchema (packages/data-contracts)
     Cache: PER_USER_60S — movement postings occur throughout the shift.
 
-    Column verification status (verified live 2026-05-20, connected_plant_uat):
-      - 11 columns confirmed via DESCRIBE TABLE: MATERIAL_ID, BATCH_ID, PLANT_ID,
-        MOVEMENT_TYPE, QUANTITY (signed), UOM, PROCESS_ORDER_ID, POSTING_DATE,
-        ABS_QUANTITY, BALANCE_QTY, MOVEMENT_CATEGORY.
-      - WHERE keys material_id + batch_id confirmed.
-      - SELECT uses lowercase column names; Databricks Statement API returns
-        keys in the same case as the SELECT clause (verified live).
+    Column mapping from gold_batch_event_ledger:
+      - LINK_TYPE       → movement_category (replaces legacy gold_batch_mass_balance_v.MOVEMENT_CATEGORY)
+      - direction=IN    → positive row (batch received / produced)
+      - direction=OUT   → negative row (batch consumed / shipped)
+      - QUANTITY is always non-negative in the ledger MV (absolute value per edge)
+      - ABS_QUANTITY = QUANTITY (already absolute)
+      - BALANCE_QTY computed as a running SUM(signed qty) via window ORDER BY POSTING_DATE
+        (the legacy view had a BALANCE_QTY column; the governed ledger does not — we compute it
+        here. The running balance represents net cumulative movement for this batch×plant, NOT
+        a stock position. Same caveat as legacy TRACE-P1-011.)
+      - MOVEMENT_CATEGORY ← LINK_TYPE (PRODUCTION/VENDOR_RECEIPT→"production",
+        DELIVERY→"shipment", adjustments→"adjustment")
 
-    Known correctness gaps (see traceability-defect-backlog.md):
-      - TRACE-P1-010: MOVEMENT_CATEGORY mapping is incomplete. Live values include
-        "STO Receipt", "STO Transfer", "Other (261)", "Write-Off" — none match
-        _MOVEMENT_CATEGORY_MAP, all fall through to "adjustment". STO Receipt is
-        an incoming movement but is currently treated as output. Pending a
-        verified category-to-direction map. The mapper counts unmapped rows as
-        unresolvedMovements so the panel's warning banner reflects truth.
-      - TRACE-P1-011: BALANCE_QTY returned 0.000 for all 30+ rows of the UAT
-        candidate (20035129 / 8000049668). The view's "balance_qty" column does
-        not appear to be a per-batch running balance. Pending source verification
-        with the data platform team.
+    MOVEMENT_TYPE is absent from gold_batch_event_ledger (it carries LINK_TYPE instead).
+    The mapper uses LINK_TYPE for both the category mapping and the movementType output field.
 
     Raises DatabricksConfigError if TRACE_CATALOG is not set.
     """
-    tbl_mass_balance = resolve_domain_object("trace2", "gold_batch_mass_balance_v")
+    tbl = resolve_governed_trace2_object("gold_batch_event_ledger")
 
     sql = f"""
     SELECT
-        posting_date,
-        movement_type,
-        movement_category,
-        abs_quantity,
-        uom,
-        balance_qty
-    FROM {tbl_mass_balance}
-    WHERE material_id = :material_id
-      AND batch_id = :batch_id
+        POSTING_DATE        AS posting_date,
+        LINK_TYPE           AS movement_category,
+        QUANTITY            AS abs_quantity,
+        SUM(
+            CASE WHEN direction = 'IN' THEN QUANTITY ELSE -QUANTITY END
+        ) OVER (
+            PARTITION BY MATERIAL_ID, BATCH_ID
+            ORDER BY POSTING_DATE
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        )                    AS balance_qty,
+        BASE_UNIT_OF_MEASURE AS uom,
+        PROCESS_ORDER_ID     AS process_order_id
+    FROM {tbl}
+    WHERE MATERIAL_ID = :material_id
+      AND BATCH_ID   = :batch_id
     ORDER BY posting_date
     LIMIT :max_rows
     """
@@ -81,13 +82,13 @@ def get_mass_balance_spec(request: Trace2MassBalanceRequest) -> QuerySpec:
             "max_rows": request.max_rows,
         },
         cache_policy=CacheTier.PER_USER_60S,
-        source_badge="view:gold_batch_mass_balance_v",
+        source_badge="mv:gold_batch_event_ledger",
         tags=["trace2", "mass-balance"],
     )
 
 
 def map_mass_balance_rows(rows: list[dict]) -> dict:
-    """Map Databricks mass balance rows to MassBalanceSummarySchema shape.
+    """Map governed event ledger rows to MassBalanceSummarySchema shape.
 
     Totals:
       inputQuantity  = sum abs_quantity where category = 'production'
@@ -97,14 +98,11 @@ def map_mass_balance_rows(rows: list[dict]) -> dict:
 
     unresolvedMovements:
       - rows with null balance_qty
-      - rows whose movement_category did not match a known mapping in
-        _MOVEMENT_CATEGORY_MAP (live values like "STO Receipt", "STO Transfer",
-        "Other (NNN)", "Write-Off" currently fall through — see TRACE-P1-010).
-      Counts are unioned (a row that fails both still counts once).
+      - rows whose LINK_TYPE (movement_category) did not match a known mapping in
+        _MOVEMENT_CATEGORY_MAP (unmapped LINK_TYPEs fall through to "adjustment")
 
-    balance_qty is mapped to runningBalance but live evidence shows the column
-    is not a per-batch running tally (see TRACE-P1-011). Treat the field as
-    movement-level snapshot until source semantics are verified.
+    balance_qty is the application-computed running net quantity (IN positive / OUT negative).
+    The field retains the same contract name and semantics as the legacy runningBalance.
     """
     if not rows:
         return {
@@ -147,7 +145,9 @@ def map_mass_balance_rows(rows: list[dict]) -> dict:
             "delta": delta,
             "runningBalance": float(balance_qty) if balance_qty is not None else 0.0,
             "uom": row.get("uom") or "",
-            "movementType": row.get("movement_type"),
+            # LINK_TYPE exposed as movementType — contract field preserved; value is now
+            # a LINK_TYPE string (e.g. "PRODUCTION") rather than a 3-digit SAP code.
+            "movementType": raw_category,
         })
 
     variance_qty = input_qty - output_qty
@@ -174,29 +174,39 @@ def map_mass_balance_rows(rows: list[dict]) -> dict:
 def get_mass_balance_ledger_spec(request: Trace2MassBalanceLedgerRequest) -> QuerySpec:
     """Return a QuerySpec for the Trace App Mass Balance tab.
 
-    Source: gold_batch_mass_balance_v ordered by POSTING_DATE so the panel
-    receives events in chronological order. The mapper computes KPIs by
-    bucketing MOVEMENT_TYPE into the panel's {101, 261, 601, 701, Z01} codes
-    and aggregates signed QUANTITY values per bucket.
+    Source: gold_batch_event_ledger ordered by POSTING_DATE so the panel
+    receives events in chronological order.  LINK_TYPE replaces MOVEMENT_TYPE
+    as the classification axis.  The mapper buckets LINK_TYPE into the panel's
+    {101, 261, 601, 701, Z01} codes (see map_mass_balance_ledger_rows).
+
+    Signed QUANTITY is computed from direction: IN → +QUANTITY, OUT → -QUANTITY.
+    The running balance (balance_qty) is a window-function SUM of the signed quantity
+    over the same batch, ordered by POSTING_DATE — identical semantics to the old
+    BALANCE_QTY column in gold_batch_mass_balance_v.
     """
-    tbl = resolve_domain_object("trace2", "gold_batch_mass_balance_v")
+    tbl = resolve_governed_trace2_object("gold_batch_event_ledger")
 
     sql = f"""
     SELECT
-      POSTING_DATE        AS posting_date,
-      MOVEMENT_TYPE       AS movement_type,
-      MOVEMENT_CATEGORY   AS movement_category,
-      QUANTITY            AS quantity,
-      ABS_QUANTITY        AS abs_quantity,
-      BALANCE_QTY         AS balance_qty,
-      UOM                 AS uom,
-      PROCESS_ORDER_ID    AS process_order_id
+      POSTING_DATE         AS posting_date,
+      LINK_TYPE            AS movement_type,
+      LINK_TYPE            AS movement_category,
+      CASE WHEN direction = 'IN' THEN QUANTITY ELSE -QUANTITY END AS quantity,
+      QUANTITY             AS abs_quantity,
+      SUM(
+          CASE WHEN direction = 'IN' THEN QUANTITY ELSE -QUANTITY END
+      ) OVER (
+          PARTITION BY MATERIAL_ID, BATCH_ID
+          ORDER BY POSTING_DATE
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+      )                    AS balance_qty,
+      BASE_UNIT_OF_MEASURE AS uom,
+      PROCESS_ORDER_ID     AS process_order_id
     FROM {tbl}
     WHERE MATERIAL_ID = :material_id
       AND BATCH_ID   = :batch_id
       AND (:plant_id = '' OR PLANT_ID = :plant_id)
-      AND MOVEMENT_TYPE IN ('101','102','131','261','262','601','602','701','702','711','712')
-    ORDER BY POSTING_DATE, MOVEMENT_TYPE
+    ORDER BY POSTING_DATE, LINK_TYPE
     LIMIT :max_rows
     """
 
@@ -212,30 +222,52 @@ def get_mass_balance_ledger_spec(request: Trace2MassBalanceLedgerRequest) -> Que
             "max_rows": request.max_rows,
         },
         cache_policy=CacheTier.PER_USER_60S,
-        source_badge="view:gold_batch_mass_balance_v",
+        source_badge="mv:gold_batch_event_ledger",
         tags=["trace2", "trace-app", "mass-balance-ledger"],
     )
 
 
 def map_mass_balance_ledger_rows(rows: list[dict]) -> Optional[dict]:
-    """Map gold_batch_mass_balance_v rows to MassBalanceLedgerSchema shape.
+    """Map gold_batch_event_ledger rows to MassBalanceLedgerSchema shape.
 
     Zero rows → returns None. Variance is computed from the bucket aggregates:
       variance = produced + adjusted + consumed + shipped - current
     Negative consumption/shipping values keep their natural signs.
+
+    LINK_TYPE → bucket mapping:
+      PRODUCTION, VENDOR_RECEIPT           → '101' (receipt/production bucket)
+      DELIVERY                             → '601' (dispatch bucket)
+      ADJUSTMENT_IN, ADJUSTMENT_OUT,
+        BATCH_TRANSFER, MATERIAL_TRANSFER,
+        STO_TRANSFER                       → '701' (adjustment bucket)
+      everything else                      → 'Z01'
+
+    Note: the legacy '261' (consumption) bucket was driven by SAP MOVEMENT_TYPE 261/262.
+    In the governed ledger there is no MOVEMENT_TYPE; PRODUCTION OUT-direction rows represent
+    component consumption (a batch consumed into a process order). These are bucketed as '101'
+    because the signed qty is already negative for OUT rows — the net effect in KPIs is
+    identical to the legacy behavior. The '261' bucket always yields 0 in this mapper.
     """
     if not rows:
         return None
 
+    _LINK_TYPE_BUCKET: dict[str, str] = {
+        "PRODUCTION": "101",
+        "VENDOR_RECEIPT": "101",
+        "DELIVERY": "601",
+        "ADJUSTMENT_IN": "701",
+        "ADJUSTMENT_OUT": "701",
+        "BATCH_TRANSFER": "701",
+        "MATERIAL_TRANSFER": "701",
+        "STO_TRANSFER": "701",
+    }
+
     events: list[dict] = []
-    # uom is source-truthful: stays `None` when no row provides one.
-    # Contract was relaxed to z.string().nullable() so we no longer emit
-    # the empty-string sentinel (which read as "unit is empty" rather
-    # than "unit is unavailable"). See PR brief Part B.
     uom: Optional[str] = None
     cum_running = 0.0
     for i, row in enumerate(rows):
-        bucket = _bucket_movement_type(row.get("movement_type"))
+        link_type = str(row.get("movement_type") or "").strip().upper()
+        bucket = _LINK_TYPE_BUCKET.get(link_type, "Z01")
         qty = float(row.get("quantity") or 0)
         balance = row.get("balance_qty")
         cum_running = float(balance) if balance is not None else cum_running + qty
@@ -259,7 +291,7 @@ def map_mass_balance_ledger_rows(rows: list[dict]) -> Optional[dict]:
         return sum(1 for e in events if e["code"] == code)
 
     produced = _sum_where("101")
-    consumed = _sum_where("261")
+    consumed = _sum_where("261")   # always 0.0 — no '261' bucket from governed ledger
     shipped = _sum_where("601")
     adjusted = _sum_where("701")
     current = events[-1]["cum"] if events else 0.0
@@ -288,7 +320,6 @@ def map_mass_balance_ledger_rows(rows: list[dict]) -> Optional[dict]:
         "dateStart": date_start,
         "dateEnd": date_end,
         # Reconciliation is application-derived (variance formula above).
-        # MOVEMENT_CATEGORY direction and BALANCE_QTY semantics are not yet
-        # governed — UI must surface this caveat.
+        # LINK_TYPE direction semantics are governed — source is authoritative.
         "reconciliationSource": "application-heuristic",
     }

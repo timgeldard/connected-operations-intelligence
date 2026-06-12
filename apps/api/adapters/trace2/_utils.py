@@ -31,10 +31,19 @@ _LINK_TYPE_MAP: dict[str, str] = {
 }
 
 _MOVEMENT_CATEGORY_MAP: dict[str, str] = {
+    # Legacy gold_batch_mass_balance_v category values
     "PRODUCTION": "production",
     "SHIPMENT": "shipment",
     "CONSUMPTION": "consumption",
     "ADJUSTMENT": "adjustment",
+    # Governed gold_batch_event_ledger LINK_TYPE values (Phase 2 switchover)
+    "VENDOR_RECEIPT": "production",      # inbound receipt → input side
+    "DELIVERY": "shipment",              # outbound delivery → output side
+    "ADJUSTMENT_IN": "adjustment",
+    "ADJUSTMENT_OUT": "adjustment",
+    "BATCH_TRANSFER": "adjustment",
+    "MATERIAL_TRANSFER": "adjustment",
+    "STO_TRANSFER": "adjustment",
 }
 
 _BATCH_STATUS_MAP: dict[str, str] = {

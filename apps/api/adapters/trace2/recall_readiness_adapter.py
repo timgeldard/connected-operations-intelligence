@@ -8,48 +8,68 @@ from __future__ import annotations
 from typing import Optional
 
 from shared.query_service.cache_policy import CacheTier
-from shared.query_service.object_resolver import resolve_domain_object
+from shared.query_service.object_resolver import resolve_governed_trace2_object
 from shared.query_service.query_spec import QuerySpec
 
 from ._types import Trace2RecallReadinessRequest
 
 # ---------------------------------------------------------------------------
-# Trace App slice — getRecallReadiness  (gold_batch_delivery_v aggregations)
+# Trace App slice — getRecallReadiness (event ledger DELIVERY rows)
 # ---------------------------------------------------------------------------
 
 def get_recall_readiness_spec(request: Trace2RecallReadinessRequest) -> QuerySpec:
     """Return a QuerySpec for the Trace App Recall & Exposure tab.
 
-    Source: gold_batch_delivery_v (17 columns verified live 2026-05-20).
-    No plant filter — recall coverage must surface all plants a batch reached.
-    Returns one row per delivery so the mapper can produce both the per-country
-    aggregate and the delivery-level table that the panel renders.
+    Source: gold_batch_event_ledger DELIVERY OUT rows (TRACE_GOVERNED_SCHEMA,
+    default: "gold_io_reporting").  No plant filter — recall coverage must surface
+    all plants a batch reached.
 
-    Status semantics in this slice:
-      - All rows are reported with status='delivered' because gold_batch_delivery_v
-        does not yet expose an in-transit / blocked / recalled flag. When a
-        delivery-status column lands, swap the mapper to honour it.
+    Column mapping vs legacy gold_batch_delivery_v:
+      DELIVERY_ID    → delivery (present; the delivery document number)
+      CUSTOMER_ID    → customer_id (NULL in DELIVERY leg of gold_batch_lineage —
+                       LIKP.KUNAG is not joined at the MV level; this is a known gap.
+                       customer_id emitted as NULL.)
+      SALES_ORDER_ID → sales_order_id (present)
+      QUANTITY       → abs_quantity (QUANTITY is already absolute in the ledger)
+      BASE_UNIT_OF_MEASURE → uom (present)
+      POSTING_DATE   → posting_date (present)
+
+    customer_name, country_id, country_name: ALL NULL in the governed source.
+      - CUSTOMER_ID is NULL at the DELIVERY leg (trade-off noted in trace_gold.py
+        docstring: joining outbound_delivery for KUNAG on the hot path is deferred).
+      - silver.outbound_delivery does not carry customer_name (that lives in
+        silver.customer / KNA1 which is not yet joined in the gold layer).
+      - country_id / country_name: not available without a customer join.
+
+    These optional fields are emitted as NULL, source-truthfully.  The mapper
+    derives country aggregation only when country_id is non-null; for governed
+    rows the countries list will be empty.
+
+    Status semantics: all rows emitted with status='delivery-evidence' (same
+    as legacy — no in-transit / blocked / recalled flag available in the governed
+    source either).
 
     Raises DatabricksConfigError if TRACE_CATALOG is not set.
     """
-    tbl = resolve_domain_object("trace2", "gold_batch_delivery_v")
+    tbl = resolve_governed_trace2_object("gold_batch_event_ledger")
 
     sql = f"""
     SELECT
-      DELIVERY         AS delivery,
-      CUSTOMER_ID      AS customer_id,
-      CUSTOMER_NAME    AS customer_name,
-      COUNTRY_ID       AS country_id,
-      COUNTRY_NAME     AS country_name,
-      ABS_QUANTITY     AS abs_quantity,
-      UOM              AS uom,
-      POSTING_DATE     AS posting_date,
-      SALES_ORDER_ID   AS sales_order_id
+      DELIVERY_ID          AS delivery,
+      CUSTOMER_ID          AS customer_id,
+      CAST(NULL AS STRING) AS customer_name,
+      CAST(NULL AS STRING) AS country_id,
+      CAST(NULL AS STRING) AS country_name,
+      QUANTITY             AS abs_quantity,
+      BASE_UNIT_OF_MEASURE AS uom,
+      POSTING_DATE         AS posting_date,
+      SALES_ORDER_ID       AS sales_order_id
     FROM {tbl}
     WHERE MATERIAL_ID = :material_id
       AND BATCH_ID   = :batch_id
-      AND DELIVERY IS NOT NULL
-      AND CUSTOMER_ID IS NOT NULL
+      AND LINK_TYPE  = 'DELIVERY'
+      AND direction  = 'OUT'
+      AND DELIVERY_ID IS NOT NULL
     ORDER BY POSTING_DATE DESC
     LIMIT :max_rows
     """
@@ -65,19 +85,21 @@ def get_recall_readiness_spec(request: Trace2RecallReadinessRequest) -> QuerySpe
             "max_rows": request.max_rows,
         },
         cache_policy=CacheTier.PER_USER_60S,
-        source_badge="view:gold_batch_delivery_v",
+        source_badge="mv:gold_batch_event_ledger",
         tags=["trace2", "trace-app", "recall-readiness"],
     )
 
 
 def map_recall_readiness_rows(rows: list[dict]) -> Optional[dict]:
-    """Map gold_batch_delivery_v rows to RecallReadinessSchema.
+    """Map gold_batch_event_ledger DELIVERY rows to RecallReadinessSchema.
 
     Zero rows → returns None. Caller returns HTTP 404 with "do not interpret
     as zero exposure" message.
 
     Country aggregation is derived from country_id + country_name pairs.
-    Percentages are computed against total shipped quantity.
+    For governed delivery rows both will be NULL (CUSTOMER_ID is NULL in the
+    DELIVERY leg of gold_batch_lineage — customer enrichment is deferred).
+    The countries list will therefore be empty in the governed response.
     """
     if not rows:
         return None
@@ -98,7 +120,8 @@ def map_recall_readiness_rows(rows: list[dict]) -> Optional[dict]:
         posting_date = row.get("posting_date")
         sales_order = row.get("sales_order_id")
 
-        customers.add(cid)
+        if cid:
+            customers.add(cid)
         total_qty += qty
 
         if uom is None and row.get("uom") is not None:
@@ -110,14 +133,11 @@ def map_recall_readiness_rows(rows: list[dict]) -> Optional[dict]:
 
         deliveries.append({
             "id": did,
-            "customer": cname or cid,
+            "customer": cname or cid or "",
             "country": country_id,
             "date": str(posting_date) if posting_date is not None else "",
             "qty": qty,
-            # gold_batch_delivery_v has no delivery-status column. We emit
-            # 'delivery-evidence' (source-truthful default) and tag the
-            # provenance so the UI cannot misread it as governed delivery
-            # status. When a status column lands, derive the real value.
+            # gold_batch_event_ledger DELIVERY rows have no delivery-status column.
             "status": "delivery-evidence",
             "statusSource": "delivery-record-present",
             "doc": str(sales_order) if sales_order is not None else "",
@@ -144,8 +164,7 @@ def map_recall_readiness_rows(rows: list[dict]) -> Optional[dict]:
         "countries": countries,
         "deliveries": deliveries,
         # Recall recommendation is a governance decision and is not yet
-        # computed server-side. The only safe value is `not-evaluated`.
-        # The UI MUST NOT interpret this as "no recall needed".
+        # computed server-side.
         "recommendationStatus": "not-evaluated",
     }
     return result
