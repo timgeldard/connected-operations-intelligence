@@ -604,6 +604,47 @@ export interface WmScheduleAdherenceDailyItem {
   readonly maxActualDate: string | null
 }
 
+export interface WmOrderYieldItem {
+  readonly plantId: string
+  readonly orderId: string
+  readonly materialId: string | null
+  readonly materialName: string | null
+  readonly productionLine: string | null
+  readonly plannedQty: number | null
+  readonly deliveredQty: number | null
+  readonly uom: string | null
+  readonly yieldPct: number | null
+  readonly hasGoodsReceipt: boolean | null
+  readonly isComplete: boolean | null
+  readonly isReleased: boolean | null
+  readonly isCompleted: boolean | null
+  readonly isClosed: boolean | null
+  readonly scheduledStartDate: string | null
+  readonly scheduledFinishDate: string | null
+  readonly actualFinishDate: string | null
+  readonly firstGrDate: string | null
+  readonly lastGrDate: string | null
+}
+
+export interface WmComponentVarianceItem {
+  readonly plantId: string
+  readonly orderId: string
+  readonly reservationId: string
+  readonly reservationItem: string
+  readonly materialId: string | null
+  readonly materialName: string | null
+  readonly uom: string | null
+  readonly movementTypeCode: string | null
+  readonly requiredQty: number | null
+  readonly withdrawnQty: number | null
+  readonly issuedQty: number | null
+  readonly varianceQty: number | null
+  readonly variancePct: number | null
+  readonly estLossValue: number | null
+  readonly standardPrice: number | null
+  readonly isFinalIssue: boolean | null
+}
+
 export interface WmDrillRequest {
   readonly plantId?: string
   readonly warehouseId?: string

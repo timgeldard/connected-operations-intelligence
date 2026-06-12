@@ -3701,3 +3701,160 @@ contracts:
       - name: max_actual_date
         type: date
         required: false
+
+  - id: wm_operations.order_yield
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Order-grain yield summary for the Yield & Loss analytics view.
+      planned_qty = order_quantity (AFKO.GAMNG); delivered_qty = net GR (movement 101 minus 102).
+      yield_pct = delivered_qty / planned_qty (null when planned_qty is zero/null).
+      is_complete = actual_finish_date IS NOT NULL.
+      Source: gold_wm_order_yield (process_order + goods_movement).
+    source_view: vw_consumption_wm_operations_order_yield
+    grain: one row per plant_id and order_id
+    primary_key:
+      - plant_id
+      - order_id
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: order_id
+        type: string
+        required: true
+      - name: material_id
+        type: string
+        required: false
+      - name: material_name
+        type: string
+        required: false
+      - name: production_line
+        type: string
+        required: false
+      - name: planned_qty
+        type: double
+        required: false
+      - name: delivered_qty
+        type: double
+        required: false
+      - name: uom
+        type: string
+        required: false
+      - name: yield_pct
+        type: double
+        required: false
+      - name: has_goods_receipt
+        type: boolean
+        required: false
+      - name: is_complete
+        type: boolean
+        required: false
+      - name: is_released
+        type: boolean
+        required: false
+      - name: is_completed
+        type: boolean
+        required: false
+      - name: is_closed
+        type: boolean
+        required: false
+      - name: scheduled_start_date
+        type: date
+        required: false
+      - name: scheduled_finish_date
+        type: date
+        required: false
+      - name: actual_finish_date
+        type: date
+        required: false
+      - name: first_gr_date
+        type: date
+        required: false
+      - name: last_gr_date
+        type: date
+        required: false
+
+  - id: wm_operations.component_variance
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Order + component grain material variance for the Yield & Loss waterfall.
+      variance_qty = issued_qty - required_qty (positive = over-issue / loss; negative = under-issue).
+      est_loss_value = over-issued qty × standard_price / price_unit (null when no price data).
+      Quantities stay in each row's own base_uom — no cross-material aggregation in gold.
+      Source: gold_wm_order_component_variance (reservation_requirement + goods_movement + material_valuation).
+    source_view: vw_consumption_wm_operations_component_variance
+    grain: one row per plant_id, order_id, reservation_id, and reservation_item
+    primary_key:
+      - plant_id
+      - order_id
+      - reservation_id
+      - reservation_item
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: order_id
+        type: string
+        required: true
+      - name: reservation_id
+        type: string
+        required: true
+      - name: reservation_item
+        type: string
+        required: true
+      - name: material_id
+        type: string
+        required: false
+      - name: material_name
+        type: string
+        required: false
+      - name: uom
+        type: string
+        required: false
+      - name: movement_type_code
+        type: string
+        required: false
+      - name: required_qty
+        type: double
+        required: true
+      - name: withdrawn_qty
+        type: double
+        required: false
+      - name: issued_qty
+        type: double
+        required: false
+      - name: variance_qty
+        type: double
+        required: false
+      - name: variance_pct
+        type: double
+        required: false
+      - name: est_loss_value
+        type: double
+        required: false
+      - name: standard_price
+        type: double
+        required: false
+      - name: is_final_issue
+        type: boolean
+        required: false

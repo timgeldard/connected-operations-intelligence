@@ -672,3 +672,58 @@ FROM connected_plant_dev.gold_io_reporting.gold_process_order_schedule_adherence
 WHERE plant_code IS NOT NULL
   AND scheduled_finish_date IS NOT NULL
 GROUP BY plant_code, scheduled_finish_date;
+
+-- 35. Order yield summary (Yield & Loss analytics view — order grain)
+-- Grain: 1 row per plant_id + order_id.
+-- Source: gold_wm_order_yield_secured (no date-relative columns; _secured direct).
+-- planned_qty = order_quantity; delivered_qty = net GR (101 minus 102).
+-- yield_pct = delivered/planned (null when no planned qty). is_complete = actual_finish_date set.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_order_yield AS
+SELECT
+  plant_code AS plant_id,
+  order_number AS order_id,
+  material_code AS material_id,
+  material_name,
+  production_line,
+  planned_qty,
+  delivered_qty,
+  uom,
+  yield_pct,
+  has_goods_receipt,
+  is_complete,
+  is_released,
+  is_completed,
+  is_closed,
+  CAST(scheduled_start_date AS DATE) AS scheduled_start_date,
+  CAST(scheduled_finish_date AS DATE) AS scheduled_finish_date,
+  CAST(actual_finish_date AS DATE) AS actual_finish_date,
+  CAST(first_gr_date AS DATE) AS first_gr_date,
+  CAST(last_gr_date AS DATE) AS last_gr_date
+FROM connected_plant_dev.gold_io_reporting.gold_wm_order_yield_secured
+WHERE plant_code IS NOT NULL;
+
+-- 36. Order component variance (Yield & Loss analytics view — order+component grain)
+-- Grain: 1 row per plant_id + order_id + reservation_id + reservation_item.
+-- Source: gold_wm_order_component_variance_secured (no date-relative columns).
+-- variance_qty > 0 = over-issue (loss); < 0 = under-issue.
+-- est_loss_value: over-issued qty × standard_price/price_unit (null when no price data).
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_component_variance AS
+SELECT
+  plant_code AS plant_id,
+  order_number AS order_id,
+  reservation_number AS reservation_id,
+  reservation_item,
+  material_code AS material_id,
+  material_name,
+  uom,
+  movement_type_code,
+  required_qty,
+  withdrawn_qty,
+  issued_qty,
+  variance_qty,
+  variance_pct,
+  est_loss_value,
+  standard_price,
+  is_final_issue
+FROM connected_plant_dev.gold_io_reporting.gold_wm_order_component_variance_secured
+WHERE plant_code IS NOT NULL;

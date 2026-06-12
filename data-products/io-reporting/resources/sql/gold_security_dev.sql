@@ -257,6 +257,14 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_wip_s
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_order_wip_stage;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_wip_stage_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_yield_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_order_yield;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_yield_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_component_variance_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_order_component_variance;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_component_variance_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_spc_quality_metric_subgroup_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_spc_quality_metric_subgroup;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_spc_quality_metric_subgroup_secured TO `users`;
