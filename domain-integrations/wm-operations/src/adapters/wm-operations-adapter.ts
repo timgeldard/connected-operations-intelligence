@@ -578,6 +578,32 @@ export interface WmOrderJourneyEventItem {
   readonly detail: string | null
 }
 
+export interface WmWipStageItem {
+  readonly plantId: string
+  readonly orderId: string
+  readonly materialCode: string | null
+  readonly materialName: string | null
+  readonly orderQty: number | null
+  readonly uom: string | null
+  readonly scheduledStartDate: string | null
+  readonly scheduledFinishDate: string | null
+  readonly stage: string
+  readonly firstTrCreatedTs: string | null
+  readonly stagingLastConfirmedTs: string | null
+  readonly productionFirstActualStart: string | null
+  readonly firstGrPostingDate: string | null
+  readonly grQty: number | null
+}
+
+export interface WmScheduleAdherenceDailyItem {
+  readonly plantId: string
+  readonly scheduledDate: string
+  readonly plannedCount: number
+  readonly completedCount: number
+  readonly onTimeCount: number
+  readonly maxActualDate: string | null
+}
+
 export interface WmDrillRequest {
   readonly plantId?: string
   readonly warehouseId?: string

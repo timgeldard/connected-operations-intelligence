@@ -629,3 +629,46 @@ SELECT
   detail
 FROM connected_plant_dev.gold_io_reporting.gold_wm_order_journey_events_secured
 WHERE plant_code IS NOT NULL;
+
+-- 33. WIP Funnel stages (active process orders by WIP stage — Production Progress view)
+-- Grain: 1 row per plant_id + order_id (active window: released, not finished).
+-- Source: gold_wm_order_wip_stage_secured (deterministic; no date-relative columns).
+-- stage values: RELEASED / STAGING / STAGED / IN_PRODUCTION / GR_PARTIAL / GR_COMPLETE.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_wip_stages AS
+SELECT
+  plant_code AS plant_id,
+  order_number AS order_id,
+  material_code,
+  material_name,
+  order_qty,
+  uom,
+  CAST(scheduled_start_date AS DATE) AS scheduled_start_date,
+  CAST(scheduled_finish_date AS DATE) AS scheduled_finish_date,
+  stage,
+  CAST(first_tr_created_ts AS TIMESTAMP) AS first_tr_created_ts,
+  CAST(staging_last_confirmed_ts AS TIMESTAMP) AS staging_last_confirmed_ts,
+  CAST(production_first_actual_start AS TIMESTAMP) AS production_first_actual_start,
+  CAST(first_gr_posting_date AS DATE) AS first_gr_posting_date,
+  gr_qty
+FROM connected_plant_dev.gold_io_reporting.gold_wm_order_wip_stage_secured
+WHERE plant_code IS NOT NULL;
+
+-- 34. Schedule adherence daily (cumulative planned vs actual for S-curve — Production Progress view)
+-- Grain: 1 row per plant_id + scheduled_finish_date (day).
+-- Source: gold_process_order_schedule_adherence_secured aggregated to day grain.
+-- planned_count: orders scheduled to finish on this date.
+-- completed_count: orders that actually finished on this date (actual_finish_date present).
+-- on_time_count: completed orders where actual_finish_date <= scheduled_finish_date.
+-- No date-relative columns; anchored to max(actual_finish_date) in the data (no wall-clock).
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_schedule_adherence_daily AS
+SELECT
+  plant_code AS plant_id,
+  CAST(scheduled_finish_date AS DATE) AS scheduled_date,
+  COUNT(*) AS planned_count,
+  SUM(CASE WHEN actual_finish_date IS NOT NULL THEN 1 ELSE 0 END) AS completed_count,
+  SUM(COALESCE(is_on_time, 0)) AS on_time_count,
+  CAST(MAX(actual_finish_date) AS DATE) AS max_actual_date
+FROM connected_plant_dev.gold_io_reporting.gold_process_order_schedule_adherence_secured
+WHERE plant_code IS NOT NULL
+  AND scheduled_finish_date IS NOT NULL
+GROUP BY plant_code, scheduled_finish_date;

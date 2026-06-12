@@ -65,4 +65,5 @@ REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_downtime_p
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_downtime_event_detail FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_order_journey_summary FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_order_journey_events FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_order_wip_stage FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_spc_quality_metric_subgroup FROM `users`;

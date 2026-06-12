@@ -2120,3 +2120,138 @@ def gold_wm_order_journey_events():
         "reference_id",
         "detail",
     )
+
+
+# -- 22. ORDER WIP STAGE (active-order WIP funnel) ----------------------------
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Active process order WIP stage — one row per plant_code × order_number for orders "
+        "that are released but not yet finished (the same active-order filter as "
+        "gold_wm_order_readiness). Stage is derived deterministically from the milestone "
+        "columns in gold_wm_order_journey_summary (joined by plant_code × order_number): "
+        "RELEASED (released, no TR created yet), "
+        "STAGING (first TR exists, staging_last_confirmed_ts < staging_first_confirmed_ts "
+        "— i.e. staging is in progress but not yet complete across all TRs), "
+        "STAGED (staging_last_confirmed_ts present, no production start yet), "
+        "IN_PRODUCTION (production_first_actual_start present, no GR posted), "
+        "GR_PARTIAL (first_gr_posting_date present, gr_qty < order_qty × _COVERAGE_FULL_FRACTION), "
+        "GR_COMPLETE (gr_qty >= order_qty × _COVERAGE_FULL_FRACTION). "
+        "Includes order qty, material, scheduled dates. No current_date/current_timestamp. "
+        "cluster_by plant_code."
+    ),
+    cluster_by=["plant_code"],
+))
+@dlt.expect("stage value valid",
+    "stage IN ('RELEASED','STAGING','STAGED','IN_PRODUCTION','GR_PARTIAL','GR_COMPLETE')")
+@dlt.expect("order_qty non-negative", "order_qty IS NULL OR order_qty >= 0.0")
+def gold_wm_order_wip_stage():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    orders = spark.read.table(f"{ss}.process_order")
+    journey = dlt.read("gold_wm_order_journey_summary")
+
+    # Same active-order filter as gold_wm_order_readiness:
+    # released (PHAS1 or actual_release_date), not closed, not finished.
+    active_orders = orders.filter(
+        (
+            F.coalesce(F.col("is_released"), F.lit(False))
+            | F.col("actual_release_date").isNotNull()
+        )
+        & (~F.coalesce(F.col("is_closed"), F.lit(False)))
+        & F.col("actual_finish_date").isNull()
+    ).select(
+        "plant_code",
+        "order_number",
+        F.col("material_code"),
+        F.col("order_quantity").alias("order_qty"),
+        F.col("order_quantity_uom").alias("uom"),
+        "scheduled_start_date",
+        "scheduled_finish_date",
+    )
+
+    # Join journey milestones (left — new orders may not have a journey row yet).
+    milestones = journey.select(
+        "plant_code",
+        "order_number",
+        F.col("material_code").alias("_j_material_code"),
+        F.col("material_name"),
+        F.col("first_tr_created_ts"),
+        F.col("staging_first_confirmed_ts"),
+        F.col("staging_last_confirmed_ts"),
+        F.col("staged_item_count"),
+        F.col("staged_item_total"),
+        F.col("production_first_actual_start"),
+        F.col("first_gr_posting_date"),
+        F.col("gr_qty"),
+        F.col("order_qty").alias("_j_order_qty"),
+    )
+
+    joined = active_orders.join(milestones, ["plant_code", "order_number"], "left")
+
+    # GR complete threshold: gr_qty >= order_qty × _COVERAGE_FULL_FRACTION.
+    # Use the journey order_qty (confirmed_yield proxied via gr_qty vs active order_qty).
+    full_threshold = F.col("order_qty") * F.lit(_COVERAGE_FULL_FRACTION)
+
+    stage = (
+        # GR_COMPLETE: GR posted and qty meets full-coverage threshold.
+        F.when(
+            F.col("first_gr_posting_date").isNotNull()
+            & (F.coalesce(F.col("gr_qty"), F.lit(0.0)) >= full_threshold),
+            F.lit("GR_COMPLETE"),
+        )
+        # GR_PARTIAL: GR posted but below full-coverage threshold.
+        .when(
+            F.col("first_gr_posting_date").isNotNull(),
+            F.lit("GR_PARTIAL"),
+        )
+        # IN_PRODUCTION: production actual start present, no GR yet.
+        .when(
+            F.col("production_first_actual_start").isNotNull(),
+            F.lit("IN_PRODUCTION"),
+        )
+        # STAGED: ALL staging TO items confirmed (count == total, total > 0), production
+        # not started. staging_last_confirmed_ts alone is NOT sufficient — it is non-null
+        # from the FIRST confirmed item, which would overstate STAGED for partial staging.
+        .when(
+            (F.coalesce(F.col("staged_item_total"), F.lit(0)) > 0)
+            & (
+                F.coalesce(F.col("staged_item_count"), F.lit(0))
+                >= F.col("staged_item_total")
+            ),
+            F.lit("STAGED"),
+        )
+        # STAGING: TR exists (with zero or some — but not all — items confirmed).
+        .when(
+            F.col("first_tr_created_ts").isNotNull(),
+            F.lit("STAGING"),
+        )
+        # RELEASED: released but no TR yet.
+        .otherwise(F.lit("RELEASED"))
+    )
+
+    return (
+        joined
+        .withColumn("stage", stage)
+        .withColumn(
+            "material_code",
+            F.coalesce(F.col("material_code"), F.col("_j_material_code")),
+        )
+        .select(
+            "plant_code",
+            "order_number",
+            "material_code",
+            F.coalesce(F.col("material_name"), F.lit(None).cast("string")).alias("material_name"),
+            "order_qty",
+            "uom",
+            "scheduled_start_date",
+            "scheduled_finish_date",
+            "stage",
+            F.coalesce(F.col("first_tr_created_ts"), F.lit(None).cast("timestamp")).alias("first_tr_created_ts"),
+            F.coalesce(F.col("staging_last_confirmed_ts"), F.lit(None).cast("timestamp")).alias("staging_last_confirmed_ts"),
+            F.coalesce(F.col("production_first_actual_start"), F.lit(None).cast("timestamp")).alias("production_first_actual_start"),
+            F.coalesce(F.col("first_gr_posting_date"), F.lit(None).cast("date")).alias("first_gr_posting_date"),
+            F.coalesce(F.col("gr_qty"), F.lit(0.0)).alias("gr_qty"),
+        )
+    )

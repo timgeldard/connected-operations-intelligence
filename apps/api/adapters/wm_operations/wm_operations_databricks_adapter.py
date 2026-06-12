@@ -1411,6 +1411,31 @@ SIMPLE_DATASETS: dict[str, dict] = {
         order_by="plant_id ASC, warehouse_id ASC",
         numeric=(), integer=("worklist_tr_count",), boolean=(), has_warehouse=False,
     ),
+    "wip_stages": dict(
+        contract="wm_operations.wip_stages", endpoint="/api/wm-operations/wip-stages",
+        columns=(
+            "plant_id, order_id, material_code, material_name, order_qty, uom, "
+            "scheduled_start_date, scheduled_finish_date, stage, "
+            "first_tr_created_ts, staging_last_confirmed_ts, "
+            "production_first_actual_start, first_gr_posting_date, gr_qty"
+        ),
+        order_by="scheduled_start_date ASC NULLS LAST",
+        numeric=("order_qty", "gr_qty"),
+        integer=(),
+        boolean=(), has_warehouse=False,
+    ),
+    "schedule_adherence_daily": dict(
+        contract="wm_operations.schedule_adherence_daily",
+        endpoint="/api/wm-operations/schedule-adherence-daily",
+        columns=(
+            "plant_id, scheduled_date, planned_count, completed_count, "
+            "on_time_count, max_actual_date"
+        ),
+        order_by="scheduled_date ASC",
+        numeric=(),
+        integer=("planned_count", "completed_count", "on_time_count"),
+        boolean=(), has_warehouse=False,
+    ),
     "order_journey": dict(
         contract="wm_operations.order_journey", endpoint="/api/wm-operations/order-journey",
         columns=(

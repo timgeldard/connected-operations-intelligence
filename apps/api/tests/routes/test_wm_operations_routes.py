@@ -991,3 +991,117 @@ class TestOrderJourneyEventsRoute:
                 headers=_HEADERS_WITH_TOKEN,
             )
         assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# WIP Stages (Production Progress — WIP funnel)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+class TestWipStagesRoute:
+    async def test_returns_mapped_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "order_id": "900001",
+            "material_code": "FG001",
+            "material_name": "Finished Good A",
+            "order_qty": 500.0,
+            "uom": "KG",
+            "scheduled_start_date": "2026-06-01",
+            "scheduled_finish_date": "2026-06-03",
+            "stage": "IN_PRODUCTION",
+            "first_tr_created_ts": "2026-06-01T08:00:00",
+            "staging_last_confirmed_ts": "2026-06-02T10:00:00",
+            "production_first_actual_start": "2026-06-02T12:00:00",
+            "first_gr_posting_date": None,
+            "gr_qty": 0.0,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/wip-stages",
+                    params={"plant_id": "C061", "limit": 500},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["plantId"] == "C061"
+        assert row["orderId"] == "900001"
+        assert row["stage"] == "IN_PRODUCTION"
+        assert row["orderQty"] == 500.0
+        assert response.headers.get("x-contract-id") == "wm_operations.wip_stages"
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "plant_id = :plant_id" in executed_sql
+        assert "LIMIT 500" in executed_sql
+
+    async def test_returns_401_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/wip-stages", params={"plant_id": "C061"}
+            )
+        assert response.status_code == 401
+
+    async def test_returns_503_legacy(self, monkeypatch) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/wip-stages",
+                params={"plant_id": "C061"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# Schedule Adherence Daily (Production Progress — S-curve)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+class TestScheduleAdherenceDailyRoute:
+    async def test_returns_mapped_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "scheduled_date": "2026-06-01",
+            "planned_count": 10,
+            "completed_count": 8,
+            "on_time_count": 7,
+            "max_actual_date": "2026-06-03",
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/schedule-adherence-daily",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["plantId"] == "C061"
+        assert row["scheduledDate"] == "2026-06-01"
+        assert row["plannedCount"] == 10
+        assert row["completedCount"] == 8
+        assert row["onTimeCount"] == 7
+        assert response.headers.get("x-contract-id") == "wm_operations.schedule_adherence_daily"
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "plant_id = :plant_id" in executed_sql
+
+    async def test_returns_401_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/schedule-adherence-daily", params={"plant_id": "C061"}
+            )
+        assert response.status_code == 401
+
+    async def test_returns_503_legacy(self, monkeypatch) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/schedule-adherence-daily",
+                params={"plant_id": "C061"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 503
