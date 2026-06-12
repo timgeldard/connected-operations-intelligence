@@ -158,6 +158,8 @@ GOLD_TABLES = [
     "gold_wm_order_yield",
     "gold_wm_recipe_run_benchmark",
     "gold_wm_order_component_variance",
+    "gold_wm_supply_demand_ledger",
+    "gold_wm_order_shortage_projection",
     # spc_gold.py
     "gold_spc_quality_metric_subgroup",
     # trace_gold.py — anchor tier only (capability-tier edge MV uses trace_security_*.sql instead)

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { wmOperationsAdapter } from './wm-operations-adapter.js'
-import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmOrderYieldItem, WmRecipeBenchmarkItem, WmComponentVarianceItem } from './wm-operations-adapter.js'
+import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmOrderYieldItem, WmRecipeBenchmarkItem, WmComponentVarianceItem, WmSupplyDemandLedgerItem, WmShortageProjectionItem } from './wm-operations-adapter.js'
 
 export function useWmOrderComponents(request: WmDrillRequest, enabled = true) {
   return useQuery({
@@ -189,6 +189,30 @@ export function useWmComponentVariance(
     queryFn: () => wmOperationsAdapter.getList<WmComponentVarianceItem>(
       '/api/wm-operations/component-variance',
       { plant_id: plantId ?? undefined, order_id: orderId, limit },
+    ),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(plantId),
+  })
+}
+
+export function useWmShortageProjection(plantId: string | null | undefined, limit = 500, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-shortage-projection', plantId ?? null, limit],
+    queryFn: () => wmOperationsAdapter.getList<WmShortageProjectionItem>(
+      '/api/wm-operations/shortage-projection',
+      { plant_id: plantId ?? undefined, limit },
+    ),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(plantId),
+  })
+}
+
+export function useWmSupplyDemandLedger(plantId: string | null | undefined, limit = 1000, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-supply-demand-ledger', plantId ?? null, limit],
+    queryFn: () => wmOperationsAdapter.getList<WmSupplyDemandLedgerItem>(
+      '/api/wm-operations/supply-demand-ledger',
+      { plant_id: plantId ?? undefined, limit },
     ),
     staleTime: 60 * 1000,
     enabled: enabled && Boolean(plantId),

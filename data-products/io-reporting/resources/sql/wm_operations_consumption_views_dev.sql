@@ -745,3 +745,47 @@ SELECT
   is_final_issue
 FROM connected_plant_dev.gold_io_reporting.gold_wm_order_component_variance_secured
 WHERE plant_code IS NOT NULL;
+
+-- 37. Supply/demand ledger (Shortage Projection — dated events with running balance)
+-- Grain: 1 row per plant_id + material_id + ledger event.
+-- Source: gold_wm_supply_demand_ledger_secured (deterministic; no wall-clock).
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_supply_demand_ledger AS
+SELECT
+  plant_code AS plant_id,
+  material_code AS material_id,
+  material_name,
+  event_type,
+  event_subtype,
+  CAST(event_date AS DATE) AS event_date,
+  quantity,
+  signed_qty,
+  balance_before,
+  running_balance,
+  source_document_id,
+  order_number AS order_id,
+  sort_seq,
+  base_uom AS uom
+FROM connected_plant_dev.gold_io_reporting.gold_wm_supply_demand_ledger_secured
+WHERE plant_code IS NOT NULL;
+
+-- 38. Order shortage projection (Shortage Projection — at-risk components)
+-- Grain: 1 row per plant_id + order_id + material_id + reservation_ref.
+-- Source: gold_wm_order_shortage_projection_secured.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_shortage_projection AS
+SELECT
+  plant_code AS plant_id,
+  order_number AS order_id,
+  material_code AS material_id,
+  material_name,
+  open_qty,
+  uom,
+  CAST(requirement_date AS DATE) AS requirement_date,
+  reservation_ref,
+  projected_balance_at_demand,
+  is_projected_short,
+  CAST(first_short_date AS DATE) AS first_short_date,
+  CAST(scheduled_start_date AS DATE) AS scheduled_start_date,
+  CAST(scheduled_finish_date AS DATE) AS scheduled_finish_date,
+  production_line
+FROM connected_plant_dev.gold_io_reporting.gold_wm_order_shortage_projection_secured
+WHERE plant_code IS NOT NULL;
