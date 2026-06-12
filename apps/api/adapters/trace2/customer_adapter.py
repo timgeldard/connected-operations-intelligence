@@ -9,7 +9,10 @@ from __future__ import annotations
 from typing import Optional
 
 from shared.query_service.cache_policy import CacheTier
-from shared.query_service.object_resolver import resolve_domain_object
+from shared.query_service.object_resolver import (
+    resolve_domain_object,
+    resolve_governed_trace2_object,
+)
 from shared.query_service.query_spec import QuerySpec
 
 from ._types import Trace2CustomerDeliveryRequest, Trace2CustomerExposureRequest
@@ -42,7 +45,9 @@ def get_customer_exposure_spec(request: Trace2CustomerExposureRequest) -> QueryS
 
     Raises DatabricksConfigError if TRACE_CATALOG is not set.
     """
-    tbl = resolve_domain_object("trace2", "gold_batch_lineage")
+    # Phase 2 fix: gold_batch_lineage is a T2 governed MV in TRACE_GOVERNED_SCHEMA
+    # (gold_io_reporting), not the legacy TRACE_SCHEMA ("gold"). Missed in Phase 2 switchover.
+    tbl = resolve_governed_trace2_object("gold_batch_lineage")
 
     _null_guard = (
         "PARENT_MATERIAL_ID IS NOT NULL AND PARENT_BATCH_ID IS NOT NULL"

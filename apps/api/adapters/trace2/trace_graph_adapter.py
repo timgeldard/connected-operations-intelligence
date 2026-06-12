@@ -7,10 +7,7 @@ Covers:
 from __future__ import annotations
 
 from shared.query_service.cache_policy import CacheTier
-from shared.query_service.object_resolver import (
-    resolve_domain_object,
-    resolve_governed_trace2_object,
-)
+from shared.query_service.object_resolver import resolve_governed_trace2_object
 from shared.query_service.query_spec import QuerySpec
 
 from ._types import TraceGraphRequest
@@ -52,15 +49,15 @@ def get_trace_graph_recursive_spec(request: TraceGraphRequest) -> QuerySpec:
     UC group (not yet provisioned in UAT as of 2026-06-12).  Owner/admin identities work
     today.  This is an accepted track-level gate; the change is not blocked by it.
 
-    gold_material enrichment stays on legacy TRACE_SCHEMA ("gold") — no governed
-    equivalent exists yet.
+    gold_trace_material enrichment reads from TRACE_GOVERNED_SCHEMA (Phase 3 switchover);
+    replaced legacy TRACE_SCHEMA gold_material reference.
 
     Raises DatabricksConfigError if TRACE_CATALOG is not set.
     """
     # Governed object: T2 cutover — reads from TRACE_GOVERNED_SCHEMA (gold_io_reporting).
     tbl = resolve_governed_trace2_object("gold_batch_lineage")
-    # Legacy enrichment join — no governed equivalent yet.
-    tbl_material = resolve_domain_object("trace2", "gold_material")
+    # Phase 3: governed material lookup replaces legacy TRACE_SCHEMA gold_material.
+    tbl_material = resolve_governed_trace2_object("gold_trace_material")
 
     # gold_batch_lineage is clustered on (CHILD_MATERIAL_ID, CHILD_BATCH_ID).
     # Referencing the table directly in each recursive arm lets Databricks use
