@@ -1,0 +1,96 @@
+# Coding-Agent Conventions — read before any spec in this directory
+
+These specs are written for coding agents **without Databricks access**. You have the full
+repo; you do NOT have a workspace, a SQL warehouse, or live data. Everything you need is
+in the repo or in your spec. The reviewing orchestrator runs the live verification
+(pipeline runs, UAT smoke) after merge — your job ends at a green offline validation suite
+and a pushed branch.
+
+## Hard rules (violations have caused real production failures)
+
+1. **Verify every column name against the silver/gold definition files** in
+   `data-products/io-reporting/silver/tables/` and `data-products/io-reporting/gold/`.
+   Local validation cannot catch a wrong column; DLT analysis at runtime can and will.
+   Never trust a column name from a spec or docstring alone — read the `.alias(...)` lines.
+2. **plant_code ambiguity:** when joining two frames that both carry `plant_code`, drop the
+   non-axis side's `plant_code` BEFORE the join (the order's plant is the canonical axis for
+   order-anchored tables). Do NOT "fix" this by joining on `[key, plant_code]` — source-side
+   plants legitimately differ (QAVE carries central plant R001; cross-plant movements exist).
+   See `gold_wm_order_journey_events` for the pattern.
+3. **Grep the FULL existing select before adding a silver column** that might already be
+   selected — duplicate columns fail DLT graph analysis (wave-3 incident).
+4. **No `current_date()` / `current_timestamp()` in any `@dlt.table` function** — the CI
+   determinism guard (`scripts/ci/check_gold_mv_determinism.py`) enforces this. Time windows
+   live in SILVER gates with the `# determinism-exempt` marker ON THE SAME LINE as the call,
+   using the dual-format raw-string pushdown pattern (see `silver/tables/traceability.py` —
+   SAP date strings arrive BOTH compact `yyyyMMdd` AND ISO `yyyy-MM-dd` in UAT).
+5. **`table_exists` / `bronze_columns_exist` guards** for any source that may be absent in
+   dev (QM sources are UAT-only; see `gold/quality_lab.py` and the hu_reconciliation pattern).
+6. **Aggregation counts are `bigint`:** contract fields produced by COUNT/SUM/count_distinct
+   are `type: long`, never `integer` (datediff and row_number are genuinely `integer`).
+7. **One manifest:** all contract changes go to
+   `data-products/io-reporting/contracts/app_contract_manifest.yml` ONLY. There is no
+   apps/api manifest (it is a gitignored deploy artefact). CI guards enforce id- and
+   column-level consistency between adapters and the manifest
+   (`scripts/ci/check_app_adapter_contract_ids.py` — run it).
+8. **Views freeze schema at CREATE** — if you add gold columns consumed by an existing
+   consumption view, note in your report that the secured + consumption views need
+   re-applying post-deploy (orchestrator handles it; your job is to flag it).
+9. **Generated SQL:** security/serving SQL comes from
+   `scripts/generate_gold_security_sql.py` (regenerate ALL variants: dev/uat/prod strict +
+   harden + dev/uat validation_fixture + validation_open — the fixture/open variants have
+   been forgotten repeatedly). Consumption views (`*_consumption_views_{env}.sql`) are
+   hand-maintained — append, keep all three envs identical except catalog names.
+10. **Encoding:** repo files are UTF-8 with em-dashes and `§` in comments. Never round-trip
+    files through tools that re-encode (this corrupted a file once). Python with
+    `encoding="utf-8"` for any scripted edits.
+
+## The house pattern for a full-stack feature
+
+Study the merged Yield & Loss feature as the template (`git log --all --oneline | grep -i yield`,
+PR #111): gold tables in `gold/wm_operations_gold.py` → consumption views appended to
+`resources/sql/wm_operations_consumption_views_{dev,uat,prod}.sql` → generator regen →
+contract added to the data-products manifest (with field descriptions — they publish to
+Unity Catalog) → `SIMPLE_DATASETS` entry in
+`apps/api/adapters/wm_operations/wm_operations_databricks_adapter.py` → route tests →
+TS types + hook in `domain-integrations/wm-operations/src/adapters/` → view in
+`src/views/` → registration in `wm-operations-registration.ts` + workspace wiring.
+
+Frontend conventions: `kw-card` styling, error branch BEFORE empty-state (CI-checked),
+react-query hooks (no manual fetch/useEffect), deep links via the existing journey/order
+patterns, `useMemo` with complete dependency computation inside the memo.
+
+## Offline validation suite (all must pass before you push)
+
+```
+python -m py_compile <every touched .py>
+python -m ruff check <every touched .py>
+python scripts/ci/check_gold_mv_determinism.py
+python scripts/ci/check_app_adapter_contract_ids.py        # if contracts/adapters touched
+python scripts/ci/check_dlt_dataset_names_unique.py        # if gold tables added (check exact name in scripts/ci/)
+pytest apps/api/tests/routes/<touched route tests>          # FastAPI tests run offline
+pnpm --filter <package> exec tsc --noEmit                   # if frontend touched
+eslint on changed TS/TSX files
+```
+
+PySpark unit tests: WRITE them (pattern: `tests/test_gold_yield_loss.py`,
+`tests/gold/test_gold_trace_anchor.py` — mock `dlt.read` via the autouse fixture pattern)
+but they only execute in CI (no local JVM). Say so in your report; do not skip writing them.
+
+## What you must NOT do
+
+- No `databricks` CLI calls, no SQL execution, no deploys, no pipeline runs, no static
+  rebuilds (post-merge chore handled by the orchestrator).
+- No new SAP/bronze sources without flagging — if a needed bronze table may not be
+  replicated, build behind `bronze_columns_exist` guards and add a line to
+  `docs/ingestion_requests.md`.
+- Do not modify `docs/product-backlog.md` status yourself beyond marking your item
+  "in review" — the orchestrator updates it on merge.
+
+## Deliverables for every spec
+
+1. Branch named as the spec says, commits with
+   `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`, pushed. NO PR (orchestrator reviews first).
+2. A report containing: design deviations + reasons, column-verification evidence
+   (file:line for each silver/gold column you relied on), validation output, anything the
+   orchestrator must do post-merge (pipeline runs, SQL applications, scope caveats), SHA.
