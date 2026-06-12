@@ -11,7 +11,11 @@
 
 The Lab Board is a wallboard-style view within the Quality Batch Release workspace that surfaces failed and warning SAP QM inspection results in real time. It preserves the V1 Connected Quality Lab Board experience (`/cq/?module=lab`) inside the V2 workspace shell.
 
-The board shows up to 6 inspection failure cards per page, auto-rotates every 30 seconds when more than 6 failures are present, and allows filtering by lot type (All / Finished Product / Raw Material).
+The board shows up to 6 inspection failure cards per page, auto-rotates every 30 seconds when more than 6 failures are present, and supports:
+
+- **Day filter** (ALL / 360 Days / 180 Days / 30 Days) — applied at query time on result recording date. Default is ALL.
+- **Lot type filter** (All / FP / RM) — filters by SAP lot origin code (HERKUNFT).
+- **Plant picker** — selects any governed plant; "All plants" option shows all plants the user has access to. Defaults to scope `plantId` when present.
 
 ---
 
@@ -20,25 +24,43 @@ The board shows up to 6 inspection failure cards per page, auto-rotates every 30
 | Layer | Detail |
 |-------|--------|
 | Origin | SAP QM (QAMR, QAMV, QALS) → Databricks silver quality pipeline → gold `gold_qm_lab_result_signal` → `gold_qm_lab_result_signal_secured` (RLS) → `vw_consumption_quality_lab_fails` |
-| API route | `GET /api/cq/lab/fails?plant_id=…&lot_type=…` (FastAPI, `apps/api/routes/quality_lab.py`) |
+| API route | `GET /api/cq/lab/fails?plant_id=…&lot_type=…&days=…` (FastAPI, `apps/api/routes/quality_lab.py`) |
 | Mode | `BACKEND_ADAPTER_MODE=databricks-api` required. Returns HTTP 503 otherwise. |
 | Frontend adapter | `ConnectedQualityLabDatabricksAdapter` (`adapters/connected-quality-lab-databricks-adapter.ts`), `source: 'databricks-api'` |
 | Source label | `'SAP QM via governed gold'` |
 
 The V1 proxy route (`apps/api/routes/connected_quality_lab.py`) and the mock / legacy-api adapters have been permanently removed. There is no fallback mode.
 
-### Silver tables (quality gate, `lab_board_lookback_days=30`)
+### Silver tables (quality gate, `qm_lookback_years=5`)
 
 | Silver table | Source | Notes |
 |---|---|---|
 | `quality_lab_inspection_result` | QAMR | Result grain per lot/op/MIC; carries `lot_origin_code`, `lot_order_number` for gold join |
 | `quality_lab_characteristic_spec` | QAMV | Spec limits including optional `lsl_warn`/`usl_warn` (QAMV.TOLERANZUN_W/TOLERANZOB_W) |
 
-Plant gate is applied via `gated_qals_for_lab()` → inner join to QALS restricted to the quality product area and a rolling 30-day window (`sap_date("ENSTEHDAT") >= current_date() - lab_board_lookback_days`). The `# determinism-exempt: rolling lab-board window` marker suppresses the CI determinism guard on this function.
+Plant gate is applied via `_gated_qals_for_lab()` → inner join to QALS restricted to the quality product area and a rolling `qm_lookback_years` window (default 5y, same conf as the lot/UD tables in `quality.py`). The window gate predicate is:
+
+```
+(length(ENSTEHDAT) == 8  AND ENSTEHDAT >= cutoff_compact)   -- yyyyMMdd format
+OR
+(length(ENSTEHDAT) == 10 AND ENSTEHDAT >= cutoff_iso)        -- yyyy-MM-dd format
+```
+
+where `cutoff = add_months(current_date(), -12 * qm_lookback_years)`. The dual-format raw-string predicate keeps the QALS scan Delta-pushdown-eligible (see module docstring in `quality_lab.py`).
+
+The **day filter (ALL / 360d / 180d / 30d)** is NOT applied in silver. It is applied at query time in the API layer as:
+
+```sql
+ts >= CAST(date_sub(current_date(), :days) AS STRING)
+```
+
+where `ts` is `CAST(result_recording_start_date AS STRING)` (QAMR.PRUEFDATUV, ISO date). This means the board can show any result within the full 5-year silver window, filtered by the user's selected recency.
+
+The `# determinism-exempt: rolling qm_lookback_years window` marker suppresses the CI determinism guard on `_gated_qals_for_lab`.
 
 ### Gold table
 
-`gold_qm_lab_result_signal` in `connected_plant_{env}.gold_io_reporting`. One row per failed or warned result within the lookback window. Production line is left-joined via `lot_order_number → process_order.order_number` (nullable — RM lots often have no linked process order).
+`gold_qm_lab_result_signal` in `connected_plant_{env}.gold_io_reporting`. One row per failed or warned result within the silver window. Production line is left-joined via `lot_order_number → process_order.order_number` (nullable — RM lots often have no linked process order).
 
 ### Catalog / schema configuration
 
@@ -47,6 +69,18 @@ Plant gate is applied via `gated_qals_for_lab()` → inner join to QALS restrict
 | `QUALITY_LAB_CATALOG` | — | Catalog for the quality_lab domain |
 | `WH360_CATALOG` | — | Fallback catalog when `QUALITY_LAB_CATALOG` is not set |
 | `QUALITY_LAB_SCHEMA` | `gold_io_reporting` | Schema in that catalog |
+
+---
+
+## API query parameters
+
+| Param | Type | Values | Default | Notes |
+|-------|------|--------|---------|-------|
+| `plant_id` | string | any plant code | absent (all) | Restricted to plants the user has RLS access to |
+| `lot_type` | string | `'89'` (FP), `'04'` (RM) | absent (all) | |
+| `days` | int | `30`, `180`, `360` | absent (ALL) | Invalid values → HTTP 422. Filters on `ts` (result recording date). |
+
+`days`, `plant_id`, `lotType` are echoed in the response body when provided.
 
 ---
 
@@ -99,6 +133,7 @@ Warning band priority:
 | `SpecBar` | (private, same file) | CSS-only spec range visualisation |
 | `LabBoardView` | `views/lab-board-view.tsx` | Thin wrapper connecting panel to workspace scope |
 | `ConnectedQualityLabDatabricksAdapter` | `adapters/connected-quality-lab-databricks-adapter.ts` | Single governed adapter, `source: 'databricks-api'` |
+| `useLabBoardPlants` | `adapters/connected-quality-lab-queries.ts` | Fetches plant list from `/api/wm-operations/plants`; falls back to hardcoded set |
 
 **Deleted (no longer exist):**
 - `adapters/connected-quality-lab-adapter.ts` (mock)
@@ -115,8 +150,20 @@ Warning band priority:
 - `ROTATION_SECONDS = 30`
 - Interval runs only when `fails.length > CARDS_PER_PAGE`
 - Manual Prev/Next click resets countdown to 30
-- Lot type filter change resets page to 0 and countdown to 30
-- `plantId` change resets page to 0 and countdown to 30
+- Any filter change (lot type, day filter, plant picker) resets page to 0 and countdown to 30
+
+---
+
+## Day filter
+
+| Pill | `days` param | Meaning |
+|------|-------------|---------|
+| ALL | absent | No date filter — all results within the full silver window |
+| 360 Days | `360` | Results recorded in the past 360 days |
+| 180 Days | `180` | Results recorded in the past 180 days |
+| 30 Days | `30` | Results recorded in the past 30 days |
+
+Default is ALL. Applied at query time on `ts` (result recording start date, QAMR.PRUEFDATUV).
 
 ---
 
@@ -127,6 +174,14 @@ Warning band priority:
 | All | `undefined` | No filter — all failures |
 | FP (89) | `'89'` | Finished product inspection lots |
 | RM (04) | `'04'` | Raw material inspection lots |
+
+---
+
+## Plant picker
+
+A `<select>` element in the board header. Options are loaded from `/api/wm-operations/plants?limit=50` (the same endpoint used by the CommandPalette). On fetch error or empty result, falls back to the hardcoded onboarded plant set (C061/P817/P806/C351). An "All plants" option (plant param omitted) is always present.
+
+When the board is opened from a workspace with a scoped `plantId` (e.g. `scope.plantId = 'C061'` in `BatchReleaseWorkspace`), the picker initialises to that plant; the user can override locally.
 
 ---
 
@@ -141,14 +196,13 @@ Warning band priority:
 
 ## Layout cues (V1 preservation)
 
-The following UI elements are rendered inside the panel body to match V1 Lab Board visual context:
-
 | Element | Location | Content |
 |---------|----------|---------|
-| Board header | Top of panel body | `ConnectedQuality · Lab Board` (uppercase, small) |
-| Plant context | Board header (right of title) | `Plant: {plantId}` — only shown when `plantId` is set |
+| Board header | Top of panel body | `ConnectedQuality · Lab Board` (uppercase, small) + plant picker |
 | Source label | Board header (trailing) | `SAP QM via governed gold` (when `source === 'databricks-api'`) |
 | Fail / Warn legend | Below board header | Colored chips: FAIL (red) = Outside spec · WARN (amber) = Warning threshold |
+| Day filter | Below legend | Pill row: ALL / 360 Days / 180 Days / 30 Days |
+| Lot type filter | Context strip | Pill row: All / FP (89) / RM (04) |
 | Auto-rotate note | Page indicator | `Page N/M · Auto-rotates · Next in Xs` |
 
 ---
@@ -159,15 +213,13 @@ The following UI elements are rendered inside the panel body to match V1 Lab Boa
 |--------|--------------------|--------------------|
 | `databricks-api` | (governed) | `SAP QM via governed gold` |
 
-The registration `description` field reads:  
-`"SAP QM inspection failures and warnings — governed gold (QAMR/QAMV, 30-day window) — 6-card rotating wallboard with spec bar and severity indicators."`
-
 ---
 
 ## Accessing the view
 
 ```
 ?workspace=quality-batch-release&view=lab-board
+?workspace=connected-quality-lab-board
 ```
 
-Plant context (`plantId`) flows from `scope.plantId` in `BatchReleaseWorkspace`. The lot type filter is internal to the panel.
+Plant context (`plantId`) flows from `scope.plantId` in `BatchReleaseWorkspace` as the initial picker selection. All filters (day / lot type / plant) are internal to the panel.

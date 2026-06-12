@@ -15,6 +15,12 @@ Column verification — vw_consumption_quality_lab_fails:
   projections from gold_qm_lab_result_signal_secured (which reads gold_qm_lab_result_signal).
   Verified source columns from gold/quality_lab.py:
     plant_code, mat_no, mat, lot, batch, line, char, text, res, lo, hi, units, sev, ts, lot_type
+
+  The `ts` column is CAST(result_recording_start_date AS STRING) — an ISO date string
+  (QAMR.PRUEFDATUV via sap_date()). The days filter applies date_sub(current_date(), :days)
+  against the underlying ISO date string using a CAST, safe for the known ISO-only format in
+  UAT (ENSTEHDAT probe 2026-06-12: 100% ISO). The comparison ts >= cast(date_sub(...) as string)
+  is correct because ISO 'yyyy-MM-dd' sorts lexicographically.
 """
 from __future__ import annotations
 
@@ -22,6 +28,9 @@ from shared.query_service.cache_policy import CacheTier
 from shared.query_service.object_resolver import resolve_domain_object
 from shared.query_service.query_executor import DatabricksRepository
 from shared.query_service.query_spec import QuerySpec
+
+# Allowed values for the `days` UI filter (30 / 180 / 360 / absent = ALL).
+ALLOWED_DAYS = frozenset({30, 180, 360})
 
 
 def map_lab_fails_rows(rows: list[dict]) -> dict:
@@ -69,6 +78,7 @@ def map_lab_fails_rows(rows: list[dict]) -> dict:
 def get_lab_fails_spec(
     plant_id: str | None = None,
     lot_type: str | None = None,
+    days: int | None = None,
 ) -> QuerySpec:
     """Return a QuerySpec for GET /api/cq/lab/fails (governed path).
 
@@ -80,11 +90,15 @@ def get_lab_fails_spec(
     Filters:
       plant_id  — restrict to a single plant (optional; passed as SQL param)
       lot_type  — restrict by lot_type column ('89' FP / '04' RM, optional)
+      days      — rolling window on result recording date (ts); allowed: 30/180/360;
+                  absent = ALL (no date filter). Applied as ts >= CAST(date_sub(current_date(),
+                  :days) AS STRING) which is correct for ISO 'yyyy-MM-dd' strings.
     """
     view = resolve_domain_object("quality_lab", "vw_consumption_quality_lab_fails")
 
     plant_clause = "AND plant_code = :plant_id" if plant_id else ""
     lot_type_clause = "AND lot_type = :lot_type" if lot_type else ""
+    days_clause = "AND ts >= CAST(date_sub(current_date(), :days) AS STRING)" if days is not None else ""
 
     sql = f"""
     SELECT
@@ -107,6 +121,7 @@ def get_lab_fails_spec(
     WHERE plant_code IS NOT NULL
     {plant_clause}
     {lot_type_clause}
+    {days_clause}
     ORDER BY ts DESC NULLS LAST
     LIMIT :max_rows
     """
@@ -116,6 +131,8 @@ def get_lab_fails_spec(
         params["plant_id"] = plant_id
     if lot_type:
         params["lot_type"] = lot_type
+    if days is not None:
+        params["days"] = days
 
     return QuerySpec(
         name="quality_lab.get_lab_fails",
@@ -138,8 +155,9 @@ class QualityLabRepository:
         self,
         plant_id: str | None,
         lot_type: str | None,
+        days: int | None = None,
     ) -> tuple[dict, QuerySpec]:
         return await self._repository.fetch(
-            spec_factory=lambda: get_lab_fails_spec(plant_id, lot_type),
+            spec_factory=lambda: get_lab_fails_spec(plant_id, lot_type, days),
             mapper=map_lab_fails_rows,
         )

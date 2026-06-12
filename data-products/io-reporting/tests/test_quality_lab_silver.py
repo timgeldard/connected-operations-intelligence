@@ -19,6 +19,11 @@ Root-cause probe results (2026-06-12, connected_plant_uat):
 
 These tests guard the dual-format predicate so a future compact-format replication
 config (or environment migration) does not silently drop recent lots.
+
+Window change (feature/lab-board-filters): _gated_qals_for_lab now uses
+qm_lookback_years (default 5y, add_months) instead of lab_board_lookback_days (days).
+The predicate shape is identical — only the base_date calculation changes.  Tests
+below use a years-based helper that mirrors the new logic.
 """
 
 import datetime
@@ -28,14 +33,15 @@ from pyspark.sql import functions as F
 
 # ── ENSTEHDAT dual-format predicate (mirrors _gated_qals_for_lab) ────────────
 
-def _apply_enstehdat_filter(spark: SparkSession, rows, days: int):
+def _apply_enstehdat_filter_years(spark: SparkSession, rows, years: int):
     """Apply the quality_lab.py dual-format ENSTEHDAT predicate to an in-memory DataFrame.
 
-    Mirrors the logic in _gated_qals_for_lab exactly — length discriminator +
-    dual-format OR predicate.  Determinism-exempt: rolling window evaluated at call time.
+    Mirrors the logic in _gated_qals_for_lab exactly — years-based add_months cutoff +
+    length discriminator + dual-format OR predicate.
+    Determinism-exempt: rolling window evaluated at call time.
     """
     df = spark.createDataFrame(rows, "ENSTEHDAT STRING")
-    base_date = F.date_sub(F.current_date(), days)
+    base_date = F.add_months(F.current_date(), -12 * years)
     cutoff_compact = F.date_format(base_date, "yyyyMMdd")
     cutoff_iso = F.date_format(base_date, "yyyy-MM-dd")
     keep = (
@@ -47,78 +53,93 @@ def _apply_enstehdat_filter(spark: SparkSession, rows, days: int):
 
 
 class TestEnstehdatFilter:
-    """Guards the dual-format ENSTEHDAT predicate against both format variants."""
+    """Guards the dual-format ENSTEHDAT predicate against both format variants.
+
+    Uses a 1-year window (years=1) for most tests — recent dates are within 1 year and
+    dates 3+ years ago are outside it, giving the same pass/fail semantics as the
+    original 30-day tests but exercising the add_months path.
+    """
 
     def test_iso_format_recent_row_passes(self, spark: SparkSession):
-        """A lot created yesterday (ISO format) is within the 30-day window."""
-        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-        rows = [Row(ENSTEHDAT=yesterday)]
-        result = _apply_enstehdat_filter(spark, rows, days=30)
+        """A lot created one month ago (ISO format) is within the 1-year window."""
+        one_month_ago = (datetime.date.today() - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
+        rows = [Row(ENSTEHDAT=one_month_ago)]
+        result = _apply_enstehdat_filter_years(spark, rows, years=1)
         assert result.count() == 1
 
     def test_iso_format_old_row_filtered(self, spark: SparkSession):
-        """A lot created 60 days ago (ISO format) falls outside the 30-day window."""
-        old = (datetime.date.today() - datetime.timedelta(days=60)).strftime("%Y-%m-%d")
+        """A lot created 3 years ago (ISO format) falls outside the 1-year window."""
+        old = (datetime.date.today() - datetime.timedelta(days=3 * 365)).strftime("%Y-%m-%d")
         rows = [Row(ENSTEHDAT=old)]
-        result = _apply_enstehdat_filter(spark, rows, days=30)
+        result = _apply_enstehdat_filter_years(spark, rows, years=1)
         assert result.count() == 0
 
     def test_compact_format_recent_row_passes(self, spark: SparkSession):
-        """A lot created yesterday in COMPACT format (yyyyMMdd) also passes.
+        """A lot created one month ago in COMPACT format (yyyyMMdd) also passes.
 
         This covers the replication config variant (Aecorsoft delivers both formats
         depending on the environment). The dual-format predicate must accept either.
         """
-        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%Y%m%d")
-        rows = [Row(ENSTEHDAT=yesterday)]
-        result = _apply_enstehdat_filter(spark, rows, days=30)
+        one_month_ago = (datetime.date.today() - datetime.timedelta(days=30)).strftime("%Y%m%d")
+        rows = [Row(ENSTEHDAT=one_month_ago)]
+        result = _apply_enstehdat_filter_years(spark, rows, years=1)
         assert result.count() == 1
 
     def test_compact_format_old_row_filtered(self, spark: SparkSession):
-        """A lot created 60 days ago in COMPACT format is filtered out."""
-        old = (datetime.date.today() - datetime.timedelta(days=60)).strftime("%Y%m%d")
+        """A lot created 3 years ago in COMPACT format is filtered out."""
+        old = (datetime.date.today() - datetime.timedelta(days=3 * 365)).strftime("%Y%m%d")
         rows = [Row(ENSTEHDAT=old)]
-        result = _apply_enstehdat_filter(spark, rows, days=30)
+        result = _apply_enstehdat_filter_years(spark, rows, years=1)
         assert result.count() == 0
 
     def test_null_enstehdat_passes(self, spark: SparkSession):
         """NULL ENSTEHDAT rows pass — they reach the @dlt.expect_all_or_drop expectation."""
         rows = [Row(ENSTEHDAT=None)]
-        result = _apply_enstehdat_filter(spark, rows, days=30)
+        result = _apply_enstehdat_filter_years(spark, rows, years=1)
         assert result.count() == 1
 
     def test_mixed_formats_both_filtered_correctly(self, spark: SparkSession):
         """Rows in both ISO and compact format are each handled by the correct branch."""
-        yesterday = datetime.date.today() - datetime.timedelta(days=1)
-        old = datetime.date.today() - datetime.timedelta(days=60)
+        one_month_ago = datetime.date.today() - datetime.timedelta(days=30)
+        three_years_ago = datetime.date.today() - datetime.timedelta(days=3 * 365)
         rows = [
-            Row(ENSTEHDAT=yesterday.strftime("%Y-%m-%d")),   # ISO, recent   → keep
-            Row(ENSTEHDAT=old.strftime("%Y-%m-%d")),          # ISO, old      → drop
-            Row(ENSTEHDAT=yesterday.strftime("%Y%m%d")),      # compact, recent → keep
-            Row(ENSTEHDAT=old.strftime("%Y%m%d")),            # compact, old  → drop
+            Row(ENSTEHDAT=one_month_ago.strftime("%Y-%m-%d")),      # ISO, recent   → keep
+            Row(ENSTEHDAT=three_years_ago.strftime("%Y-%m-%d")),     # ISO, old      → drop
+            Row(ENSTEHDAT=one_month_ago.strftime("%Y%m%d")),         # compact, recent → keep
+            Row(ENSTEHDAT=three_years_ago.strftime("%Y%m%d")),       # compact, old  → drop
         ]
-        result = _apply_enstehdat_filter(spark, rows, days=30)
+        result = _apply_enstehdat_filter_years(spark, rows, years=1)
         assert result.count() == 2
 
     def test_compact_cutoff_does_not_match_iso_rows(self, spark: SparkSession):
-        """Critical regression: compact cutoff '20260512' must NOT filter ISO rows '2026-06-12'.
+        """Critical regression: compact cutoff must NOT filter ISO rows of the same date.
 
         The length discriminator separates the two predicates: length==8 applies the
         compact cutoff, length==10 applies the ISO cutoff.  Without the length guard a
-        naive single-cutoff implementation would use the compact literal against ISO
-        strings, and '20260512' > '2026-06-12' lexicographically, silently dropping all
-        ISO-format recent lots.
+        naive single-cutoff implementation would compare the compact literal against ISO
+        strings, and '20250612' > '2026-06-12' lexicographically (compact has no '-'),
+        silently dropping all ISO-format recent lots.
         """
-        # Simulate a row created one week ago — definitely in a 30-day window.
-        one_week_ago_iso = (datetime.date.today() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
-        rows = [Row(ENSTEHDAT=one_week_ago_iso)]
-        # 30-day window: this row should pass.
-        result = _apply_enstehdat_filter(spark, rows, days=30)
+        # Simulate a lot created six months ago — definitely within a 1-year window.
+        six_months_ago_iso = (datetime.date.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
+        rows = [Row(ENSTEHDAT=six_months_ago_iso)]
+        result = _apply_enstehdat_filter_years(spark, rows, years=1)
         assert result.count() == 1, (
-            f"ISO row '{one_week_ago_iso}' was dropped by the 30-day filter — "
+            f"ISO row '{six_months_ago_iso}' was dropped by the 1-year filter — "
             "likely the length discriminator is missing and a compact cutoff was compared "
             "against an ISO string, silently excluding all recent lots."
         )
+
+    def test_five_year_window_default(self, spark: SparkSession):
+        """Default qm_lookback_years=5: a lot from 4 years ago passes; 6 years ago is dropped."""
+        four_years_ago = (datetime.date.today() - datetime.timedelta(days=4 * 365)).strftime("%Y-%m-%d")
+        six_years_ago = (datetime.date.today() - datetime.timedelta(days=6 * 365)).strftime("%Y-%m-%d")
+        rows = [
+            Row(ENSTEHDAT=four_years_ago),
+            Row(ENSTEHDAT=six_years_ago),
+        ]
+        result = _apply_enstehdat_filter_years(spark, rows, years=5)
+        assert result.count() == 1
 
 
 # ── MANDANT-qualified QAMR join (mirrors quality_lab_inspection_result logic) ─

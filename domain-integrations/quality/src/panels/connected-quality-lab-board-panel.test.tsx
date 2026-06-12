@@ -2,7 +2,8 @@
  * Panel tests for ConnectedQualityLabBoardPanel — governed Databricks API path.
  *
  * The panel uses the ConnectedQualityLabDatabricksAdapter singleton; tests mock
- * globalThis.fetch to simulate the /api/cq/lab/fails endpoint response.
+ * globalThis.fetch to simulate the /api/cq/lab/fails and /api/wm-operations/plants
+ * endpoint responses.
  * No mock-data or legacy-api adapter remains — only the governed path exists.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -43,19 +44,42 @@ const makeFailure = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 })
 
-/** Stub fetch to return a successful /api/cq/lab/fails response with given failures. */
-function stubFetchFails(fails: ReturnType<typeof makeFailure>[]) {
+/** Minimal plant rows for the plant picker. */
+const FAKE_PLANTS = [
+  { plantId: 'C061', warehouseId: '104' },
+  { plantId: 'P817', warehouseId: '208' },
+]
+
+/**
+ * Stub fetch to return:
+ *   - /api/wm-operations/plants  → FAKE_PLANTS
+ *   - /api/cq/lab/fails          → given failures
+ * The stub matches by URL substring so order of calls does not matter.
+ */
+function stubFetch(fails: ReturnType<typeof makeFailure>[]) {
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        fails,
-        dataAvailable: true,
-      }),
+    vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/api/wm-operations/plants')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => FAKE_PLANTS,
+        })
+      }
+      // Default: lab fails endpoint
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ fails, dataAvailable: true }),
+      })
     }),
   )
+}
+
+/** Convenience: stub only lab fails (plants fetch returns FAKE_PLANTS). */
+function stubFetchFails(fails: ReturnType<typeof makeFailure>[]) {
+  stubFetch(fails)
 }
 
 afterEach(() => {
@@ -98,14 +122,6 @@ describe('ConnectedQualityLabBoardPanel', () => {
     render(<Wrapper><ConnectedQualityLabBoardPanel request={request} /></Wrapper>)
     await waitFor(() => {
       expect(screen.getByText(/ConnectedQuality · Lab Board/i)).toBeInTheDocument()
-    })
-  })
-
-  it('shows plant context in board header when plantId is provided', async () => {
-    stubFetchFails([])
-    render(<Wrapper><ConnectedQualityLabBoardPanel request={{ plantId: 'C061' }} /></Wrapper>)
-    await waitFor(() => {
-      expect(screen.getByText('Plant: C061')).toBeInTheDocument()
     })
   })
 
@@ -218,31 +234,31 @@ describe('ConnectedQualityLabBoardPanel', () => {
       makeFailure({ lotType: '89', lot: '1001', char: 'CHAR_FP' }),
       makeFailure({ lotType: '04', lot: '1002', char: 'CHAR_RM' }),
     ]
-    // Stub to return FP-only on the filtered request
+    let callCount = 0
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ fails: failures, dataAvailable: true }),
+      vi.fn().mockImplementation((url: string) => {
+        if (String(url).includes('/api/wm-operations/plants')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => FAKE_PLANTS })
+        }
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve({
+            ok: true, status: 200,
+            json: async () => ({ fails: failures, dataAvailable: true }),
+          })
+        }
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => ({ fails: failures.filter((f) => f.lotType === '89'), dataAvailable: true }),
         })
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            fails: failures.filter((f) => f.lotType === '89'),
-            dataAvailable: true,
-          }),
-        }),
+      }),
     )
     const user = userEvent.setup()
     render(<Wrapper><ConnectedQualityLabBoardPanel request={request} /></Wrapper>)
     await waitFor(() => expect(screen.getByText('FP (89)')).toBeInTheDocument())
     await user.click(screen.getByText('FP (89)'))
     await waitFor(() => {
-      // After FP filter: only 1 failure returned
       expect(screen.getByText(/1 failure/i)).toBeInTheDocument()
     })
   })
@@ -250,18 +266,206 @@ describe('ConnectedQualityLabBoardPanel', () => {
   it('renders error state when API returns non-ok status', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 503,
+      vi.fn().mockImplementation((url: string) => {
+        if (String(url).includes('/api/wm-operations/plants')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => FAKE_PLANTS })
+        }
+        return Promise.resolve({ ok: false, status: 503 })
       }),
     )
     render(<Wrapper><ConnectedQualityLabBoardPanel request={request} /></Wrapper>)
-    // Panel should eventually show error state (not crash); EvidencePanel handles display.
     await waitFor(() => {
-      // Error state: panel container still renders
       expect(
         document.querySelector('[data-testid="evidence-panel-connected-quality-lab-board"]'),
       ).not.toBeNull()
+    })
+  })
+
+  // ── Day filter pills ────────────────────────────────────────────────────────
+
+  it('renders day filter pills: ALL, 360 Days, 180 Days, 30 Days', async () => {
+    stubFetchFails([])
+    render(<Wrapper><ConnectedQualityLabBoardPanel request={request} /></Wrapper>)
+    await waitFor(() => {
+      expect(screen.getByText('ALL')).toBeInTheDocument()
+      expect(screen.getByText('360 Days')).toBeInTheDocument()
+      expect(screen.getByText('180 Days')).toBeInTheDocument()
+      expect(screen.getByText('30 Days')).toBeInTheDocument()
+    })
+  })
+
+  it('includes days param in fetch URL when day filter selected', async () => {
+    const capturedUrls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        capturedUrls.push(String(url))
+        if (String(url).includes('/api/wm-operations/plants')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => FAKE_PLANTS })
+        }
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => ({ fails: [], dataAvailable: true }),
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    render(<Wrapper><ConnectedQualityLabBoardPanel request={request} /></Wrapper>)
+    await waitFor(() => expect(screen.getByText('30 Days')).toBeInTheDocument())
+    await user.click(screen.getByText('30 Days'))
+    await waitFor(() => {
+      const labCalls = capturedUrls.filter((u) => u.includes('/api/cq/lab/fails'))
+      expect(labCalls.some((u) => u.includes('days=30'))).toBe(true)
+    })
+  })
+
+  it('does not include days param when ALL is selected (default)', async () => {
+    const capturedUrls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        capturedUrls.push(String(url))
+        if (String(url).includes('/api/wm-operations/plants')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => FAKE_PLANTS })
+        }
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => ({ fails: [], dataAvailable: true }),
+        })
+      }),
+    )
+    render(<Wrapper><ConnectedQualityLabBoardPanel request={request} /></Wrapper>)
+    await waitFor(() => {
+      const labCalls = capturedUrls.filter((u) => u.includes('/api/cq/lab/fails'))
+      expect(labCalls.length).toBeGreaterThan(0)
+      expect(labCalls.every((u) => !u.includes('days='))).toBe(true)
+    })
+  })
+
+  // ── Plant picker ────────────────────────────────────────────────────────────
+
+  it('renders plant picker select element', async () => {
+    stubFetchFails([])
+    render(<Wrapper><ConnectedQualityLabBoardPanel request={request} /></Wrapper>)
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: /plant picker/i })).toBeInTheDocument()
+    })
+  })
+
+  it('populates plant picker with plants from /api/wm-operations/plants', async () => {
+    stubFetchFails([])
+    render(<Wrapper><ConnectedQualityLabBoardPanel request={request} /></Wrapper>)
+    await waitFor(() => {
+      // C061 and P817 from FAKE_PLANTS should appear as options
+      expect(screen.getByRole('option', { name: 'C061' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'P817' })).toBeInTheDocument()
+    })
+  })
+
+  it('includes "All plants" option in picker', async () => {
+    stubFetchFails([])
+    render(<Wrapper><ConnectedQualityLabBoardPanel request={request} /></Wrapper>)
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'All plants' })).toBeInTheDocument()
+    })
+  })
+
+  it('selects a plant in the picker and includes plant_id in fetch URL', async () => {
+    const capturedUrls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        capturedUrls.push(String(url))
+        if (String(url).includes('/api/wm-operations/plants')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => FAKE_PLANTS })
+        }
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => ({ fails: [], dataAvailable: true }),
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    render(<Wrapper><ConnectedQualityLabBoardPanel request={{ plantId: undefined }} /></Wrapper>)
+    await waitFor(() => expect(screen.getByRole('option', { name: 'C061' })).toBeInTheDocument())
+    await user.selectOptions(screen.getByRole('combobox', { name: /plant picker/i }), 'C061')
+    await waitFor(() => {
+      const labCalls = capturedUrls.filter((u) => u.includes('/api/cq/lab/fails'))
+      expect(labCalls.some((u) => u.includes('plant_id=C061'))).toBe(true)
+    })
+  })
+
+  // ── Prop-change sync ────────────────────────────────────────────────────────
+
+  it('syncs selectedPlantId when request.plantId prop changes', async () => {
+    const capturedUrls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        capturedUrls.push(String(url))
+        if (String(url).includes('/api/wm-operations/plants')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => FAKE_PLANTS })
+        }
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => ({ fails: [], dataAvailable: true }),
+        })
+      }),
+    )
+    const qc = makeQueryClient()
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <ConnectedQualityLabBoardPanel request={{ plantId: 'C061' }} />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => {
+      const labCalls = capturedUrls.filter((u) => u.includes('/api/cq/lab/fails'))
+      expect(labCalls.some((u) => u.includes('plant_id=C061'))).toBe(true)
+    })
+    rerender(
+      <QueryClientProvider client={qc}>
+        <ConnectedQualityLabBoardPanel request={{ plantId: 'P817' }} />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => {
+      const labCalls = capturedUrls.filter((u) => u.includes('/api/cq/lab/fails'))
+      expect(labCalls.some((u) => u.includes('plant_id=P817'))).toBe(true)
+    })
+  })
+
+  it('syncs selectedLotType when request.lotType prop changes', async () => {
+    const capturedUrls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) => {
+        capturedUrls.push(String(url))
+        if (String(url).includes('/api/wm-operations/plants')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => FAKE_PLANTS })
+        }
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => ({ fails: [], dataAvailable: true }),
+        })
+      }),
+    )
+    const qc = makeQueryClient()
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <ConnectedQualityLabBoardPanel request={{ lotType: '89' }} />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => {
+      const labCalls = capturedUrls.filter((u) => u.includes('/api/cq/lab/fails'))
+      expect(labCalls.some((u) => u.includes('lot_type=89'))).toBe(true)
+    })
+    rerender(
+      <QueryClientProvider client={qc}>
+        <ConnectedQualityLabBoardPanel request={{ lotType: '04' }} />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => {
+      const labCalls = capturedUrls.filter((u) => u.includes('/api/cq/lab/fails'))
+      expect(labCalls.some((u) => u.includes('lot_type=04'))).toBe(true)
     })
   })
 })

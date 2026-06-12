@@ -3,7 +3,11 @@ import { EvidencePanel, useEvidencePanel } from '@connectio/evidence-panel-runti
 import type { EvidencePanelRegistration } from '@connectio/product-model'
 import type { ConnectedQualityLabFailure } from '@connectio/data-contracts'
 import { useConnectedQualityLabFailures } from '../adapters/connected-quality-lab-queries.js'
-import type { ConnectedQualityLabAdapterRequest } from '../adapters/connected-quality-lab-databricks-adapter.js'
+import type {
+  ConnectedQualityLabAdapterRequest,
+  LabBoardDays,
+} from '../adapters/connected-quality-lab-databricks-adapter.js'
+import { useLabBoardPlants } from '../adapters/connected-quality-lab-queries.js'
 
 const registration: EvidencePanelRegistration = {
   panelId: 'connected-quality-lab-board',
@@ -38,6 +42,13 @@ const SEV_COLOR: Record<string, string> = {
   fail: '#D32F2F',
   warn: '#D97706',
 }
+
+const DAY_OPTIONS: Array<{ value: LabBoardDays | undefined; label: string }> = [
+  { value: undefined, label: 'ALL' },
+  { value: 360, label: '360 Days' },
+  { value: 180, label: '180 Days' },
+  { value: 30, label: '30 Days' },
+]
 
 interface SpecBarProps {
   res: number
@@ -215,13 +226,33 @@ export interface ConnectedQualityLabBoardPanelProps {
 }
 
 export function ConnectedQualityLabBoardPanel({ request }: ConnectedQualityLabBoardPanelProps) {
+  // Plant picker — overrides scope.plantId locally; undefined = All plants.
+  const [selectedPlantId, setSelectedPlantId] = useState<string | undefined>(request.plantId)
   const [selectedLotType, setSelectedLotType] = useState<string | undefined>(request.lotType)
+  const [selectedDays, setSelectedDays] = useState<LabBoardDays | undefined>(undefined)
   const [page, setPage] = useState(0)
   const [countdown, setCountdown] = useState(ROTATION_SECONDS)
 
+  // Sync local filter state when the request props change (e.g. host navigates to new plant/lotType context).
+  useEffect(() => {
+    setSelectedPlantId(request.plantId)
+    setPage(0)
+    setCountdown(ROTATION_SECONDS)
+  }, [request.plantId])
+
+  useEffect(() => {
+    setSelectedLotType(request.lotType)
+    setPage(0)
+    setCountdown(ROTATION_SECONDS)
+  }, [request.lotType])
+
+  // Plant list from /api/wm-operations/plants (same endpoint used by CommandPalette).
+  const { plants } = useLabBoardPlants()
+
   const effectiveRequest: ConnectedQualityLabAdapterRequest = {
-    plantId: request.plantId,
+    plantId: selectedPlantId,
     lotType: selectedLotType,
+    days: selectedDays,
   }
 
   const { data: result, isLoading } = useConnectedQualityLabFailures(effectiveRequest)
@@ -250,10 +281,11 @@ export function ConnectedQualityLabBoardPanel({ request }: ConnectedQualityLabBo
 
   const totalPages = Math.max(1, Math.ceil(fails.length / CARDS_PER_PAGE))
 
+  // Reset page + countdown when any filter changes.
   useEffect(() => {
     setPage(0)
     setCountdown(ROTATION_SECONDS)
-  }, [effectiveRequest.plantId, effectiveRequest.lotType])
+  }, [selectedPlantId, selectedLotType, selectedDays])
 
   useEffect(() => {
     if (fails.length <= CARDS_PER_PAGE) return
@@ -276,11 +308,28 @@ export function ConnectedQualityLabBoardPanel({ request }: ConnectedQualityLabBo
     setCountdown(ROTATION_SECONDS)
   }
 
+  function changeFilter<T>(setter: (v: T) => void, value: T) {
+    setter(value)
+    setPage(0)
+    setCountdown(ROTATION_SECONDS)
+  }
+
   const LOT_TYPE_OPTIONS: Array<{ value: string | undefined; label: string }> = [
     { value: undefined, label: 'All' },
     { value: '89', label: 'FP (89)' },
     { value: '04', label: 'RM (04)' },
   ]
+
+  const pillStyle = (active: boolean) => ({
+    padding: '3px 10px',
+    borderRadius: 4,
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: 'pointer',
+    border: '1px solid var(--ocean, #005776)',
+    background: active ? 'var(--ocean, #005776)' : 'transparent',
+    color: active ? '#fff' : 'var(--ocean, #005776)',
+  } as const)
 
   return (
     <EvidencePanel
@@ -289,7 +338,7 @@ export function ConnectedQualityLabBoardPanel({ request }: ConnectedQualityLabBo
       errorMessage={!result?.ok ? result?.error.message : undefined}
       source={result?.source}
     >
-      {/* board header */}
+      {/* board header — title + plant picker + source label */}
       <div
         style={{
           display: 'flex',
@@ -310,11 +359,28 @@ export function ConnectedQualityLabBoardPanel({ request }: ConnectedQualityLabBo
         >
           ConnectedQuality · Lab Board
         </span>
-        {request.plantId && (
-          <span style={{ fontSize: 10, color: 'var(--shell-fg-2)' }}>
-            Plant: {request.plantId}
-          </span>
-        )}
+        {/* plant picker */}
+        <select
+          aria-label="Plant picker"
+          value={selectedPlantId ?? ''}
+          onChange={(e) => changeFilter(setSelectedPlantId, e.target.value || undefined)}
+          style={{
+            fontSize: 11,
+            padding: '2px 6px',
+            borderRadius: 4,
+            border: '1px solid var(--shell-border, #ccc)',
+            background: 'transparent',
+            color: 'var(--shell-fg)',
+            cursor: 'pointer',
+          }}
+        >
+          <option value="">All plants</option>
+          {plants.map((p) => (
+            <option key={p.plantId} value={p.plantId}>
+              {p.plantId}
+            </option>
+          ))}
+        </select>
         {sourceLabel && (
           <span style={{ fontSize: 10, color: 'var(--shell-fg-3)', marginLeft: 'auto' }}>
             {sourceLabel}
@@ -327,7 +393,7 @@ export function ConnectedQualityLabBoardPanel({ request }: ConnectedQualityLabBo
           display: 'flex',
           gap: 6,
           alignItems: 'center',
-          marginBottom: 10,
+          marginBottom: 8,
           flexWrap: 'wrap',
         }}
       >
@@ -359,7 +425,28 @@ export function ConnectedQualityLabBoardPanel({ request }: ConnectedQualityLabBo
         </span>
         <span style={{ fontSize: 10, color: 'var(--shell-fg-3)' }}>Warning threshold</span>
       </div>
-      {/* context strip */}
+      {/* day filter pill row */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 6,
+          alignItems: 'center',
+          marginBottom: 6,
+          flexWrap: 'wrap',
+        }}
+      >
+        {DAY_OPTIONS.map((opt) => (
+          <button
+            key={opt.label}
+            aria-label={`Day filter: ${opt.label}`}
+            onClick={() => changeFilter(setSelectedDays, opt.value)}
+            style={pillStyle(selectedDays === opt.value)}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      {/* lot type + count + pagination strip */}
       <div
         style={{
           display: 'flex',
@@ -369,31 +456,15 @@ export function ConnectedQualityLabBoardPanel({ request }: ConnectedQualityLabBo
           flexWrap: 'wrap',
         }}
       >
-        {LOT_TYPE_OPTIONS.map((opt) => {
-          const active = selectedLotType === opt.value
-          return (
-            <button
-              key={opt.label}
-              onClick={() => {
-                setSelectedLotType(opt.value)
-                setPage(0)
-                setCountdown(ROTATION_SECONDS)
-              }}
-              style={{
-                padding: '3px 10px',
-                borderRadius: 4,
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: 'pointer',
-                border: '1px solid var(--ocean, #005776)',
-                background: active ? 'var(--ocean, #005776)' : 'transparent',
-                color: active ? '#fff' : 'var(--ocean, #005776)',
-              }}
-            >
-              {opt.label}
-            </button>
-          )
-        })}
+        {LOT_TYPE_OPTIONS.map((opt) => (
+          <button
+            key={opt.label}
+            onClick={() => changeFilter(setSelectedLotType, opt.value)}
+            style={pillStyle(selectedLotType === opt.value)}
+          >
+            {opt.label}
+          </button>
+        ))}
         <span
           style={{
             fontSize: 11,
