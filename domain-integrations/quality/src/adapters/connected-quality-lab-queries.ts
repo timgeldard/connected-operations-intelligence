@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type {
   ConnectedQualityLabFailuresResponse,
+  ConnectedQualityLabPlantsResponse,
 } from '@connectio/data-contracts'
 import type { AdapterResult } from '@connectio/source-adapters'
 import {
@@ -10,6 +11,7 @@ import {
 import type { ConnectedQualityLabAdapterRequest } from './connected-quality-lab-databricks-adapter.js'
 
 const LAB_FAILURES_STALE_TIME_MS = 60 * 1000
+const LAB_PLANTS_STALE_TIME_MS = 10 * 60 * 1000
 
 export function useConnectedQualityLabFailures(request: ConnectedQualityLabAdapterRequest) {
   return useQuery<AdapterResult<ConnectedQualityLabFailuresResponse>>({
@@ -27,5 +29,19 @@ export function useConnectedQualityLabFailures(request: ConnectedQualityLabAdapt
       }
     },
     staleTime: LAB_FAILURES_STALE_TIME_MS,
+  })
+}
+
+export function useConnectedQualityLabPlants() {
+  return useQuery<AdapterResult<ConnectedQualityLabPlantsResponse>>({
+    queryKey: ['connected-quality-lab', 'plants'] as const,
+    queryFn: async () => {
+      try {
+        return await connectedQualityLabAdapterInstance.getLabPlants()
+      } catch (e) {
+        return toConnectedQualityLabAdapterError<ConnectedQualityLabPlantsResponse>(e)
+      }
+    },
+    staleTime: LAB_PLANTS_STALE_TIME_MS,
   })
 }

@@ -14,6 +14,7 @@
 import type {
   ConnectedQualityLabFailure,
   ConnectedQualityLabFailuresResponse,
+  ConnectedQualityLabPlantsResponse,
 } from '@connectio/data-contracts'
 import type { AdapterResult } from '@connectio/source-adapters'
 import type { ConnectedQualityLabAdapterRequest } from './connected-quality-lab-adapter.js'
@@ -74,6 +75,51 @@ export class ConnectedQualityLabDatabricksAdapter {
           plantId: raw.plantId ?? raw.plant_id ?? request.plantId,
           lotType: raw.lotType ?? raw.lot_type ?? request.lotType,
         },
+        fetchedAt: new Date().toISOString(),
+        source: 'databricks-api',
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      return {
+        ok: false,
+        error: { code: 'unknown', message, retryable: true },
+        displayState: 'error',
+        source: 'databricks-api',
+      }
+    }
+  }
+
+  async getLabPlants(): Promise<AdapterResult<ConnectedQualityLabPlantsResponse>> {
+    const url = `${this.baseUrl}/api/cq/lab/plants`
+
+    try {
+      const response = await fetch(url, { credentials: 'include' })
+
+      if (!response.ok) {
+        const code =
+          response.status === 401
+            ? ('unauthorized' as const)
+            : response.status === 404
+              ? ('not-found' as const)
+              : ('network' as const)
+        return {
+          ok: false,
+          error: {
+            code,
+            message: `Quality Lab plants API returned ${response.status}`,
+            retryable: response.status >= 500,
+          },
+          displayState: code === 'unauthorized' ? 'unauthorized' : 'error',
+          source: 'databricks-api',
+        }
+      }
+
+      const raw = await response.json()
+      const plants = raw.plants ?? []
+
+      return {
+        ok: true,
+        data: { plants },
         fetchedAt: new Date().toISOString(),
         source: 'databricks-api',
       }
