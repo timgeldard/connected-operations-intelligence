@@ -58,16 +58,30 @@ Estate-wide lifecycle dimension (ADR 016 — trace T2 prerequisite):
   ~550-plant review CSV) serve a DIFFERENT concern from the product-area onboarding flags above.
   The onboarding flags (is_active, wm_enabled_flag, etc.) govern whether a plant is IN SCOPE for
   io-reporting pipelines. The lifecycle dimension governs whether a plant is anchorable / visible /
-  excluded for ESTATE-level products such as the trace product (ADR 016: ACTIVE=anchorable+visible,
+  excluded for ESTATE-LEVEL products such as the trace product (ADR 016: ACTIVE=anchorable+visible,
   CLOSED=visible-not-anchorable, SOLD/DIVESTED_ON_SAP=excluded). These two axes are deliberately
   separate: a plant can be lifecycle=ACTIVE (visible in trace) without being onboarded to io-reporting,
-  and vice versa. The `_plant_gate.py` gate semantics do NOT change; site_lifecycle is read directly
-  by the trace product, not via this gate.
+  and vice versa.
+
+Trace-relevant estate gate (ADR 016 §4 — QM lot/UD tables, 2026-06-12):
+  The quality inspection lot (QALS) and usage decision (QAVE) silver tables are required by
+  Final Trace (batch passport / journey QM context) across the FULL trace-relevant estate —
+  not just the WM-onboarded pilot set. The "trace_lot" product_area resolves to:
+    plant ∈ (qm_enabled_flag onboarded set) ∪ (site_lifecycle: NOT IN SOLD/DIVESTED_ON_SAP).
+  i.e. a plant qualifies if it is either QM-onboarded OR has a non-excluded lifecycle status.
+  Fallback (site_lifecycle absent): degrades to the qm_enabled_flag set only (current 4-plant
+  behaviour — never wider in the absence of the lifecycle table).
+  The site_lifecycle table is read via the `site_lifecycle_table` Spark conf (same conf as the
+  slow pipeline); the quality pipeline must also have this conf set (resources/silver_quality_pipeline.pipeline.yml).
+  CLOSED plants are included because they appear in traces so their QM context is needed.
+  SOLD/DIVESTED_ON_SAP are excluded (consistent with the edge MV's lifecycle gate, ADR 016 §2).
+  Result-grain tables (quality_inspection_characteristic / _result / _sample_result / _individual_result)
+  deliberately NOT widened — they remain on the spc gate (wall-board scope).
 """
 from pyspark.sql import DataFrame, Window
 from pyspark.sql import functions as F
 
-from silver.helpers import get_spark
+from silver.helpers import get_spark, relation_exists
 
 # go_live_status values that exclude a plant even when is_active (defensive; extend via the contract).
 _BLOCKED_GO_LIVE_STATUSES = ["BLOCKED", "DECOMMISSIONED", "SUSPENDED"]
@@ -87,7 +101,15 @@ _PRODUCT_AREA_FLAG = {
     # spc is a second tier above quality: a site may have QM reporting (quality) without SPC.
     # Requires BOTH qm_enabled_flag AND spc_enabled_flag. See two-tier QM rule in module docstring.
     "spc": ("qm_enabled_flag", "spc_enabled_flag"),
+    # trace_lot: lot/UD grain gated to the trace-relevant estate (ADR 016 §4).
+    # Handled specially in active_plants_df() — not a simple flag lookup.
+    # Plant qualifies if qm_enabled_flag (onboarded set) OR lifecycle NOT IN (SOLD, DIVESTED_ON_SAP).
+    "trace_lot": "_TRACE_LOT_SPECIAL",
 }
+
+# Lifecycle statuses excluded from the trace-relevant estate (ADR 016 §2).
+# Consistent with gold/trace_gold.py _EXCLUDED_LIFECYCLE and _apply_lifecycle_gate.
+_TRACE_EXCLUDED_LIFECYCLE = ("SOLD", "DIVESTED_ON_SAP")
 
 
 def _require_conf(spark, key: str) -> str:
@@ -98,6 +120,50 @@ def _require_conf(spark, key: str) -> str:
             f"(see resources/*.pipeline.yml and source-contracts/site_stage_gate_contract.md)."
         )
     return value
+
+
+def _trace_relevant_plants_df(spark) -> DataFrame:
+    """Lifecycle-derived trace-relevant plant set for the lot/UD gate (ADR 016 §4).
+
+    Returns plant_code for plants whose effective_lifecycle is NOT IN (SOLD, DIVESTED_ON_SAP),
+    i.e. ACTIVE + CLOSED + any unconfirmed/review plants. CLOSED plants appear in traces so
+    their QM context is needed. SOLD/DIVESTED_ON_SAP are excluded (consistent with the edge
+    MV's lifecycle gate, gold/trace_gold.py _apply_lifecycle_gate).
+
+    Source: silver.site_lifecycle, read via the `site_lifecycle_table` Spark conf.
+
+    Fallback (site_lifecycle conf absent OR table does not exist):
+      Returns an EMPTY DataFrame — callers union this with the qm_enabled set.
+      An empty lifecycle set degrades the trace_lot gate to the qm_enabled set only
+      (the current 4-plant behaviour), never wider. This matches the reference.py
+      site_lifecycle() fallback pattern (config-table-with-fallback).
+
+    NOTE: the empty-fallback is correct here because active_plants_df("trace_lot") unions
+    this result with active_plants_df("quality"). When the lifecycle table is absent, the
+    union is just the qm_enabled set — no data loss, no fail-loud (the lifecycle table is
+    NOT a pipeline prerequisite; the quality pipeline can run without it and widens
+    automatically once the table is populated).
+    """
+    empty = spark.createDataFrame([], "plant_code STRING")
+    lifecycle_conf = spark.conf.get("site_lifecycle_table", None)
+    if not lifecycle_conf:
+        return empty
+    try:
+        table_present = relation_exists(lifecycle_conf)
+    except Exception:  # noqa: BLE001 — missing catalog/schema expected pre-bootstrap
+        table_present = False
+    if not table_present:
+        return empty
+    lc = spark.read.table(lifecycle_conf)
+    return (
+        lc
+        .filter(
+            ~F.col("effective_lifecycle").isin(*_TRACE_EXCLUDED_LIFECYCLE)
+            | F.col("effective_lifecycle").isNull()
+        )
+        .select(F.col("plant_code"))
+        .distinct()
+    )
 
 
 def active_plants_df(spark=None, product_area=None) -> DataFrame:
@@ -111,12 +177,25 @@ def active_plants_df(spark=None, product_area=None) -> DataFrame:
     absent from the table the Spark column reference will raise — this is intentional fail-loud
     behaviour for the case where site_config_plant was built against a stale schema that lacks the
     column (see DEPLOY ORDER note in the module docstring).
+
+    Special case — "trace_lot" (ADR 016 §4):
+      Returns the UNION of (qm_enabled onboarded set) ∪ (trace-relevant estate from site_lifecycle).
+      Trace-relevant = plants whose effective_lifecycle is NOT IN (SOLD, DIVESTED_ON_SAP).
+      Fallback: when site_lifecycle is absent, the union reduces to the qm_enabled set only.
+      This is the only product_area that reads from two sources; all others read site_config_plant only.
     """
     spark = spark or get_spark()
     if product_area not in _PRODUCT_AREA_FLAG:
         raise ValueError(
             f"Unknown product_area '{product_area}'. Allowed: {sorted(k for k in _PRODUCT_AREA_FLAG if k)}"
         )
+
+    # trace_lot is resolved via a union of the quality (qm_enabled) set and the lifecycle-derived set.
+    if product_area == "trace_lot":
+        qm_set = active_plants_df(spark, "quality")
+        lc_set = _trace_relevant_plants_df(spark)
+        return qm_set.unionByName(lc_set).distinct()
+
     cfg = _require_conf(spark, "site_config_plant_table")
     df = spark.read.table(cfg)
     df = df.filter(

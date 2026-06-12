@@ -91,11 +91,13 @@ silver_outputs:
     gating_category: DIRECT_PLANT   # plant is WERK on inspection_qals (NOT WERKS)
     gate_field: plant_code
     gate_join_path: "inspection_qals.WERK (direct)"
-    gate_config_table: site_config_plant
-    product_area: quality
+    gate_config_table: site_config_plant + site_lifecycle
+    product_area: trace_lot   # ADR 016 §4 (2026-06-12): widened from "quality" to trace-relevant estate
     current_status: ENFORCED
     owner_action_required: none   # corrected model per docs/quality_qm_functional_model.md; snapshot MV,
-                                  # apply_plant_gate(quality) + configurable qm_lookback_years time gate (default 5y)
+                                  # apply_plant_gate(trace_lot) + configurable qm_lookback_years time gate (default 5y).
+                                  # trace_lot = qm_enabled ∪ lifecycle NOT IN (SOLD/DIVESTED_ON_SAP).
+                                  # Fallback when site_lifecycle absent: qm_enabled set only (4-plant behaviour).
 
   - table_name: quality_inspection_usage_decision
     file: silver/tables/quality.py
@@ -103,11 +105,13 @@ silver_outputs:
     gating_category: DIRECT_PLANT   # gated VIA PARENT LOT: QAVE.VWERKS is the central QM plant ('R001'), NOT the lot's plant
     gate_field: plant_code
     gate_join_path: "inspection_qave.PRUEFLOS -> gated inspection_qals.WERK (gate-via-parent)"
-    gate_config_table: site_config_plant
-    product_area: quality
+    gate_config_table: site_config_plant + site_lifecycle
+    product_area: trace_lot   # ADR 016 §4 (2026-06-12): widened from "quality" to trace-relevant estate
     current_status: ENFORCED
     owner_action_required: none   # inherits plant + time gate from the gated QALS parent join; final
-                                  # apply_plant_gate(quality) kept on the derived plant_code (authoritative)
+                                  # apply_plant_gate(trace_lot) kept on the derived plant_code (authoritative).
+                                  # trace_lot = qm_enabled ∪ lifecycle NOT IN (SOLD/DIVESTED_ON_SAP).
+                                  # Fallback when site_lifecycle absent: qm_enabled set only (4-plant behaviour).
 
   # ── ENFORCED (QM result family — SPC Phase 1, two-tier spc gate, 2026-06-11) ──
   - table_name: quality_inspection_characteristic

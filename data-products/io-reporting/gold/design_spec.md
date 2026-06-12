@@ -190,6 +190,82 @@ Managed via Declarative Automation Bundle (DAB).
   separate follow-up task.
 - **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
 
+### T4 — governed trace2 fan-out foundations (Phase 1)
+
+> These MVs form the governed base layer for migrating the trace2 API fan-out routes
+> off the legacy ungated gold views (`gold_batch_stock_v`, `gold_batch_mass_balance_v`,
+> `gold_batch_delivery_v`). Phase 2 will wire the trace2 adapter layer to these MVs.
+
+#### `gold_batch_stock_summary`  *(T4 — standard plant RLS)*
+- **Granularity:** 1 row per (plant_code, material_code, batch_number) — aggregated across storage locations.
+- **Description:** Batch-grain stock position from `silver.batch_stock` (MCHB-derived current-state
+  snapshot). Exposes the six SAP stock-category quantities: `unrestricted_quantity`,
+  `quality_inspection_quantity`, `blocked_quantity`, `restricted_use_quantity`,
+  `in_transfer_quantity`, `blocked_returns_quantity`, plus `total_quantity` (sum of all six) and
+  `base_unit_of_measure` (from MARA via the silver join).
+- **Note:** Quantities are summed across all storage locations for a given plant/material/batch.
+  Phase 2 consumers requiring storage-location granularity should read `silver.batch_stock` directly.
+- **Phase 2 use cases:** recall-readiness stock-position check, mass-balance current-balance.
+- **Legacy contract target:** `gold_batch_stock_v` — plant_code, material_code, batch_number, plus
+  stock-category quantities (unrestricted, quality-inspection, blocked) + UOM. This MV extends that
+  with restricted_use, in_transfer, and blocked_returns categories and adds a `total_quantity`.
+- **Security:** Added to `generate_gold_security_sql.py` `GOLD_TABLES` — served via
+  `gold_batch_stock_summary_secured` with the standard `plant_code` CSM predicate
+  (`application_key = 'io_reporting'`).
+- **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
+
+#### `gold_batch_event_ledger`  *(T4 — capability tier)*
+- **Granularity:** 1 row per (batch × plant × direction) per edge — two rows for two-sided edges
+  (PRODUCTION / TRANSFER), one row for one-sided edges (VENDOR_RECEIPT IN; DELIVERY OUT).
+- **Description:** Directional per-batch event ledger exploded from `gold_batch_lineage` edges.
+  Each directed edge is split into per-batch rows so a single batch's full movement history is
+  queryable without graph traversal. Direction semantics: PRODUCTION parent→OUT, child→IN;
+  TRANSFER legs parent→OUT, child→IN; VENDOR_RECEIPT→IN only; DELIVERY→OUT only;
+  ADJUSTMENT_IN→IN only; ADJUSTMENT_OUT→OUT only.
+  `COUNTERPART_MATERIAL_ID / COUNTERPART_BATCH_ID / COUNTERPART_PLANT_ID` carry the opposite
+  endpoint identity. Reference columns: `SUPPLIER_ID`, `CUSTOMER_ID`, `DELIVERY_ID`,
+  `PURCHASE_ORDER_ID`, `PROCESS_ORDER_ID`, `SALES_ORDER_ID`, `MATERIAL_DOCUMENT_NUMBER`.
+- **Source:** `dlt.read("gold_batch_lineage")` — intra-pipeline DLT dependency.
+- **Phase 2 use cases:** mass-balance timeline (`gold_batch_mass_balance_v` replacement),
+  supplier-batch panel, recall-readiness delivery counts.
+- **Legacy contract targets:**
+  - `gold_batch_mass_balance_v`: MATERIAL_ID, BATCH_ID, PLANT_ID, MOVEMENT_TYPE, QUANTITY, UOM,
+    PROCESS_ORDER_ID, POSTING_DATE, ABS_QUANTITY, BALANCE_QTY, MOVEMENT_CATEGORY.
+  - `gold_batch_delivery_v`: MATERIAL_ID, BATCH_ID, PLANT_ID, CUSTOMER_ID, CUSTOMER_NAME, STREET,
+    CITY, POSTCODE, COUNTRY_ID, COUNTRY_NAME, DELIVERY, SALES_ORDER_ID, QUANTITY, ABS_QUANTITY,
+    UOM, POSTING_DATE, MOVEMENT_TYPE.
+  - `gold_supplier`: SUPPLIER_ID, SUPPLIER_NAME, COUNTRY_ID, COUNTRY_NAME (partially — see
+    gold_trace_vendor below; customer name / address join deferred to Phase 2).
+  The event ledger provides MATERIAL_ID, BATCH_ID, PLANT_ID, LINK_TYPE (replaces MOVEMENT_CATEGORY),
+  QUANTITY, BASE_UNIT_OF_MEASURE, POSTING_DATE, PROCESS_ORDER_ID, DELIVERY_ID, SALES_ORDER_ID,
+  CUSTOMER_ID, SUPPLIER_ID, PURCHASE_ORDER_ID, MATERIAL_DOCUMENT_NUMBER plus COUNTERPART columns.
+  ABS_QUANTITY, BALANCE_QTY, and MOVEMENT_TYPE are not on this MV — Phase 2 derives them from
+  QUANTITY and LINK_TYPE in the serving layer.
+- **Security:** Capability tier — NOT in `GOLD_TABLES`; `GRANT SELECT` to `traceability-readers`
+  in `resources/sql/trace_security_{env}.sql` (tolerated failure if group absent).
+- **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
+
+#### `gold_trace_vendor`  *(T4 — capability tier)*
+- **Granularity:** 1 row per `vendor_code` (deduped).
+- **Description:** Vendor lookup for the trace2 supplier-batch panel. Maps `vendor_code` (which
+  equals `SUPPLIER_ID` in `gold_batch_lineage` / `gold_batch_event_ledger`) to `vendor_name` and
+  `country_key`. Source: `silver.vendor` (LFA1 via `published_<env>.central_services.vendormaster_lfa1`).
+  This replaces the legacy `gold_supplier` (SUPPLIER_ID, SUPPLIER_NAME, COUNTRY_ID, COUNTRY_NAME)
+  used by `supplier_adapter.py`; Phase 2 join is `SUPPLIER_ID = vendor_code`.
+- **Vendor-master decision:** `silver.vendor` (LFA1) IS available in the pipeline — confirmed by
+  `data-products/io-reporting/silver/tables/reference.py` section 11 and `docs/ingestion_requests.md`
+  item 2 (`vendormaster_lfa1` listed as verified present in UAT central_services). A dedicated
+  gold lookup is built here rather than exposing `silver.vendor` directly (which would bypass the
+  capability-tier boundary).
+- **Legacy contract target:** `gold_supplier` — SUPPLIER_ID, SUPPLIER_NAME, COUNTRY_ID, COUNTRY_NAME.
+  This MV exposes `vendor_code`, `vendor_name`, `country_key` (country_key = LAND1, equivalent to
+  COUNTRY_ID; COUNTRY_NAME text is in `silver.vendor.city`/`region_code` — the resolved display
+  name is deferred to Phase 2 if needed, matching the current `gold_supplier` pattern which also
+  does not carry a country name string natively).
+- **Security:** Capability tier — NOT in `GOLD_TABLES`; `GRANT SELECT` to `traceability-readers`
+  in `resources/sql/trace_security_{env}.sql` (tolerated failure if group absent).
+- **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
+
 ---
 
 ### Access-tier foundation
@@ -258,3 +334,62 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 - **Gold / snapshot security (ADR 012).** Gold MVs stay trusted (row filters off to avoid MV full-refresh, per ADR-005); plant access on the MVs is served through **`<table>_secured` views** that apply `plant_access_filter(plant_code)` (`scripts/generate_gold_security_sql.py` → `resources/sql/gold_security_<env>.sql`) — the `users` group is granted the views, not the base tables. **Snapshot tables are physical Delta tables and carry a real plant row filter applied in-job** by `gold/snapshots/warehouse_snapshot.py`, which drops the filter during its own maintenance DELETEs and re-applies it (so the run-as principal needs MODIFY + EXECUTE on the function, not `silver_admin`).
 - **CDF on batch dimensions.** `plant`, `customer`, `vendor`, `storage_type`, `stock_at_location`, `material_valuation`, `handling_unit` enable Change Data Feed for consistency with the existing reference dims and potential downstream consumers, despite having no streaming consumer in this layer today.
 - **SSCC fidelity.** Handling units (VEKP/VEPO) approximate SSCC; the WMA-E-50 execution tables (`ZWM_SSCC_CREATE`, `ZTR_SPLIT`, `ZSCMWM_RFCTR`, `COCH`) are not replicated (see ADR 007).
+
+---
+
+## Contract metadata publication
+
+### Intent
+
+The data contracts in `contracts/app_contract_manifest.yml` are consumer-agnostic: they describe the
+`vw_consumption_*` views as stable interfaces regardless of whether the consumer is the Warehouse360
+app, Power BI, Databricks Genie, a Databricks AI/BI dashboard, or an AI agent querying the catalog.
+
+To make this machine-readable at the point of consumption — without requiring consumers to read the YAML
+file — contract metadata is published directly onto the Unity Catalog objects:
+
+- **View-level `COMMENT ON VIEW`**: a human-readable description composed from the contract description
+  (first paragraph), grain, contract id + version, freshness SLA, and row-level access key. This is the
+  text Genie and the UC data explorer show when a user asks what a view is.
+- **`ALTER VIEW ... SET TAGS`**: machine-readable key/value tags (`contract_id`, `contract_version`,
+  `contract_grain`, `freshness_expected_minutes`) queryable via `INFORMATION_SCHEMA.VIEW_TAGS` and
+  Unity Catalog REST APIs. Useful for automated freshness alerting and lineage tooling.
+- **`COMMENT ON COLUMN`**: per-column descriptions visible in Genie, the data explorer, and LLM tool
+  schemas. Only emitted for fields that carry a `description` in the manifest.
+
+### UC syntax used
+
+| Statement | Support on views | Notes |
+|---|---|---|
+| `COMMENT ON VIEW ... IS '...'` | Supported | Idempotent (overwrites) |
+| `ALTER VIEW ... SET TAGS (...)` | Supported | Requires `APPLY TAG` privilege |
+| `COMMENT ON COLUMN view.col IS '...'` | Supported | Requires view ownership; use this — NOT `ALTER VIEW ... ALTER COLUMN ... COMMENT` which is unsupported on views |
+
+`ALTER VIEW ... ALTER COLUMN ... COMMENT` is **not supported** on views in Unity Catalog; the generator
+therefore uses `COMMENT ON COLUMN` exclusively for column-level annotations.
+
+### Generator
+
+`scripts/generate_contract_metadata_sql.py` reads `contracts/app_contract_manifest.yml` and emits
+per-environment SQL to `resources/sql/contract_metadata_{dev,uat,prod}.sql`.
+
+The generator cross-checks each contract's `source_view` against the views actually defined in the
+`*consumption_views_<env>.sql` files, skipping contracts whose view is not yet created (and reporting
+the skipped contracts in the output).
+
+```bash
+# Regenerate all three environments
+python scripts/generate_contract_metadata_sql.py
+
+# Single environment
+python scripts/generate_contract_metadata_sql.py --env uat
+```
+
+### Application cadence
+
+The generated SQL is re-runnable admin SQL. Run it once as a UC admin after the consumption views are
+deployed or whenever the manifest changes (new fields, revised descriptions, version bumps). It does not
+need to be part of the pipeline — it is a separate one-off admin step, kept in source control so the
+annotations stay in sync with the manifest.
+
+Re-running is safe: `COMMENT ON` and `SET TAGS` are both idempotent (they overwrite existing values).

@@ -1,4 +1,4 @@
-.PHONY: install test lint typecheck contracts
+.PHONY: install test lint typecheck contracts prep-app-deploy
 
 install:
 	pnpm install
@@ -19,3 +19,13 @@ typecheck:
 contracts:
 	.venv/bin/python scripts/contracts/validate_contracts.py
 	.venv/bin/python scripts/contracts/generate_contracts.py
+
+# Prepare the deploy artefact: copy the single source-of-truth contract manifest
+# from the data-products layer into apps/api/contracts/ so that `databricks bundle
+# deploy` can upload it.  This file is gitignored (it is NOT the source of truth);
+# the root databricks.yml carries an explicit `sync.include` that overrides the
+# .gitignore so the copied file is synced to the workspace.
+# Run this step BEFORE `databricks bundle deploy`.
+prep-app-deploy:
+	cp data-products/io-reporting/contracts/app_contract_manifest.yml apps/api/contracts/app_contract_manifest.yml
+	@echo "Manifest copied to apps/api/contracts/ — ready for bundle deploy."

@@ -8,6 +8,13 @@
 -- (application_key = 'io_reporting'). access_type 'full view' = all plants; 'filter' = filter_plant
 -- array. Dev secured views are pass-through (no security model available in dev).
 -- Consumers ('users' group) are granted SELECT on the *_secured views only.
+--
+-- SECURITY MODE: validation-open (UAT/DEV ONLY). The *_secured views below are
+-- PASS-THROUGHS (no security predicate) so UAT data-shape validation can run when
+-- published_<env>.security.model is unavailable. This preserves the secured-view boundary
+-- and view names, but does NOT prove RLS / plant filtering / entitlement. MUST NOT be used
+-- in prod or to claim cutover readiness. Run gold_security_harden_<env>.sql after it so the
+-- base Gold tables remain revoked from `users`.
 
 -- NOTE: enable_hu_reconciliation=false — HU-dependent secured views (gold_handling_unit_summary, gold_hu_reconciliation) are intentionally omitted.
 

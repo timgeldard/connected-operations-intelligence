@@ -16,6 +16,19 @@
 bundle:
   name: connectio-v2
 
+# Override gitignore for the contract manifest artefact so `databricks bundle
+# deploy` uploads it to the workspace even though the file is gitignored.
+# Schema verified: sync.include is a []string (Databricks CLI bundle schema,
+# github.com/databricks/cli/bundle/config.Sync) — gitignored paths listed here
+# are force-included in the sync.  The deployed app sets
+# APP_MANIFEST_PATH=/app/python/source_code/contracts/app_contract_manifest.yml
+# (apps/api/app.yaml); without this include the file would not be uploaded and
+# every contract route would 500.  Run `make prep-app-deploy` BEFORE `databricks
+# bundle deploy` to create the artefact from the data-products source manifest.
+sync:
+  include:
+    - apps/api/contracts/app_contract_manifest.yml
+
 variables:
   databricks_host:
     description: Databricks workspace host URL (including https://)
