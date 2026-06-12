@@ -117,7 +117,7 @@ Current checks by table:
 | `warehouse_transfer_requirement` | 1 row / transfer requirement item | LTBK + LTBP | Supervisor |
 | `storage_bin` | 1 row / bin occupancy slot; multiple quants in the same bin produce multiple rows | LAGP + LQUA (+ T320 from central_services for plant mapping) | Supervisor, Operative |
 | `downtime_event` | 1 row / downtime event | ZPEXPM_DWNT | Plant Manager, Supervisor |
-| `quality_inspection_lot` | 1 row / inspection lot | QALS (pure; usage decision is a separate QAVE child — see `docs/quality_qm_functional_model.md`) | Plant Manager, Supervisor |
+| `quality_inspection_lot` | 1 row / inspection lot | QALS (pure; usage decision is a separate QAVE child — see `docs/quality_qm_functional_model.md`). Gate: trace_lot = qm_enabled ∪ lifecycle NOT IN (SOLD/DIVESTED_ON_SAP) — ADR 016 §4. Estate-wide lot grain required by Final Trace (batch passport / journey QM context). Fallback: qm_enabled set only when site_lifecycle absent. | Plant Manager, Supervisor, Final Trace |
 | `material` | 1 row / material × plant | MARA + MARC + MAKT | All |
 | `storage_location` | 1 row / storage location | T001L | All |
 | `work_centre` | 1 row / work centre × plant | CRHD + CRTX | All |

@@ -17,6 +17,18 @@ satisfied in this module:
     `qm_lookback_years` pipeline conf, default 5. Plant + time gate together cut the lot scan to
     ~505k rows (~3%) for the pilot plants.
 
+GATE WIDENING — TRACE ESTATE (ADR 016 §4, 2026-06-12 — Tim Geldard):
+  quality_inspection_lot and quality_inspection_usage_decision are required by Final Trace
+  (batch passport / journey QM context) across the FULL trace-relevant estate — not just the
+  WM-onboarded 4-plant pilot set. As of 2026-06-12, both tables use the "trace_lot" gate:
+    plant ∈ (qm_enabled_flag onboarded set) ∪ (site_lifecycle: NOT IN SOLD/DIVESTED_ON_SAP)
+  Fallback when site_lifecycle table is absent: reduces to qm_enabled set only (current
+  behaviour — never wider). The qm_lookback_years time gate is UNCHANGED.
+  Result-grain tables (QAMV/QAMR/QASR/QASE, §8) deliberately NOT widened — they remain on the
+  spc gate (wall-board scope is the 4-plant SPC pilot set, not estate-wide).
+  NOTE on QAVE.VWERKS: the gate-via-parent pattern (VWERKS = 'R001' central plant, not the
+  lot's plant) is UNCHANGED — UD plant always derives from the parent QALS join.
+
 RUN-ELIGIBILITY (result family — §8): the hold on the result-grain family (QAMV/QAMR/QASR/QASE)
 is LIFTED as of 2026-06-11 (SPC Phase 1, WP1.2 — Tim Geldard). The hold was pending the
 two-tier spc gate landing (PR #79). Preconditions now satisfied:
@@ -111,18 +123,20 @@ def _qm_lookback_years(spark) -> int:
     return years
 
 
-def _gated_qals(spark, product_area="quality"):
+def _gated_qals(spark, product_area="trace_lot"):
     """The plant- and time-gated QALS base that all quality flows build on.
 
     Pre-gate pushdown (validated pattern): the time filter + plant gate apply at the source read,
     on the SAME axes as the output gate, so every downstream join/projection only ever sees
-    in-scope lots (~3% of the 16.7M-row table).
+    in-scope lots.
 
-    `product_area` controls which site_config_plant flags are required:
-      "quality" (default) — qm_enabled_flag only (lot + UD tables, unchanged behaviour);
+    `product_area` controls which plant set is used:
+      "trace_lot" (default) — trace-relevant estate gate (ADR 016 §4): union of qm_enabled
+                              onboarded set and lifecycle NOT IN (SOLD/DIVESTED_ON_SAP). Used
+                              for quality_inspection_lot and quality_inspection_usage_decision.
+                              Fallback to qm_enabled set when site_lifecycle absent.
       "spc"               — qm_enabled_flag AND spc_enabled_flag (result-family tables, §8).
-    The default keeps lot/UD behaviour byte-identical; the result family passes "spc" to pick up
-    the two-tier spc gate (PR #79)."""
+    The result family passes "spc" to pick up the two-tier spc gate (PR #79)."""
     lookback = _qm_lookback_years(spark)
     qals = spark.read.table(f"{BRONZE}.inspection_qals")
     qals = qals.filter(
@@ -138,10 +152,14 @@ if bronze_columns_exist("inspection_qals", _QALS_REQUIRED) and bronze_columns_ex
     @dlt.table(
         name="quality_inspection_lot",
         comment=(
-            "Quality inspection lots (QALS) — one row per lot, pilot plants, rolling "
-            "qm_lookback_years window (default 5y) on lot creation date. Current-state snapshot "
-            "(QALS has no CDC sequencing metadata — AEDATTM only). Usage decisions live in the "
-            "1:many child quality_inspection_usage_decision, NOT on the lot."
+            "Quality inspection lots (QALS) — one row per lot, trace-relevant estate, rolling "
+            "qm_lookback_years window (default 5y) on lot creation date. Gate: trace_lot = "
+            "qm_enabled onboarded plants ∪ lifecycle NOT IN (SOLD/DIVESTED_ON_SAP) — ADR 016 §4. "
+            "Fallback when site_lifecycle absent: qm_enabled set only (4-plant behaviour). "
+            "Required by Final Trace (batch passport / journey QM context) across the estate. "
+            "Current-state snapshot (QALS has no CDC sequencing metadata — AEDATTM only). "
+            "Usage decisions live in the 1:many child quality_inspection_usage_decision, NOT on the lot. "
+            "Result grain (QAMV/QAMR/QASR/QASE) deliberately NOT widened — stays on spc gate."
         ),
         table_properties={
             "delta.enableChangeDataFeed": "true",
@@ -164,7 +182,7 @@ if bronze_columns_exist("inspection_qals", _QALS_REQUIRED) and bronze_columns_ex
         spark = get_spark()
         lots = _gated_qals(spark)
         out = lots.select(
-            # QM inspection objects use MANDANT, not MANDT (replicated-source convention, #27).
+            # QM inspection objects use MANDANT, not MARDT (replicated-source convention, #27).
             F.col("MANDANT").alias("client"),
             F.col("PRUEFLOS").alias("inspection_lot_number"),
             F.col("WERK").alias("plant_code"),
@@ -196,9 +214,9 @@ if bronze_columns_exist("inspection_qals", _QALS_REQUIRED) and bronze_columns_ex
             # Extraction timestamp only — NOT an event-ordering column (MCHB note).
             F.col("AEDATTM").cast("timestamp").alias("_replicated_at"),
         )
-        # Authoritative output gate (pre-gated in _gated_qals on the same axis; kept as the
-        # belt-and-braces final gate, same as batch_stock).
-        return apply_plant_gate(out, "plant_code", "quality", spark=spark)
+        # Authoritative output gate (pre-gated in _gated_qals on the same trace_lot axis;
+        # belt-and-braces final gate — same pattern as batch_stock. ADR 016 §4).
+        return apply_plant_gate(out, "plant_code", "trace_lot", spark=spark)
 
     # ── 2. QUALITY INSPECTION USAGE DECISION (QAVE, UD grain — 1:many per lot) ──
 
@@ -208,7 +226,9 @@ if bronze_columns_exist("inspection_qals", _QALS_REQUIRED) and bronze_columns_ex
             "Usage decisions (QAVE) — one row per decision (PRUEFLOS+KZART+ZAEHLER); a lot can "
             "carry many. Accept/reject is VBEWERTUNG (A/R, confirmed from data), NOT the "
             "plant-configurable VCODE catalog code. Plant- and time-gated via the parent QALS lot "
-            "(QAVE.VWERKS is the central responsible plant 'R001', not the lot's plant). "
+            "(QAVE.VWERKS is the central responsible plant 'R001', not the lot's plant — gate-via-parent). "
+            "Gate: trace_lot = qm_enabled onboarded plants ∪ lifecycle NOT IN (SOLD/DIVESTED_ON_SAP) "
+            "— ADR 016 §4. Fallback when site_lifecycle absent: qm_enabled set only. "
             "Current-state snapshot (AEDATTM only)."
         ),
         table_properties={
@@ -229,7 +249,7 @@ if bronze_columns_exist("inspection_qals", _QALS_REQUIRED) and bronze_columns_ex
     def quality_inspection_usage_decision():
         spark = get_spark()
         # Gate-via-parent: PRUEFLOS is QALS' PK, so this inner join filters (plant + time window)
-        # and enriches the lot's plant without fan-out.
+        # and enriches the lot's plant without fan-out. Uses trace_lot gate (ADR 016 §4).
         # Client-qualified join (PRUEFLOS unique per client; single-client today, robust to multi-client bronze).
         lot_keys = _gated_qals(spark).select(
             F.col("PRUEFLOS").alias("_lot_prueflos"),
@@ -267,8 +287,8 @@ if bronze_columns_exist("inspection_qals", _QALS_REQUIRED) and bronze_columns_ex
             F.col("AEDATTM").cast("timestamp").alias("_replicated_at"),
         )
         # Authoritative output gate on the derived plant (pre-gate pushdown keeps it cheap;
-        # same belt-and-braces as batch_stock).
-        return apply_plant_gate(out, "plant_code", "quality", spark=spark)
+        # same belt-and-braces as batch_stock). trace_lot gate (ADR 016 §4).
+        return apply_plant_gate(out, "plant_code", "trace_lot", spark=spark)
 
 # ── RESULT FAMILY — SPC GATE (§8, SPC Phase 1, WP1.2, 2026-06-11) ───────────
 #

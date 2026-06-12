@@ -22,6 +22,12 @@ resources:
         # Plant stage-gate config (quality product area = qm_enabled_flag). The slow pipeline
         # must have built site_config_plant before this pipeline runs (same dependency as fast).
         site_config_plant_table: ${var.catalog}.${var.schema}.site_config_plant
+        # Estate-wide lifecycle dimension for the trace_lot gate (ADR 016 §4).
+        # The slow pipeline builds site_lifecycle from site_lifecycle_config; this pipeline
+        # reads it to resolve the trace-relevant plant set (NOT IN SOLD/DIVESTED_ON_SAP).
+        # Absent / unconfigured: _trace_relevant_plants_df() falls back to empty set → gate
+        # reduces to qm_enabled set only (4-plant behaviour, never wider). No fail-loud here.
+        site_lifecycle_table: ${var.catalog}.${var.schema}.site_lifecycle
         # Time gate for the very large QM sources (inspection_qals is 16.7M lots all-plants in
         # UAT): lots older than this many years (by ENSTEHDAT lot creation) are excluded at the
         # source read. Snapshot-MV recompute self-corrects when this changes — no full refresh.
