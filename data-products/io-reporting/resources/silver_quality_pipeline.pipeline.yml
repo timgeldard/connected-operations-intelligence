@@ -22,14 +22,13 @@ resources:
         # Plant stage-gate config (quality product area = qm_enabled_flag). The slow pipeline
         # must have built site_config_plant before this pipeline runs (same dependency as fast).
         site_config_plant_table: ${var.catalog}.${var.schema}.site_config_plant
-        # Time gate for the very large QM sources (inspection_qals is 16.7M lots all-plants in
-        # UAT): lots older than this many years (by ENSTEHDAT lot creation) are excluded at the
-        # source read. Snapshot-MV recompute self-corrects when this changes — no full refresh.
+        # Time gate for all QM sources including the lab-board tables (inspection_qals is 16.7M
+        # lots all-plants in UAT): lots older than this many years (by ENSTEHDAT lot creation) are
+        # excluded at the source read. The lab-board silver tables (quality_lab_inspection_result +
+        # quality_lab_characteristic_spec) now use this same window; the UI day filter
+        # (ALL/360d/180d/30d) is applied at query time on result recording date, not here.
+        # Snapshot-MV recompute self-corrects when this changes — no full refresh.
         qm_lookback_years: "5"
-        # Short lookback window for the lab-board result/spec tables (quality_lab_inspection_result
-        # + quality_lab_characteristic_spec). 30 days keeps scans tiny for a real-time wallboard.
-        # Snapshot MV self-corrects on change. Independent of qm_lookback_years.
-        lab_board_lookback_days: "30"
         pipelines.defaultTableProperties.custom_tags.owner: connected-plant-team
         pipelines.defaultTableProperties.custom_tags.cost-center: connected-plant
         pipelines.defaultTableProperties.custom_tags.project: ops-reporting
