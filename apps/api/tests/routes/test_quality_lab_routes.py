@@ -306,6 +306,70 @@ class TestLabFailsSuccessResponse:
 
         assert "lotType" not in response.json()
 
+    async def test_whitespace_only_plant_id_not_echoed(
+        self, quality_lab_databricks_env
+    ) -> None:
+        """Whitespace-only plant_id must be treated as absent — not echoed in response."""
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/cq/lab/fails",
+                    params={"plant_id": "   "},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 200
+        assert "plantId" not in response.json()
+
+    async def test_whitespace_only_lot_type_not_echoed(
+        self, quality_lab_databricks_env
+    ) -> None:
+        """Whitespace-only lot_type must be treated as absent — not echoed in response."""
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/cq/lab/fails",
+                    params={"lot_type": "  "},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 200
+        assert "lotType" not in response.json()
+
+    async def test_padded_plant_id_stripped_and_echoed(
+        self, quality_lab_databricks_env
+    ) -> None:
+        """plant_id with surrounding whitespace is stripped and echoed as the clean value."""
+        with patch(
+            _EXECUTE_PATCH, new_callable=AsyncMock, return_value=[_FAKE_FAIL_ROW]
+        ):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/cq/lab/fails",
+                    params={"plant_id": "  C061  "},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        data = response.json()
+        assert data.get("plantId") == "C061"
+
+    async def test_padded_lot_type_stripped_and_echoed(
+        self, quality_lab_databricks_env
+    ) -> None:
+        """lot_type with surrounding whitespace is stripped and echoed as the clean value."""
+        with patch(
+            _EXECUTE_PATCH, new_callable=AsyncMock, return_value=[_FAKE_FAIL_ROW]
+        ):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/cq/lab/fails",
+                    params={"lot_type": " 89 "},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        data = response.json()
+        assert data.get("lotType") == "89"
+
 
 # ---------------------------------------------------------------------------
 # Response headers

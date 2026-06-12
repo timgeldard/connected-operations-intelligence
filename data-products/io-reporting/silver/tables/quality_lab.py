@@ -21,11 +21,19 @@ DESIGN DIFFERENCES FROM quality.py result-family tables:
      when SPC Phase 1 merges: same source tables, overlapping rows within the shorter window.
      Co-existence is intentional; the two sets serve different product areas.
 
-NOTE on raw-string pushdown for AEDATTM:
+NOTE on raw-string pushdown for AEDATTM vs ENSTEHDAT:
   QAMR/QAMV carry AEDATTM as a TIMESTAMP column (Aecorsoft replication watermark), so the
-  dual-format string issue from traceability.py (BUDAT DATS string) does NOT apply here.
+  dual-format string issue from traceability.py (BUDAT DATS string) does NOT apply there.
   We use a direct timestamp comparison: AEDATTM >= (current_date() - N days) as a typed
   predicate. This IS Delta-pushdown-eligible for TIMESTAMP columns with file-level statistics.
+
+  ENSTEHDAT (lot creation date, QALS) is a SAP DATS string field, NOT a timestamp. Aecorsoft
+  delivers SAP DATS columns in BOTH compact 'yyyyMMdd' (e.g. '20240115') AND ISO 'yyyy-MM-dd'
+  (e.g. '2024-01-15') formats depending on the replication configuration — the same dual-format
+  behaviour fixed in traceability.py for BUDAT. Using sap_date("ENSTEHDAT") here would wrap the
+  column in try_to_timestamp() expressions that Delta CANNOT push down to file-level statistics,
+  destroying skip efficiency on the QALS scan. The _gated_qals_for_lab function therefore uses
+  the dual-format raw-string pushdown pattern (cutoff_compact OR cutoff_iso) from traceability.py.
 
 SEVERITY-WARN RULE:
   QAMV carries TOLERANZOB (upper spec limit) and TOLERANZUN (lower spec limit) for the main
@@ -87,16 +95,31 @@ def _gated_qals_for_lab(spark):
 
     The AEDATTM column is a TIMESTAMP, so a typed comparison is Delta-pushdown-eligible
     (file-level min/max statistics on TIMESTAMP columns propagate to the planner).
-    ENSTEHDAT (lot creation date) is a SAP date string — using sap_date() here is fine
-    for the QALS scan (the lot table is the smaller filtered set, ~505k rows in UAT).
+
+    ENSTEHDAT (lot creation date) is a SAP DATS string — Aecorsoft replicates it in BOTH
+    compact 'yyyyMMdd' and ISO 'yyyy-MM-dd' formats (same dual-format behaviour as BUDAT in
+    traceability.py). Raw-string pushdown is required for Delta file-skipping eligibility:
+    sap_date() wraps the column in try_to_timestamp() which Delta cannot push down to
+    file-level statistics. The dual-format OR predicate covers both replication layouts.
     """
     spark_session = spark
     days = _lab_board_lookback_days(spark_session)
     qals = spark_session.read.table(f"{BRONZE}.inspection_qals")
-    # Time-gate: keep only lots created within the lookback window.
+    # Raw-string pushdown: dual-format OR predicate on ENSTEHDAT.
+    # Rationale: Delta cannot push sap_date() (try_to_timestamp wrapper) to file-level statistics.
+    # At character position 5, '-' (ASCII 45) sorts below any digit (ASCII 48-57), so a single
+    # compact cutoff would incorrectly exclude recent ISO-format rows. Length discriminates format.
+    # NULL/sentinel rows are kept so they reach the @dlt.expect_all expectation downstream.
     # determinism-exempt: rolling lab-board window is intentionally evaluated at refresh time.
-    cutoff = F.date_sub(F.current_date(), days)  # determinism-exempt: rolling lab-board window
-    qals = qals.filter(sap_date("ENSTEHDAT") >= cutoff)
+    base_date = F.date_sub(F.current_date(), days)  # determinism-exempt: rolling lab-board window
+    cutoff_compact = F.date_format(base_date, "yyyyMMdd")
+    cutoff_iso = F.date_format(base_date, "yyyy-MM-dd")
+    keep = (
+        F.col("ENSTEHDAT").isNull()
+        | ((F.length(F.trim(F.col("ENSTEHDAT"))) == 8) & (F.col("ENSTEHDAT") >= cutoff_compact))
+        | ((F.length(F.trim(F.col("ENSTEHDAT"))) == 10) & (F.col("ENSTEHDAT") >= cutoff_iso))
+    )
+    qals = qals.filter(keep)
     return apply_plant_gate(qals, "WERK", "quality", spark=spark_session)
 
 

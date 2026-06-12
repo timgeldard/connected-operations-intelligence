@@ -76,16 +76,19 @@ async def lab_fails(
     """
     _require_databricks_mode()
 
+    # Normalise: strip whitespace, treat empty/whitespace-only as None so they are not
+    # forwarded as filters and not echoed in the response (whitespace would otherwise filter
+    # nothing but produce a misleading plantId:"" echo — PR #112 review item).
+    clean_plant_id = plant_id.strip() or None if plant_id is not None else None
+    clean_lot_type = lot_type.strip() or None if lot_type is not None else None
+
     repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
     result, spec = await run_repository_fetch(
-        lambda: repo.fetch_lab_fails(
-            plant_id.strip() if plant_id else None,
-            lot_type.strip() if lot_type else None,
-        )
+        lambda: repo.fetch_lab_fails(clean_plant_id, clean_lot_type)
     )
     set_databricks_response_headers(response, spec)
-    if plant_id:
-        result["plantId"] = plant_id.strip()
-    if lot_type:
-        result["lotType"] = lot_type.strip()
+    if clean_plant_id:
+        result["plantId"] = clean_plant_id
+    if clean_lot_type:
+        result["lotType"] = clean_lot_type
     return result
