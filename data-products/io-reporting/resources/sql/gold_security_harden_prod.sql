@@ -73,3 +73,5 @@ REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_spc_quality_m
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_trace_anchor FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_batch_stock_summary FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_qm_lab_result_signal FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_qm_characteristic_pareto FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_qm_ud_code_pareto FROM `users`;
