@@ -258,3 +258,62 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 - **Gold / snapshot security (ADR 012).** Gold MVs stay trusted (row filters off to avoid MV full-refresh, per ADR-005); plant access on the MVs is served through **`<table>_secured` views** that apply `plant_access_filter(plant_code)` (`scripts/generate_gold_security_sql.py` → `resources/sql/gold_security_<env>.sql`) — the `users` group is granted the views, not the base tables. **Snapshot tables are physical Delta tables and carry a real plant row filter applied in-job** by `gold/snapshots/warehouse_snapshot.py`, which drops the filter during its own maintenance DELETEs and re-applies it (so the run-as principal needs MODIFY + EXECUTE on the function, not `silver_admin`).
 - **CDF on batch dimensions.** `plant`, `customer`, `vendor`, `storage_type`, `stock_at_location`, `material_valuation`, `handling_unit` enable Change Data Feed for consistency with the existing reference dims and potential downstream consumers, despite having no streaming consumer in this layer today.
 - **SSCC fidelity.** Handling units (VEKP/VEPO) approximate SSCC; the WMA-E-50 execution tables (`ZWM_SSCC_CREATE`, `ZTR_SPLIT`, `ZSCMWM_RFCTR`, `COCH`) are not replicated (see ADR 007).
+
+---
+
+## Contract metadata publication
+
+### Intent
+
+The data contracts in `contracts/app_contract_manifest.yml` are consumer-agnostic: they describe the
+`vw_consumption_*` views as stable interfaces regardless of whether the consumer is the Warehouse360
+app, Power BI, Databricks Genie, a Databricks AI/BI dashboard, or an AI agent querying the catalog.
+
+To make this machine-readable at the point of consumption — without requiring consumers to read the YAML
+file — contract metadata is published directly onto the Unity Catalog objects:
+
+- **View-level `COMMENT ON VIEW`**: a human-readable description composed from the contract description
+  (first paragraph), grain, contract id + version, freshness SLA, and row-level access key. This is the
+  text Genie and the UC data explorer show when a user asks what a view is.
+- **`ALTER VIEW ... SET TAGS`**: machine-readable key/value tags (`contract_id`, `contract_version`,
+  `contract_grain`, `freshness_expected_minutes`) queryable via `INFORMATION_SCHEMA.VIEW_TAGS` and
+  Unity Catalog REST APIs. Useful for automated freshness alerting and lineage tooling.
+- **`COMMENT ON COLUMN`**: per-column descriptions visible in Genie, the data explorer, and LLM tool
+  schemas. Only emitted for fields that carry a `description` in the manifest.
+
+### UC syntax used
+
+| Statement | Support on views | Notes |
+|---|---|---|
+| `COMMENT ON VIEW ... IS '...'` | Supported | Idempotent (overwrites) |
+| `ALTER VIEW ... SET TAGS (...)` | Supported | Requires `APPLY TAG` privilege |
+| `COMMENT ON COLUMN view.col IS '...'` | Supported | Requires view ownership; use this — NOT `ALTER VIEW ... ALTER COLUMN ... COMMENT` which is unsupported on views |
+
+`ALTER VIEW ... ALTER COLUMN ... COMMENT` is **not supported** on views in Unity Catalog; the generator
+therefore uses `COMMENT ON COLUMN` exclusively for column-level annotations.
+
+### Generator
+
+`scripts/generate_contract_metadata_sql.py` reads `contracts/app_contract_manifest.yml` and emits
+per-environment SQL to `resources/sql/contract_metadata_{dev,uat,prod}.sql`.
+
+The generator cross-checks each contract's `source_view` against the views actually defined in the
+`*consumption_views_<env>.sql` files, skipping contracts whose view is not yet created (and reporting
+the skipped contracts in the output).
+
+```bash
+# Regenerate all three environments
+python scripts/generate_contract_metadata_sql.py
+
+# Single environment
+python scripts/generate_contract_metadata_sql.py --env uat
+```
+
+### Application cadence
+
+The generated SQL is re-runnable admin SQL. Run it once as a UC admin after the consumption views are
+deployed or whenever the manifest changes (new fields, revised descriptions, version bumps). It does not
+need to be part of the pipeline — it is a separate one-off admin step, kept in source control so the
+annotations stay in sync with the manifest.
+
+Re-running is safe: `COMMENT ON` and `SET TAGS` are both idempotent (they overwrite existing values).
