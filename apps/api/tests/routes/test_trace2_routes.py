@@ -109,16 +109,15 @@ _BATCH_SEARCH_URL = "/api/trace2/batch-search"
 
 _FAKE_BATCH_SEARCH_ROWS = [
     {
+        # Anchor MV shape: no total_stock, batch_qty, or uom — those are optional
+        # in BatchSearchItem and returned as null from gold_trace_anchor_secured.
         "material_id": "20035129",
         "batch_id": "8000049668",
         "plant_id": "C061",
-        "total_stock": 1000.0,
         "material_name": "CHEESE POWDER BLEND 25KG",
         "plant_name": "Kerry Cork",
         "process_order_id": "007006964801",
         "latest_posting_date": "2025-06-04",
-        "batch_qty": 1000.0,
-        "uom": "KG",
         "material_match": 0,
         "description_match": 1,
         "batch_match": 0,
@@ -128,13 +127,10 @@ _FAKE_BATCH_SEARCH_ROWS = [
         "material_id": "20035129",
         "batch_id": "8000049669",
         "plant_id": "C061",
-        "total_stock": 925.0,
         "material_name": "CHEESE POWDER BLEND 25KG",
         "plant_name": "Kerry Cork",
         "process_order_id": "007006964802",
         "latest_posting_date": "2025-06-05",
-        "batch_qty": 925.0,
-        "uom": "KG",
         "material_match": 0,
         "description_match": 1,
         "batch_match": 0,
@@ -342,8 +338,11 @@ class TestBatchSearchDatabricksMode:
                 )
 
         assert response.headers.get("x-adapter-mode") == "databricks-api"
-        assert "gold_batch_stock_v" in response.headers.get("x-data-source", "")
-        assert "production_history_v" in response.headers.get("x-data-source", "")
+        # Source badge reflects T3 anchor MV — legacy stock/production_history views
+        # are no longer the primary source for batch search.
+        assert "gold_trace_anchor_secured" in response.headers.get("x-data-source", "")
+        assert "gold_batch_stock_v" not in response.headers.get("x-data-source", "")
+        assert "production_history_v" not in response.headers.get("x-data-source", "")
 
     async def test_search_uses_repository_facade_not_route_run_query(self, monkeypatch) -> None:
         _databricks_env(monkeypatch)
@@ -398,7 +397,29 @@ class TestBatchSearchDatabricksMode:
         assert _parse_combined_batch_search("20035129, 8000049668") == ("20035129", "8000049668")
         assert _parse_combined_batch_search("cheese powder") is None
 
-    def test_search_spec_does_not_match_null_process_orders_for_wildcard(self, monkeypatch) -> None:
+    def test_search_spec_uses_anchor_mv_not_legacy_stock_view(self, monkeypatch) -> None:
+        from adapters.trace2.trace2_databricks_adapter import (
+            Trace2BatchSearchRequest,
+            get_batch_search_spec,
+        )
+
+        monkeypatch.setenv("TRACE_CATALOG", "connected_plant_uat")
+        monkeypatch.setenv("TRACE_SCHEMA", "gold")
+
+        spec = get_batch_search_spec(Trace2BatchSearchRequest(query="cheese"))
+
+        # Primary source must be the T3 anchor MV (RLS-enforced).
+        assert "gold_trace_anchor_secured" in spec.sql
+        assert "gold_batch_stock_v" not in spec.sql
+        assert "gold_batch_production_history_v" not in spec.sql
+        # Process-order match uses the lineage table scoped via anchor join (not the
+        # old production history CTE).
+        assert "gold_batch_lineage" in spec.sql
+        assert "`po_match`" in spec.sql
+
+    def test_search_spec_process_order_lookup_guards_null(self, monkeypatch) -> None:
+        """Process-order CTE must only match rows where PROCESS_ORDER_ID is not null
+        and the anchor join enforces ACTIVE-plant visibility."""
         from adapters.trace2.trace2_databricks_adapter import (
             Trace2BatchSearchRequest,
             get_batch_search_spec,
@@ -409,9 +430,12 @@ class TestBatchSearchDatabricksMode:
 
         spec = get_batch_search_spec(Trace2BatchSearchRequest(query="*"))
 
+        # The po_match CTE filters non-null process orders only.
+        assert "l.PROCESS_ORDER_ID IS NOT NULL" in spec.sql
+        # No naked COALESCE over process order — guard is in the CTE WHERE clause.
         assert "COALESCE(ph.PROCESS_ORDER_ID" not in spec.sql
-        assert "ph.PROCESS_ORDER_ID IS NOT NULL AND UPPER(ph.PROCESS_ORDER_ID) LIKE :search_pattern" in spec.sql
-        assert "ph.PROCESS_ORDER_ID IS NOT NULL AND UPPER(ph.PROCESS_ORDER_ID) = :query_upper" not in spec.sql
+        # Old outer-query guard pattern must not appear (was ph.*, now in CTE).
+        assert "ph.PROCESS_ORDER_ID IS NOT NULL AND UPPER(ph.PROCESS_ORDER_ID) LIKE" not in spec.sql
 
     def test_search_spec_supports_exact_material_batch_criteria(self, monkeypatch) -> None:
         from adapters.trace2.trace2_databricks_adapter import (
@@ -430,12 +454,15 @@ class TestBatchSearchDatabricksMode:
             )
         )
 
-        assert "UPPER(s.MATERIAL_ID) = UPPER(:material_id)" in spec.sql
-        assert "UPPER(s.BATCH_ID) = UPPER(:batch_id)" in spec.sql
+        # Anchor alias is 'a', not 's'.
+        assert "UPPER(a.MATERIAL_ID) = UPPER(:material_id)" in spec.sql
+        assert "UPPER(a.BATCH_ID) = UPPER(:batch_id)" in spec.sql
         assert spec.params["material_id"] == "20035129"
         assert spec.params["batch_id"] == "8000049668"
 
-    def test_search_spec_orders_operational_batch_lists(self, monkeypatch) -> None:
+    def test_search_spec_orders_by_anchor_last_posting_date(self, monkeypatch) -> None:
+        """Ranking must use last_posting_date from the anchor MV (not production
+        history POSTING_DATE or batch_qty fallback — anchor carries no qty)."""
         from adapters.trace2.trace2_databricks_adapter import (
             Trace2BatchSearchRequest,
             get_batch_search_spec,
@@ -446,10 +473,13 @@ class TestBatchSearchDatabricksMode:
 
         spec = get_batch_search_spec(Trace2BatchSearchRequest(query="cheese"))
 
-        assert "ph.POSTING_DATE DESC NULLS LAST" in spec.sql
-        assert "COALESCE(ph.BATCH_QTY, s.total_stock) DESC NULLS LAST" in spec.sql
+        assert "a.last_posting_date DESC NULLS LAST" in spec.sql
+        # Old production-history ranking must be gone.
+        assert "COALESCE(ph.BATCH_QTY, s.total_stock)" not in spec.sql
+        assert "ph.POSTING_DATE DESC" not in spec.sql
+        # last_posting_date leads the ORDER BY before BATCH_ID.
         order_by = spec.sql.rsplit("ORDER BY", 1)[1].split("LIMIT", 1)[0]
-        assert order_by.index("ph.POSTING_DATE") < order_by.index("s.BATCH_ID")
+        assert order_by.index("a.last_posting_date") < order_by.index("a.BATCH_ID")
 
     def test_search_mapping_preserves_falsy_source_ids(self) -> None:
         from adapters.trace2.trace2_databricks_adapter import map_batch_search_rows
@@ -480,6 +510,138 @@ class TestBatchSearchDatabricksMode:
         assert item["plantName"] == "0"
         assert item["processOrderId"] == "0"
         assert item["matchTypes"] == ["material-id", "batch-id", "process-order-id"]
+
+    def test_search_mapping_anchor_rows_have_null_quantity_and_uom(self) -> None:
+        """Anchor MV carries no stock quantity or UOM.  The mapper must omit those
+        optional fields rather than emitting null/0 into the response."""
+        from adapters.trace2.trace2_databricks_adapter import map_batch_search_rows
+
+        anchor_row = {
+            "material_id": "20035129",
+            "batch_id": "8000049668",
+            "plant_id": "C061",
+            "material_name": "CHEESE POWDER BLEND 25KG",
+            "plant_name": "Kerry Cork",
+            # No total_stock, batch_qty, or uom — these columns are absent from
+            # gold_trace_anchor_secured (anchor MV does not aggregate stock).
+            "process_order_id": None,
+            "latest_posting_date": "2025-06-04",
+            "material_match": 1,
+            "description_match": 0,
+            "batch_match": 0,
+            "process_order_match": 0,
+        }
+
+        result = map_batch_search_rows([anchor_row], "20035129", 25)
+        item = result["items"][0]
+
+        # Mapper omits optional keys entirely when value is None (not present in dict).
+        assert "quantity" not in item
+        assert "uom" not in item
+        assert "latestPostingDate" in item  # date string always present when not None
+        assert item["materialId"] == "20035129"
+        assert item["matchTypes"] == ["material-id"]
+
+    def test_search_mapping_process_order_via_lineage_match(self) -> None:
+        """When a process-order match arrives from the lineage CTE lookup, the
+        process_order_match flag must set the matchType and processOrderId populates."""
+        from adapters.trace2.trace2_databricks_adapter import map_batch_search_rows
+
+        row = {
+            "material_id": "20035129",
+            "batch_id": "8000049668",
+            "plant_id": "C061",
+            "material_name": "CHEESE POWDER BLEND 25KG",
+            "plant_name": "Kerry Cork",
+            "process_order_id": "007006964801",
+            "latest_posting_date": "2025-06-04",
+            "material_match": 0,
+            "description_match": 0,
+            "batch_match": 0,
+            "process_order_match": 1,
+        }
+
+        result = map_batch_search_rows([row], "007006964801", 25)
+        item = result["items"][0]
+
+        assert item["matchTypes"] == ["process-order-id"]
+        assert item["processOrderId"] == "007006964801"
+
+    async def test_search_response_contract_shape_unchanged(self, monkeypatch) -> None:
+        """Switching the primary source to gold_trace_anchor_secured must not alter
+        the response contract shape seen by the Trace Consumer frontend.  All
+        required BatchSearchResponse / BatchSearchItem fields must still be present."""
+        _databricks_env(monkeypatch)
+        with _patch_executor(_FAKE_BATCH_SEARCH_ROWS):
+            async with _make_client() as client:
+                response = await client.post(
+                    _BATCH_SEARCH_URL,
+                    json={"query": "cheese", "max_rows": 25},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Top-level response envelope.
+        for key in ("query", "total", "truncated", "wildcardApplied", "items"):
+            assert key in data, f"missing response envelope field: {key}"
+
+        # Per-item required fields.
+        item = data["items"][0]
+        for key in ("materialId", "materialDescription", "batchId", "plantId", "plantName", "matchTypes"):
+            assert key in item, f"missing required BatchSearchItem field: {key}"
+
+        # Optional fields are null (anchor carries no qty/uom; FastAPI serializes
+        # None as null — the key is present but the value is None/null).
+        assert item.get("quantity") is None
+        assert item.get("uom") is None
+
+    def test_search_spec_governed_objects_resolve_to_gold_io_reporting(self, monkeypatch) -> None:
+        """Governed schema fix: gold_trace_anchor_secured and gold_batch_lineage must
+        resolve to TRACE_GOVERNED_SCHEMA (default "gold_io_reporting"), NOT to
+        TRACE_SCHEMA ("gold").  The legacy TRACE_SCHEMA: gold in app.yaml would
+        cause connected_plant_uat.gold.gold_trace_anchor_secured which does not exist —
+        this is the deployment-blocking gap that this change closes."""
+        from adapters.trace2.trace2_databricks_adapter import (
+            Trace2BatchSearchRequest,
+            get_batch_search_spec,
+        )
+
+        monkeypatch.setenv("TRACE_CATALOG", "connected_plant_uat")
+        monkeypatch.setenv("TRACE_SCHEMA", "gold")
+        # TRACE_GOVERNED_SCHEMA not set → must default to "gold_io_reporting"
+
+        spec = get_batch_search_spec(Trace2BatchSearchRequest(query="cheese"))
+
+        # Both governed objects must be in gold_io_reporting, not gold.
+        assert "`connected_plant_uat`.`gold_io_reporting`.`gold_trace_anchor_secured`" in spec.sql
+        assert "`connected_plant_uat`.`gold_io_reporting`.`gold_batch_lineage`" in spec.sql
+        # Legacy enrichment joins must stay on gold.
+        assert "`connected_plant_uat`.`gold`.`gold_material`" in spec.sql
+        assert "`connected_plant_uat`.`gold`.`gold_plant`" in spec.sql
+
+    def test_search_spec_po_match_deduplicates_with_row_number(self, monkeypatch) -> None:
+        """PR #110 accept: a batch linked to multiple matching process orders must not
+        fan out the anchor LEFT JOIN.  SELECT DISTINCT cannot prevent this because each
+        matching process order is a distinct row; ROW_NUMBER() OVER (PARTITION BY child
+        batch key) is required to keep at most one row per batch (the most recent by
+        POSTING_DATE DESC, PROCESS_ORDER_ID DESC as tiebreak)."""
+        from adapters.trace2.trace2_databricks_adapter import (
+            Trace2BatchSearchRequest,
+            get_batch_search_spec,
+        )
+
+        monkeypatch.setenv("TRACE_CATALOG", "connected_plant_uat")
+        monkeypatch.setenv("TRACE_SCHEMA", "gold")
+
+        spec = get_batch_search_spec(Trace2BatchSearchRequest(query="cheese"))
+
+        assert "ROW_NUMBER()" in spec.sql
+        assert "PARTITION BY" in spec.sql
+        assert "POSTING_DATE DESC NULLS LAST" in spec.sql
+        assert "rn = 1" in spec.sql
+        assert "SELECT DISTINCT" not in spec.sql
 
     async def test_search_requires_databricks_mode(self, monkeypatch) -> None:
         monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
@@ -947,6 +1109,34 @@ class TestCustomerExposureSuccess:
         data = response.json()
         assert "nodes" not in data
         assert "edges" not in data
+
+    def test_trace_graph_spec_gold_batch_lineage_resolves_to_governed_schema(self, monkeypatch) -> None:
+        """T2 cutover: gold_batch_lineage in trace-graph must resolve to TRACE_GOVERNED_SCHEMA
+        (default "gold_io_reporting"), not TRACE_SCHEMA ("gold").  Anchor search and traversal
+        must use the same edge universe — both batch-search po_match and trace-graph read the
+        same governed gold_batch_lineage MV."""
+        from adapters.trace2.trace2_databricks_adapter import (
+            TraceGraphRequest,
+            get_trace_graph_recursive_spec,
+        )
+
+        _databricks_env(monkeypatch)
+        # TRACE_GOVERNED_SCHEMA not set → must default to "gold_io_reporting"
+
+        spec = get_trace_graph_recursive_spec(
+            TraceGraphRequest(
+                material_id="000000000020052009",
+                batch_id="0008602411",
+                plant_id="C061",
+                direction="both",
+                max_depth=4,
+            )
+        )
+
+        # gold_batch_lineage must be in the governed schema.
+        assert "`connected_plant_uat`.`gold_io_reporting`.`gold_batch_lineage`" in spec.sql
+        # gold_material enrichment must remain on legacy gold schema.
+        assert "`connected_plant_uat`.`gold`.`gold_material`" in spec.sql
 
 
 # ---------------------------------------------------------------------------

@@ -7,7 +7,10 @@ Covers:
 from __future__ import annotations
 
 from shared.query_service.cache_policy import CacheTier
-from shared.query_service.object_resolver import resolve_domain_object
+from shared.query_service.object_resolver import (
+    resolve_domain_object,
+    resolve_governed_trace2_object,
+)
 from shared.query_service.query_spec import QuerySpec
 
 from ._types import TraceGraphRequest
@@ -40,9 +43,23 @@ def get_trace_graph_recursive_spec(request: TraceGraphRequest) -> QuerySpec:
     Querying the table directly lets Databricks skip 99% of files per hop. A preceding
     SELECT DISTINCT over the full table caused cold-run 504s on a 479M-row table.
 
+    T2 CUTOVER: gold_batch_lineage is read from TRACE_GOVERNED_SCHEMA (default:
+    "gold_io_reporting") — the same governed edge universe used by batch-search's
+    po_match CTE.  Anchor search and traversal MUST use the same edge table so that
+    a batch found via batch-search is always traversable in trace-graph.
+
+    CAVEAT: end-user reads of governed gold_batch_lineage require the `traceability-readers`
+    UC group (not yet provisioned in UAT as of 2026-06-12).  Owner/admin identities work
+    today.  This is an accepted track-level gate; the change is not blocked by it.
+
+    gold_material enrichment stays on legacy TRACE_SCHEMA ("gold") — no governed
+    equivalent exists yet.
+
     Raises DatabricksConfigError if TRACE_CATALOG is not set.
     """
-    tbl = resolve_domain_object("trace2", "gold_batch_lineage")
+    # Governed object: T2 cutover — reads from TRACE_GOVERNED_SCHEMA (gold_io_reporting).
+    tbl = resolve_governed_trace2_object("gold_batch_lineage")
+    # Legacy enrichment join — no governed equivalent yet.
     tbl_material = resolve_domain_object("trace2", "gold_material")
 
     # gold_batch_lineage is clustered on (CHILD_MATERIAL_ID, CHILD_BATCH_ID).
