@@ -978,10 +978,10 @@ def gold_trace_vendor():
         "via spark.read.table (cross-pipeline Delta read). "
         "Deterministic base (no current_date / current_timestamp)."
     ),
-    cluster_by=["material_code"],
+    cluster_by=["MATERIAL_ID"],
 ))
 @dlt.expect_all_or_drop({
-    "material_code present": "material_code IS NOT NULL",
+    "MATERIAL_ID present": "MATERIAL_ID IS NOT NULL",
 })
 def gold_trace_material():
     """Material lookup: material_code → material_description, material_type, material_group, base_uom.
@@ -1027,8 +1027,9 @@ def gold_trace_material():
         "silver.site_lifecycle (estate-wide ~550-plant dimension, ADR 016). "
         "silver.plant covers actively-replicated plants; site_lifecycle fills in estate plants "
         "not yet in T001W (e.g. plants reviewed as CLOSED/SOLD that are in the traceability "
-        "graph but not in the live plant master).  The UNION uses F.coalesce so silver.plant "
-        "is preferred where both sources have the same plant_code. "
+        "graph but not in the live plant master).  Per-side dedup then FULL OUTER join with "
+        "F.coalesce — silver.plant (T001W) values are preferred wherever both sources carry "
+        "the plant; site_lifecycle fills estate-only plants. "
         "silver.site_lifecycle.country maps to country_key (same attribute, different column name). "
         "GRAIN: one row per plant_code (F.max tiebreak for determinism). "
         "CONSUMER GRAIN: trace2 adapters join on PLANT_ID only, matching this grain. "
@@ -1052,10 +1053,10 @@ def gold_trace_plant():
     the full estate including SOLD/CLOSED plants that still have edges in gold_batch_lineage.
 
     silver.plant is the authoritative source for plant_name (T001W); silver.site_lifecycle
-    provides plant_code, plant_name, country for the reviewed estate.  Rows that appear in
-    both sources are deduplicated at the groupBy with F.max tiebreak — silver.plant is not
-    explicitly preferred because both sources carry the same values for onboarded plants;
-    for estate-only plants site_lifecycle is the only source.
+    provides plant_code, plant_name, country for the reviewed estate.  Each side is first
+    deduplicated to one row per plant_code (F.max tiebreak), then FULL OUTER joined with
+    F.coalesce(plant.*, site_lifecycle.*) so the authoritative T001W values win wherever
+    both sources carry the plant; estate-only plants fall through to site_lifecycle.
 
     Exposes PLANT_ID and PLANT_NAME (upper-case column names) to match the legacy
     gold_plant JOIN contract (adapters use: JOIN gold_plant p ON p.PLANT_ID = ...).
@@ -1064,35 +1065,35 @@ def gold_trace_plant():
     silver_schema = get_silver_schema(spark)
 
     # silver.plant: T001W from published central_services — authoritative for live plants.
-    plant = spark.read.table(f"{silver_schema}.plant").select(
-        F.col("plant_code"),
-        F.col("plant_name"),
-        F.col("country_key"),
+    # Dedup to one row per plant_code (deterministic F.max tiebreak).
+    plant = (
+        spark.read.table(f"{silver_schema}.plant")
+        .groupBy("plant_code")
+        .agg(
+            F.max("plant_name").alias("_p_name"),
+            F.max("country_key").alias("_p_country"),
+        )
     )
 
     # silver.site_lifecycle: estate-wide reviewed dimension — covers SOLD/CLOSED/DIVESTED
     # plants that are present in the traceability graph but may be absent from T001W.
     # site_lifecycle.country is the same attribute as plant.country_key (LAND1 equivalent).
-    site_lc = spark.read.table(f"{silver_schema}.site_lifecycle").select(
-        F.col("plant_code"),
-        F.col("plant_name"),
-        F.col("country").alias("country_key"),
-    )
-
-    # UNION ALL then dedup with F.max tiebreak — deterministic, one row per plant_code.
-    combined = plant.unionAll(site_lc)
-
-    return (
-        combined
+    site_lc = (
+        spark.read.table(f"{silver_schema}.site_lifecycle")
         .groupBy("plant_code")
         .agg(
-            F.max("plant_name").alias("PLANT_NAME"),
-            F.max("country_key").alias("country_key"),
+            F.max("plant_name").alias("_l_name"),
+            F.max("country").alias("_l_country"),
         )
+    )
+
+    # FULL OUTER join + coalesce: T001W values preferred, lifecycle fills estate-only plants.
+    return (
+        plant.join(site_lc, "plant_code", "full")
         .select(
             F.col("plant_code").alias("PLANT_ID"),
-            F.col("PLANT_NAME"),
-            F.col("country_key"),
+            F.coalesce(F.col("_p_name"), F.col("_l_name")).alias("PLANT_NAME"),
+            F.coalesce(F.col("_p_country"), F.col("_l_country")).alias("country_key"),
         )
     )
 
