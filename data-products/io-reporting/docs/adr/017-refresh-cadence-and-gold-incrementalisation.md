@@ -52,12 +52,16 @@ Empirical facts established 2026-06-12:
    (b) define per-surface latency SLAs with actual pilot floor users; (c) only then change
    cadence. Flow rewrites for Enzyme compatibility are driven by the fallback-reason data,
    not by guessing from SQL shape.
-6. **Table maintenance becomes systematic:** for deletion-vector bloat the correct
-   operation is `REORG TABLE ... APPLY (PURGE)` — plain OPTIMIZE no-ops when files are
-   well-sized but DV-laden (verified on `reservation_requirement` 2026-06-12: OPTIMIZE
-   changed nothing at 51 MB/file; REORG PURGE is the executed fix). Durable regime:
-   Predictive Optimization (or a scheduled maintenance job if PO is unavailable) so
-   DV/file bloat cannot recur.
+6. **Table maintenance becomes systematic — but the `reservation_requirement` "bloat"
+   finding did not survive treatment.** Executed 2026-06-12: OPTIMIZE (no-op — files
+   well-sized at ~51 MB) then `REORG TABLE ... APPLY (PURGE)` (removed 0.3%). Final
+   state: 4.33 GB, 5.8M rows, 25 columns ≈ 747 B/row — the size is structural (probable
+   cause: compression-hostile ingest-order row layout from CDC arrival), NOT small files
+   or deletion vectors; the review's "expected ~40 B/row" benchmark was naive. Root-cause
+   investigation (e.g. CTAS-compressed comparison) is a backlog item, lower priority than
+   it appeared: gold readers prune via liquid clustering, so per-query scan cost is far
+   below table size. The durable maintenance regime (Predictive Optimization or a
+   scheduled job) is still adopted on its own merits.
    **VACUUM stays at default retention** — silver tables serve CDF to downstream
    incremental consumers; aggressive retention (e.g. `RETAIN 24 HOURS`) can destroy
    unconsumed change history and is prohibited without a specific reviewed reason.
