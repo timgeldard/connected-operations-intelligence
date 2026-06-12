@@ -1480,8 +1480,8 @@ class TestSupplierExposureSuccess:
             async with _make_client() as client:
                 response = await client.post(_SE_URL, json=_SE_VALID_BODY, headers=_HEADERS_WITH_TOKEN)
         badge = response.headers.get("x-data-source", "")
-        assert "gold_batch_lineage" in badge
-        assert "gold_supplier" in badge
+        assert "gold_batch_event_ledger" in badge
+        assert "gold_trace_vendor" in badge
 
     async def test_uses_repository_facade_not_route_run_query(self, monkeypatch) -> None:
         _databricks_env(monkeypatch)
@@ -1730,7 +1730,7 @@ class TestMassBalanceSuccess:
         with _patch_executor([_FAKE_MB_PRODUCTION_ROW]):
             async with _make_client() as client:
                 response = await client.post(_MB_URL, json=_MB_VALID_BODY, headers=_HEADERS_WITH_TOKEN)
-        assert "gold_batch_mass_balance_v" in response.headers.get("x-data-source", "")
+        assert "gold_batch_event_ledger" in response.headers.get("x-data-source", "")
 
     async def test_uses_repository_facade_not_route_run_query(self, monkeypatch) -> None:
         _databricks_env(monkeypatch)
@@ -2326,7 +2326,7 @@ class TestInvestigationTimelineSuccess:
             async with _make_client() as client:
                 response = await client.post(_IT_URL, json=_IT_VALID_BODY, headers=_HEADERS_WITH_TOKEN)
         badge = response.headers.get("x-data-source", "")
-        assert "mass_balance_v" in badge or "quality_lot_v" in badge or "delivery_v" in badge
+        assert "gold_batch_event_ledger" in badge
 
     async def test_does_not_fall_back_on_databricks_error(self, monkeypatch) -> None:
         """On Databricks error, must return HTTP error — never fall back to mock."""
