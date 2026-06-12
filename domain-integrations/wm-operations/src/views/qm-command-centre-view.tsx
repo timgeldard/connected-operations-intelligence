@@ -3,6 +3,28 @@ import type { WmOperationsAdapterRequest } from '../adapters/wm-operations-adapt
 import { useWmList } from '../adapters/wm-operations-queries.js'
 import { EmptyNote, KpiTile, LoadingRows, ViewHeader, formatDate } from '../components/kerry.js'
 
+interface QmCharacteristicPareto {
+  plantId: string
+  materialId: string
+  characteristicId: string
+  characteristicText: string | null
+  unit: string | null
+  resultCount: number
+  failCount: number
+  warnCount: number
+  failRate: number | null
+  lastResultDate: string | null
+}
+
+interface QmUdCodePareto {
+  plantId: string
+  usageDecisionCode: string
+  usageDecision: string | null
+  usageDecisionValuation: string | null
+  lotCount: number
+  lastDecisionDate: string | null
+}
+
 interface QmLotStatus {
   plantId: string
   lotId: string
@@ -71,8 +93,30 @@ export function QmCommandCentreView({
     Boolean(request.plantId),
   )
 
+  const micResult = useWmList<QmCharacteristicPareto>(
+    '/api/wm-operations/qm-characteristic-pareto',
+    { plant_id: request.plantId, limit: 200 },
+    Boolean(request.plantId),
+  )
+
+  const udParetoResult = useWmList<QmUdCodePareto>(
+    '/api/wm-operations/qm-ud-code-pareto',
+    { plant_id: request.plantId, limit: 100 },
+    Boolean(request.plantId),
+  )
+
   const allLots = lotsResult.data?.ok ? lotsResult.data.data : []
+  const micRows = micResult.data?.ok ? micResult.data.data : []
+  const udRows = udParetoResult.data?.ok ? udParetoResult.data.data : []
   const error = lotsResult.data && !lotsResult.data.ok ? lotsResult.data.error : null
+  const micError = micResult.data && !micResult.data.ok ? micResult.data.error : null
+  const udError = udParetoResult.data && !udParetoResult.data.ok ? udParetoResult.data.error : null
+
+  const resultFreshness = useMemo(() => {
+    const dates = micRows.map(r => r.lastResultDate).filter(Boolean) as string[]
+    if (dates.length === 0) return null
+    return dates.reduce((a, b) => (a > b ? a : b))
+  }, [micRows])
 
   // ── KPIs ────────────────────────────────────────────────────────────────────
   const openLots = allLots.filter(r => !r.hasUsageDecision).length
@@ -137,6 +181,18 @@ export function QmCommandCentreView({
   const maxTrendMedian = Math.max(...udTrend.map(t => t.median), 1)
 
   // ── Recent rejected lots ──────────────────────────────────────────────────
+  const micPareto = useMemo(
+    () => [...micRows].sort((a, b) => b.failCount - a.failCount).slice(0, 15),
+    [micRows],
+  )
+  const maxMicFails = micPareto[0]?.failCount ?? 1
+
+  const udPareto = useMemo(
+    () => [...udRows].sort((a, b) => b.lotCount - a.lotCount).slice(0, 12),
+    [udRows],
+  )
+  const maxUdLots = udPareto[0]?.lotCount ?? 1
+
   const recentRejected = useMemo(
     () =>
       allLots
@@ -167,6 +223,13 @@ export function QmCommandCentreView({
         </select>
       </div>
 
+      {request.plantId && (
+        <p style={{ fontSize: 12, color: 'var(--kw-text-muted, #888)', marginBottom: 12 }}>
+          Lab results{resultFreshness ? ` to ${formatDate(resultFreshness)}` : ' — no MIC result data for this plant'}
+          {' '}(replication completeness varies by plant; not estate-wide).
+        </p>
+      )}
+
       {/* KPI row */}
       <div className="kw-kpi-row">
         <KpiTile label="Open lots" value={openLots} tone={openLots > 50 ? 'alert' : openLots > 20 ? 'warn' : 'none'} />
@@ -187,6 +250,68 @@ export function QmCommandCentreView({
         <EmptyNote>No inspection lots for this plant (check QM gate configuration).</EmptyNote>
       ) : (
         <>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+            <div className="kw-card" style={{ flex: '1 1 360px', minWidth: 280 }}>
+              <div className="kw-card-title">Characteristic failures (MIC Pareto)</div>
+              {micError ? (
+                <EmptyNote>Could not load MIC Pareto — {micError.message}</EmptyNote>
+              ) : micResult.isLoading ? (
+                <LoadingRows rows={4} />
+              ) : micPareto.length === 0 ? (
+                <EmptyNote>No characteristic results for this plant.</EmptyNote>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {micPareto.map(r => {
+                    const pct = Math.round((r.failCount / maxMicFails) * 100)
+                    const rate = r.failRate != null ? `${Math.round(r.failRate * 100)}%` : '—'
+                    return (
+                      <div key={`${r.materialId}-${r.characteristicId}`}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
+                          <span title={r.characteristicId}>
+                            {r.characteristicText ?? r.characteristicId}
+                            <span style={{ color: 'var(--kw-text-muted, #888)' }}> · {r.materialId}</span>
+                          </span>
+                          <span className="kw-num">{r.failCount} fail / {r.resultCount} ({rate})</span>
+                        </div>
+                        <div className="kw-bar" style={{ background: 'var(--kw-border, #e5e7eb)' }}>
+                          <span style={{ display: 'block', width: `${pct}%`, height: '100%', background: 'var(--kw-accent, #e30613)' }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="kw-card" style={{ flex: '1 1 300px', minWidth: 260 }}>
+              <div className="kw-card-title">Usage decision codes</div>
+              {udError ? (
+                <EmptyNote>Could not load UD Pareto — {udError.message}</EmptyNote>
+              ) : udParetoResult.isLoading ? (
+                <LoadingRows rows={4} />
+              ) : udPareto.length === 0 ? (
+                <EmptyNote>No usage decisions for this plant.</EmptyNote>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {udPareto.map(r => {
+                    const pct = Math.round((r.lotCount / maxUdLots) * 100)
+                    return (
+                      <div key={r.usageDecisionCode}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}>
+                          <span className="kw-mono">{r.usageDecisionCode}</span>
+                          <span>{r.usageDecision ?? r.usageDecisionValuation ?? '—'} · {r.lotCount}</span>
+                        </div>
+                        <div className="kw-bar" style={{ background: 'var(--kw-border, #e5e7eb)' }}>
+                          <span style={{ display: 'block', width: `${pct}%`, height: '100%', background: 'var(--kw-primary, #005eb8)' }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Open backlog by origin × age bucket */}
           <div className="kw-card" style={{ marginBottom: 16 }}>
             <div className="kw-card-title">Open backlog by lot origin × age</div>
