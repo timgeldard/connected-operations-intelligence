@@ -34,10 +34,18 @@ def _lifecycle_df(spark: SparkSession, rows):
 
 
 def _apply_trace_lifecycle_filter(df, excluded=("SOLD", "DIVESTED_ON_SAP")):
-    """Mirror _trace_relevant_plants_df exclusion logic on an in-memory lifecycle DF."""
+    """Mirror _trace_relevant_plants_df exclusion logic on an in-memory lifecycle DF.
+
+    NULL effective_lifecycle is KEPT — ADR 016 mandates exclusion ONLY on explicit
+    confirmation; unknown/unreviewed plants stay in (matches gold/trace_gold.py's
+    keep-unknowns pattern and _trace_relevant_plants_df's | isNull() guard).
+    """
     return (
         df
-        .filter(~F.col("effective_lifecycle").isin(*excluded))
+        .filter(
+            ~F.col("effective_lifecycle").isin(*excluded)
+            | F.col("effective_lifecycle").isNull()
+        )
         .select(F.col("plant_code"))
         .distinct()
     )
@@ -72,6 +80,21 @@ class TestTraceRelevantLifecycleFilter:
         lc = _lifecycle_df(spark, [Row(plant_code="P004", effective_lifecycle="DIVESTED_ON_SAP", review_status="CONFIRMED")])
         result = all_rows(_apply_trace_lifecycle_filter(lc))
         assert len(result) == 0
+
+    def test_null_lifecycle_included(self, spark: SparkSession):
+        """Plants with NULL effective_lifecycle are KEPT.
+
+        ADR 016: exclusion is only on EXPLICIT confirmation (SOLD/DIVESTED_ON_SAP).
+        A NULL/unreviewed lifecycle must never be silently dropped — SQL three-valued
+        logic means ~isin() returns NULL (not True) for NULL inputs, which Spark's
+        filter drops.  The | isNull() guard restores the keep-unknown default.
+        """
+        lc = _lifecycle_df(spark, [Row(plant_code="P005", effective_lifecycle=None, review_status=None)])
+        result = all_rows(_apply_trace_lifecycle_filter(lc))
+        assert len(result) == 1, (
+            "Plant with NULL effective_lifecycle must be included (keep-unknowns default, ADR 016)"
+        )
+        assert result[0]["plant_code"] == "P005"
 
     def test_mixed_estate_correct_inclusions(self, spark: SparkSession):
         """Estate with mix of ACTIVE/CLOSED/SOLD/DIVESTED_ON_SAP — only excluded statuses removed."""

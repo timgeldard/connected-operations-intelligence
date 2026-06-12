@@ -157,7 +157,10 @@ def _trace_relevant_plants_df(spark) -> DataFrame:
     lc = spark.read.table(lifecycle_conf)
     return (
         lc
-        .filter(~F.col("effective_lifecycle").isin(*_TRACE_EXCLUDED_LIFECYCLE))
+        .filter(
+            ~F.col("effective_lifecycle").isin(*_TRACE_EXCLUDED_LIFECYCLE)
+            | F.col("effective_lifecycle").isNull()
+        )
         .select(F.col("plant_code"))
         .distinct()
     )
