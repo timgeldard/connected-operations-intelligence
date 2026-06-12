@@ -97,14 +97,17 @@ def _load_manifest_yaml(manifest_path: Path) -> dict:
         print(f"Error: manifest not found at {manifest_path}")
         sys.exit(1)
     with open(manifest_path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+        data = yaml.safe_load(f)
+        return data if isinstance(data, dict) else {}
 
 
 def load_manifest_fields(manifest_path: Path) -> dict[str, Set[str]]:
     """Return contract_id -> set of declared field names (only for contracts with fields)."""
     manifest = _load_manifest_yaml(manifest_path)
     out: dict[str, Set[str]] = {}
-    for c in manifest.get("contracts", []):
+    for c in manifest.get("contracts") or []:
+        if not isinstance(c, dict):
+            continue
         if "id" in c and isinstance(c.get("fields"), list):
             out[c["id"]] = {f["name"] for f in c["fields"] if isinstance(f, dict) and "name" in f}
     return out
@@ -113,7 +116,7 @@ def load_manifest_fields(manifest_path: Path) -> dict[str, Set[str]]:
 def load_manifest_ids(manifest_path: Path) -> Set[str]:
     """Return the set of contract IDs defined in the manifest."""
     manifest = _load_manifest_yaml(manifest_path)
-    return {c["id"] for c in manifest.get("contracts", []) if "id" in c}
+    return {c["id"] for c in manifest.get("contracts") or [] if isinstance(c, dict) and "id" in c}
 
 
 def run() -> None:
