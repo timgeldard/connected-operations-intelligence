@@ -6,7 +6,6 @@ resources/sql/ files.
 """
 import importlib.util
 import pathlib
-import textwrap
 
 import pytest
 import yaml
@@ -158,7 +157,7 @@ class TestGenerateSql:
     def test_generates_output_file(self, tmp_path):
         _write_minimal_manifest(tmp_path, [SIMPLE_CONTRACT])
         _write_consumption_sql(tmp_path, "uat", ["vw_consumption_test_widget"])
-        sql = _run(tmp_path)
+        _run(tmp_path)
         out = tmp_path / "resources" / "sql" / "contract_metadata_uat.sql"
         assert out.exists()
 
@@ -337,3 +336,89 @@ class TestGenerateSql:
         # The backtick-quoted view should be matched and covered.
         assert "COMMENT ON VIEW" in sql
         assert "vw_consumption_test_widget" in sql
+
+    # ── PR#125 review fixes ───────────────────────────────────────────────────
+
+    def test_null_id_version_grain_no_none_literal(self, tmp_path):
+        """Null id/version/grain must not emit the literal string 'None' in SQL."""
+        contract = {
+            **SIMPLE_CONTRACT,
+            "id": None,
+            "version": None,
+            "grain": None,
+        }
+        _write_minimal_manifest(tmp_path, [contract])
+        _write_consumption_sql(tmp_path, "uat", ["vw_consumption_test_widget"])
+        sql = _run(tmp_path)
+        assert "None" not in sql
+
+    def test_null_expected_minutes_no_none_literal(self, tmp_path):
+        """A null expected_minutes must emit an empty tag value, not the string 'None'."""
+        contract = {
+            **SIMPLE_CONTRACT,
+            "freshness": {
+                "expected_minutes": None,
+                "warning_minutes": 30,
+                "critical_minutes": 60,
+            },
+        }
+        _write_minimal_manifest(tmp_path, [contract])
+        _write_consumption_sql(tmp_path, "uat", ["vw_consumption_test_widget"])
+        sql = _run(tmp_path)
+        assert "None" not in sql
+        # The tag key must still be present but with an empty value.
+        assert "'freshness_expected_minutes' = ''" in sql
+
+    def test_hyphenated_catalog_name_discovered(self, tmp_path):
+        """Catalog names containing hyphens (e.g. connected-plant-uat) are matched."""
+        _write_minimal_manifest(tmp_path, [SIMPLE_CONTRACT])
+        sql_dir = tmp_path / "resources" / "sql"
+        sql_dir.mkdir(parents=True, exist_ok=True)
+        # Use a hyphenated catalog prefix — real view name has no hyphens.
+        with open(sql_dir / "test_consumption_views_uat.sql", "w") as f:
+            f.write(
+                "CREATE OR REPLACE VIEW `connected-plant-uat`.`gold_io_reporting`"
+                ".`vw_consumption_test_widget` AS SELECT 1;\n"
+            )
+        sql = _run(tmp_path)
+        assert "COMMENT ON VIEW" in sql
+        assert "vw_consumption_test_widget" in sql
+
+    def test_commented_out_create_view_not_collected(self, tmp_path):
+        """A CREATE VIEW inside a -- line comment must NOT be discovered as a live view."""
+        # Use a different view name so we can confirm the real one is found
+        # but the commented one (vw_consumption_phantom) is not.
+        real_contract = {**SIMPLE_CONTRACT, "source_view": "vw_consumption_real"}
+        phantom_contract = {
+            **SIMPLE_CONTRACT,
+            "id": "test.phantom",
+            "source_view": "vw_consumption_phantom",
+        }
+        _write_minimal_manifest(tmp_path, [real_contract, phantom_contract])
+        sql_dir = tmp_path / "resources" / "sql"
+        sql_dir.mkdir(parents=True, exist_ok=True)
+        with open(sql_dir / "test_consumption_views_uat.sql", "w") as f:
+            f.write(
+                "-- CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.vw_consumption_phantom AS SELECT 1;\n"
+                "CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.vw_consumption_real AS SELECT 1;\n"
+            )
+        sql = _run(tmp_path)
+        # The real view must be covered.
+        assert "COMMENT ON VIEW connected_plant_uat.gold_io_reporting.vw_consumption_real" in sql
+        # The phantom (commented-out) view must NOT be covered.
+        assert "COMMENT ON VIEW connected_plant_uat.gold_io_reporting.vw_consumption_phantom" not in sql
+
+    def test_block_commented_create_view_not_collected(self, tmp_path):
+        """A CREATE VIEW inside a /* */ block comment must NOT be discovered."""
+        real_contract = {**SIMPLE_CONTRACT, "source_view": "vw_consumption_real"}
+        _write_minimal_manifest(tmp_path, [real_contract])
+        sql_dir = tmp_path / "resources" / "sql"
+        sql_dir.mkdir(parents=True, exist_ok=True)
+        with open(sql_dir / "test_consumption_views_uat.sql", "w") as f:
+            f.write(
+                "/* CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.vw_consumption_real AS SELECT 1; */\n"
+                "-- actual view omitted intentionally\n"
+            )
+        sql = _run(tmp_path)
+        # Block-commented CREATE must not trigger collection.
+        assert "COMMENT ON VIEW connected_plant_uat.gold_io_reporting.vw_consumption_real" not in sql
