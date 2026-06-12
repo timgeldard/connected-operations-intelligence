@@ -261,6 +261,10 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_yield
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_order_yield;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_yield_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_recipe_run_benchmark_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_recipe_run_benchmark;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_recipe_run_benchmark_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_component_variance_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_order_component_variance;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_component_variance_secured TO `users`;

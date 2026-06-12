@@ -1172,6 +1172,64 @@ class TestOrderYieldRoute:
 
 
 # ---------------------------------------------------------------------------
+# Recipe Benchmark (SIMPLE_DATASETS declarative route)
+# ---------------------------------------------------------------------------
+
+class TestRecipeBenchmarkRoute:
+    async def test_returns_mapped_recipe_benchmark_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "material_id": "FG1",
+            "production_line": "LINE_A",
+            "run_count": 4,
+            "median_yield_pct": 0.94,
+            "p10_yield_pct": 0.88,
+            "p90_yield_pct": 0.99,
+            "median_duration_hours": 24.0,
+            "p10_duration_hours": 12.0,
+            "p90_duration_hours": 36.0,
+            "last_run_finish_date": "2026-06-05",
+        }
+
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/recipe-benchmark",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["plantId"] == "C061"
+        assert row["materialId"] == "FG1"
+        assert row["productionLine"] == "LINE_A"
+        assert row["runCount"] == 4
+        assert row["medianYieldPct"] == 0.94
+        assert row["medianDurationHours"] == 24.0
+        assert response.headers.get("x-contract-id") == "wm_operations.recipe_benchmark"
+
+    async def test_returns_401_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/recipe-benchmark", params={"plant_id": "C061"}
+            )
+        assert response.status_code == 401
+
+    async def test_returns_503_legacy(self, monkeypatch) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/recipe-benchmark",
+                params={"plant_id": "C061"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
 # Component Variance (SIMPLE_DATASETS declarative route)
 # ---------------------------------------------------------------------------
 

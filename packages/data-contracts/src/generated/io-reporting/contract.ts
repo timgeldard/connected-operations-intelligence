@@ -267,7 +267,7 @@ export const Warehouse360StockExceptionsContract = {
 } as const;
 
 /**
- * Material shortfalls — open transfer-requirement backlog aggregated to plant x material (ADR-0004 D2; sourced from gold_transfer_requirement_material_backlog / silver.warehouse_transfer_requirement). Candidate contract pending DEV profiling.
+ * Material shortfalls — open transfer-requirement backlog aggregated to plant x material (ADR-0004 D2; upstream lineage: the transfer-requirement material-backlog gold MV over the silver warehouse transfer requirements). Candidate contract pending DEV profiling.
 
  * Source View: vw_consumption_warehouse360_shortfalls
  * Version: 0.2.0
@@ -782,6 +782,8 @@ export interface Warehouse360GoodsMovements {
   purchase_order_number?: string;
   /** Linked IM delivery (VBELN_IM) */
   delivery_number?: string;
+  /** Linked IM delivery item (VBELP_IM); NULL on pre-existing rows until next full refresh/churn */
+  delivery_item_number?: string;
   /** Linked sales order (KDAUF) */
   sales_order_number?: string;
   /** Posting user (USNAM) */
@@ -889,12 +891,22 @@ export interface WmOperationsWorklist {
   latest_to_confirmed_date?: string;
   /** Confirmed TO qty / required qty (0..1; null for mixed-UoM TRs) */
   pick_progress_fraction?: number;
+  /** Timestamp of the most recent TO item confirmation (query-time, _live view) */
   latest_to_confirmed_ts?: string;
+  /** Hours from TR creation to latest TO confirmation (cycle time proxy — null until at least one TO item is confirmed for the TR)
+ */
   cycle_hours?: number;
   /** Hours since TR creation (query-time, _live view) */
   age_hours?: number;
   /** Planned execution time passed and job not complete (query-time) */
   is_overdue?: boolean;
+  /** Sum of absolute difference quantities across TO items with a non-zero discrepancy */
+  short_pick_qty?: number;
+  /** Count of TO line items with a non-zero difference quantity (short-pick signal) */
+  short_pick_item_count?: number;
+  /** Production line (AUFK CRVER) of the linked process order — 99.99% populated at C061/P817 (35 lines / 18-19 lines respectively, verified UAT 2026-06-11). NULL when the TR source is not a process order or the order is not found.
+ */
+  order_production_line?: string;
 }
 
 export const WmOperationsWorklistContract = {
@@ -1019,6 +1031,9 @@ export interface WmOperationsOrderReadiness {
   days_to_start?: number;
   /** red | amber | green | grey (query-time traffic light) */
   readiness_band?: string;
+  /** Production line (AUFK CRVER) of the process order — 99.99% populated at C061/P817 (35 lines / 18-19 lines respectively, verified UAT 2026-06-11).
+ */
+  production_line?: string;
 }
 
 export const WmOperationsOrderReadinessContract = {
@@ -1202,8 +1217,8 @@ export const WmOperationsOperatorActivityContract = {
   owner: "warehouse-operations",
   lifecycle: "draft",
   sourceView: "vw_consumption_wm_operations_operator_activity",
-  grain: "one row per plant_id, warehouse_id, operator and activity_date",
-  primaryKey: ["plant_id", "warehouse_id", "operator", "activity_date"],
+  grain: "one row per plant_id, warehouse_id, operator, activity_date and shift",
+  primaryKey: ["plant_id", "warehouse_id", "operator", "activity_date", "shift"],
   freshness: {
     expectedMinutes: 30,
     warningMinutes: 60,
@@ -1287,6 +1302,67 @@ export const WmOperationsOutboundContract = {
   owner: "warehouse-operations",
   lifecycle: "draft",
   sourceView: "vw_consumption_wm_operations_outbound",
+  grain: "one row per plant_id and delivery_id",
+  primaryKey: ["plant_id", "delivery_id"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Inbound delivery expected-receipt board — EL (standard inbound) and ELST (inbound stock transport) SAP delivery types with expected receipt date, line counts, receipt progress, and query-time receipt_band. Counterpart to wm_operations.outbound; vendor/supplier columns are not available (LIKP ship_to/sold_to are customer fields; supplier not replicated). Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_inbound_deliveries
+ * Version: 0.1.0
+ */
+export interface WmOperationsInboundDeliveries {
+  /** SAP plant ID */
+  plant_id: string;
+  /** SAP warehouse number (LGNUM) */
+  warehouse_id?: string;
+  /** SAP inbound delivery number (VBELN) */
+  delivery_id: string;
+  /** SAP delivery type (EL = standard inbound; ELST = inbound stock transport) */
+  delivery_type?: string;
+  /** SAP shipping point (VSTEL) */
+  shipping_point?: string;
+  /** Number of delivery line items */
+  line_count?: number;
+  /** Total delivery quantity (sum of line quantities; mix of base UoMs when has_mixed_base_uom) */
+  delivery_qty?: number;
+  /** Received quantity from confirmed GR transfer orders */
+  received_qty?: number;
+  /** received_qty / delivery_qty (0..1; null when delivery_qty is zero or mixed UoM) */
+  receipt_fraction?: number;
+  /** True when delivery lines carry more than one base unit of measure (quantity totals approximate) */
+  has_mixed_base_uom?: boolean;
+  /** WM overall status code from LIKP (overall WM activity status) */
+  wm_status_code?: string;
+  /** Expected goods receipt date (LIKP WADAT — SAP planned GI/GR date) */
+  expected_receipt_date?: string;
+  /** Actual goods receipt date (first confirmed GR TO confirmation date) */
+  actual_receipt_date?: string;
+  /** True when the delivery has at least one confirmed GR transfer order */
+  is_received?: boolean;
+  /** Days from today until expected_receipt_date (query-time, _live view; negative = overdue) */
+  days_until_expected_receipt?: number;
+  /** Query-time receipt risk band (green = on track; amber = due soon; red = overdue; grey = received) */
+  receipt_band?: string;
+}
+
+export const WmOperationsInboundDeliveriesContract = {
+  id: "wm_operations.inbound_deliveries",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_inbound_deliveries",
   grain: "one row per plant_id and delivery_id",
   primaryKey: ["plant_id", "delivery_id"],
   freshness: {
@@ -1732,6 +1808,12 @@ export interface WmOperationsBinOccupancy {
   total_stock_qty?: number;
   available_stock_qty?: number;
   open_transfer_stock_qty?: number;
+  /** Sum of max_quant_count across bins (LAGP.MAXQU); NULL until full refresh/churn */
+  total_max_quant_count?: number;
+  /** Sum of maximum_weight across bins (LAGP.MGEWI); NULL until full refresh/churn */
+  total_maximum_weight?: number;
+  /** occupied_bin_count / total_max_quant_count; NULL when denominator absent */
+  quant_utilisation_fraction?: number;
 }
 
 export const WmOperationsBinOccupancyContract = {
@@ -1902,7 +1984,7 @@ export const WmOperationsStagingDemandContract = {
   lifecycle: "draft",
   sourceView: "vw_consumption_wm_operations_staging_demand",
   grain: "one row per plant_id, warehouse_id, work_area, production_supply_area and demand_hour",
-  primaryKey: ["plant_id", "warehouse_id", "work_area", "demand_hour"],
+  primaryKey: ["plant_id", "warehouse_id", "work_area", "production_supply_area", "demand_hour"],
   freshness: {
     expectedMinutes: 30,
     warningMinutes: 60,
@@ -1990,6 +2072,662 @@ export const WmOperationsQmLotsContract = {
   },
 } as const;
 
+/**
+ * Process-order operations enriched with work-centre description — one row per plant_id, order_number, routing_number, and operation_counter. Drill-through behind the Order Detail overlay. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_order_operations
+ * Version: 0.1.0
+ */
+export interface WmOperationsOrderOperations {
+  plant_id: string;
+  order_number: string;
+  routing_number: string;
+  operation_counter: string;
+  operation_number?: string;
+  operation_description?: string;
+  control_key?: string;
+  work_centre_code?: string;
+  work_centre_description?: string;
+  scheduled_start_datetime?: string;
+  scheduled_finish_datetime?: string;
+  actual_start_datetime?: string;
+  actual_finish_date?: string;
+  operation_quantity?: number;
+  confirmed_yield_quantity?: number;
+  confirmed_scrap_quantity?: number;
+  is_confirmed?: boolean;
+}
+
+export const WmOperationsOrderOperationsContract = {
+  id: "wm_operations.order_operations",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_order_operations",
+  grain: "one row per plant_id, order_number, routing_number and operation_counter",
+  primaryKey: ["plant_id", "order_number", "routing_number", "operation_counter"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Weekly production downtime pareto aggregated by plant, week, reason code, sub-reason code, and work centre. Feeds the Production Health view Pareto chart and KPI tiles. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_downtime_pareto
+ * Version: 0.1.0
+ */
+export interface WmOperationsDowntimePareto {
+  plant_id: string;
+  week_start: string;
+  downtime_reason_code?: string;
+  sub_reason_code?: string;
+  work_centre_code?: string;
+  downtime_reason_description?: string;
+  sub_reason_description?: string;
+  production_line_description?: string;
+  event_count?: number;
+  total_duration_minutes?: number;
+  avg_duration_minutes?: number;
+  distinct_order_count?: number;
+}
+
+export const WmOperationsDowntimeParetoContract = {
+  id: "wm_operations.downtime_pareto",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_downtime_pareto",
+  grain: "one row per plant_id, week_start, downtime_reason_code, sub_reason_code and work_centre_code",
+  primaryKey: ["plant_id", "week_start", "downtime_reason_code", "sub_reason_code", "work_centre_code"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Onboarded WM Operations plants — one row per plant_id and warehouse_id, derived from vw_consumption_wm_operations_worklist_summary (RLS inherited). Used by the command palette to enumerate plants dynamically. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_plants
+ * Version: 0.1.0
+ */
+export interface WmOperationsPlants {
+  /** SAP plant ID */
+  plant_id: string;
+  /** SAP warehouse number (LGNUM) */
+  warehouse_id: string;
+  /** Total transfer requirements in the worklist summary (activity indicator) */
+  worklist_tr_count?: number;
+}
+
+export const WmOperationsPlantsContract = {
+  id: "wm_operations.plants",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_plants",
+  grain: "one row per plant_id and warehouse_id",
+  primaryKey: ["plant_id", "warehouse_id"],
+  freshness: {
+    expectedMinutes: 30,
+    warningMinutes: 60,
+    criticalMinutes: 120,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Production downtime events at event grain — passthrough from silver.downtime_event. One row per downtime entry; multiple entries can share the same plant_id, order_number, operation_number, and item_number. Feeds the Production Health recent-events table. Candidate contract pending DEV profiling.
+
+ * Source View: vw_consumption_wm_operations_downtime_events
+ * Version: 0.1.0
+ */
+export interface WmOperationsDowntimeEvents {
+  plant_id: string;
+  work_centre_code?: string;
+  machine_code?: string;
+  machine_description?: string;
+  production_line_description?: string;
+  order_number?: string;
+  material_code?: string;
+  operation_number?: string;
+  item_number?: string;
+  downtime_reason_code?: string;
+  downtime_reason_description?: string;
+  sub_reason_code?: string;
+  sub_reason_description?: string;
+  start_datetime?: string;
+  end_datetime?: string;
+  duration_minutes?: number;
+  reported_by_user?: string;
+  comment?: string;
+}
+
+export const WmOperationsDowntimeEventsContract = {
+  id: "wm_operations.downtime_events",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_downtime_events",
+  grain: "one row per downtime entry (plant_id + order_number + operation_number + item_number is the closest natural key; multiple downtime entries can share these fields)",
+  primaryKey: ["plant_id", "order_number", "operation_number", "item_number"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * QM inspection lot status — one row per plant_id and lot_id (all lots in the silver lookback window). Carries lot header, material name, the latest usage decision, and query-time date-relative columns (lot_age_days, ud_lead_time_days, is_overdue). Source-guarded: view only exists when silver QM tables are present.
+
+ * Source View: vw_consumption_wm_operations_qm_lot_status
+ * Version: 0.1.0
+ */
+export interface WmOperationsQmLotStatus {
+  plant_id: string;
+  lot_id: string;
+  inspection_lot_origin_code?: string;
+  inspection_type?: string;
+  material_id?: string;
+  material_name?: string;
+  batch_id?: string;
+  order_id?: string;
+  lot_created_date?: string;
+  inspection_start_date?: string;
+  inspection_end_date?: string;
+  lot_qty?: number;
+  lot_uom?: string;
+  has_usage_decision?: boolean;
+  last_usage_decision?: string;
+  last_usage_decision_date?: string;
+  last_usage_decision_by?: string;
+  quality_score?: string;
+  lot_age_days?: number;
+  ud_lead_time_days?: number;
+  is_overdue?: boolean;
+}
+
+export const WmOperationsQmLotStatusContract = {
+  id: "wm_operations.qm_lot_status",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_qm_lot_status",
+  grain: "one row per plant_id and lot_id",
+  primaryKey: ["plant_id", "lot_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * QM disposition queue — open lots only (no usage decision), enriched with blocked stock quantity (MCHB.CINSM) and estimated blocked value (blocked_qty × standard_price / price_unit). Grain: plant_id × lot_id. Date-relative columns (lot_age_days, is_overdue) added at query time via the _live serving view. Source-guarded: view only exists when silver QM tables are present.
+
+ * Source View: vw_consumption_wm_operations_qm_disposition_queue
+ * Version: 0.1.0
+ */
+export interface WmOperationsQmDispositionQueue {
+  plant_id: string;
+  lot_id: string;
+  inspection_lot_origin_code?: string;
+  inspection_type?: string;
+  material_id?: string;
+  material_name?: string;
+  batch_id?: string;
+  order_id?: string;
+  lot_created_date?: string;
+  inspection_start_date?: string;
+  inspection_end_date?: string;
+  lot_qty?: number;
+  lot_uom?: string;
+  blocked_qty?: number;
+  blocked_uom?: string;
+  est_blocked_value?: number;
+  lot_age_days?: number;
+  is_overdue?: boolean;
+}
+
+export const WmOperationsQmDispositionQueueContract = {
+  id: "wm_operations.qm_disposition_queue",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_qm_disposition_queue",
+  grain: "one row per plant_id and lot_id (open lots only)",
+  primaryKey: ["plant_id", "lot_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Order/Batch Journey Timeline summary -- one row per plant_id x order_id. Milestones aggregated from five silver sources (process_order, TR/TO via TBNUM, process_order_operation, pi_sheet_execution, goods_movement) to populate the flagship per-order journey view. All milestone timestamps nullable; PI columns absent at plants without PI data (P806). Derived lag hours (release->staged->produced->GR) only populated when both endpoints exist. No date-relative columns -- no _live wrapper; reads _secured directly.
+
+ * Source View: vw_consumption_wm_operations_order_journey
+ * Version: 0.1.0
+ */
+export interface WmOperationsOrderJourney {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Process order number (AUFNR) */
+  order_id: string;
+  /** Finished-good material code */
+  material_code?: string;
+  /** Finished-good material description */
+  material_name?: string;
+  /** Order quantity (AFKO GAMNG) */
+  order_qty?: number;
+  /** Order quantity unit of measure */
+  uom?: string;
+  /** Production line (AUFK CRVER — work centre version / line assignment) */
+  production_line?: string;
+  /** Order creation timestamp (AUFK ERDAT/ERZET) */
+  order_created_ts?: string;
+  /** Order release date (AUFK FTRMI — actual release date) */
+  release_date?: string;
+  /** Scheduled production start date (AFKO GSTRS) */
+  scheduled_start_date?: string;
+  /** Scheduled production finish date (AFKO GLTRS) */
+  scheduled_finish_date?: string;
+  /** Timestamp of the first staging transfer requirement created for this order */
+  first_tr_created_ts?: string;
+  /** Number of staging transfer requirements linked to this order (LTBK BETYP='P') */
+  staging_tr_count?: number;
+  /** Timestamp of the first confirmed staging transfer order item (LTAK QDATU/QZEIT) */
+  staging_first_confirmed_ts?: string;
+  /** Timestamp of the most recent confirmed staging transfer order item */
+  staging_last_confirmed_ts?: string;
+  /** Count of fully confirmed staging TO items linked to this order */
+  staged_item_count?: number;
+  /** Total staging TO items (confirmed + open) linked to this order */
+  staged_item_total?: number;
+  /** Actual start timestamp of the first confirmed production operation (AFVC ISDD/ISTD) */
+  production_first_actual_start?: string;
+  /** Actual finish timestamp of the last confirmed production operation (AFVC IEDD/IETD) */
+  production_last_actual_finish?: string;
+  /** Total confirmed yield quantity from production operations (AFVC LMNGA) */
+  confirmed_yield_qty?: number;
+  /** Total confirmed scrap quantity from production operations (AFVC XMNGA) */
+  confirmed_scrap_qty?: number;
+  /** Timestamp of the first PI sheet execution start (absent at plants without PI replication, e.g. P806) */
+  pi_first_start?: string;
+  /** Timestamp of the last PI sheet execution end (absent at plants without PI replication) */
+  pi_last_end?: string;
+  /** Earliest goods receipt posting date (movement 101 against this order) */
+  first_gr_posting_date?: string;
+  /** Latest goods receipt posting date (movement 101 against this order) */
+  last_gr_posting_date?: string;
+  /** Net goods receipt quantity (movement 101 minus 102 reversals) against this order */
+  gr_qty?: number;
+  /** Net component issue quantity (movement 261 minus 262 reversals) against this order */
+  issue_qty?: number;
+  /** Count of distinct outbound deliveries linked to goods movements for this order */
+  delivery_count?: number;
+  /** Total QM inspection lots linked to this order */
+  qm_lot_count?: number;
+  /** Open QM inspection lots (no usage decision yet) linked to this order */
+  qm_open_lot_count?: number;
+  /** Hours from order release_date to first_tr_created_ts (null when either is absent) */
+  release_to_first_tr_hours?: number;
+  /** Hours from first_tr_created_ts to staging_last_confirmed_ts (null when either is absent) */
+  tr_to_staged_hours?: number;
+  /** Hours from staging_last_confirmed_ts to production_first_actual_start (null when either is absent) */
+  staged_to_production_hours?: number;
+  /** Hours from production_last_actual_finish to first_gr_posting_date (null when either is absent) */
+  production_to_gr_hours?: number;
+}
+
+export const WmOperationsOrderJourneyContract = {
+  id: "wm_operations.order_journey",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_order_journey",
+  grain: "one row per plant_id and order_id",
+  primaryKey: ["plant_id", "order_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Order/Batch Journey Timeline events -- long-format per-order event feed. One row per plant_id x order_id x event_seq. Event types: ORDER_CREATED, RELEASED, TR_CREATED, STAGING_CONFIRMED, PI_START, OPERATION_CONFIRMED, PI_END, GR_POSTED, COMPONENT_ISSUED, QM_LOT_CREATED, QM_UD_TAKEN. PI and QM events absent at plants without those silver tables. event_seq is row_number ordered by event_ts NULLS LAST within the order. No date-relative columns -- no _live wrapper; reads _secured directly.
+
+ * Source View: vw_consumption_wm_operations_order_journey_events
+ * Version: 0.1.0
+ */
+export interface WmOperationsOrderJourneyEvents {
+  plant_id: string;
+  order_id: string;
+  event_seq: number;
+  event_ts?: string;
+  event_type: string;
+  qty?: number;
+  uom?: string;
+  reference_id?: string;
+  detail?: string;
+}
+
+export const WmOperationsOrderJourneyEventsContract = {
+  id: "wm_operations.order_journey_events",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_order_journey_events",
+  grain: "one row per plant_id, order_id, and event_seq",
+  primaryKey: ["plant_id", "order_id", "event_seq"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Active process order WIP funnel — one row per plant_id x order_id for released, not-finished orders. stage values: RELEASED / STAGING / STAGED / IN_PRODUCTION / GR_PARTIAL / GR_COMPLETE, derived deterministically from journey milestones. Includes order qty, material, scheduled dates. No current_date/current_timestamp.
+
+ * Source View: vw_consumption_wm_operations_wip_stages
+ * Version: 0.1.0
+ */
+export interface WmOperationsWipStages {
+  plant_id: string;
+  order_id: string;
+  material_code?: string;
+  material_name?: string;
+  order_qty?: number;
+  uom?: string;
+  scheduled_start_date?: string;
+  scheduled_finish_date?: string;
+  /** RELEASED | STAGING | STAGED | IN_PRODUCTION | GR_PARTIAL | GR_COMPLETE */
+  stage: string;
+  first_tr_created_ts?: string;
+  staging_last_confirmed_ts?: string;
+  production_first_actual_start?: string;
+  first_gr_posting_date?: string;
+  gr_qty?: number;
+}
+
+export const WmOperationsWipStagesContract = {
+  id: "wm_operations.wip_stages",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_wip_stages",
+  grain: "one row per plant_id and order_id (active orders only)",
+  primaryKey: ["plant_id", "order_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Schedule adherence aggregated to plant x scheduled_finish_date (day) grain. planned_count = orders scheduled to finish on this date; completed_count = orders that actually finished; on_time_count = completed on or before scheduled date. max_actual_date is the latest actual_finish_date in the source table — use this to anchor the S-curve chart instead of wall-clock date. No current_date/current_timestamp. Source: gold_process_order_schedule_adherence (completed/closed orders).
+
+ * Source View: vw_consumption_wm_operations_schedule_adherence_daily
+ * Version: 0.1.0
+ */
+export interface WmOperationsScheduleAdherenceDaily {
+  plant_id: string;
+  scheduled_date: string;
+  planned_count: number;
+  completed_count: number;
+  on_time_count: number;
+  max_actual_date?: string;
+}
+
+export const WmOperationsScheduleAdherenceDailyContract = {
+  id: "wm_operations.schedule_adherence_daily",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_schedule_adherence_daily",
+  grain: "one row per plant_id and scheduled_date",
+  primaryKey: ["plant_id", "scheduled_date"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Order-grain yield summary for the Yield & Loss analytics view. planned_qty = order_quantity (AFKO.GAMNG); delivered_qty = net GR (movement 101 minus 102). yield_pct = delivered_qty / planned_qty (null when planned_qty is zero/null). is_complete = actual_finish_date IS NOT NULL. Source: gold_wm_order_yield (process_order + goods_movement).
+
+ * Source View: vw_consumption_wm_operations_order_yield
+ * Version: 0.1.0
+ */
+export interface WmOperationsOrderYield {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Process order number (AUFNR) */
+  order_id: string;
+  /** Finished-good material code */
+  material_id?: string;
+  /** Finished-good material description */
+  material_name?: string;
+  /** Production line (AUFK CRVER) */
+  production_line?: string;
+  /** Planned order quantity (AFKO GAMNG) */
+  planned_qty?: number;
+  /** Net goods receipt quantity (movement 101 minus 102 reversals; clamped at 0) */
+  delivered_qty?: number;
+  /** Order quantity unit of measure */
+  uom?: string;
+  /** delivered_qty / planned_qty (null when planned_qty is zero or null) */
+  yield_pct?: number;
+  /** True when delivered_qty > 0 (at least one GR movement 101 exists) */
+  has_goods_receipt?: boolean;
+  /** True when actual_finish_date is not null (order has an actual finish) */
+  is_complete?: boolean;
+  /** True when the order has been released (AUFK is_released or actual_release_date present) */
+  is_released?: boolean;
+  /** True when the order carries the TECO (technically complete) status flag */
+  is_completed?: boolean;
+  /** True when the order is closed (AUFK is_closed) */
+  is_closed?: boolean;
+  /** Scheduled production start date (AFKO GSTRS) */
+  scheduled_start_date?: string;
+  /** Scheduled production finish date (AFKO GLTRS) */
+  scheduled_finish_date?: string;
+  /** Actual finish date (AFKO IEDD — the primary completion signal) */
+  actual_finish_date?: string;
+  /** Earliest goods receipt posting date (movement 101 against this order) */
+  first_gr_date?: string;
+  /** Latest goods receipt posting date (movement 101 against this order) */
+  last_gr_date?: string;
+}
+
+export const WmOperationsOrderYieldContract = {
+  id: "wm_operations.order_yield",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_order_yield",
+  grain: "one row per plant_id and order_id",
+  primaryKey: ["plant_id", "order_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Recipe-line benchmark distribution for the Campaigns view. Aggregates complete process orders with goods receipt evidence from gold_wm_order_yield. Grain is plant_id, material_id, and production_line; null production_line is grouped as UNASSIGNED. Percentiles compare yield_pct and GR duration for runs of the same recipe on the same line.
+
+ * Source View: vw_consumption_wm_operations_recipe_benchmark
+ * Version: 0.1.0
+ */
+export interface WmOperationsRecipeBenchmark {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Finished-good material code */
+  material_id: string;
+  /** Production line used for benchmarking, with null source values grouped as UNASSIGNED */
+  production_line: string;
+  /** Count of complete orders with goods receipt evidence in this recipe-line distribution */
+  run_count: number;
+  /** Median delivered/planned yield percentage across qualifying runs */
+  median_yield_pct?: number;
+  /** 10th percentile delivered/planned yield percentage across qualifying runs */
+  p10_yield_pct?: number;
+  /** 90th percentile delivered/planned yield percentage across qualifying runs */
+  p90_yield_pct?: number;
+  /** Median goods-receipt duration in hours, excluding zero/negative or missing spans */
+  median_duration_hours?: number;
+  /** 10th percentile goods-receipt duration in hours */
+  p10_duration_hours?: number;
+  /** 90th percentile goods-receipt duration in hours */
+  p90_duration_hours?: number;
+  /** Latest goods receipt finish date contributing to this benchmark bucket */
+  last_run_finish_date?: string;
+}
+
+export const WmOperationsRecipeBenchmarkContract = {
+  id: "wm_operations.recipe_benchmark",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_recipe_benchmark",
+  grain: "one row per plant_id, material_id, and production_line",
+  primaryKey: ["plant_id", "material_id", "production_line"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Order + material grain material variance for the Yield & Loss waterfall. One row per plant_id, order_id, material_id (aggregated from reservation_requirement). Silver goods_movement carries no reservation references (MSEG has no RSNUM/RSPOS in the replication schema), so reservation grain would double-count issued_qty for orders with multiple RESB rows for the same material. Grain changed from reservation-item to order+material in v0.2.0. variance_qty = issued_qty - required_qty (positive = over-issue / loss; negative = under-issue). est_loss_value = over-issued qty × standard_price / price_unit (null when no price data). Quantities stay in each row's own base_uom — no cross-material aggregation in gold. Source: gold_wm_order_component_variance (reservation_requirement + goods_movement + material_valuation).
+
+ * Source View: vw_consumption_wm_operations_component_variance
+ * Version: 0.2.0
+ */
+export interface WmOperationsComponentVariance {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Process order number (AUFNR) */
+  order_id: string;
+  /** Component material code */
+  material_id: string;
+  /** Component material description */
+  material_name?: string;
+  /** Base unit of measure for quantities in this row */
+  uom?: string;
+  /** SAP movement type code (261 = goods issue for production; 261X = batch-where variant) */
+  movement_type_code?: string;
+  /** Required component quantity aggregated from reservation_requirement (RESB) at order+material grain */
+  required_qty: number;
+  /** Withdrawn quantity from reservations (RESB ENMNG — already-issued signal from planning) */
+  withdrawn_qty?: number;
+  /** Net issued quantity from goods movements (261 minus 262 reversals) against this order+material */
+  issued_qty?: number;
+  /** issued_qty minus required_qty (positive = over-issue / loss; negative = under-issue) */
+  variance_qty?: number;
+  /** variance_qty / required_qty (null when required_qty is zero; positive = over-issued fraction) */
+  variance_pct?: number;
+  /** Estimated over-issue value = MAX(variance_qty, 0) × standard_price / price_unit (null when no standard_price available from material_valuation)
+ */
+  est_loss_value?: number;
+  /** Standard price per price_unit from material_valuation (MBEW STPRS) */
+  standard_price?: number;
+  /** True when the reservation carries the final-issue flag (RESB KZEAR) */
+  is_final_issue?: boolean;
+}
+
+export const WmOperationsComponentVarianceContract = {
+  id: "wm_operations.component_variance",
+  version: "0.2.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_component_variance",
+  grain: "one row per plant_id, order_id, and material_id",
+  primaryKey: ["plant_id", "order_id", "material_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
 export const ioReportingContracts = {
   contractVersion: "0.1.0",
   product: "connected-operations-intelligence",
@@ -2017,6 +2755,7 @@ export const ioReportingContracts = {
     "wm_operations.operator_activity": WmOperationsOperatorActivityContract,
     "wm_operations.queue_workload": WmOperationsQueueWorkloadContract,
     "wm_operations.outbound": WmOperationsOutboundContract,
+    "wm_operations.inbound_deliveries": WmOperationsInboundDeliveriesContract,
     "wm_operations.recon_alerts": WmOperationsReconAlertsContract,
     "wm_operations.handling_units": WmOperationsHandlingUnitsContract,
     "wm_operations.expiry_risk": WmOperationsExpiryRiskContract,
@@ -2034,5 +2773,18 @@ export const ioReportingContracts = {
     "wm_operations.staging_demand": WmOperationsStagingDemandContract,
     "wm_operations.buffer_flow": WmOperationsBufferFlowContract,
     "wm_operations.qm_lots": WmOperationsQmLotsContract,
+    "wm_operations.order_operations": WmOperationsOrderOperationsContract,
+    "wm_operations.downtime_pareto": WmOperationsDowntimeParetoContract,
+    "wm_operations.plants": WmOperationsPlantsContract,
+    "wm_operations.downtime_events": WmOperationsDowntimeEventsContract,
+    "wm_operations.qm_lot_status": WmOperationsQmLotStatusContract,
+    "wm_operations.qm_disposition_queue": WmOperationsQmDispositionQueueContract,
+    "wm_operations.order_journey": WmOperationsOrderJourneyContract,
+    "wm_operations.order_journey_events": WmOperationsOrderJourneyEventsContract,
+    "wm_operations.wip_stages": WmOperationsWipStagesContract,
+    "wm_operations.schedule_adherence_daily": WmOperationsScheduleAdherenceDailyContract,
+    "wm_operations.order_yield": WmOperationsOrderYieldContract,
+    "wm_operations.recipe_benchmark": WmOperationsRecipeBenchmarkContract,
+    "wm_operations.component_variance": WmOperationsComponentVarianceContract,
   },
 } as const;

@@ -702,7 +702,27 @@ SELECT
 FROM connected_plant_prod.gold_io_reporting.gold_wm_order_yield_secured
 WHERE plant_code IS NOT NULL;
 
--- 36. Order component variance (Yield & Loss analytics view — order+material grain)
+-- 36. Recipe run benchmark (Campaigns recipe-line comparison — recipe-line grain)
+-- Grain: 1 row per plant_id + material_id + production_line.
+-- Source: gold_wm_recipe_run_benchmark_secured (no date-relative columns).
+-- Percentiles are over complete orders with goods receipt; null production_line is UNASSIGNED.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_recipe_benchmark AS
+SELECT
+  plant_code AS plant_id,
+  material_code AS material_id,
+  production_line,
+  run_count,
+  median_yield_pct,
+  p10_yield_pct,
+  p90_yield_pct,
+  median_duration_hours,
+  p10_duration_hours,
+  p90_duration_hours,
+  CAST(last_run_finish_date AS DATE) AS last_run_finish_date
+FROM connected_plant_prod.gold_io_reporting.gold_wm_recipe_run_benchmark_secured
+WHERE plant_code IS NOT NULL;
+
+-- 37. Order component variance (Yield & Loss analytics view — order+material grain)
 -- Grain: 1 row per plant_id + order_id + material_id.
 -- Source: gold_wm_order_component_variance_secured (no date-relative columns).
 -- variance_qty > 0 = over-issue (loss); < 0 = under-issue.
