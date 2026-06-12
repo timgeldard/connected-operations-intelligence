@@ -1707,7 +1707,7 @@ def gold_wm_order_journey_summary():
                 F.count_distinct("inspection_lot_number").alias("qm_lot_count"),
                 F.count_distinct(
                     F.when(
-                        ~F.coalesce(F.col("_ud_taken"), F.lit(False)),
+                        F.col("_ud_taken").isNull(),
                         F.col("inspection_lot_number"),
                     )
                 ).alias("qm_open_lot_count"),
