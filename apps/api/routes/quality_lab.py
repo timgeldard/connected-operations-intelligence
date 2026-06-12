@@ -14,7 +14,10 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from adapters.quality_lab.quality_lab_databricks_adapter import QualityLabRepository
+from adapters.quality_lab.quality_lab_databricks_adapter import (
+    _ALLOWED_DAYS,
+    QualityLabRepository,
+)
 from fastapi import APIRouter, Header, HTTPException, Response
 
 from routes._databricks import (
@@ -58,6 +61,7 @@ async def lab_fails(
     response: Response,
     plant_id: Optional[str] = None,
     lot_type: Optional[str] = None,
+    days: Optional[int] = None,
     x_forwarded_access_token: Optional[str] = Header(default=None),
     x_forwarded_user: Optional[str] = Header(default=None),
     x_forwarded_email: Optional[str] = Header(default=None),
@@ -73,6 +77,8 @@ async def lab_fails(
     Query params:
       plant_id  — restrict to one plant (optional)
       lot_type  — '89' (FP) or '04' (RM) (optional)
+      days      — rolling window on result recording date: 30, 180, or 360 (optional;
+                  absent = ALL). Invalid values return HTTP 422.
     """
     _require_databricks_mode()
 
@@ -82,13 +88,23 @@ async def lab_fails(
     clean_plant_id = plant_id.strip() or None if plant_id is not None else None
     clean_lot_type = lot_type.strip() or None if lot_type is not None else None
 
+    # Validate days: must be one of the allowed values when provided.
+    if days is not None and days not in _ALLOWED_DAYS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"days must be one of {sorted(_ALLOWED_DAYS)} or absent (ALL).",
+        )
+    clean_days = days  # already int | None; None = ALL
+
     repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
     result, spec = await run_repository_fetch(
-        lambda: repo.fetch_lab_fails(clean_plant_id, clean_lot_type)
+        lambda: repo.fetch_lab_fails(clean_plant_id, clean_lot_type, clean_days)
     )
     set_databricks_response_headers(response, spec)
     if clean_plant_id:
         result["plantId"] = clean_plant_id
     if clean_lot_type:
         result["lotType"] = clean_lot_type
+    if clean_days is not None:
+        result["days"] = clean_days
     return result

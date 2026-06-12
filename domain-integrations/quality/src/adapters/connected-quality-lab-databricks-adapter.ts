@@ -17,9 +17,17 @@ import type {
   ConnectedQualityLabPlantsResponse,
 } from '@connectio/data-contracts'
 import type { AdapterResult } from '@connectio/source-adapters'
-import type { ConnectedQualityLabAdapterRequest } from './connected-quality-lab-adapter.js'
 
-export type { ConnectedQualityLabAdapterRequest }
+/** Allowed values for the UI day filter (absent = ALL). */
+export type LabBoardDays = 30 | 180 | 360
+
+/** Request parameters for the Lab Board fails query. */
+export interface ConnectedQualityLabAdapterRequest {
+  readonly plantId?: string
+  readonly lotType?: string
+  /** Rolling window on result recording date. Absent = ALL. */
+  readonly days?: LabBoardDays
+}
 
 export class ConnectedQualityLabDatabricksAdapter {
   private readonly baseUrl: string
@@ -37,6 +45,7 @@ export class ConnectedQualityLabDatabricksAdapter {
     const params = new URLSearchParams()
     if (request.plantId) params.set('plant_id', request.plantId)
     if (request.lotType) params.set('lot_type', request.lotType)
+    if (request.days != null) params.set('days', String(request.days))
 
     const qs = params.toString()
     const url = `${this.baseUrl}/api/cq/lab/fails${qs ? `?${qs}` : ''}`

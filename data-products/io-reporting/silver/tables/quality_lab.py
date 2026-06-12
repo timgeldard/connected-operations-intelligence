@@ -1,6 +1,6 @@
 """
-Quality Lab Board silver tables — short-lookback result and spec for the rotating
-Lab Board wallboard (quality-batch-release workspace, lab-board view).
+Quality Lab Board silver tables — result and spec for the rotating Lab Board wallboard
+(quality-batch-release workspace, lab-board view; also ?workspace=connected-quality-lab-board).
 
 Two tables:
   quality_lab_inspection_result       — from QAMR (one row per lot × operation × MIC)
@@ -10,16 +10,17 @@ DESIGN DIFFERENCES FROM quality.py result-family tables:
   1. Gate:  quality gate (qm_enabled_flag only — NOT the two-tier spc gate), matching
      the lot/UD tables in quality.py. Lab-board consumers are QA release staff who see
      all QM-enabled plants, not the narrower SPC pilot set.
-  2. Lookback: `lab_board_lookback_days` pipeline conf (default 30), a SHORT rolling
-     window to keep scans tiny for a real-time wallboard. Uses the raw-string pushdown
-     pattern from traceability.py (BUDAT fix — dual-format AEDATTM support; see note).
-     The window is intentionally tighter than `qm_lookback_years` (used by the lot/UD
-     tables) — 30 days of failures is sufficient for a lab wallboard; multi-year history
-     is the SPC domain (feature/spc-result-grain, held for cost reasons, DO NOT MERGE
-     that branch — it adds ~660M-row scans to quality runs).
+  2. Lookback: uses the SAME `qm_lookback_years` window as the lot/UD tables in quality.py
+     (configurable, default 5y, applied to QALS.ENSTEHDAT lot creation date). The silver
+     tables therefore hold up to 5 years of lot history; the UI day filter (ALL / 360d /
+     180d / 30d) is applied at QUERY TIME on the result recording date (QAMR.PRUEFDATUV →
+     ts in the consumption view) — not in silver. This keeps silver self-correcting on a
+     config change (snapshot MV recompute) while giving the board its UI time filter without
+     further silver rebuilds.
+     The two table families still differ by GATE: quality (this file) vs spc (quality.py
+     result family). Co-existence is intentional; they serve different product areas.
   3. These tables RECONCILE with quality_inspection_result / quality_inspection_characteristic
-     when SPC Phase 1 merges: same source tables, overlapping rows within the shorter window.
-     Co-existence is intentional; the two sets serve different product areas.
+     when SPC Phase 1 merges: same source tables, overlapping rows within the shared window.
 
 NOTE on raw-string pushdown for AEDATTM vs ENSTEHDAT:
   QAMR/QAMV carry AEDATTM as a TIMESTAMP column (Aecorsoft replication watermark), so the
@@ -72,26 +73,26 @@ _QALS_LAB_REQUIRED = [
 ]
 
 
-def _lab_board_lookback_days(spark) -> int:
-    """Short rolling lookback window for the lab board (default 30 days).
+def _qm_lookback_years_for_lab(spark) -> int:
+    """Time gate for the lab-board QALS scan — matches the lot/UD window in quality.py.
 
-    Set via the `lab_board_lookback_days` pipeline conf in
-    resources/silver_quality_pipeline.pipeline.yml. Keeps the lab-board silver tables
-    tiny — a wallboard only needs recent failures, not multi-year history (that is the
-    SPC domain). Snapshot MV self-corrects when the window changes (no manual full refresh)."""
-    raw = spark.conf.get("lab_board_lookback_days", "30")
-    days = int(str(raw).strip())
-    if days <= 0:
-        raise ValueError(f"lab_board_lookback_days must be a positive integer, got {raw!r}")
-    return days
+    Reads the same `qm_lookback_years` pipeline conf (resources/silver_quality_pipeline.pipeline.yml,
+    default 5). The silver tables hold up to 5 years of lot history; the UI day filter
+    (ALL / 360d / 180d / 30d) is applied at query time on the result recording date in the
+    consumption view, not here. Snapshot MV self-corrects when the conf changes."""
+    raw = spark.conf.get("qm_lookback_years", "5")
+    years = int(str(raw).strip())
+    if years <= 0:
+        raise ValueError(f"qm_lookback_years must be a positive integer, got {raw!r}")
+    return years
 
 
 def _gated_qals_for_lab(spark):
     """Plant- and time-gated QALS set for lab-board tables.
 
     Uses the QUALITY gate (qm_enabled_flag only — not the spc two-tier gate) and the
-    SHORT lab_board_lookback_days window. Pre-gate pushdown on the same axis as the
-    output gate (same pattern as quality.py _gated_qals).
+    SAME qm_lookback_years window as the lot/UD tables in quality.py. Pre-gate pushdown
+    on the same axis as the output gate (same pattern as quality.py _gated_qals).
 
     The AEDATTM column is a TIMESTAMP, so a typed comparison is Delta-pushdown-eligible
     (file-level min/max statistics on TIMESTAMP columns propagate to the planner).
@@ -103,15 +104,15 @@ def _gated_qals_for_lab(spark):
     file-level statistics. The dual-format OR predicate covers both replication layouts.
     """
     spark_session = spark
-    days = _lab_board_lookback_days(spark_session)
+    lookback = _qm_lookback_years_for_lab(spark_session)
     qals = spark_session.read.table(f"{BRONZE}.inspection_qals")
     # Raw-string pushdown: dual-format OR predicate on ENSTEHDAT.
     # Rationale: Delta cannot push sap_date() (try_to_timestamp wrapper) to file-level statistics.
     # At character position 5, '-' (ASCII 45) sorts below any digit (ASCII 48-57), so a single
     # compact cutoff would incorrectly exclude recent ISO-format rows. Length discriminates format.
     # NULL/sentinel rows are kept so they reach the @dlt.expect_all expectation downstream.
-    # determinism-exempt: rolling lab-board window is intentionally evaluated at refresh time.
-    base_date = F.date_sub(F.current_date(), days)  # determinism-exempt: rolling lab-board window
+    # determinism-exempt: rolling qm_lookback_years window is intentionally evaluated at refresh time.
+    base_date = F.add_months(F.current_date(), -12 * lookback)  # determinism-exempt: rolling qm_lookback_years window
     cutoff_compact = F.date_format(base_date, "yyyyMMdd")
     cutoff_iso = F.date_format(base_date, "yyyy-MM-dd")
     keep = (
@@ -132,12 +133,13 @@ if (
         name="quality_lab_inspection_result",
         comment=(
             "Lab-board MIC-level inspection results (QAMR) — one row per "
-            "PRUEFLOS+VORGLFNR+MERKNR. Short rolling window (lab_board_lookback_days, default "
-            "30d) on lot creation date; quality gate (qm_enabled_flag only). Designed for the "
-            "lab-board wallboard gold layer (gold_qm_lab_result_signal). DO NOT merge with the "
-            "SPC result-grain family (quality_inspection_result, spc gate, qm_lookback_years) — "
-            "they serve different product areas; this table reconciles with that one within the "
-            "shared window once SPC Phase 1 merges. Current-state snapshot (AEDATTM only)."
+            "PRUEFLOS+VORGLFNR+MERKNR. Rolling window (qm_lookback_years, default 5y) on lot "
+            "creation date; quality gate (qm_enabled_flag only). UI day filter (ALL/360d/180d/30d) "
+            "applied at query time on result recording date, not here. Designed for the lab-board "
+            "wallboard gold layer (gold_qm_lab_result_signal). DO NOT merge with the SPC "
+            "result-grain family (quality_inspection_result, spc gate) — they serve different "
+            "product areas; this table reconciles with that one within the shared window once SPC "
+            "Phase 1 merges. Current-state snapshot (AEDATTM only)."
         ),
         table_properties={
             "delta.enableChangeDataFeed": "true",
@@ -218,8 +220,8 @@ if (
             "Lab-board MIC spec limits (QAMV) — one row per PRUEFLOS+VORGLFNR+MERKNR. "
             "Supplies spec limits (lsl_spec/usl_spec) and, when replicated, warning limits "
             "(lsl_warn/usl_warn) for the lab-board severity rule (fail = outside spec, "
-            "warn = within warning band). Short rolling window (lab_board_lookback_days) and "
-            "quality gate matching quality_lab_inspection_result. Current-state snapshot."
+            "warn = within warning band). Rolling window (qm_lookback_years) and quality gate "
+            "matching quality_lab_inspection_result. Current-state snapshot."
         ),
         table_properties={
             "delta.enableChangeDataFeed": "true",
