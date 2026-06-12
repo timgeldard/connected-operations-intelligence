@@ -6,7 +6,7 @@
 
 ## Overview
 
-Ten release gates must reach `passed` or `passed-with-conditions` before ConnectIO-RAD V2 is eligible for controlled production rollout. Gates are typed `ReleaseGate` constants in `ReleaseGatePage.tsx`. Aggregate status is computed by `aggregateGateStatus()` in `packages/product-model/src/helpers/pilot.ts`.
+Ten release gates must reach `passed` or `passed-with-conditions` before ConnectIO-RAD V2 is eligible for controlled production rollout. Gates are typed `ReleaseGate` constants in `ReleaseGatePage.tsx`. Aggregate status is computed by `aggregateGateStatus()` in `packages/domain-models/src/helpers/pilot.ts`.
 
 ---
 

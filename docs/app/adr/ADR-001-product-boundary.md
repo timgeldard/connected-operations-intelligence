@@ -22,7 +22,7 @@ V2 replaces the app-centric product boundary with a workspace-first model. The u
 shell assembles whichever evidence panels the active workspace declares, regardless of which
 domain-integration package owns each panel.
 
-The `WorkspaceRegistration` type is defined in `packages/product-model` and carries lifecycle state, scope
+The `WorkspaceRegistration` type is defined in `packages/domain-models` and carries lifecycle state, scope
 policy, view registrations, evidence panel references, drill-through definitions, personalization policy,
 and required permissions.
 

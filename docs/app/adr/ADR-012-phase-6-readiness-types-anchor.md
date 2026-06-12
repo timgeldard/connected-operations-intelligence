@@ -25,7 +25,7 @@ Additionally, the `product-model` package already owns the canonical workspace a
 
 ## Decision
 
-A single `ReadinessFinding` interface is defined in `packages/product-model/src/types/readiness.ts` and used as the common finding shape across all Phase 6 assessment dashboards.
+A single `ReadinessFinding` interface is defined in `packages/domain-models/src/types/readiness.ts` and used as the common finding shape across all Phase 6 assessment dashboards.
 
 All dashboards that surface findings produce `ReadinessFinding[]` (or types that extend it). Dashboard-specific variants extend `ReadinessFinding` rather than defining independent types:
 
@@ -47,7 +47,7 @@ The admin UI exposes finding-level filters (severity, lifecycle, ownerDomain, bl
 
 ### Single source of truth in product-model
 
-`ReadinessFinding` lives in `packages/product-model`, the same package that owns `WorkspaceRegistration`, `LifecycleState`, and `EvidencePanelDefinition`. Governance tooling that imports from `product-model` gets the finding type without reaching into a dashboard-specific package.
+`ReadinessFinding` lives in `packages/domain-models`, the same package that owns `WorkspaceRegistration`, `LifecycleState`, and `EvidencePanelDefinition`. Governance tooling that imports from `product-model` gets the finding type without reaching into a dashboard-specific package.
 
 ### Extension rather than union
 

@@ -17,7 +17,7 @@ the domain-integration packages that populate it.
 
 ## Decision
 
-The `WorkspaceRegistration` type in `packages/product-model` is the canonical product unit. It carries:
+The `WorkspaceRegistration` type in `packages/domain-models` is the canonical product unit. It carries:
 lifecycle state (`LifecycleState`), scope policy (`ScopePolicy`), view registrations
 (`ViewRegistration[]`), evidence panel references (`EvidencePanelReference[]`), drill-through definitions
 (`DrillThroughDefinition[]`), personalization policy (`WorkspacePersonalizationPolicy`), and required

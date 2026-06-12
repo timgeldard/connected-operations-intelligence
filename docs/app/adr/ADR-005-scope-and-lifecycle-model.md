@@ -17,13 +17,13 @@ shipping it behind a gate.
 
 ## Decision
 
-`ScopeLevel` is a union of twelve operational dimensions defined in `packages/product-model`:
+`ScopeLevel` is a union of twelve operational dimensions defined in `packages/domain-models`:
 `plant | line | work-centre | region | global | material | batch | process-order | warehouse |
 storage-location | supplier | customer`.
 
 Each `WorkspaceRegistration` carries a `ScopePolicy` that declares `supportedLevels`, an optional
 `requiredLevel`, a `defaultLevel`, and an `autoElevate` flag. When `autoElevate` is true, the
-`resolveDefaultScope` helper (in `packages/product-model`) selects the broadest supported scope from the
+`resolveDefaultScope` helper (in `packages/domain-models`) selects the broadest supported scope from the
 user's authorised scopes. Evidence panels declare their context requirements as `EvidenceContextRequirement`
 objects that reference specific scope dimensions.
 

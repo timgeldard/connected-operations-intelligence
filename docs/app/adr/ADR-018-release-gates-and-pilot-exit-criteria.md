@@ -30,7 +30,7 @@ Two storage approaches were considered:
 
 Release gates are defined as `readonly ReleaseGate[]` in `ReleaseGatePage.tsx` (`RELEASE_GATES` constant). Exit criteria are defined as `readonly PilotExitCriteria[]` in `PilotExitCriteriaPage.tsx` (`EXIT_CRITERIA` constant).
 
-Both use types from `packages/product-model/src/types/pilot.ts`:
+Both use types from `packages/domain-models/src/types/pilot.ts`:
 
 ```typescript
 interface ReleaseGate {
@@ -63,7 +63,7 @@ interface PilotExitCriteria {
 
 ### Aggregation via aggregateGateStatus()
 
-The `aggregateGateStatus(gates: readonly ReleaseGate[]): ReleaseGateStatus` helper in `packages/product-model/src/helpers/pilot.ts` computes the worst-case status across a gate collection:
+The `aggregateGateStatus(gates: readonly ReleaseGate[]): ReleaseGateStatus` helper in `packages/domain-models/src/helpers/pilot.ts` computes the worst-case status across a gate collection:
 
 - Any gate `failed` → aggregate is `failed`
 - Any gate `blocked` → aggregate is `blocked`

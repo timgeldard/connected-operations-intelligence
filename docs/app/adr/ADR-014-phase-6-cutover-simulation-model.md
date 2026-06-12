@@ -16,7 +16,7 @@ The programme needs a structured way to stage the transition from parallel opera
 
 ## Decision
 
-A `CutoverSimulationMode` type is defined in `packages/product-model/src/types/readiness.ts` with four ordered values:
+A `CutoverSimulationMode` type is defined in `packages/domain-models/src/types/readiness.ts` with four ordered values:
 
 ```
 off → observe → simulate-redirect → simulate-retirement

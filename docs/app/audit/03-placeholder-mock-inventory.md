@@ -127,5 +127,5 @@ All action flows display a validation-backed form. Form validation is real. The 
 | `AdminGovernancePage` tab views | `apps/web/src/pages/AdminGovernancePage.tsx` | Derives all data from live registry |
 | `FeedbackDrawer` | `apps/web/src/feedback/FeedbackDrawer.tsx` | Real form; submit is console-only but UX is complete |
 | All design-system components | `packages/design-system/src/` | Real, production-ready UI primitives |
-| All product-model types and helpers | `packages/product-model/src/` | Real domain model; no mocks |
+| All product-model types and helpers | `packages/domain-models/src/` | Real domain model; no mocks |
 | All data-contracts schemas | `packages/data-contracts/src/` | Real Zod schemas; not yet called by adapters |

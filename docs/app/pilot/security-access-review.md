@@ -10,7 +10,7 @@ The Security & Access Review Matrix (`SecurityAccessReviewPage.tsx`) assesses ro
 
 Roles covered: `quality-lead`, `qa-technician`, `food-safety-lead`, `operations-supervisor`, `warehouse-manager`, `maintenance-lead`, `plant-manager`, `admin`.
 
-The review uses the `SecurityAccessReviewItem` type from `packages/product-model/src/types/pilot.ts`. Each item records `accessExpected`, `accessActual`, and `status` (`correct | over-permissioned | under-permissioned | not-assessed`).
+The review uses the `SecurityAccessReviewItem` type from `packages/domain-models/src/types/pilot.ts`. Each item records `accessExpected`, `accessActual`, and `status` (`correct | over-permissioned | under-permissioned | not-assessed`).
 
 ---
 

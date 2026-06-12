@@ -80,14 +80,15 @@ def _seed_worklist_inputs(spark, tr_rows, to_rows=None):
         Row(plant_code="C061", warehouse_number="104", transfer_order_number="500",
             item_number="0001", transfer_requirement_number="__NONE__",
             item_status="Open", requested_quantity=0.0, confirmed_quantity=0.0,
-            confirmed_date=None),
+            confirmed_date=None, confirmed_datetime=None, difference_quantity=0.0),
     ], "warehouse_transfer_order")
     _save(spark, [
         Row(order_number="900001", plant_code="C061", material_code="FG1",
             order_quantity=1000.0, order_quantity_uom="KG",
             scheduled_start_date=datetime.date(2026, 6, 2),
             scheduled_finish_date=datetime.date(2026, 6, 3),
-            is_released=True, is_closed=False),
+            is_released=True, is_closed=False,
+            production_line=None, production_line_description=None),
     ], "process_order")
 
 
@@ -110,7 +111,8 @@ def test_worklist_aggregates_and_classifies_staging(spark):
             Row(plant_code="C061", warehouse_number="104", transfer_order_number="500",
                 item_number="0001", transfer_requirement_number="0000000111",
                 item_status="Fully Confirmed", requested_quantity=50.0, confirmed_quantity=50.0,
-                confirmed_date=datetime.date(2026, 6, 1)),
+                confirmed_date=datetime.date(2026, 6, 1), confirmed_datetime=datetime.datetime(2026, 6, 1, 8, 0, 0),
+                difference_quantity=0.0),
         ],
     )
 
@@ -212,20 +214,23 @@ def test_order_readiness_tr_coverage_and_psa_supply(spark):
             scheduled_start_date=datetime.date(2026, 6, 2),
             scheduled_finish_date=datetime.date(2026, 6, 3),
             is_released=True, is_closed=False,
-            actual_release_date=None, actual_finish_date=None),
+            actual_release_date=None, actual_finish_date=None,
+            production_line=None, production_line_description=None),
         # Released via FTRMI date evidence only (blank PHAS flags — UAT replication shape)
         Row(order_number="900002", plant_code="C061", material_code="FG1",
             order_quantity=500.0, order_quantity_uom="KG",
             scheduled_start_date=datetime.date(2026, 6, 4),
             scheduled_finish_date=datetime.date(2026, 6, 5),
             is_released=False, is_closed=False,
-            actual_release_date=datetime.date(2026, 6, 3), actual_finish_date=None),
+            actual_release_date=datetime.date(2026, 6, 3), actual_finish_date=None,
+            production_line=None, production_line_description=None),
         # Excluded: no release evidence at all
         Row(order_number="900003", plant_code="C061", material_code="FG1",
             order_quantity=500.0, order_quantity_uom="KG",
             scheduled_start_date=None, scheduled_finish_date=None,
             is_released=False, is_closed=False,
-            actual_release_date=None, actual_finish_date=None),
+            actual_release_date=None, actual_finish_date=None,
+            production_line=None, production_line_description=None),
         # Excluded: released but production finished (GLTRI set)
         Row(order_number="900004", plant_code="C061", material_code="FG1",
             order_quantity=500.0, order_quantity_uom="KG",
@@ -233,7 +238,8 @@ def test_order_readiness_tr_coverage_and_psa_supply(spark):
             scheduled_finish_date=datetime.date(2026, 5, 2),
             is_released=True, is_closed=False,
             actual_release_date=datetime.date(2026, 4, 30),
-            actual_finish_date=datetime.date(2026, 5, 2)),
+            actual_finish_date=datetime.date(2026, 5, 2),
+            production_line=None, production_line_description=None),
     ], "process_order")
 
     _save(spark, [

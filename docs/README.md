@@ -2,12 +2,10 @@
 
 Welcome to the Connected Operations monorepo documentation. The codebase is divided into a strictly governed data pipeline layer (Databricks DLT) and a React/FastAPI application layer.
 
-> [!WARNING]
-> Warehouse360 is in transition from legacy `wh360` runtime views to governed contract-backed `vw_consumption_warehouse360_*` views.
+> [!NOTE]
+> Warehouse360 has successfully transitioned from legacy `wh360` runtime views to governed, contract-backed `vw_consumption_warehouse360_*` views.
 >
-> The governed path is **not yet live-validated**.
->
-> **Do not switch `WAREHOUSE360_SOURCE_MODE=governed_contracts` until DEV and UAT validation have passed.**
+> DEV and UAT validation have successfully passed (revalidated 2026-06-09), and the system is live in `WAREHOUSE360_SOURCE_MODE=governed_contracts` mode.
 
 ---
 

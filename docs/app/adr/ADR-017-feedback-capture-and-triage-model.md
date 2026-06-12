@@ -30,7 +30,7 @@ A `FeedbackProvider` React context (in `apps/web/src/feedback/FeedbackContext.ts
 - Loads items from `localStorage` on mount so feedback survives page refresh
 - Exposes `submit()` and `updateStatus()` via the `useFeedbackContext()` hook
 
-Storage format is a JSON array of `FeedbackItem` objects (typed in `packages/product-model/src/types/pilot.ts`). The `STORAGE_KEY` is `connectio.feedback.v1`.
+Storage format is a JSON array of `FeedbackItem` objects (typed in `packages/domain-models/src/types/pilot.ts`). The `STORAGE_KEY` is `connectio.feedback.v1`.
 
 ### FeedbackItem Type Design
 
@@ -60,7 +60,7 @@ The `FeedbackDrawer` component is a Dialog (using `@connectio/design-system`) th
 
 The pilot is a RAD prototype. A backend feedback API would require schema design, authentication, a database, and a deployment pipeline — significant overhead for a controlled engagement with a small group of named users at one site. localStorage is sufficient for a controlled pilot where the administrator reviews feedback in the same browser session used for piloting.
 
-The `FeedbackItem` type is already in `packages/product-model`, so migration to a backend API in a later phase requires only a replacement of the `FeedbackProvider`'s storage implementation — the type design and UI are compatible with a server-backed model.
+The `FeedbackItem` type is already in `packages/domain-models`, so migration to a backend API in a later phase requires only a replacement of the `FeedbackProvider`'s storage implementation — the type design and UI are compatible with a server-backed model.
 
 ### Why 11 feedback categories?
 

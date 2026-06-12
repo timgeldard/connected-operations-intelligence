@@ -6,7 +6,7 @@
 
 ## Overview
 
-12 exit criteria must be met before ConnectIO-RAD V2 exits the controlled pilot phase. Each criterion is a typed `PilotExitCriteria` constant in `PilotExitCriteriaPage.tsx`. The `pilotExitBlocking()` helper in `packages/product-model/src/helpers/pilot.ts` returns the subset of criteria with status `failed` or `blocked`.
+12 exit criteria must be met before ConnectIO-RAD V2 exits the controlled pilot phase. Each criterion is a typed `PilotExitCriteria` constant in `PilotExitCriteriaPage.tsx`. The `pilotExitBlocking()` helper in `packages/domain-models/src/helpers/pilot.ts` returns the subset of criteria with status `failed` or `blocked`.
 
 **Summary:** 3 passed, 3 passed-with-conditions, 4 in-progress, 1 not-started, 1 not-started.
 
