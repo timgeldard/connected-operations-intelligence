@@ -115,7 +115,7 @@ export class ConnectedQualityLabDatabricksAdapter {
       }
 
       const raw = await response.json()
-      const plants = raw.plants ?? []
+      const plants = raw?.plants ?? []
 
       return {
         ok: true,
