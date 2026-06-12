@@ -295,3 +295,45 @@ class TestGenerateSql:
         _write_consumption_sql(tmp_path, "uat", ["vw_consumption_test_widget"])
         sql = _run(tmp_path)
         assert "ALTER COLUMN" not in sql
+
+    def test_null_freshness_contract(self, tmp_path):
+        """A contract with freshness: null must not crash the generator."""
+        contract = {
+            **SIMPLE_CONTRACT,
+            "freshness": None,
+        }
+        _write_minimal_manifest(tmp_path, [contract])
+        _write_consumption_sql(tmp_path, "uat", ["vw_consumption_test_widget"])
+        sql = _run(tmp_path)
+        # Should produce a COMMENT ON VIEW without raising AttributeError on NoneType.
+        assert "COMMENT ON VIEW" in sql
+        # No freshness SLA clause emitted (all fields absent).
+        assert "Freshness SLA" not in sql
+
+    def test_empty_manifest(self, tmp_path):
+        """An empty/null manifest (yaml.safe_load returns None) must not crash."""
+        (tmp_path / "contracts").mkdir(parents=True, exist_ok=True)
+        # Write a YAML file that parses to None (empty file).
+        with open(tmp_path / "contracts" / "app_contract_manifest.yml", "w") as f:
+            f.write("")
+        (tmp_path / "resources" / "sql").mkdir(parents=True, exist_ok=True)
+        sql = _run(tmp_path)
+        # No contracts → nothing covered; header should still be written.
+        assert "contract" in sql.lower() or "covered" in sql.lower()
+
+    def test_backtick_quoted_view_names_discovered(self, tmp_path):
+        """View names wrapped in backticks must be discovered by the regex."""
+        _write_minimal_manifest(tmp_path, [SIMPLE_CONTRACT])
+        sql_dir = tmp_path / "resources" / "sql"
+        sql_dir.mkdir(parents=True, exist_ok=True)
+        catalog = gen.ENVIRONMENTS["uat"]["catalog"]
+        schema = gen.ENVIRONMENTS["uat"]["gold_schema"]
+        # Write SQL using backtick-quoted identifiers.
+        with open(sql_dir / "test_consumption_views_uat.sql", "w") as f:
+            f.write(
+                f"CREATE OR REPLACE VIEW `{catalog}`.`{schema}`.`vw_consumption_test_widget` AS SELECT 1;\n"
+            )
+        sql = _run(tmp_path)
+        # The backtick-quoted view should be matched and covered.
+        assert "COMMENT ON VIEW" in sql
+        assert "vw_consumption_test_widget" in sql

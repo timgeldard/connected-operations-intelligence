@@ -109,7 +109,7 @@ def _build_view_comment(contract: dict) -> str:
     grain = str(contract.get("grain", "")).strip()
     cid = contract.get("id", "")
     version = contract.get("version", "")
-    freshness = contract.get("freshness", {})
+    freshness = contract.get("freshness") or {}
     expected = freshness.get("expected_minutes", "")
     warning = freshness.get("warning_minutes", "")
     critical = freshness.get("critical_minutes", "")
@@ -147,7 +147,7 @@ def _collect_view_names_from_sql(env: str, base_dir: pathlib.Path) -> set[str]:
     for sql_file in sql_files:
         text = sql_file.read_text(encoding="utf-8")
         for m in re.finditer(
-            r"CREATE\s+OR\s+REPLACE\s+VIEW\s+(?:\w+\.)*(\w+)\s+AS",
+            r"CREATE\s+OR\s+REPLACE\s+VIEW\s+(?:`?\w+`?\.)*`?(\w+)`?\s+AS",
             text,
             re.IGNORECASE,
         ):
@@ -177,9 +177,9 @@ def generate_sql(env_filter: str | None = None, base_dir: pathlib.Path | None = 
         raise SystemExit(f"Manifest not found: {manifest_path}")
 
     with open(manifest_path, encoding="utf-8") as f:
-        manifest = yaml.safe_load(f)
+        manifest = yaml.safe_load(f) or {}
 
-    contracts = manifest.get("contracts", [])
+    contracts = manifest.get("contracts") or []
 
     (base_dir / "resources" / "sql").mkdir(parents=True, exist_ok=True)
 
@@ -233,7 +233,7 @@ def generate_sql(env_filter: str | None = None, base_dir: pathlib.Path | None = 
             cid = _escape_sql_string(str(contract.get("id", "")))
             cver = _escape_sql_string(str(contract.get("version", "")))
             grain_val = _escape_sql_string(str(contract.get("grain", "")))
-            freshness = contract.get("freshness", {})
+            freshness = contract.get("freshness") or {}
             expected_min = str(freshness.get("expected_minutes", ""))
             section.append(
                 f"ALTER VIEW {qualified_view} SET TAGS (\n"
