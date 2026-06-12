@@ -132,12 +132,6 @@ export const wmOperationsRegistration: WorkspaceRegistration = {
       targetViewId: 'warehouse-cockpit',
       contextScopes: ['plant', 'warehouse'],
     },
-    {
-      label: 'Open Production Staging',
-      targetWorkspaceId: 'production-staging',
-      targetViewId: 'staging-overview',
-      contextScopes: ['plant'],
-    },
   ],
   telemetryId: 'warehouse.wm-operations',
 }

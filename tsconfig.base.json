@@ -39,7 +39,6 @@
       "@connectio/di-warehouse": ["domain-integrations/warehouse/src/index.ts"],
       "@connectio/di-wm-operations": ["domain-integrations/wm-operations/src/index.ts"],
       "@connectio/di-envmon": ["domain-integrations/envmon/src/index.ts"],
-      "@connectio/di-maintenance": ["domain-integrations/maintenance/src/index.ts"],
       "test-support": ["./packages/test-support/src/index.ts"]
     }
   }

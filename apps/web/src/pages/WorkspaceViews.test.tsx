@@ -28,25 +28,19 @@ vi.mock('@connectio/di-quality', () => ({
 }))
 
 vi.mock('@connectio/di-operations', () => ({
-  OperationsPlanRiskWorkspace: () => <div data-testid="operations-plan-risk-workspace" />,
   ProcessOrderReviewWorkspace: () => <div data-testid="process-order-review-workspace" />,
 }))
 
 vi.mock('@connectio/di-envmon', () => ({
-  EnvMonWorkspace: () => <div data-testid="envmon-workspace" />,
+  EnvMonConsumerWorkspace: () => <div data-testid="envmon-consumer-workspace" />,
 }))
 
 vi.mock('@connectio/di-warehouse', () => ({
-  ProductionStagingWorkspace: () => <div data-testid="production-staging-workspace" />,
   Warehouse360Workspace: () => <div data-testid="warehouse-360-workspace" />,
 }))
 
 vi.mock('@connectio/di-spc', () => ({
   SPCMonitoringWorkspace: () => <div data-testid="spc-monitoring-workspace" />,
-}))
-
-vi.mock('@connectio/di-maintenance', () => ({
-  MaintenanceReliabilityWorkspace: () => <div data-testid="maintenance-reliability-workspace" />,
 }))
 
 describe('WorkspaceViews — traceability-workspace', () => {

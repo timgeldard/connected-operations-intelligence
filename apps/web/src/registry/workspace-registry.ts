@@ -1,13 +1,11 @@
 import type { WorkspaceRegistration } from '@connectio/product-model'
-import { traceInvestigationRegistration, traceAppRegistration, traceConsumerRegistration } from '@connectio/di-traceability'
+import { traceInvestigationRegistration, traceConsumerRegistration } from '@connectio/di-traceability'
 import { batchReleaseRegistration, connectedQualityLabBoardStandaloneRegistration } from '@connectio/di-quality'
-import { operationsPlanRiskRegistration, processOrderReviewRegistration, pohConsumerRegistration } from '@connectio/di-operations'
-import { envmonRegistration, envmonConsumerRegistration } from '@connectio/di-envmon'
-import { productionStagingRegistration } from '@connectio/di-warehouse'
+import { processOrderReviewRegistration, pohConsumerRegistration } from '@connectio/di-operations'
+import { envmonConsumerRegistration } from '@connectio/di-envmon'
 import { spcMonitoringRegistration, spcConsumerRegistration } from '@connectio/di-spc'
 import { warehouse360Registration } from '@connectio/di-warehouse'
 import { wmOperationsRegistration } from '@connectio/di-wm-operations'
-import { maintenanceReliabilityRegistration } from '@connectio/di-maintenance'
 
 /**
  * Static workspace registry — Phase 1–4 implementations.
@@ -23,9 +21,6 @@ export const workspaceRegistry: readonly WorkspaceRegistration[] = [
   // Phase 1 — Trace Investigation (fully implemented)
   traceInvestigationRegistration,
 
-  // Phase 5 — Trace App (search-driven standalone, pilot)
-  traceAppRegistration,
-
   // Consumer Grade Standalone Trace
   traceConsumerRegistration,
 
@@ -34,18 +29,6 @@ export const workspaceRegistry: readonly WorkspaceRegistration[] = [
 
   // Claude Design export — standalone ConnectedQuality Lab Board
   connectedQualityLabBoardStandaloneRegistration,
-
-  // Phase 3 — Operations Plan Risk (cross-domain, fully implemented)
-  operationsPlanRiskRegistration,
-
-  // Phase 4 — Environmental Monitoring (fully implemented)
-  envmonRegistration,
-
-  // Environmental Monitoring Consumer (pilot)
-  envmonConsumerRegistration,
-
-  // Phase 4 — Production Staging (fully implemented)
-  productionStagingRegistration,
 
   // Phase 5 — SPC Monitoring (pilot)
   spcMonitoringRegistration,
@@ -59,14 +42,14 @@ export const workspaceRegistry: readonly WorkspaceRegistration[] = [
   // Consumer Process Order History (pilot)
   pohConsumerRegistration,
 
+  // Environmental Monitoring Consumer (pilot)
+  envmonConsumerRegistration,
+
   // Phase 5 — Warehouse 360 Overview (pilot)
   warehouse360Registration,
 
   // Phase 5 — WM Operations (pilot, Kerry-branded manager tools)
   wmOperationsRegistration,
-
-  // Phase 5 — Maintenance & Reliability (pilot)
-  maintenanceReliabilityRegistration,
 
   // Phase 0 stubs — kept for traceability workspace backwards compatibility
   {
@@ -98,35 +81,6 @@ export const workspaceRegistry: readonly WorkspaceRegistration[] = [
     },
     drillThroughDefinitions: [],
     telemetryId: 'traceability.workspace',
-  },
-  {
-    workspaceId: 'quality-workspace',
-    displayName: 'Quality',
-    description: 'Quality workspace — Phase 0 stub',
-    domainId: 'quality',
-    ownerDomain: 'quality',
-    lifecycle: 'concept-lab',
-    supportedRoles: [],
-    requiredPermissions: [],
-    supportedScopes: ['plant'],
-    scopePolicy: {
-      supportedLevels: ['plant'],
-      defaultLevel: 'plant',
-      autoElevate: false,
-    },
-    defaultViews: [
-      { viewId: 'overview', displayName: 'Overview', lifecycle: 'concept-lab', sortOrder: 0, defaultPanels: [] },
-    ],
-    defaultPanels: [],
-    route: '/quality',
-    personalizationPolicy: {
-      allowPanelReorder: false,
-      allowPanelHide: false,
-      allowSavedFilters: false,
-      allowDefaultScopeOverride: false,
-    },
-    drillThroughDefinitions: [],
-    telemetryId: 'quality.workspace',
   },
   {
     workspaceId: 'operations-workspace',
