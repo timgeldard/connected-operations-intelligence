@@ -58,7 +58,7 @@ def _site_lifecycle_lookup(spark, silver_schema: str) -> DataFrame:
     return (
         spark.read.table(f"{silver_schema}.site_lifecycle")
         .select("plant_code", "effective_lifecycle")
-        .distinct()
+        .dropDuplicates(["plant_code"])
     )
 
 
@@ -252,7 +252,7 @@ def gold_batch_lineage():  # noqa: C901 — five-leg UNION; complexity is struct
     # GR rows on MSEG that represent a production receipt.
     mseg_gr = (
         mseg_cls
-        .filter(F.col("is_production_receipt") == True)  # noqa: E712
+        .filter(F.col("is_production_receipt"))
         .select(
             "plant_code",
             "order_number",
@@ -380,7 +380,7 @@ def gold_batch_lineage():  # noqa: C901 — five-leg UNION; complexity is struct
     # ═══════════════════════════════════════════════════════════════════════
 
     mseg_vendor_receipt = mseg_cls.filter(
-        (F.col("is_po_receipt") == True)  # noqa: E712
+        F.col("is_po_receipt")
         & F.col("purchase_order_number").isNotNull()
         & (F.trim(F.col("purchase_order_number")) != "")
     )
@@ -388,7 +388,7 @@ def gold_batch_lineage():  # noqa: C901 — five-leg UNION; complexity is struct
     leg3_raw = (
         mseg_vendor_receipt.alias("m")
         .join(
-            F.broadcast(po_vendor).alias("p"),
+            po_vendor.alias("p"),
             F.col("m.purchase_order_number") == F.col("p.purchase_order_number"),
             "left",
         )
@@ -444,7 +444,7 @@ def gold_batch_lineage():  # noqa: C901 — five-leg UNION; complexity is struct
     # ═══════════════════════════════════════════════════════════════════════
 
     mseg_delivery = mseg_cls.filter(
-        (F.col("is_goods_issue") == True)  # noqa: E712
+        F.col("is_goods_issue")
         & F.col("delivery_number").isNotNull()
         & (F.trim(F.col("delivery_number")) != "")
     )
@@ -484,12 +484,11 @@ def gold_batch_lineage():  # noqa: C901 — five-leg UNION; complexity is struct
     # ═══════════════════════════════════════════════════════════════════════
 
     mseg_adj = mseg_cls.filter(
-        (F.col("is_stock_write_on") == True)  # noqa: E712
-        | (F.col("is_stock_write_off") == True)  # noqa: E712
+        F.col("is_stock_write_on") | F.col("is_stock_write_off")
     )
 
     leg5_link_type = F.when(
-        F.col("is_stock_write_on") == True,  # noqa: E712
+        F.col("is_stock_write_on"),
         F.lit("ADJUSTMENT_IN"),
     ).otherwise(F.lit("ADJUSTMENT_OUT"))
 
@@ -499,27 +498,27 @@ def gold_batch_lineage():  # noqa: C901 — five-leg UNION; complexity is struct
         *_lineage_select(
             link_type=leg5_link_type,
             parent_material_id=F.when(
-                F.col("is_stock_write_on") == True,  # noqa: E712
+                F.col("is_stock_write_on"),
                 F.lit(None).cast("string"),
             ).otherwise(F.col("material_code")),
             parent_batch_id=F.when(
-                F.col("is_stock_write_on") == True,  # noqa: E712
+                F.col("is_stock_write_on"),
                 F.lit(None).cast("string"),
             ).otherwise(F.col("batch_number")),
             parent_plant_id=F.when(
-                F.col("is_stock_write_on") == True,  # noqa: E712
+                F.col("is_stock_write_on"),
                 F.lit(None).cast("string"),
             ).otherwise(F.col("plant_code")),
             child_material_id=F.when(
-                F.col("is_stock_write_on") == True,  # noqa: E712
+                F.col("is_stock_write_on"),
                 F.col("material_code"),
             ).otherwise(F.lit(None).cast("string")),
             child_batch_id=F.when(
-                F.col("is_stock_write_on") == True,  # noqa: E712
+                F.col("is_stock_write_on"),
                 F.col("batch_number"),
             ).otherwise(F.lit(None).cast("string")),
             child_plant_id=F.when(
-                F.col("is_stock_write_on") == True,  # noqa: E712
+                F.col("is_stock_write_on"),
                 F.col("plant_code"),
             ).otherwise(F.lit(None).cast("string")),
             material_document_number=F.col("material_document_number"),
