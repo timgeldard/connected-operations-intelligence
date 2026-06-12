@@ -162,3 +162,28 @@ def test_unclassified_fallback(spark: SparkSession):
 
     row = all_rows(gold_wm_adherence_root_cause())[0]
     assert row["root_cause_class"] == "UNCLASSIFIED"
+
+
+def test_open_late_candidate_with_null_finish_date(spark: SparkSession):
+    """Open orders (actual_finish_date IS NULL) remain miss candidates for query-time is_open_late."""
+    from gold.wm_operations_gold import gold_wm_adherence_root_cause
+
+    _save(spark, [
+        _order(
+            order_number="OPEN_LATE",
+            scheduled_finish_date=datetime.date(2026, 6, 10),
+            actual_finish_date=None,
+        ),
+    ], "process_order")
+    _save(spark, [_variance_row(order_number="OPEN_LATE", variance_qty=0.0)], "gold_wm_order_component_variance")
+    _save(spark, [
+        _journey_row(
+            order_number="OPEN_LATE",
+            production_first_actual_start=datetime.datetime(2026, 6, 2, 8, 0, 0),
+        ),
+    ], "gold_wm_order_journey_summary")
+
+    row = all_rows(gold_wm_adherence_root_cause())[0]
+    assert row["order_number"] == "OPEN_LATE"
+    assert row["actual_finish_date"] is None
+    assert row["root_cause_class"] == "UNCLASSIFIED"
