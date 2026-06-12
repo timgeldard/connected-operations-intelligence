@@ -16,20 +16,11 @@ def _resolve_manifest_path() -> str:
     #    deploying.  Run `make prep-app-deploy` (or the equivalent copy step) BEFORE
     #    `databricks bundle deploy`; the root databricks.yml carries a sync.include
     #    override so the file is uploaded despite being gitignored.
+    #    NOTE: existence is NOT checked here (to avoid raising at import time); the
+    #    actionable error is raised by load_manifest() when the file is first accessed.
     env_path = os.environ.get("APP_MANIFEST_PATH")
     if env_path:
-        abs_path = os.path.abspath(env_path)
-        if not os.path.exists(abs_path):
-            raise FileNotFoundError(
-                f"APP_MANIFEST_PATH is set to '{env_path}' but the file does not exist at "
-                f"'{abs_path}'.  This is a deploy-time build artefact — copy it from the "
-                f"data-products manifest before deploying:\n"
-                f"  make prep-app-deploy          # then: databricks bundle deploy\n"
-                f"  # or manually:\n"
-                f"  cp data-products/io-reporting/contracts/app_contract_manifest.yml "
-                f"apps/api/contracts/app_contract_manifest.yml"
-            )
-        return abs_path
+        return os.path.abspath(env_path)
 
     # 2. Walk up to find repo root (local dev / CI path — does NOT use APP_MANIFEST_PATH).
     current = os.path.abspath(os.path.dirname(__file__))
@@ -62,6 +53,17 @@ def load_manifest() -> dict[str, Any]:
     global _cached_manifest
     if _cached_manifest is None:
         if not os.path.exists(MANIFEST_PATH):
+            env_path = os.environ.get("APP_MANIFEST_PATH")
+            if env_path:
+                raise FileNotFoundError(
+                    f"APP_MANIFEST_PATH is set to '{env_path}' but the file does not exist at "
+                    f"'{MANIFEST_PATH}'.  This is a deploy-time build artefact — copy it from the "
+                    f"data-products manifest before deploying:\n"
+                    f"  make prep-app-deploy          # then: databricks bundle deploy\n"
+                    f"  # or manually:\n"
+                    f"  cp data-products/io-reporting/contracts/app_contract_manifest.yml "
+                    f"apps/api/contracts/app_contract_manifest.yml"
+                )
             raise FileNotFoundError(f"Contract manifest not found at {MANIFEST_PATH}")
         with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
             _cached_manifest = yaml.safe_load(f) or {}

@@ -2,7 +2,8 @@
 
 Verifies:
 - Normal path: resolver finds manifest via repo-walk when APP_MANIFEST_PATH is unset.
-- Error path: when APP_MANIFEST_PATH is set but file is absent, raises FileNotFoundError
+- Error path: when APP_MANIFEST_PATH is set but file is absent, _resolve_manifest_path
+  returns the (non-existent) path without raising; load_manifest() raises FileNotFoundError
   with an actionable message naming the copy step (make prep-app-deploy).
 - get_contract raises ValueError for unknown IDs.
 - resolve_contract_view raises ValueError when source_view is absent.
@@ -10,14 +11,15 @@ Verifies:
 from __future__ import annotations
 
 import os
-import textwrap
 
 import pytest
-import yaml
-
 import shared.query_service.contract_resolver as resolver_module
-from shared.query_service.contract_resolver import get_contract, resolve_contract_view
-
+import yaml
+from shared.query_service.contract_resolver import (
+    get_contract,
+    load_manifest,
+    resolve_contract_view,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,15 +48,24 @@ def _write_minimal_manifest(path: str) -> None:
 class TestManifestPathEnvVar:
     def test_missing_file_raises_file_not_found(self, monkeypatch, tmp_path) -> None:
         """When APP_MANIFEST_PATH points to a non-existent file, _resolve_manifest_path
-        must raise FileNotFoundError with an actionable message."""
+        must NOT raise at path-resolution time; load_manifest() must raise FileNotFoundError
+        with an actionable message."""
         absent = str(tmp_path / "does_not_exist.yml")
         monkeypatch.setenv("APP_MANIFEST_PATH", absent)
 
+        # _resolve_manifest_path must not raise — just returns the (absent) path
+        resolved = resolver_module._resolve_manifest_path()
+        assert resolved == os.path.abspath(absent)
+
+        # load_manifest() is where the actionable error surfaces
+        monkeypatch.setattr(resolver_module, "MANIFEST_PATH", resolved)
+        monkeypatch.setattr(resolver_module, "_cached_manifest", None)
+
         with pytest.raises(FileNotFoundError) as exc_info:
-            resolver_module._resolve_manifest_path()
+            load_manifest()
 
         msg = str(exc_info.value)
-        # Must name the missing path
+        # Must name the missing path or env-var value
         assert absent in msg or "does_not_exist" in msg
         # Must include an actionable fix referencing the copy step
         assert "make prep-app-deploy" in msg or "prep-app-deploy" in msg
@@ -62,12 +73,16 @@ class TestManifestPathEnvVar:
         assert "data-products" in msg
 
     def test_missing_file_message_names_both_paths(self, monkeypatch, tmp_path) -> None:
-        """Error message must name both the missing deploy path and the source path."""
+        """Error message from load_manifest() must name the data-products source path."""
         absent = str(tmp_path / "missing_manifest.yml")
         monkeypatch.setenv("APP_MANIFEST_PATH", absent)
 
+        resolved = resolver_module._resolve_manifest_path()
+        monkeypatch.setattr(resolver_module, "MANIFEST_PATH", resolved)
+        monkeypatch.setattr(resolver_module, "_cached_manifest", None)
+
         with pytest.raises(FileNotFoundError) as exc_info:
-            resolver_module._resolve_manifest_path()
+            load_manifest()
 
         msg = str(exc_info.value)
         assert "data-products/io-reporting/contracts/app_contract_manifest.yml" in msg

@@ -16,6 +16,7 @@ into a red PR here instead of a runtime 500.
 from __future__ import annotations
 
 import ast
+import functools
 import re
 import sys
 from pathlib import Path
@@ -37,7 +38,7 @@ SCAN_DIRS = [
 #   contract_id="warehouse360.overview"
 #   "contract": "wm_operations.outbound"
 CONTRACT_ID_RE = re.compile(
-    r'(?:contract(?:_id)?\s*=\s*["\']|"contract"\s*:\s*["\'])([a-z_]+\.[a-z_]+)["\']'
+    r'(?:contract(?:_id)?\s*=\s*["\']|"contract"\s*:\s*["\'])([a-z0-9_]+\.[a-z0-9_]+)["\']'
 )
 
 
@@ -89,10 +90,19 @@ def collect_column_specs(scan_dirs: list[Path]) -> list[tuple[str, list[str], st
     return specs
 
 
+@functools.lru_cache(maxsize=None)
+def _load_manifest_yaml(manifest_path: Path) -> dict:
+    """Parse and cache the manifest YAML.  Called at most once per path per process."""
+    if not manifest_path.exists():
+        print(f"Error: manifest not found at {manifest_path}")
+        sys.exit(1)
+    with open(manifest_path, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
 def load_manifest_fields(manifest_path: Path) -> dict[str, Set[str]]:
     """Return contract_id -> set of declared field names (only for contracts with fields)."""
-    with open(manifest_path, encoding="utf-8") as f:
-        manifest = yaml.safe_load(f) or {}
+    manifest = _load_manifest_yaml(manifest_path)
     out: dict[str, Set[str]] = {}
     for c in manifest.get("contracts", []):
         if "id" in c and isinstance(c.get("fields"), list):
@@ -102,11 +112,7 @@ def load_manifest_fields(manifest_path: Path) -> dict[str, Set[str]]:
 
 def load_manifest_ids(manifest_path: Path) -> Set[str]:
     """Return the set of contract IDs defined in the manifest."""
-    if not manifest_path.exists():
-        print(f"Error: manifest not found at {manifest_path}")
-        sys.exit(1)
-    with open(manifest_path, encoding="utf-8") as f:
-        manifest = yaml.safe_load(f) or {}
+    manifest = _load_manifest_yaml(manifest_path)
     return {c["id"] for c in manifest.get("contracts", []) if "id" in c}
 
 
