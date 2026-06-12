@@ -182,7 +182,7 @@ if bronze_columns_exist("inspection_qals", _QALS_REQUIRED) and bronze_columns_ex
         spark = get_spark()
         lots = _gated_qals(spark)
         out = lots.select(
-            # QM inspection objects use MANDANT, not MARDT (replicated-source convention, #27).
+            # QM inspection objects use MANDANT, not MANDT (replicated-source convention, #27).
             F.col("MANDANT").alias("client"),
             F.col("PRUEFLOS").alias("inspection_lot_number"),
             F.col("WERK").alias("plant_code"),
@@ -351,7 +351,7 @@ if (
             "inner",
         )
         out = gated.select(
-            # QM inspection objects use MANDANT, not MARDT (replicated-source convention, #27).
+            # QM inspection objects use MANDANT, not MANDT (replicated-source convention, #27).
             F.col("MANDANT").alias("client"),
             F.col("PRUEFLOS").alias("inspection_lot_number"),
             # VORGLFNR = inspection-operation routing line (NOT an SAP work centre; work centres
