@@ -672,14 +672,10 @@ def gold_trace_anchor():
     lc = _site_lifecycle_lookup(spark, silver_schema)
     active_lc = lc.filter(F.col("effective_lifecycle") == "ACTIVE")
 
-    anchored = (
-        aggregated
-        .join(
-            F.broadcast(active_lc.select("plant_code")),
-            aggregated["PLANT_ID"] == active_lc["plant_code"],
-            "inner",
-        )
-        .drop("plant_code")
+    anchored = aggregated.join(
+        F.broadcast(active_lc.select(F.col("plant_code").alias("PLANT_ID"))),
+        on="PLANT_ID",
+        how="inner",
     )
 
     # ── Expose plant_code (lowercase contract column for the RLS predicate) ───
