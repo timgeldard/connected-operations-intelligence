@@ -3857,6 +3857,75 @@ contracts:
         required: false
         description: Latest goods receipt posting date (movement 101 against this order)
 
+  - id: wm_operations.recipe_benchmark
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Recipe-line benchmark distribution for the Campaigns view.
+      Aggregates complete process orders with goods receipt evidence from gold_wm_order_yield.
+      Grain is plant_id, material_id, and production_line; null production_line is grouped as UNASSIGNED.
+      Percentiles compare yield_pct and GR duration for runs of the same recipe on the same line.
+    source_view: vw_consumption_wm_operations_recipe_benchmark
+    grain: one row per plant_id, material_id, and production_line
+    primary_key:
+      - plant_id
+      - material_id
+      - production_line
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: material_id
+        type: string
+        required: true
+        description: Finished-good material code
+      - name: production_line
+        type: string
+        required: true
+        description: Production line used for benchmarking, with null source values grouped as UNASSIGNED
+      - name: run_count
+        type: long
+        required: true
+        description: Count of complete orders with goods receipt evidence in this recipe-line distribution
+      - name: median_yield_pct
+        type: double
+        required: false
+        description: Median delivered/planned yield percentage across qualifying runs
+      - name: p10_yield_pct
+        type: double
+        required: false
+        description: 10th percentile delivered/planned yield percentage across qualifying runs
+      - name: p90_yield_pct
+        type: double
+        required: false
+        description: 90th percentile delivered/planned yield percentage across qualifying runs
+      - name: median_duration_hours
+        type: double
+        required: false
+        description: Median goods-receipt duration in hours, excluding zero/negative or missing spans
+      - name: p10_duration_hours
+        type: double
+        required: false
+        description: 10th percentile goods-receipt duration in hours
+      - name: p90_duration_hours
+        type: double
+        required: false
+        description: 90th percentile goods-receipt duration in hours
+      - name: last_run_finish_date
+        type: date
+        required: false
+        description: Latest goods receipt finish date contributing to this benchmark bucket
+
   - id: wm_operations.component_variance
     version: 0.2.0
     domain: warehouse
