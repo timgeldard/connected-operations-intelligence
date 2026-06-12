@@ -8,51 +8,79 @@ from __future__ import annotations
 from typing import Optional
 
 from shared.query_service.cache_policy import CacheTier
-from shared.query_service.object_resolver import resolve_domain_object
+from shared.query_service.object_resolver import resolve_governed_trace2_object
 from shared.query_service.query_spec import QuerySpec
 
 from ._types import Trace2HoldsLedgerRequest
 
 # ---------------------------------------------------------------------------
-# Trace App slice — getHoldsLedger  (gold_batch_stock_v + gold_batch_quality_lot_v)
+# Trace App slice — getHoldsLedger
 # ---------------------------------------------------------------------------
 
 def get_holds_ledger_spec(request: Trace2HoldsLedgerRequest) -> QuerySpec:
-    """Holds ledger derived from current stock buckets + quality lot decisions.
+    """Holds ledger derived from governed stock summary + QM lot status.
 
-    No dedicated `gold_holds_ledger` view yet. This slice synthesises:
-      - qtyByReason from gold_batch_stock_v.{blocked, restricted, quality_inspection}
-      - active / resolved holds from gold_batch_quality_lot_v entries with no
-        usage decision (active) vs. those with a decision (resolved).
+    Sources:
+      - gold_batch_stock_summary_secured (TRACE_GOVERNED_SCHEMA, RLS-enforced)
+            → blocked_quantity, quality_inspection_quantity, restricted_use_quantity,
+              unrestricted_quantity, in_transfer_quantity, base_unit_of_measure
+      - gold_wm_qm_lot_status (TRACE_GOVERNED_SCHEMA)
+            → inspection lot header + latest usage decision
+              estate-wide (all 138 plants via merged #122)
 
-    Single-row join strategy — stock columns come from one stock_v row;
-    identity comes from either base or stock depending on which source is
-    populated. Quality lots are returned in a subselect.
+    Column mapping from governed objects vs legacy:
+      gold_batch_stock_summary:
+        blocked_quantity            → blocked
+        quality_inspection_quantity → quality_inspection
+        restricted_use_quantity     → restricted
+        unrestricted_quantity       → unrestricted
+        in_transfer_quantity        → transit
+        base_unit_of_measure        → uom (NOW AVAILABLE in governed stock summary)
+      Join key: plant_code = PLANT_ID, material_code = MATERIAL_ID, batch_number = BATCH_ID
+
+      gold_wm_qm_lot_status:
+        inspection_lot_number       → inspection_lot_id
+        inspection_type             → inspection_type
+        (no inspection_short_text — use inspection_type)
+        lot_created_date            → created_date
+        inspection_end_date         → inspection_end_date
+        last_usage_decision_by      → created_by (approx — the person who made the decision)
+        last_usage_decision         → usage_decision
+      Join key: plant_code, material_code = MATERIAL_ID, batch_number = BATCH_ID
+
+    Note: gold_wm_qm_lot_status has material_code and batch_number columns (silver grain).
+    These are the SAP material/batch codes which correspond to MATERIAL_ID and BATCH_ID in
+    the trace2 fan-out.
+
+    Raises DatabricksConfigError if TRACE_CATALOG is not set.
     """
-    tbl_stock = resolve_domain_object("trace2", "gold_batch_stock_v")
-    tbl_ql = resolve_domain_object("trace2", "gold_batch_quality_lot_v")
+    tbl_stock = resolve_governed_trace2_object("gold_batch_stock_summary_secured")
+    tbl_ql = resolve_governed_trace2_object("gold_wm_qm_lot_status")
 
     sql = f"""
     SELECT
-      s.unrestricted,
-      s.blocked,
-      s.quality_inspection,
-      s.restricted,
-      s.transit,
-      ql.INSPECTION_LOT_ID  AS inspection_lot_id,
-      ql.INSPECTION_TYPE    AS inspection_type,
-      ql.INSPECTION_SHORT_TEXT AS inspection_short_text,
-      ql.CREATED_DATE       AS created_date,
-      ql.INSPECTION_END_DATE AS inspection_end_date,
-      ql.CREATED_BY         AS created_by,
-      ql.USAGE_DECISION_LONG_TEXT AS usage_decision
+      s.unrestricted_quantity       AS unrestricted,
+      s.blocked_quantity            AS blocked,
+      s.quality_inspection_quantity AS quality_inspection,
+      s.restricted_use_quantity     AS restricted,
+      s.in_transfer_quantity        AS transit,
+      s.base_unit_of_measure        AS uom,
+      ql.inspection_lot_number      AS inspection_lot_id,
+      ql.inspection_type            AS inspection_type,
+      ql.inspection_type            AS inspection_short_text,
+      ql.lot_created_date           AS created_date,
+      ql.inspection_end_date        AS inspection_end_date,
+      ql.last_usage_decision_by     AS created_by,
+      ql.last_usage_decision        AS usage_decision
     FROM {tbl_stock} s
     LEFT JOIN {tbl_ql} ql
-      ON s.MATERIAL_ID = ql.MATERIAL_ID AND s.BATCH_ID = ql.BATCH_ID
-    WHERE s.MATERIAL_ID = :material_id
-      AND s.BATCH_ID   = :batch_id
-      AND (:plant_id = '' OR s.PLANT_ID = :plant_id)
-    ORDER BY ql.CREATED_DATE DESC
+      ON s.plant_code    = ql.plant_code
+     AND s.material_code = ql.material_code
+     AND s.batch_number  = ql.batch_number
+    WHERE s.material_code = :material_id
+      AND s.batch_number  = :batch_id
+      AND (:plant_id = '' OR s.plant_code = :plant_id)
+    ORDER BY ql.lot_created_date DESC
     LIMIT :max_rows
     """
 
@@ -68,7 +96,7 @@ def get_holds_ledger_spec(request: Trace2HoldsLedgerRequest) -> QuerySpec:
             "max_rows": request.max_rows,
         },
         cache_policy=CacheTier.PER_USER_60S,
-        source_badge="view:gold_batch_stock_v+quality_lot_v",
+        source_badge="mv:gold_batch_stock_summary+gold_wm_qm_lot_status",
         tags=["trace2", "trace-app", "holds-ledger"],
     )
 
@@ -83,10 +111,7 @@ def map_holds_ledger_rows(rows: list[dict]) -> Optional[dict]:
     if not rows:
         return None
     first = rows[0]
-    # gold_batch_stock_v does not expose a UOM column for this view. The
-    # contract has `uom: string | null` — do NOT default to "KG". Future
-    # revision: join to gold_material.BASE_UNIT_OF_MEASURE.
-    uom: Optional[str] = None
+    uom: Optional[str] = str(first["uom"]) if first.get("uom") is not None else None
 
     qty_by_reason: list[dict] = []
     blocked = float(first.get("blocked") or 0)
@@ -127,7 +152,7 @@ def map_holds_ledger_rows(rows: list[dict]) -> Optional[dict]:
 
         entry = {
             "id": lot_id_str,
-            "reason": f"QC · {short_text}",
+            "reason": f"QC \xb7 {short_text}",
             "reasonCode": "QC",
             "qty": qi if qi > 0 else 0.0,
             "uom": uom,

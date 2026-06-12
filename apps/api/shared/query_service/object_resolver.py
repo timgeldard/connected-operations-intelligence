@@ -8,11 +8,16 @@ V1-compatible fallback chains (verified from ConnectIO-RAD source):
   TRACE_CATALOG → no fallback (empty string if unset)
   TRACE_SCHEMA  → defaults to "gold" (LEGACY schema for trace2 views and EnvMon)
   TRACE_GOVERNED_SCHEMA → defaults to "gold_io_reporting" (governed io-reporting schema).
-    Used only for the two governed trace2 objects that live in gold_io_reporting:
-      • gold_trace_anchor_secured  (RLS-enforced anchor MV, batch-search primary source)
-      • gold_batch_lineage          (T2 governed MV, batch-search po_match + trace-graph)
-    All other trace2 objects (gold_material, gold_plant, gold_batch_stock_v, …) remain
-    on TRACE_SCHEMA ("gold") — no governed equivalents exist for those yet.
+    Used for governed trace2 objects that live in gold_io_reporting:
+      • gold_trace_anchor_secured       (RLS-enforced anchor MV, batch-search primary source)
+      • gold_batch_lineage              (T2 governed MV, batch-search po_match + trace-graph)
+      Phase 2 fan-out foundations (trace-governed-switchover):
+      • gold_batch_event_ledger         (directional per-batch event ledger)
+      • gold_batch_stock_summary_secured(RLS-enforced governed stock position)
+      • gold_trace_vendor               (vendor_code → vendor_name, country_key)
+      • gold_wm_qm_lot_status           (QM lot status + latest UD, estate-wide)
+    All other trace2 objects (gold_material, gold_plant, gold_batch_quality_result_v, …)
+    remain on TRACE_SCHEMA ("gold") — no governed equivalents exist for those yet.
     app.yaml must set TRACE_GOVERNED_SCHEMA: gold_io_reporting explicitly because
     DAB ${var.*} substitution does not apply to app.yaml (per-environment literals only).
   ENVMON domain → shares TRACE_CATALOG / TRACE_SCHEMA (confirmed from V1 em_config.py:

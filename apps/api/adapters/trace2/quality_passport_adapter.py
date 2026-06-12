@@ -14,121 +14,124 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from shared.query_service.cache_policy import CacheTier
-from shared.query_service.object_resolver import resolve_domain_object
+from shared.query_service.object_resolver import (
+    resolve_domain_object,
+    resolve_governed_trace2_object,
+)
 from shared.query_service.query_spec import QuerySpec
 
 from ._types import Trace2BatchQualityPassportRequest
-from ._utils import _classify_coa_status, _date_to_utc
+from ._utils import _classify_coa_status
 
 # ---------------------------------------------------------------------------
 # Trace App slice — getBatchQualityPassport (partial: identity + stock + production)
 # ---------------------------------------------------------------------------
 #
 # The Quality Passport response has 7 sections (identity, quality, stock,
-# production, lotHistory, massBalance, signoff). This slice covers the three
-# that can be sourced from already-verified gold views. The remaining four
-# (quality.coa, lotHistory, massBalance variance/note, signoff) and the
-# confidence score require future sources and stay mock-only.
+# production, lotHistory, massBalance, signoff).  Governed sources:
+#   identity   ← gold_batch_stock_summary_secured + gold_material + gold_plant +
+#                gold_batch_event_ledger (latest PRODUCTION event for process order / date)
+#   stock      ← gold_batch_stock_summary_secured
+#   production ← gold_batch_event_ledger (PRODUCTION IN rows for production history)
+#   lotHistory ← gold_wm_qm_lot_status
+#   massBalance← gold_batch_event_ledger (aggregate KPIs)
+#   quality/coa← gold_batch_quality_result_v (still on legacy TRACE_SCHEMA — no governed
+#                  equivalent yet; kept unchanged)
+#   quality KPIs← gold_wm_qm_lot_status aggregate
 #
-# A frontend integration that wants partial real data can call this endpoint
-# for identity/stock/production and merge with the existing mock for the rest.
+# gold_batch_summary_v and gold_batch_production_history_v are replaced by the
+# governed equivalents.  The legacy gold_batch_stock_v is replaced by
+# gold_batch_stock_summary_secured.
 
 def get_batch_quality_passport_partial_spec(request: Trace2BatchQualityPassportRequest) -> QuerySpec:
     """Return a QuerySpec for the verified-source portion of the Quality Passport.
 
-    Sources (all verified live in connected_plant_uat.gold via the 2026-05-25
-    Databricks repository compatibility audit — see
-    docs/data-layer/trace2-batch-quality-passport-source-verification.md):
-      - gold_batch_stock_v               → stock buckets (per plant)
-      - gold_batch_summary_v             → manufacture / expiry dates only
-      - gold_material                    → material description, base UoM
-      - gold_plant                       → plant name
-      - gold_batch_production_history_v  → process order, posting date,
-                                            batch quantity, UoM
+    Sources:
+      - gold_batch_stock_summary_secured (TRACE_GOVERNED_SCHEMA, RLS)
+            → stock buckets, base_unit_of_measure
+      - gold_material (legacy TRACE_SCHEMA — no governed equivalent)
+            → material_name, BASE_UNIT_OF_MEASURE
+      - gold_plant (legacy TRACE_SCHEMA — no governed equivalent)
+            → plant_name
+      - gold_batch_event_ledger (TRACE_GOVERNED_SCHEMA)
+            → latest PRODUCTION IN event: PROCESS_ORDER_ID, POSTING_DATE, QUANTITY (batch qty)
 
-    Removed projections (columns absent from live DDL — caused
-    UNRESOLVED_COLUMN before this fix):
-      - b.PROCESS_ORDER_ID (gold_batch_summary_v has only MATERIAL_ID,
-        BATCH_ID, MANUFACTURE_DATE, SHELF_LIFE_EXPIRATION_DATE,
-        MATERIAL_NAME, MATERIAL_TYPE, MATERIAL_DESC_SHORT, days_to_expiry,
-        shelf_life_status)
-      - ph.START_DATE, ph.CONFIRMED_DATE, ph.PLANNED_QTY, ph.ACTUAL_QTY,
-        ph.PRODUCTION_LINE, ph.OPERATOR (gold_batch_production_history_v
-        has only PROCESS_ORDER_ID, BATCH_ID, PLANT_ID, MATERIAL_ID,
-        POSTING_DATE, BATCH_QTY, UOM, quality_status)
+    manufacture_date / expiry_date: these came from gold_batch_summary_v.
+    gold_batch_stock_summary does not carry dates.  gold_batch_event_ledger has
+    POSTING_DATE but not manufacture/expiry dates.  These fields are emitted as
+    empty string (same as when the legacy view had no value) — no governed source
+    provides them yet.  The contract accepts empty string for these optional fields.
 
-    Mapping decisions:
-      - process_order_id now comes from gold_batch_production_history_v
-        (PROCESS_ORDER_ID), not gold_batch_summary_v.
-      - production_started_at maps from POSTING_DATE. This is the
-        production-history posting date and is NOT claimed to be the
-        confirmed production start timestamp — the live view exposes no
-        START / CONFIRMED timestamps.
-      - production_actual_qty maps from BATCH_QTY. This is the actual
-        batch quantity recorded on the production-history posting, NOT a
-        planned quantity — the live view exposes no planned-vs-actual split.
-      - production_uom is selected as ph.UOM but is currently not surfaced
-        through the Production contract (which has no production-uom
-        field); the row key is kept so a future contract addition can
-        consume it without re-touching the SQL.
-
-    Intentionally unavailable (no live source column — the mapper emits
-    contract defaults to keep the response body shape stable):
-      - production_confirmed_at
-      - production_planned_qty
-      - production_line
-      - production_operator
-
-    Plant filter is respected when supplied — leave plant_id='' to take the
-    first row by sort order (consistent with the existing batch-header route).
+    The production_lot_count (count of distinct process orders for this batch) is
+    computed as a subquery over gold_batch_event_ledger PRODUCTION IN rows.
     """
-    tbl_stock = resolve_domain_object("trace2", "gold_batch_stock_v")
-    tbl_summary = resolve_domain_object("trace2", "gold_batch_summary_v")
+    tbl_stock = resolve_governed_trace2_object("gold_batch_stock_summary_secured")
     tbl_material = resolve_domain_object("trace2", "gold_material")
     tbl_plant = resolve_domain_object("trace2", "gold_plant")
-    tbl_prod = resolve_domain_object("trace2", "gold_batch_production_history_v")
+    tbl_ledger = resolve_governed_trace2_object("gold_batch_event_ledger")
 
     sql = f"""
     SELECT
-        s.MATERIAL_ID                AS material_id,
-        s.BATCH_ID                   AS batch_id,
-        s.PLANT_ID                   AS plant_id,
-        s.unrestricted,
-        s.blocked,
-        s.quality_inspection,
-        s.restricted,
-        s.transit,
-        s.total_stock,
+        s.material_code              AS material_id,
+        s.batch_number               AS batch_id,
+        s.plant_code                 AS plant_id,
+        s.unrestricted_quantity      AS unrestricted,
+        s.blocked_quantity           AS blocked,
+        s.quality_inspection_quantity AS quality_inspection,
+        s.restricted_use_quantity    AS restricted,
+        s.in_transfer_quantity       AS transit,
+        s.total_quantity             AS total_stock,
         m.MATERIAL_NAME              AS material_name,
         m.BASE_UNIT_OF_MEASURE       AS uom,
         p.PLANT_NAME                 AS plant_name,
-        b.MANUFACTURE_DATE           AS manufacture_date,
-        b.SHELF_LIFE_EXPIRATION_DATE AS expiry_date,
+        '' AS manufacture_date,
+        '' AS expiry_date,
         ph.PROCESS_ORDER_ID          AS process_order_id,
         ph.POSTING_DATE              AS production_started_at,
-        ph.BATCH_QTY                 AS production_actual_qty,
-        ph.UOM                       AS production_uom,
+        ph.QUANTITY                  AS production_actual_qty,
+        m.BASE_UNIT_OF_MEASURE       AS production_uom,
         COALESCE(ph_cnt.production_lot_count, 0) AS production_lot_count
     FROM {tbl_stock} s
-    JOIN {tbl_summary} b
-        ON s.MATERIAL_ID = b.MATERIAL_ID AND s.BATCH_ID = b.BATCH_ID
     JOIN {tbl_material} m
-        ON s.MATERIAL_ID = m.MATERIAL_ID AND m.LANGUAGE_ID = 'E'
+        ON s.material_code = m.MATERIAL_ID AND m.LANGUAGE_ID = 'E'
     JOIN {tbl_plant} p
-        ON s.PLANT_ID = p.PLANT_ID
-    LEFT JOIN {tbl_prod} ph
-        ON s.MATERIAL_ID = ph.MATERIAL_ID AND s.BATCH_ID = ph.BATCH_ID
+        ON s.plant_code = p.PLANT_ID
     LEFT JOIN (
-        SELECT MATERIAL_ID, BATCH_ID, COUNT(DISTINCT PROCESS_ORDER_ID) AS production_lot_count
-        FROM {tbl_prod}
-        WHERE MATERIAL_ID = :material_id AND BATCH_ID = :batch_id
+        SELECT
+            MATERIAL_ID,
+            BATCH_ID,
+            PLANT_ID,
+            PROCESS_ORDER_ID,
+            POSTING_DATE,
+            QUANTITY,
+            ROW_NUMBER() OVER (
+                PARTITION BY MATERIAL_ID, BATCH_ID, PLANT_ID
+                ORDER BY POSTING_DATE DESC NULLS LAST
+            ) AS rn
+        FROM {tbl_ledger}
+        WHERE MATERIAL_ID = :material_id
+          AND BATCH_ID   = :batch_id
+          AND LINK_TYPE  = 'PRODUCTION'
+          AND direction  = 'IN'
+    ) ph ON s.material_code = ph.MATERIAL_ID
+         AND s.batch_number  = ph.BATCH_ID
+         AND s.plant_code    = ph.PLANT_ID
+         AND ph.rn = 1
+    LEFT JOIN (
+        SELECT MATERIAL_ID, BATCH_ID,
+               COUNT(DISTINCT PROCESS_ORDER_ID) AS production_lot_count
+        FROM {tbl_ledger}
+        WHERE MATERIAL_ID = :material_id
+          AND BATCH_ID   = :batch_id
+          AND LINK_TYPE  = 'PRODUCTION'
+          AND direction  = 'IN'
         GROUP BY MATERIAL_ID, BATCH_ID
     ) ph_cnt
-        ON s.MATERIAL_ID = ph_cnt.MATERIAL_ID AND s.BATCH_ID = ph_cnt.BATCH_ID
-    WHERE s.MATERIAL_ID = :material_id
-      AND s.BATCH_ID   = :batch_id
-      AND (:plant_id = '' OR s.PLANT_ID = :plant_id)
-    ORDER BY s.PLANT_ID
+        ON s.material_code = ph_cnt.MATERIAL_ID AND s.batch_number = ph_cnt.BATCH_ID
+    WHERE s.material_code = :material_id
+      AND s.batch_number  = :batch_id
+      AND (:plant_id = '' OR s.plant_code = :plant_id)
+    ORDER BY s.plant_code
     LIMIT 1
     """
 
@@ -143,51 +146,29 @@ def get_batch_quality_passport_partial_spec(request: Trace2BatchQualityPassportR
             "plant_id": request.plant_id,
         },
         cache_policy=CacheTier.PER_USER_60S,
-        source_badge="view:gold_batch_stock_v+summary_v+production_history_v",
+        source_badge="mv:gold_batch_stock_summary+gold_batch_event_ledger",
         tags=["trace2", "trace-app", "quality-passport", "partial"],
     )
 
 
 def map_batch_quality_passport_partial(rows: list[dict]) -> Optional[dict]:
-    """Map the partial passport join result to the identity + stock + production
-    sections of BatchQualityPassportSchema. The quality, lotHistory,
-    massBalance, and signoff fields are NOT populated — frontend must merge
-    with mock or a future hook that resolves those.
+    """Map the partial passport join result to identity + stock + production sections.
 
-    Returns None on zero rows so the route can 404 (same convention as the
-    existing batch-header route).
+    Returns None on zero rows so the route can 404.
 
-    Production-section source mapping (2026-05-25 Databricks compatibility
-    audit, Finding #2 — see
-    docs/data-layer/trace2-batch-quality-passport-source-verification.md):
+    manufacture_date / expiry_date: emitted as empty string — no governed source
+    provides these fields in the current Phase 2 schema.  The Zod contract accepts
+    empty string for these optional identity fields.
 
-      Sourced from live ``gold_batch_production_history_v``:
-        - ``orderId``   ← ``process_order_id`` (PROCESS_ORDER_ID)
-        - ``startedAt`` ← ``production_started_at`` (POSTING_DATE — the
-          production-posting date, **not** a confirmed production start
-          timestamp; the live view has no START / CONFIRMED columns)
-        - ``actualQty`` ← ``production_actual_qty`` (BATCH_QTY — the
-          actual batch quantity, **not** a planned quantity)
-
-      Intentionally unavailable from the live view (the live DDL has no
-      START_DATE / CONFIRMED_DATE / PLANNED_QTY / ACTUAL_QTY /
-      PRODUCTION_LINE / OPERATOR columns). The Zod source schema was
-      relaxed to nullable+optional in the same PR so the API can emit
-      ``None`` source-truthfully rather than reassuring contract
-      defaults (``""`` / ``0.0``):
-        - ``line``                → None
-        - ``operator``            → None
-        - ``confirmedAt``         → None
-        - ``plannedQty``          → None
-        - ``yield``               → None (no planned/actual split available)
-        - ``originatingCustomer`` → None
-        - ``notes``               → None
+    production section sourced from gold_batch_event_ledger PRODUCTION IN rows:
+      orderId    ← PROCESS_ORDER_ID (most recent production event for this batch×plant)
+      startedAt  ← POSTING_DATE (posting date of the production event)
+      actualQty  ← QUANTITY (batch quantity on the production receipt)
     """
     if not rows:
         return None
     row = rows[0]
 
-    # Days-to-expiry — defer to caller / frontend (relies on "today" context).
     return {
         "identity": {
             "materialDescription": str(row.get("material_name") or ""),
@@ -196,8 +177,9 @@ def map_batch_quality_passport_partial(rows: list[dict]) -> Optional[dict]:
             "plantName": str(row.get("plant_name") or ""),
             "plantId": str(row.get("plant_id") or ""),
             "processOrderId": str(row.get("process_order_id") or ""),
-            "manufactureDate": _date_to_utc(row.get("manufacture_date")) if row.get("manufacture_date") else "",
-            "expiryDate": _date_to_utc(row.get("expiry_date")) if row.get("expiry_date") else "",
+            # manufacture_date / expiry_date: not available in governed stock summary.
+            "manufactureDate": "",
+            "expiryDate": "",
             "daysToExpiry": 0,  # frontend recomputes from expiryDate
             "uom": str(row.get("uom") or ""),
         },
@@ -211,36 +193,17 @@ def map_batch_quality_passport_partial(rows: list[dict]) -> Optional[dict]:
         },
         "production": {
             "orderId": str(row.get("process_order_id") or ""),
-            # No PRODUCTION_LINE column in gold_batch_production_history_v —
-            # null is source-truthful (contract relaxed in this PR).
             "line": None,
-            # No OPERATOR column in gold_batch_production_history_v.
             "operator": None,
-            # POSTING_DATE — the production-posting date, not a confirmed
-            # start timestamp.
             "startedAt": str(row.get("production_started_at") or ""),
-            # No CONFIRMED_DATE column on the live view.
             "confirmedAt": None,
-            # No PLANNED_QTY column on the live view.
             "plannedQty": None,
-            # BATCH_QTY — the actual batch quantity recorded on the
-            # production-history posting.
             "actualQty": float(row.get("production_actual_qty") or 0),
-            # Yield = actualQty / plannedQty is not derivable without a
-            # planned quantity, which the live view does not expose.
             "yield": None,
-            # Originating customer is not in gold_batch_production_history_v.
             "originatingCustomer": None,
-            # No free-text notes column on the live view.
             "notes": None,
         },
         "productionLotCount": int(row.get("production_lot_count") or 0),
-        # "production" was added 2026-05-25 because the post-audit SQL only
-        # surfaces orderId / startedAt / actualQty from the live view.
-        # The four-section legacy marker referenced "signoff"; that field
-        # was renamed to "usageDecisionEvidence" in the wire contract long
-        # ago — the marker is updated here so it reflects the current
-        # contract name.
         "_unverifiedSections": [
             "quality",
             "lotHistory",
@@ -254,7 +217,8 @@ def map_batch_quality_passport_partial(rows: list[dict]) -> Optional[dict]:
 def get_batch_quality_passport_coa_spec(request: Trace2BatchQualityPassportRequest) -> QuerySpec:
     """Fetch CoA characteristic results for the active batch.
 
-    Source: gold_batch_quality_result_v.
+    Source: gold_batch_quality_result_v (still on legacy TRACE_SCHEMA — no governed
+    equivalent exists yet; kept unchanged from legacy adapter).
     """
     tbl = resolve_domain_object("trace2", "gold_batch_quality_result_v")
     sql = f"""
@@ -292,20 +256,31 @@ def get_batch_quality_passport_coa_spec(request: Trace2BatchQualityPassportReque
 
 
 def get_batch_quality_passport_lots_spec(request: Trace2BatchQualityPassportRequest) -> QuerySpec:
-    """Fetch lot history (recent inspections) for the active batch."""
-    tbl = resolve_domain_object("trace2", "gold_batch_quality_lot_v")
+    """Fetch lot history (recent inspections) for the active batch.
+
+    Source: gold_wm_qm_lot_status (TRACE_GOVERNED_SCHEMA, estate-wide after #122).
+    Replaces legacy gold_batch_quality_lot_v.
+
+    Column mapping:
+      inspection_lot_number     → id
+      COALESCE(inspection_end_date, lot_created_date) → date
+      inspection_type           → inspection
+      last_usage_decision       → usage_decision
+      last_usage_decision_by    → decision_by
+    """
+    tbl = resolve_governed_trace2_object("gold_wm_qm_lot_status")
     sql = f"""
     SELECT
-      INSPECTION_LOT_ID           AS id,
-      COALESCE(INSPECTION_END_DATE, CREATED_DATE) AS date,
-      INSPECTION_TYPE             AS inspection,
-      USAGE_DECISION_LONG_TEXT    AS usage_decision,
-      CREATED_BY                  AS decision_by
+      inspection_lot_number                                    AS id,
+      COALESCE(inspection_end_date, lot_created_date)          AS date,
+      inspection_type                                          AS inspection,
+      last_usage_decision                                      AS usage_decision,
+      last_usage_decision_by                                   AS decision_by
     FROM {tbl}
-    WHERE MATERIAL_ID = :material_id
-      AND BATCH_ID   = :batch_id
-      AND (:plant_id = '' OR PLANT_ID = :plant_id)
-    ORDER BY COALESCE(INSPECTION_END_DATE, CREATED_DATE) DESC
+    WHERE material_code = :material_id
+      AND batch_number  = :batch_id
+      AND (:plant_id = '' OR plant_code = :plant_id)
+    ORDER BY COALESCE(inspection_end_date, lot_created_date) DESC
     LIMIT 20
     """
     return QuerySpec(
@@ -319,18 +294,36 @@ def get_batch_quality_passport_lots_spec(request: Trace2BatchQualityPassportRequ
             "plant_id": request.plant_id,
         },
         cache_policy=CacheTier.PER_USER_60S,
-        source_badge="view:gold_batch_quality_lot_v",
+        source_badge="mv:gold_wm_qm_lot_status",
         tags=["trace2", "trace-app", "quality-passport", "lots"],
     )
 
 
 def get_batch_quality_passport_summary_spec(request: Trace2BatchQualityPassportRequest) -> QuerySpec:
-    """Fetch quality KPI counts from gold_batch_quality_summary_v."""
-    tbl = resolve_domain_object("trace2", "gold_batch_quality_summary_v")
+    """Fetch quality KPI counts from gold_wm_qm_lot_status aggregate.
+
+    Source: gold_wm_qm_lot_status (TRACE_GOVERNED_SCHEMA), replacing legacy
+    gold_batch_quality_summary_v.
+
+    The governed QM lot status table carries has_usage_decision (boolean) and
+    quality_score.  We derive:
+      lot_count            = COUNT(inspection_lot_number)
+      failed_mic_count     = 0 (no MIC-level result counts in this table; CoA spec fills this)
+      accepted_result_count= COUNT where has_usage_decision = true
+      rejected_result_count= 0 (no rejected-result metric; approval is boolean at lot level)
+      latest_inspection_date= MAX(COALESCE(inspection_end_date, lot_created_date))
+    """
+    tbl = resolve_governed_trace2_object("gold_wm_qm_lot_status")
     sql = f"""
-    SELECT lot_count, failed_mic_count, accepted_result_count, rejected_result_count, latest_inspection_date
+    SELECT
+      COUNT(inspection_lot_number)                             AS lot_count,
+      0                                                        AS failed_mic_count,
+      COUNT(CASE WHEN has_usage_decision THEN 1 END)           AS accepted_result_count,
+      0                                                        AS rejected_result_count,
+      MAX(COALESCE(inspection_end_date, lot_created_date))     AS latest_inspection_date
     FROM {tbl}
-    WHERE MATERIAL_ID = :material_id AND BATCH_ID = :batch_id
+    WHERE material_code = :material_id
+      AND batch_number  = :batch_id
     LIMIT 1
     """
     return QuerySpec(
@@ -343,24 +336,53 @@ def get_batch_quality_passport_summary_spec(request: Trace2BatchQualityPassportR
             "batch_id": request.batch_id,
         },
         cache_policy=CacheTier.PER_USER_60S,
-        source_badge="view:gold_batch_quality_summary_v",
+        source_badge="mv:gold_wm_qm_lot_status",
         tags=["trace2", "trace-app", "quality-passport", "summary"],
     )
 
 
 def get_batch_quality_passport_balance_spec(request: Trace2BatchQualityPassportRequest) -> QuerySpec:
-    """Fetch the latest BALANCE_QTY and the net produced-vs-current variance."""
-    tbl = resolve_domain_object("trace2", "gold_batch_mass_balance_v")
+    """Fetch the latest running balance and net variance from gold_batch_event_ledger.
+
+    Source: gold_batch_event_ledger (TRACE_GOVERNED_SCHEMA), replacing legacy
+    gold_batch_mass_balance_v.
+
+    LINK_TYPE→bucket mapping (mirrors mass_balance_adapter):
+      PRODUCTION IN / VENDOR_RECEIPT IN   → produced (positive quantity received)
+      PRODUCTION OUT                       → consumed (component consumed into an order)
+      DELIVERY OUT                         → shipped
+      ADJUSTMENT_IN                        → adjusted (positive)
+      ADJUSTMENT_OUT                       → adjusted (negative)
+
+    Signed quantity: IN → +QUANTITY, OUT → -QUANTITY.
+    latest_balance = last row's running SUM (application-computed).
+    """
+    tbl = resolve_governed_trace2_object("gold_batch_event_ledger")
     sql = f"""
     SELECT
-      SUM(CASE WHEN MOVEMENT_TYPE IN ('101','102','131') THEN QUANTITY ELSE 0 END)  AS produced,
-      SUM(CASE WHEN MOVEMENT_TYPE IN ('261','262')        THEN QUANTITY ELSE 0 END)  AS consumed,
-      SUM(CASE WHEN MOVEMENT_TYPE IN ('601','602')        THEN QUANTITY ELSE 0 END)  AS shipped,
-      SUM(CASE WHEN MOVEMENT_TYPE IN ('701','702','711','712') THEN QUANTITY ELSE 0 END) AS adjusted,
-      MAX_BY(BALANCE_QTY, POSTING_DATE)  AS latest_balance,
-      MAX(UOM)                            AS uom
+      SUM(CASE
+            WHEN (LINK_TYPE IN ('PRODUCTION','VENDOR_RECEIPT') AND direction = 'IN')
+            THEN QUANTITY ELSE 0
+          END)                                                        AS produced,
+      SUM(CASE
+            WHEN LINK_TYPE = 'PRODUCTION' AND direction = 'OUT'
+            THEN -QUANTITY ELSE 0
+          END)                                                        AS consumed,
+      SUM(CASE
+            WHEN LINK_TYPE = 'DELIVERY' AND direction = 'OUT'
+            THEN -QUANTITY ELSE 0
+          END)                                                        AS shipped,
+      SUM(CASE
+            WHEN LINK_TYPE IN ('ADJUSTMENT_IN','ADJUSTMENT_OUT',
+                               'BATCH_TRANSFER','MATERIAL_TRANSFER','STO_TRANSFER')
+            THEN CASE WHEN direction = 'IN' THEN QUANTITY ELSE -QUANTITY END
+            ELSE 0
+          END)                                                        AS adjusted,
+      SUM(CASE WHEN direction = 'IN' THEN QUANTITY ELSE -QUANTITY END) AS latest_balance,
+      MAX(BASE_UNIT_OF_MEASURE)                                       AS uom
     FROM {tbl}
-    WHERE MATERIAL_ID = :material_id AND BATCH_ID = :batch_id
+    WHERE MATERIAL_ID = :material_id
+      AND BATCH_ID   = :batch_id
       AND (:plant_id = '' OR PLANT_ID = :plant_id)
     """
     return QuerySpec(
@@ -374,7 +396,7 @@ def get_batch_quality_passport_balance_spec(request: Trace2BatchQualityPassportR
             "plant_id": request.plant_id,
         },
         cache_policy=CacheTier.PER_USER_60S,
-        source_badge="view:gold_batch_mass_balance_v",
+        source_badge="mv:gold_batch_event_ledger",
         tags=["trace2", "trace-app", "quality-passport", "balance"],
     )
 
@@ -488,10 +510,7 @@ def build_batch_quality_passport(
         else f"Unexplained variance of {abs(variance):.1f} {b.get('uom') or 'KG'}."
     )
 
-    # Usage-decision evidence — derived from the latest accepted lot's
-    # CREATED_BY. This is NOT a governed signoff / e-signature / release
-    # approval. The contract schema deliberately uses
-    # `PassportUsageDecisionEvidence` with `decisionType` to make that clear.
+    # Usage-decision evidence — derived from the latest accepted lot's decision_by.
     usage_decision_evidence: list[dict] = []
     latest_accept = next(
         (r for r in lot_rows if r.get("usage_decision") and "accept" in str(r.get("usage_decision")).lower()),
@@ -520,22 +539,11 @@ def build_batch_quality_passport(
 
     production = dict(partial["production"])
     if not production.get("orderId"):
-        # The mapper sources orderId from ph.PROCESS_ORDER_ID, but if that
-        # column was null the partial-spec join may still have surfaced
-        # the identity's processOrderId via gold_batch_summary_v.MATERIAL_ID
-        # joins; fall back so the response stays internally consistent.
         production["orderId"] = identity.get("processOrderId", "")
-    # NOTE: originatingCustomer and notes are intentionally NOT defaulted
-    # here — both fields were relaxed to nullable+optional in the Zod
-    # schema (2026-05-25 PR) precisely because the live view has no
-    # source for them. Substituting "—" or a static "Source: ..." string
-    # would re-introduce the fake-default pattern that this PR fixes.
 
     return {
         "identity": identity,
         "quality": {
-            # Heuristic — not a governed QM score. Schema enforces the
-            # naming and the `confidenceSource` tag.
             "heuristicQualityConfidence": confidence,
             "confidenceSource": "application-heuristic",
             "heuristicQualityStatus": overall_status,

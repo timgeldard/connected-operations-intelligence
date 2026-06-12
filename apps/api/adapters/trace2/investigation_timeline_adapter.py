@@ -6,89 +6,69 @@ Covers:
 from __future__ import annotations
 
 from shared.query_service.cache_policy import CacheTier
-from shared.query_service.object_resolver import resolve_domain_object
+from shared.query_service.object_resolver import resolve_governed_trace2_object
 from shared.query_service.query_spec import QuerySpec
 
 from ._types import Trace2InvestigationTimelineRequest
 from ._utils import _TIMELINE_SOURCE_MAP, _TIMELINE_TONE_MAP, _TIMELINE_TYPE_MAP
 
 # ---------------------------------------------------------------------------
-# Trace App slice — getInvestigationTimeline (UNION over 3 sources)
+# Trace App slice — getInvestigationTimeline (event ledger ordered by POSTING_DATE)
 # ---------------------------------------------------------------------------
 
 def get_investigation_timeline_spec(request: Trace2InvestigationTimelineRequest) -> QuerySpec:
-    """UNION timeline events from mass-balance, quality-lot, and delivery sources.
+    """Timeline events from gold_batch_event_ledger ordered by POSTING_DATE.
 
-    No dedicated `gold_investigation_events` view yet — this synthesises a
-    chronological feed from existing verified sources:
+    Source: gold_batch_event_ledger (TRACE_GOVERNED_SCHEMA, default: "gold_io_reporting").
+
+    The legacy adapter UNIONed three sources:
       - gold_batch_mass_balance_v → production / consumption / dispatch
-      - gold_batch_quality_lot_v  → QC inspections, lot decisions
-      - gold_batch_delivery_v     → customer dispatch (cross-plant)
+      - gold_batch_quality_lot_v  → QC inspections
+      - gold_batch_delivery_v     → customer dispatch
 
-    Each branch tags `event_type`, `tone`, and `source_system` so the mapper
-    can produce one homogeneous list. POSTING_DATE / INSPECTION_END_DATE drive
-    chronology.
+    In the governed migration all movement events are consolidated in
+    gold_batch_event_ledger.  QM lot context from gold_batch_quality_lot_v is
+    not in the governed Phase 2 scope for this endpoint — QM lot events are
+    available via holds-ledger and quality-passport adapters.  The timeline
+    emits movement events only (same coverage as the mass-balance leg of the
+    legacy UNION; the QM and delivery legs were additive and are not present
+    in this governed source as separate rows — delivery events appear as
+    DELIVERY link-type rows in the ledger).
+
+    event_type mapping from LINK_TYPE + direction:
+      direction=IN  (PRODUCTION IN, VENDOR_RECEIPT, TRANSFER IN, ADJUSTMENT_IN)
+                                    → 'production'
+      DELIVERY (always direction=OUT)  → 'dispatch'
+      direction=OUT (all others)    → 'consumption'
     """
-    tbl_mb = resolve_domain_object("trace2", "gold_batch_mass_balance_v")
-    tbl_ql = resolve_domain_object("trace2", "gold_batch_quality_lot_v")
-    tbl_dl = resolve_domain_object("trace2", "gold_batch_delivery_v")
+    tbl = resolve_governed_trace2_object("gold_batch_event_ledger")
 
     sql = f"""
-    SELECT * FROM (
-      SELECT
-        CAST(POSTING_DATE AS STRING) AS ts,
+    SELECT
+        CAST(POSTING_DATE AS STRING)   AS ts,
         CASE
-          WHEN MOVEMENT_TYPE IN ('101','102','131') THEN 'production'
-          WHEN MOVEMENT_TYPE IN ('261','262')        THEN 'consumption'
-          WHEN MOVEMENT_TYPE IN ('601','602')        THEN 'dispatch'
-          ELSE 'note'
-        END                                          AS event_type,
-        CONCAT('Movement ', COALESCE(MOVEMENT_TYPE, '?'),
-               ' · ', COALESCE(MOVEMENT_CATEGORY, ''))  AS label,
-        'SAP · auto'                                 AS actor,
-        CONCAT(CAST(ROUND(QUANTITY, 1) AS STRING), ' ', COALESCE(UOM, '')) AS detail,
+          WHEN direction = 'IN'       THEN 'production'
+          WHEN LINK_TYPE = 'DELIVERY' THEN 'dispatch'
+          ELSE 'consumption'
+        END                            AS event_type,
+        CONCAT(
+            COALESCE(LINK_TYPE, '?'),
+            ' \xb7 ', direction
+        )                              AS label,
+        'SAP \xb7 auto'               AS actor,
+        CONCAT(
+            CAST(ROUND(QUANTITY, 1) AS STRING),
+            ' ', COALESCE(BASE_UNIT_OF_MEASURE, '')
+        )                              AS detail,
         CASE
-          WHEN QUANTITY > 0 THEN 'good'
-          WHEN QUANTITY < 0 THEN 'neutral'
+          WHEN direction = 'IN'  THEN 'good'
           ELSE 'neutral'
-        END                                          AS tone,
-        'SAP'                                        AS source_system
-      FROM {tbl_mb}
-      WHERE MATERIAL_ID = :material_id AND BATCH_ID = :batch_id
-        AND (:plant_id = '' OR PLANT_ID = :plant_id)
-
-      UNION ALL
-
-      SELECT
-        CAST(COALESCE(INSPECTION_END_DATE, CREATED_DATE) AS STRING) AS ts,
-        'qc'                                         AS event_type,
-        CONCAT('Inspection ', COALESCE(INSPECTION_LOT_ID, '?'),
-               ' · ', COALESCE(INSPECTION_TYPE, ''))  AS label,
-        COALESCE(CREATED_BY, 'Lab · auto')           AS actor,
-        COALESCE(USAGE_DECISION_LONG_TEXT,
-                 INSPECTION_SHORT_TEXT, '')          AS detail,
-        'good'                                       AS tone,
-        'LIMS'                                       AS source_system
-      FROM {tbl_ql}
-      WHERE MATERIAL_ID = :material_id AND BATCH_ID = :batch_id
-        AND (:plant_id = '' OR PLANT_ID = :plant_id)
-
-      UNION ALL
-
-      SELECT
-        CAST(POSTING_DATE AS STRING)                 AS ts,
-        'dispatch'                                   AS event_type,
-        CONCAT('Delivery ', COALESCE(DELIVERY, '?'),
-               ' · ', COALESCE(COUNTRY_ID, ''))      AS label,
-        'SAP · auto'                                 AS actor,
-        CONCAT(CAST(ROUND(ABS_QUANTITY, 1) AS STRING), ' ', COALESCE(UOM, ''),
-               ' → ', COALESCE(CUSTOMER_NAME, ''))   AS detail,
-        'brand'                                      AS tone,
-        'SAP'                                        AS source_system
-      FROM {tbl_dl}
-      WHERE MATERIAL_ID = :material_id AND BATCH_ID = :batch_id
-        AND DELIVERY IS NOT NULL
-    )
+        END                            AS tone,
+        'SAP'                          AS source_system
+    FROM {tbl}
+    WHERE MATERIAL_ID = :material_id
+      AND BATCH_ID   = :batch_id
+      AND (:plant_id = '' OR PLANT_ID = :plant_id)
     ORDER BY ts
     LIMIT :max_rows
     """
@@ -105,13 +85,13 @@ def get_investigation_timeline_spec(request: Trace2InvestigationTimelineRequest)
             "max_rows": request.max_rows,
         },
         cache_policy=CacheTier.PER_USER_60S,
-        source_badge="union:mass_balance_v+quality_lot_v+delivery_v",
+        source_badge="mv:gold_batch_event_ledger",
         tags=["trace2", "trace-app", "investigation-timeline"],
     )
 
 
 def map_investigation_timeline_rows(rows: list[dict]) -> dict:
-    """Coerce the UNION rows into TimelineEvent[] shape.
+    """Coerce the event ledger rows into TimelineEvent[] shape.
 
     Returns an empty `events` array (not 404) when no rows match — an empty
     timeline is a valid state (the batch may simply not have had any

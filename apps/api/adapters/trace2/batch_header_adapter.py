@@ -33,56 +33,86 @@ from ._utils import (
 def get_batch_header_summary_spec(request: Trace2BatchHeaderRequest) -> QuerySpec:
     """Return a QuerySpec for getBatchHeaderSummary.
 
-    Sources: gold_batch_stock_v + gold_batch_summary_v + gold_material + gold_plant
-    under TRACE_CATALOG / TRACE_SCHEMA (default: "gold").
-    Contract: BatchHeaderSummarySchema (packages/data-contracts)
-    Cache: PER_USER_60S — batch release/block status can change during a shift.
-    Parallel validation: possible against browser-verified POST /api/trace2/batch-header.
+    Sources:
+      - gold_batch_stock_summary_secured (TRACE_GOVERNED_SCHEMA, RLS) — stock position
+      - gold_batch_event_ledger          (TRACE_GOVERNED_SCHEMA) — latest production activity
+      - gold_material                    (legacy TRACE_SCHEMA) — material name, UoM
+      - gold_plant                       (legacy TRACE_SCHEMA) — plant name
+      - gold_batch_material              (legacy TRACE_SCHEMA) — vendor batch ID
 
-    Multi-plant note: gold_batch_stock_v returns one row per plant per batch. When
-    plant_id is provided the SQL filters to that plant, removing cross-plant ambiguity.
-    When plant_id is absent the query returns all plants ordered by PLANT_ID; the mapper
-    takes the first row. UAT inputs normally include plant_id so multi-plant ambiguity
-    is resolved in the standard flow.
+    Replaces legacy: gold_batch_stock_v + gold_batch_summary_v.
+
+    Column mapping vs legacy:
+      stock_summary.unrestricted_quantity → unrestricted
+      stock_summary.blocked_quantity      → blocked
+      stock_summary.quality_inspection_quantity → quality_inspection
+      stock_summary.restricted_use_quantity     → restricted
+      stock_summary.in_transfer_quantity        → transit
+      stock_summary.total_quantity              → total_stock
+      stock_summary.base_unit_of_measure        → uom (via JOIN to gold_material fallback)
+
+    manufacture_date / expiry_date: these came from gold_batch_summary_v, which has
+    no governed equivalent. These fields are not available in the governed stack;
+    they are omitted from the SELECT. The mapper will not set manufactureDate /
+    expiryDate (same as if the legacy view had null values — fields absent from result).
+
+    process_order_id: sourced from gold_batch_event_ledger (latest PRODUCTION IN event),
+    replacing the legacy gold_batch_production_history_v join.
+
+    Multi-plant note: gold_batch_stock_summary has one row per (plant×material×batch).
+    When plant_id is provided the SQL filters to that plant. When absent the query
+    returns all plants ordered by plant_code; the mapper takes the first row.
 
     Raises DatabricksConfigError if TRACE_CATALOG is not set.
     """
-    tbl_stock = resolve_domain_object("trace2", "gold_batch_stock_v")
-    tbl_summary = resolve_domain_object("trace2", "gold_batch_summary_v")
+    tbl_stock = resolve_governed_trace2_object("gold_batch_stock_summary_secured")
+    tbl_ledger = resolve_governed_trace2_object("gold_batch_event_ledger")
     tbl_material = resolve_domain_object("trace2", "gold_material")
     tbl_plant = resolve_domain_object("trace2", "gold_plant")
     tbl_batch_material = resolve_domain_object("trace2", "gold_batch_material")
 
     sql = f"""
     SELECT
-        s.MATERIAL_ID                AS material_id,             -- confirmed: gold_batch_stock_v
-        s.BATCH_ID                   AS batch_id,                -- confirmed: gold_batch_stock_v
-        s.unrestricted,                                          -- confirmed: gold_batch_stock_v (V1 inspection)
-        s.blocked,                                              -- confirmed: gold_batch_stock_v
-        s.quality_inspection,                                   -- confirmed: gold_batch_stock_v
-        s.restricted,                                           -- confirmed: gold_batch_stock_v
-        s.transit,                                              -- confirmed: gold_batch_stock_v
-        s.total_stock,                                          -- confirmed: gold_batch_stock_v
-        s.PLANT_ID                   AS plant_id,               -- verified: 2026-05-19 connected_plant_uat (not in gold_batch_summary_v)
-        m.MATERIAL_NAME              AS material_name,          -- verified: 2026-05-19 connected_plant_uat
-        m.BASE_UNIT_OF_MEASURE       AS uom,                    -- verified: 2026-05-19 connected_plant_uat (not in gold_batch_summary_v)
-        p.PLANT_NAME                 AS plant_name,             -- confirmed: gold_plant (V1 inspection)
-        b.MANUFACTURE_DATE           AS manufacture_date,       -- verified: 2026-05-19 connected_plant_uat
-        b.SHELF_LIFE_EXPIRATION_DATE AS expiry_date,            -- verified: 2026-05-19 connected_plant_uat
-        bm.SUPPLIER_BATCH_ID         AS vendor_batch_id         -- verified: 2026-05-27 connected_plant_uat (gold_batch_material)
+        s.material_code                AS material_id,
+        s.batch_number                 AS batch_id,
+        s.unrestricted_quantity        AS unrestricted,
+        s.blocked_quantity             AS blocked,
+        s.quality_inspection_quantity  AS quality_inspection,
+        s.restricted_use_quantity      AS restricted,
+        s.in_transfer_quantity         AS transit,
+        s.total_quantity               AS total_stock,
+        s.plant_code                   AS plant_id,
+        m.MATERIAL_NAME                AS material_name,
+        m.BASE_UNIT_OF_MEASURE         AS uom,
+        p.PLANT_NAME                   AS plant_name,
+        ph.PROCESS_ORDER_ID            AS process_order_id,
+        bm.SUPPLIER_BATCH_ID           AS vendor_batch_id
     FROM {tbl_stock} s
-    JOIN {tbl_summary} b                                        -- verified join key: MATERIAL_ID + BATCH_ID
-        ON s.MATERIAL_ID = b.MATERIAL_ID AND s.BATCH_ID = b.BATCH_ID
-    JOIN {tbl_material} m                                       -- confirmed join key
-        ON s.MATERIAL_ID = m.MATERIAL_ID AND m.LANGUAGE_ID = 'E'  -- verified: 2026-05-19 connected_plant_uat
-    JOIN {tbl_plant} p                                          -- confirmed join key
-        ON s.PLANT_ID = p.PLANT_ID                              -- verified: 2026-05-19 connected_plant_uat
-    LEFT JOIN {tbl_batch_material} bm                           -- LEFT JOIN: not all batches have a supplier batch
-        ON s.MATERIAL_ID = bm.MATERIAL_ID AND s.BATCH_ID = bm.BATCH_ID
-    WHERE s.MATERIAL_ID = :material_id
-      AND s.BATCH_ID = :batch_id
-      AND (:plant_id = '' OR s.PLANT_ID = :plant_id)
-    ORDER BY s.PLANT_ID
+    JOIN {tbl_material} m
+        ON s.material_code = m.MATERIAL_ID AND m.LANGUAGE_ID = 'E'
+    JOIN {tbl_plant} p
+        ON s.plant_code = p.PLANT_ID
+    LEFT JOIN (
+        SELECT MATERIAL_ID, BATCH_ID, PLANT_ID, PROCESS_ORDER_ID,
+               ROW_NUMBER() OVER (
+                   PARTITION BY MATERIAL_ID, BATCH_ID, PLANT_ID
+                   ORDER BY POSTING_DATE DESC NULLS LAST
+               ) AS rn
+        FROM {tbl_ledger}
+        WHERE MATERIAL_ID = :material_id
+          AND BATCH_ID   = :batch_id
+          AND LINK_TYPE  = 'PRODUCTION'
+          AND direction  = 'IN'
+    ) ph ON s.material_code = ph.MATERIAL_ID
+         AND s.batch_number  = ph.BATCH_ID
+         AND s.plant_code    = ph.PLANT_ID
+         AND ph.rn = 1
+    LEFT JOIN {tbl_batch_material} bm
+        ON s.material_code = bm.MATERIAL_ID AND s.batch_number = bm.BATCH_ID
+    WHERE s.material_code = :material_id
+      AND s.batch_number  = :batch_id
+      AND (:plant_id = '' OR s.plant_code = :plant_id)
+    ORDER BY s.plant_code
     LIMIT :max_rows
     """
 
@@ -91,9 +121,9 @@ def get_batch_header_summary_spec(request: Trace2BatchHeaderRequest) -> QuerySpe
         module="trace2",
         endpoint="/api/trace2/batch-header",
         sql=sql,
-        params={"material_id": request.material_id, "batch_id": request.batch_id, "plant_id": request.plant_id},
+        params={"material_id": request.material_id, "batch_id": request.batch_id, "plant_id": request.plant_id, "max_rows": 50},
         cache_policy=CacheTier.PER_USER_60S,
-        source_badge="view:gold_batch_summary_v",
+        source_badge="mv:gold_batch_stock_summary+gold_batch_event_ledger",
         tags=["trace2", "batch-header", "summary"],
     )
 
@@ -133,6 +163,8 @@ def map_batch_header_rows(rows: list[dict]) -> Optional[dict]:
         result["transit"] = float(row["transit"])
     if row.get("uom"):
         result["uom"] = row["uom"]
+    # manufacture_date / expiry_date: not available in governed stock summary
+    # (gold_batch_summary_v has no governed equivalent). Fields omitted when absent.
     if row.get("manufacture_date"):
         result["manufactureDate"] = _date_to_utc(row["manufacture_date"])
     if row.get("expiry_date"):
