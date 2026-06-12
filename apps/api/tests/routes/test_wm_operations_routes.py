@@ -1105,3 +1105,128 @@ class TestScheduleAdherenceDailyRoute:
                 headers=_HEADERS_WITH_TOKEN,
             )
         assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# Order Yield (SIMPLE_DATASETS declarative route)
+# ---------------------------------------------------------------------------
+
+class TestOrderYieldRoute:
+    async def test_returns_mapped_order_yield_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "order_id": "900001",
+            "material_id": "FG1",
+            "material_name": "Finished Good One",
+            "production_line": "LINE_A",
+            "planned_qty": 100.0,
+            "delivered_qty": 90.0,
+            "uom": "KG",
+            "yield_pct": 0.9,
+            "has_goods_receipt": True,
+            "is_complete": False,
+            "is_released": True,
+            "is_completed": False,
+            "is_closed": False,
+            "scheduled_start_date": "2026-06-01",
+            "scheduled_finish_date": "2026-06-02",
+            "actual_finish_date": None,
+            "first_gr_date": "2026-06-02",
+            "last_gr_date": "2026-06-02",
+        }
+
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/order-yield",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["plantId"] == "C061"
+        assert row["orderId"] == "900001"
+        assert row["yieldPct"] == 0.9
+        assert row["hasGoodsReceipt"] is True
+        assert response.headers.get("x-contract-id") == "wm_operations.order_yield"
+
+    async def test_returns_401_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/order-yield", params={"plant_id": "C061"}
+            )
+        assert response.status_code == 401
+
+    async def test_returns_503_legacy(self, monkeypatch) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/order-yield",
+                params={"plant_id": "C061"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# Component Variance (SIMPLE_DATASETS declarative route)
+# ---------------------------------------------------------------------------
+
+class TestComponentVarianceRoute:
+    async def test_returns_mapped_component_variance_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "order_id": "900001",
+            "reservation_id": "RS0001",
+            "reservation_item": "0001",
+            "material_id": "RM1",
+            "material_name": "Raw Material One",
+            "uom": "KG",
+            "movement_type_code": "261",
+            "required_qty": 50.0,
+            "withdrawn_qty": 0.0,
+            "issued_qty": 55.0,
+            "variance_qty": 5.0,
+            "variance_pct": 0.1,
+            "est_loss_value": 25.0,
+            "standard_price": 5.0,
+            "is_final_issue": False,
+        }
+
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/component-variance",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["plantId"] == "C061"
+        assert row["orderId"] == "900001"
+        assert row["varianceQty"] == 5.0
+        assert row["estLossValue"] == 25.0
+        assert response.headers.get("x-contract-id") == "wm_operations.component_variance"
+
+    async def test_returns_401_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/component-variance", params={"plant_id": "C061"}
+            )
+        assert response.status_code == 401
+
+    async def test_returns_503_legacy(self, monkeypatch) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/component-variance",
+                params={"plant_id": "C061"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 503

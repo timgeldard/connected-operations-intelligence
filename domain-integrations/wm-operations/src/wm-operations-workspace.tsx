@@ -26,6 +26,7 @@ import { QmCommandCentreView } from './views/qm-command-centre-view.js'
 import { QmDispositionQueueView } from './views/qm-disposition-queue-view.js'
 import { OrderJourneyView } from './views/order-journey-view.js'
 import { ProductionProgressView } from './views/production-progress-view.js'
+import { YieldLossView } from './views/yield-loss-view.js'
 import { EmptyNote, ViewHeader } from './components/kerry.js'
 import './theme/kerry-theme.css'
 
@@ -52,6 +53,7 @@ export type WmOperationsViewId =
   | 'qm-disposition-queue'
   | 'order-journey'
   | 'production-progress'
+  | 'yield-loss'
 
 export interface WmOperationsWorkspaceProps {
   readonly scope: ScopeContext
@@ -109,6 +111,7 @@ const VIEW_GROUPS: Array<{ label: string; views: Array<{ id: WmOperationsViewId;
       { id: 'movements', label: 'Goods Movements' },
       { id: 'production-health', label: 'Production Health' },
       { id: 'production-progress', label: 'Production Progress' },
+      { id: 'yield-loss', label: 'Yield & Loss' },
     ],
   },
 ]
@@ -274,6 +277,8 @@ function resolveView(viewId: string, request: WmOperationsAdapterRequest, onNavi
       return <OrderJourneyView request={request} onNavigateToView={onNavigateToView} />
     case 'production-progress':
       return <ProductionProgressView request={request} onOpenProcessOrder={onOpenProcessOrder} onNavigateToView={onNavigateToView} />
+    case 'yield-loss':
+      return <YieldLossView request={request} onNavigateToView={onNavigateToView} />
     case 'staging-worklist':
     default:
       return <StagingWorklistView request={request} onOpenProcessOrder={onOpenProcessOrder} onNavigateToView={onNavigateToView} />

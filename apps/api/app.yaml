@@ -79,6 +79,19 @@ env:
   - name: TRACE_SCHEMA
     value: gold
 
+  # TRACE_GOVERNED_SCHEMA — required for governed trace2 objects in the io-reporting schema.
+  # Two objects have migrated from TRACE_SCHEMA (gold) to the governed io-reporting schema:
+  #   • gold_trace_anchor_secured  (RLS-enforced anchor MV — batch-search primary source)
+  #   • gold_batch_lineage          (T2 governed MV — batch-search po_match + trace-graph)
+  # All other trace2 objects (gold_material, gold_plant, gold_batch_stock_v, …) remain on
+  # TRACE_SCHEMA (gold) — no governed equivalents exist for those yet.
+  # MUST be set explicitly — object_resolver.py defaults it to "gold_io_reporting" but
+  # app.yaml requires per-environment literals (DAB ${var.*} substitution does not apply here).
+  # CAVEAT: end-user reads of governed gold_batch_lineage require the `traceability-readers`
+  # UC group (not yet provisioned in UAT as of 2026-06-12). Owner/admin identities work today.
+  - name: TRACE_GOVERNED_SCHEMA
+    value: gold_io_reporting
+
   # SPC catalog/schema — required for GET /api/spc/* native routes.
   # SPC Phase 2 governed wiring: point the adapter at the governed gold_io_reporting schema
   # so it reads the RLS-filtered spc_quality_metric_subgroup_mv serving view (which is a

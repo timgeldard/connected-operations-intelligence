@@ -84,17 +84,15 @@ export type { QualityBlockersPanelProps } from './panels/quality-blockers-panel.
 export { ReleaseHoldImpactPanel } from './panels/release-hold-impact-panel.js'
 export type { ReleaseHoldImpactPanelProps } from './panels/release-hold-impact-panel.js'
 
-// Connected Quality Lab Board
+// Connected Quality Lab Board — governed Databricks API adapter
 export {
-  ConnectedQualityLabAdapter,
+  ConnectedQualityLabDatabricksAdapter,
+  connectedQualityLabAdapterInstance,
   toConnectedQualityLabAdapterError,
-} from './adapters/connected-quality-lab-adapter.js'
+} from './adapters/connected-quality-lab-databricks-adapter.js'
 export type {
   ConnectedQualityLabAdapterRequest,
-  ConnectedQualityLabAdapterOptions,
-} from './adapters/connected-quality-lab-adapter.js'
-
-export { connectedQualityLabAdapterInstance } from './adapters/connected-quality-lab-adapter-factory.js'
+} from './adapters/connected-quality-lab-databricks-adapter.js'
 
 export {
   QualityReadOnlyEvidenceAdapter,
@@ -113,7 +111,6 @@ export type { QualityReadOnlyEvidencePanelProps } from './panels/quality-readonl
 
 export {
   useConnectedQualityLabFailures,
-  useConnectedQualityLabPlants,
 } from './adapters/connected-quality-lab-queries.js'
 
 export { ConnectedQualityLabBoardPanel } from './panels/connected-quality-lab-board-panel.js'

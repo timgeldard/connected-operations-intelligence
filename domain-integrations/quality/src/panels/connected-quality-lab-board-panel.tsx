@@ -3,7 +3,7 @@ import { EvidencePanel, useEvidencePanel } from '@connectio/evidence-panel-runti
 import type { EvidencePanelRegistration } from '@connectio/product-model'
 import type { ConnectedQualityLabFailure } from '@connectio/data-contracts'
 import { useConnectedQualityLabFailures } from '../adapters/connected-quality-lab-queries.js'
-import type { ConnectedQualityLabAdapterRequest } from '../adapters/connected-quality-lab-adapter.js'
+import type { ConnectedQualityLabAdapterRequest } from '../adapters/connected-quality-lab-databricks-adapter.js'
 
 const registration: EvidencePanelRegistration = {
   panelId: 'connected-quality-lab-board',
@@ -228,11 +228,9 @@ export function ConnectedQualityLabBoardPanel({ request }: ConnectedQualityLabBo
   const lastRefreshedAt = result?.ok ? result.fetchedAt : null
 
   const sourceLabel =
-    result?.source === 'mock'
-      ? 'Mock SAP QM lab failures'
-      : result?.source === 'legacy-api'
-        ? 'SAP QM via legacy API'
-        : null
+    result?.source === 'databricks-api'
+      ? 'SAP QM via governed gold'
+      : null
 
   const { displayState, markReady, markError } = useEvidencePanel({
     panelId: registration.panelId,

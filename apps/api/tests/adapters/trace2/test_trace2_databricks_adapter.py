@@ -3,6 +3,7 @@ import pytest
 from adapters.trace2.trace2_databricks_adapter import (
     Trace2BatchHeaderRequest,
     Trace2BatchQualityPassportRequest,
+    Trace2BatchSearchRequest,
     Trace2CustomerDeliveryRequest,
     Trace2CustomerExposureRequest,
     Trace2MassBalanceRequest,
@@ -11,6 +12,7 @@ from adapters.trace2.trace2_databricks_adapter import (
     TraceGraphRequest,
     get_batch_header_summary_spec,
     get_batch_quality_passport_partial_spec,
+    get_batch_search_spec,
     get_customer_delivery_spec,
     get_customer_exposure_spec,
     get_mass_balance_spec,
@@ -522,6 +524,29 @@ class TestGetTraceGraphRecursiveSpec:
         monkeypatch.delenv("TRACE_CATALOG", raising=False)
         with pytest.raises(DatabricksConfigError):
             get_trace_graph_recursive_spec(self._req())
+
+    def test_gold_batch_lineage_resolves_to_governed_schema_by_default(self) -> None:
+        """T2 cutover: gold_batch_lineage must resolve to TRACE_GOVERNED_SCHEMA
+        (default "gold_io_reporting"), not TRACE_SCHEMA ("gold").  The legacy TRACE_SCHEMA
+        setting in app.yaml would resolve to connected_plant_uat.gold.gold_batch_lineage
+        which does not exist in the governed io-reporting schema."""
+        sql = get_trace_graph_recursive_spec(self._req()).sql
+        assert "`gold_io_reporting`" in sql
+        # gold_batch_lineage must NOT resolve to the legacy gold schema.
+        assert "`connected_plant_uat`.`gold`.`gold_batch_lineage`" not in sql
+
+    def test_gold_batch_lineage_governed_schema_overridable_via_env(self, monkeypatch) -> None:
+        """TRACE_GOVERNED_SCHEMA env var must allow overriding the governed schema."""
+        monkeypatch.setenv("TRACE_GOVERNED_SCHEMA", "custom_governed")
+        sql = get_trace_graph_recursive_spec(self._req()).sql
+        assert "`custom_governed`" in sql
+        assert "`gold_io_reporting`" not in sql
+
+    def test_gold_material_stays_on_legacy_trace_schema(self) -> None:
+        """gold_material enrichment join must remain on legacy TRACE_SCHEMA — no governed
+        equivalent exists yet.  The legacy gold schema must still appear in the SQL."""
+        sql = get_trace_graph_recursive_spec(self._req()).sql
+        assert "`connected_plant_uat`.`gold`.`gold_material`" in sql
 
 
 # ---------------------------------------------------------------------------
@@ -1941,3 +1966,100 @@ class TestMapBatchQualityPassportPartial:
     def test_empty_rows_returns_none(self) -> None:
         """No batch in primary sources → caller must surface 404."""
         assert map_batch_quality_passport_partial([]) is None
+
+
+# ---------------------------------------------------------------------------
+# TestGetBatchSearchSpec — governed schema resolution
+# ---------------------------------------------------------------------------
+
+class TestGetBatchSearchSpec:
+    """Pin the governed-schema resolution for batch-search (Slice 1a — Trace Consumer).
+
+    gold_trace_anchor_secured and gold_batch_lineage must resolve to
+    TRACE_GOVERNED_SCHEMA (default "gold_io_reporting"), not TRACE_SCHEMA ("gold").
+    gold_material and gold_plant must remain on legacy TRACE_SCHEMA.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _set_env(self, monkeypatch):
+        monkeypatch.setenv("TRACE_CATALOG", "connected_plant_uat")
+        monkeypatch.setenv("TRACE_SCHEMA", "gold")
+        # TRACE_GOVERNED_SCHEMA not set → must default to "gold_io_reporting"
+
+    def _req(self, query: str = "cheese") -> Trace2BatchSearchRequest:
+        return Trace2BatchSearchRequest(query=query)
+
+    def test_anchor_resolves_to_governed_schema_by_default(self) -> None:
+        """gold_trace_anchor_secured must resolve to TRACE_GOVERNED_SCHEMA
+        (default "gold_io_reporting"), not the legacy TRACE_SCHEMA ("gold").
+        The deployed app.yaml sets TRACE_SCHEMA: gold which would make this object
+        resolve to connected_plant_uat.gold.gold_trace_anchor_secured — that object
+        does not exist; the gap is exactly what this change fixes."""
+        sql = get_batch_search_spec(self._req()).sql
+        assert "`gold_io_reporting`" in sql
+        assert "`connected_plant_uat`.`gold`.`gold_trace_anchor_secured`" not in sql
+
+    def test_lineage_po_match_resolves_to_governed_schema_by_default(self) -> None:
+        """gold_batch_lineage in the po_match CTE must resolve to TRACE_GOVERNED_SCHEMA.
+        Anchor search and po_match must use the same edge universe as trace-graph."""
+        sql = get_batch_search_spec(self._req()).sql
+        assert "`connected_plant_uat`.`gold_io_reporting`.`gold_batch_lineage`" in sql
+
+    def test_governed_schema_overridable_via_env(self, monkeypatch) -> None:
+        """TRACE_GOVERNED_SCHEMA env var must override the default governed schema."""
+        monkeypatch.setenv("TRACE_GOVERNED_SCHEMA", "custom_governed")
+        sql = get_batch_search_spec(self._req()).sql
+        assert "`custom_governed`" in sql
+        assert "`gold_io_reporting`" not in sql
+
+    def test_gold_material_stays_on_legacy_trace_schema(self) -> None:
+        """gold_material enrichment join must remain on legacy TRACE_SCHEMA ("gold") —
+        no governed equivalent exists yet."""
+        sql = get_batch_search_spec(self._req()).sql
+        assert "`connected_plant_uat`.`gold`.`gold_material`" in sql
+
+    def test_gold_plant_stays_on_legacy_trace_schema(self) -> None:
+        """gold_plant enrichment join must remain on legacy TRACE_SCHEMA ("gold") —
+        no governed equivalent exists yet."""
+        sql = get_batch_search_spec(self._req()).sql
+        assert "`connected_plant_uat`.`gold`.`gold_plant`" in sql
+
+    def test_sql_references_anchor_secured_not_stock_view(self) -> None:
+        """Primary source must be the T3 anchor MV, not the legacy stock view."""
+        sql = get_batch_search_spec(self._req()).sql
+        assert "gold_trace_anchor_secured" in sql
+        assert "gold_batch_stock_v" not in sql
+
+    def test_po_match_cte_uses_row_number_not_select_distinct(self) -> None:
+        """PR #110 accept: if a batch links to multiple matching process orders,
+        SELECT DISTINCT cannot deduplicate them (different PROCESS_ORDER_ID values
+        produce distinct rows, fanning out the anchor LEFT JOIN).  The fix wraps the
+        CTE in a ROW_NUMBER() OVER (PARTITION BY child batch key ORDER BY
+        POSTING_DATE DESC NULLS LAST, PROCESS_ORDER_ID DESC) = 1 sub-select so each
+        batch keeps at most one process-order row — the most recent."""
+        sql = get_batch_search_spec(self._req()).sql
+        assert "ROW_NUMBER()" in sql
+        assert "PARTITION BY" in sql
+        assert "POSTING_DATE DESC NULLS LAST" in sql
+        assert "PROCESS_ORDER_ID DESC" in sql
+        assert "rn = 1" in sql
+        # SELECT DISTINCT must be gone from the po_match CTE — it cannot deduplicate
+        # rows that differ only in PROCESS_ORDER_ID.
+        assert "SELECT DISTINCT" not in sql
+
+    def test_po_match_plant_join_uses_equality_not_null_safe(self) -> None:
+        """PR #110 decline: the null-safe <=> operator was proposed for the anchor
+        plant join but must NOT be used.  gold_trace_anchor_secured excludes null
+        PLANT_ID rows by design (anchors require a non-null plant for RLS), so
+        lineage rows with NULL CHILD_PLANT_ID correctly cannot match an anchor.
+        Using <=> would imply null-matching semantics that do not apply and would
+        change nothing in practice — the explicit = join is the correct form."""
+        sql = get_batch_search_spec(self._req()).sql
+        assert "<=>" not in sql
+        # The explicit equality join must still be present.
+        assert "CHILD_PLANT_ID    = a.PLANT_ID" in sql
+
+    def test_missing_trace_catalog_raises_config_error(self, monkeypatch) -> None:
+        monkeypatch.delenv("TRACE_CATALOG", raising=False)
+        with pytest.raises(DatabricksConfigError):
+            get_batch_search_spec(self._req())

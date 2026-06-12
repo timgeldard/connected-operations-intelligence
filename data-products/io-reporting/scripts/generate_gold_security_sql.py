@@ -155,10 +155,14 @@ GOLD_TABLES = [
     "gold_wm_order_journey_summary",
     "gold_wm_order_journey_events",
     "gold_wm_order_wip_stage",
+    "gold_wm_order_yield",
+    "gold_wm_order_component_variance",
     # spc_gold.py
     "gold_spc_quality_metric_subgroup",
     # trace_gold.py — anchor tier only (capability-tier edge MV uses trace_security_*.sql instead)
     "gold_trace_anchor",
+    # quality_lab.py — lab-board result signal (quality-batch-release workspace)
+    "gold_qm_lab_result_signal",
 ]
 
 TEMPLATE = """-- Unity Catalog Gold row-level security — secured serving views ({env_upper}).

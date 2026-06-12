@@ -9,7 +9,10 @@ from __future__ import annotations
 from typing import Optional
 
 from shared.query_service.cache_policy import CacheTier
-from shared.query_service.object_resolver import resolve_domain_object
+from shared.query_service.object_resolver import (
+    resolve_domain_object,
+    resolve_governed_trace2_object,
+)
 from shared.query_service.query_spec import QuerySpec
 
 from ._types import Trace2BatchHeaderRequest, Trace2BatchSearchRequest
@@ -149,102 +152,132 @@ def map_batch_header_rows(rows: list[dict]) -> Optional[dict]:
 def get_batch_search_spec(request: Trace2BatchSearchRequest) -> QuerySpec:
     """Return a QuerySpec for Trace Consumer unified batch search.
 
-    Sources are the verified Databricks gold views already used by Trace2:
-    stock for material/batch/plant context, material for descriptions, plant
-    for display names, and production history for process order context.
+    Primary source: gold_trace_anchor_secured (RLS-enforced anchor MV, one row per
+    MATERIAL_ID/BATCH_ID/PLANT_ID for ACTIVE plants only).  The app passes user
+    identity through so the secured view enforces per-user CSM RLS automatically.
+
+    gold_material is JOIN-ed for material descriptions (description match type).
+    gold_plant is JOIN-ed for PLANT_NAME display (the anchor carries plant_code but
+    not a human-readable plant name).
+
+    Process-order match: gold_trace_anchor_secured carries no PROCESS_ORDER_ID.
+    A scoped lookup against gold_batch_lineage resolves PROCESS_ORDER_ID → batch
+    endpoints (via CHILD_MATERIAL_ID/CHILD_BATCH_ID/CHILD_PLANT_ID) and the result
+    is LEFT JOINed back to the anchor to enforce ACTIVE-plant RLS.  This keeps the
+    match type alive as a single readable query.  Only rows that survive the anchor
+    join (i.e. the batch is in an ACTIVE plant the user can see) are returned.
+
+    Ranking: last_posting_date DESC from the anchor MV (replaces production-history
+    recency ranking).  No stock quantity is carried by the anchor; quantity and uom
+    are returned as null (both are optional in BatchSearchItem).
+
+    Trace-graph traversal continues to read gold_batch_lineage unchanged.
+
+    Schema resolution:
+      • gold_trace_anchor_secured — TRACE_GOVERNED_SCHEMA (default: "gold_io_reporting").
+          This is the governed RLS-enforced MV that the app.yaml TRACE_SCHEMA: gold setting
+          would resolve incorrectly (gold schema has no gold_trace_anchor_secured object).
+      • gold_batch_lineage (po_match CTE) — TRACE_GOVERNED_SCHEMA (same governed schema).
+          Anchor search and po_match must use the same edge universe as trace-graph.
+      • gold_material, gold_plant — legacy TRACE_SCHEMA ("gold").  No governed equivalents
+          exist for these enrichment tables yet; they stay on the legacy schema.
     """
-    tbl_stock = resolve_domain_object("trace2", "gold_batch_stock_v")
+    # Governed objects: live in TRACE_GOVERNED_SCHEMA (gold_io_reporting), not TRACE_SCHEMA.
+    tbl_anchor = resolve_governed_trace2_object("gold_trace_anchor_secured")
+    # gold_batch_lineage in po_match must use the same edge universe as trace-graph traversal.
+    tbl_lineage = resolve_governed_trace2_object("gold_batch_lineage")
+    # Legacy enrichment joins — no governed equivalents exist yet.
     tbl_material = resolve_domain_object("trace2", "gold_material")
     tbl_plant = resolve_domain_object("trace2", "gold_plant")
-    tbl_prod = resolve_domain_object("trace2", "gold_batch_production_history_v")
 
     sql = f"""
-    WITH `latest_prod` AS (
+    WITH `po_match` AS (
+        -- Scoped process-order lookup: find child batch endpoints that were produced
+        -- under the searched process order, then join to the anchor to enforce RLS.
+        -- Only batches visible to the requesting user (ACTIVE plant) survive.
+        -- ROW_NUMBER deduplicates: a batch that links to multiple matching process
+        -- orders keeps only the most-recent one (POSTING_DATE DESC, then
+        -- PROCESS_ORDER_ID DESC as tiebreak) so the anchor LEFT JOIN cannot fan out.
         SELECT
             MATERIAL_ID,
             BATCH_ID,
             PLANT_ID,
-            PROCESS_ORDER_ID,
-            POSTING_DATE,
-            BATCH_QTY,
-            UOM
+            PROCESS_ORDER_ID
         FROM (
             SELECT
-                MATERIAL_ID,
-                BATCH_ID,
-                PLANT_ID,
-                PROCESS_ORDER_ID,
-                POSTING_DATE,
-                BATCH_QTY,
-                UOM,
+                a.MATERIAL_ID,
+                a.BATCH_ID,
+                a.PLANT_ID,
+                l.PROCESS_ORDER_ID,
                 ROW_NUMBER() OVER (
-                    PARTITION BY MATERIAL_ID, BATCH_ID, PLANT_ID
-                    ORDER BY POSTING_DATE DESC, PROCESS_ORDER_ID DESC
+                    PARTITION BY l.CHILD_MATERIAL_ID, l.CHILD_BATCH_ID, l.CHILD_PLANT_ID
+                    ORDER BY l.POSTING_DATE DESC NULLS LAST, l.PROCESS_ORDER_ID DESC
                 ) AS rn
-            FROM {tbl_prod}
-            WHERE BATCH_ID IS NOT NULL
-        ) ranked_prod
+            FROM {tbl_lineage} l
+            JOIN {tbl_anchor} a
+                ON l.CHILD_MATERIAL_ID = a.MATERIAL_ID
+               AND l.CHILD_BATCH_ID    = a.BATCH_ID
+               AND l.CHILD_PLANT_ID    = a.PLANT_ID
+            WHERE l.PROCESS_ORDER_ID IS NOT NULL
+              AND UPPER(l.PROCESS_ORDER_ID) LIKE :search_pattern
+        ) ranked
         WHERE rn = 1
     )
     SELECT
-        s.MATERIAL_ID          AS material_id,
-        s.BATCH_ID             AS batch_id,
-        s.PLANT_ID             AS plant_id,
-        s.total_stock          AS total_stock,
+        a.MATERIAL_ID          AS material_id,
+        a.BATCH_ID             AS batch_id,
+        a.PLANT_ID             AS plant_id,
         m.MATERIAL_NAME        AS material_name,
         p.PLANT_NAME           AS plant_name,
-        ph.PROCESS_ORDER_ID    AS process_order_id,
-        ph.POSTING_DATE        AS latest_posting_date,
-        ph.BATCH_QTY           AS batch_qty,
-        ph.UOM                 AS uom,
+        po.PROCESS_ORDER_ID    AS process_order_id,
+        a.last_posting_date    AS latest_posting_date,
         CASE
-            WHEN (:material_id <> '' AND UPPER(s.MATERIAL_ID) = UPPER(:material_id))
-              OR UPPER(s.MATERIAL_ID) LIKE :search_pattern THEN 1
+            WHEN (:material_id <> '' AND UPPER(a.MATERIAL_ID) = UPPER(:material_id))
+              OR UPPER(a.MATERIAL_ID) LIKE :search_pattern THEN 1
             ELSE 0
         END AS material_match,
         CASE WHEN UPPER(m.MATERIAL_NAME) LIKE :search_pattern THEN 1 ELSE 0 END AS description_match,
         CASE
-            WHEN (:batch_id <> '' AND UPPER(s.BATCH_ID) = UPPER(:batch_id))
-              OR UPPER(s.BATCH_ID) LIKE :search_pattern THEN 1
+            WHEN (:batch_id <> '' AND UPPER(a.BATCH_ID) = UPPER(:batch_id))
+              OR UPPER(a.BATCH_ID) LIKE :search_pattern THEN 1
             ELSE 0
         END AS batch_match,
         CASE
-            WHEN ph.PROCESS_ORDER_ID IS NOT NULL AND UPPER(ph.PROCESS_ORDER_ID) LIKE :search_pattern THEN 1
+            WHEN po.PROCESS_ORDER_ID IS NOT NULL THEN 1
             ELSE 0
         END AS process_order_match
-    FROM {tbl_stock} s
+    FROM {tbl_anchor} a
     JOIN {tbl_material} m
-        ON s.MATERIAL_ID = m.MATERIAL_ID AND m.LANGUAGE_ID = 'E'
+        ON a.MATERIAL_ID = m.MATERIAL_ID AND m.LANGUAGE_ID = 'E'
     JOIN {tbl_plant} p
-        ON s.PLANT_ID = p.PLANT_ID
-    LEFT JOIN `latest_prod` ph
-        ON s.MATERIAL_ID = ph.MATERIAL_ID
-       AND s.BATCH_ID = ph.BATCH_ID
-       AND s.PLANT_ID = ph.PLANT_ID
-    WHERE s.BATCH_ID IS NOT NULL
+        ON a.PLANT_ID = p.PLANT_ID
+    LEFT JOIN `po_match` po
+        ON a.MATERIAL_ID = po.MATERIAL_ID
+       AND a.BATCH_ID    = po.BATCH_ID
+       AND a.PLANT_ID    = po.PLANT_ID
+    WHERE a.BATCH_ID IS NOT NULL
       AND (
         (
           :material_id <> ''
           AND :batch_id <> ''
-          AND UPPER(s.MATERIAL_ID) = UPPER(:material_id)
-          AND UPPER(s.BATCH_ID) = UPPER(:batch_id)
+          AND UPPER(a.MATERIAL_ID) = UPPER(:material_id)
+          AND UPPER(a.BATCH_ID) = UPPER(:batch_id)
         )
         OR (
           (:material_id = '' OR :batch_id = '')
           AND (
-            UPPER(s.MATERIAL_ID) LIKE :search_pattern
+            UPPER(a.MATERIAL_ID) LIKE :search_pattern
             OR UPPER(m.MATERIAL_NAME) LIKE :search_pattern
-            OR UPPER(s.BATCH_ID) LIKE :search_pattern
-            OR (ph.PROCESS_ORDER_ID IS NOT NULL AND UPPER(ph.PROCESS_ORDER_ID) LIKE :search_pattern)
+            OR UPPER(a.BATCH_ID) LIKE :search_pattern
+            OR po.PROCESS_ORDER_ID IS NOT NULL
           )
         )
       )
     ORDER BY
-        ph.POSTING_DATE DESC NULLS LAST,
-        COALESCE(ph.BATCH_QTY, s.total_stock) DESC NULLS LAST,
-        s.BATCH_ID,
-        s.MATERIAL_ID,
-        s.PLANT_ID
+        a.last_posting_date DESC NULLS LAST,
+        a.BATCH_ID,
+        a.MATERIAL_ID,
+        a.PLANT_ID
     LIMIT :max_rows
     """
 
@@ -260,7 +293,7 @@ def get_batch_search_spec(request: Trace2BatchSearchRequest) -> QuerySpec:
             "max_rows": request.max_rows,
         },
         cache_policy=CacheTier.PER_USER_60S,
-        source_badge="view:gold_batch_stock_v+material+plant+production_history_v",
+        source_badge="mv:gold_trace_anchor_secured+material+plant+lineage",
         tags=["trace2", "trace-consumer", "batch-search"],
     )
 

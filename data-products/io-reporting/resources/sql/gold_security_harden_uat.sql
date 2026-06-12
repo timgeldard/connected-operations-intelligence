@@ -66,5 +66,8 @@ REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_wm_downtime_ev
 REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_wm_order_journey_summary FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_wm_order_journey_events FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_wm_order_wip_stage FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_wm_order_yield FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_wm_order_component_variance FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_spc_quality_metric_subgroup FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_trace_anchor FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_uat.gold_io_reporting.gold_qm_lab_result_signal FROM `users`;
