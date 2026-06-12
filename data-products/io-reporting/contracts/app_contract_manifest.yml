@@ -1300,9 +1300,13 @@ contracts:
       - name: latest_to_confirmed_ts
         type: timestamp
         required: false
+        description: Timestamp of the most recent TO item confirmation (query-time, _live view)
       - name: cycle_hours
         type: double
         required: false
+        description: >
+          Hours from TR creation to latest TO confirmation (cycle time proxy — null until
+          at least one TO item is confirmed for the TR)
       - name: age_hours
         type: double
         required: false
@@ -1953,51 +1957,67 @@ contracts:
       - name: plant_id
         type: string
         required: true
+        description: SAP plant ID
       - name: warehouse_id
         type: string
         required: false
+        description: SAP warehouse number (LGNUM)
       - name: delivery_id
         type: string
         required: true
+        description: SAP inbound delivery number (VBELN)
       - name: delivery_type
         type: string
         required: false
+        description: SAP delivery type (EL = standard inbound; ELST = inbound stock transport)
       - name: shipping_point
         type: string
         required: false
+        description: SAP shipping point (VSTEL)
       - name: line_count
         type: long
         required: false
+        description: Number of delivery line items
       - name: delivery_qty
         type: double
         required: false
+        description: Total delivery quantity (sum of line quantities; mix of base UoMs when has_mixed_base_uom)
       - name: received_qty
         type: double
         required: false
+        description: Received quantity from confirmed GR transfer orders
       - name: receipt_fraction
         type: double
         required: false
+        description: received_qty / delivery_qty (0..1; null when delivery_qty is zero or mixed UoM)
       - name: has_mixed_base_uom
         type: boolean
         required: false
+        description: True when delivery lines carry more than one base unit of measure (quantity totals approximate)
       - name: wm_status_code
         type: string
         required: false
+        description: WM overall status code from LIKP (overall WM activity status)
       - name: expected_receipt_date
         type: date
         required: false
+        description: Expected goods receipt date (LIKP WADAT — SAP planned GI/GR date)
       - name: actual_receipt_date
         type: date
         required: false
+        description: Actual goods receipt date (first confirmed GR TO confirmation date)
       - name: is_received
         type: boolean
         required: false
+        description: True when the delivery has at least one confirmed GR transfer order
       - name: days_until_expected_receipt
         type: long
         required: false
+        description: Days from today until expected_receipt_date (query-time, _live view; negative = overdue)
       - name: receipt_band
         type: string
         required: false
+        description: Query-time receipt risk band (green = on track; amber = due soon; red = overdue; grey = received)
 
   - id: wm_operations.recon_alerts
     version: 0.1.0
@@ -3437,105 +3457,139 @@ contracts:
       - name: plant_id
         type: string
         required: true
+        description: SAP plant ID
       - name: order_id
         type: string
         required: true
+        description: Process order number (AUFNR)
       - name: material_code
         type: string
         required: false
+        description: Finished-good material code
       - name: material_name
         type: string
         required: false
+        description: Finished-good material description
       - name: order_qty
         type: double
         required: false
+        description: Order quantity (AFKO GAMNG)
       - name: uom
         type: string
         required: false
+        description: Order quantity unit of measure
       - name: production_line
         type: string
         required: false
+        description: Production line (AUFK CRVER — work centre version / line assignment)
       - name: order_created_ts
         type: timestamp
         required: false
+        description: Order creation timestamp (AUFK ERDAT/ERZET)
       - name: release_date
         type: date
         required: false
+        description: Order release date (AUFK FTRMI — actual release date)
       - name: scheduled_start_date
         type: date
         required: false
+        description: Scheduled production start date (AFKO GSTRS)
       - name: scheduled_finish_date
         type: date
         required: false
+        description: Scheduled production finish date (AFKO GLTRS)
       - name: first_tr_created_ts
         type: timestamp
         required: false
+        description: Timestamp of the first staging transfer requirement created for this order
       - name: staging_tr_count
         type: integer
         required: false
+        description: Number of staging transfer requirements linked to this order (LTBK BETYP='P')
       - name: staging_first_confirmed_ts
         type: timestamp
         required: false
+        description: Timestamp of the first confirmed staging transfer order item (LTAK QDATU/QZEIT)
       - name: staging_last_confirmed_ts
         type: timestamp
         required: false
+        description: Timestamp of the most recent confirmed staging transfer order item
       - name: staged_item_count
         type: integer
         required: false
+        description: Count of fully confirmed staging TO items linked to this order
       - name: staged_item_total
         type: integer
         required: false
+        description: Total staging TO items (confirmed + open) linked to this order
       - name: production_first_actual_start
         type: timestamp
         required: false
+        description: Actual start timestamp of the first confirmed production operation (AFVC ISDD/ISTD)
       - name: production_last_actual_finish
         type: timestamp
         required: false
+        description: Actual finish timestamp of the last confirmed production operation (AFVC IEDD/IETD)
       - name: confirmed_yield_qty
         type: double
         required: false
+        description: Total confirmed yield quantity from production operations (AFVC LMNGA)
       - name: confirmed_scrap_qty
         type: double
         required: false
+        description: Total confirmed scrap quantity from production operations (AFVC XMNGA)
       - name: pi_first_start
         type: timestamp
         required: false
+        description: Timestamp of the first PI sheet execution start (absent at plants without PI replication, e.g. P806)
       - name: pi_last_end
         type: timestamp
         required: false
+        description: Timestamp of the last PI sheet execution end (absent at plants without PI replication)
       - name: first_gr_posting_date
         type: date
         required: false
+        description: Earliest goods receipt posting date (movement 101 against this order)
       - name: last_gr_posting_date
         type: date
         required: false
+        description: Latest goods receipt posting date (movement 101 against this order)
       - name: gr_qty
         type: double
         required: false
+        description: Net goods receipt quantity (movement 101 minus 102 reversals) against this order
       - name: issue_qty
         type: double
         required: false
+        description: Net component issue quantity (movement 261 minus 262 reversals) against this order
       - name: delivery_count
         type: integer
         required: false
+        description: Count of distinct outbound deliveries linked to goods movements for this order
       - name: qm_lot_count
         type: integer
         required: false
+        description: Total QM inspection lots linked to this order
       - name: qm_open_lot_count
         type: integer
         required: false
+        description: Open QM inspection lots (no usage decision yet) linked to this order
       - name: release_to_first_tr_hours
         type: double
         required: false
+        description: Hours from order release_date to first_tr_created_ts (null when either is absent)
       - name: tr_to_staged_hours
         type: double
         required: false
+        description: Hours from first_tr_created_ts to staging_last_confirmed_ts (null when either is absent)
       - name: staged_to_production_hours
         type: double
         required: false
+        description: Hours from staging_last_confirmed_ts to production_first_actual_start (null when either is absent)
       - name: production_to_gr_hours
         type: double
         required: false
+        description: Hours from production_last_actual_finish to first_gr_posting_date (null when either is absent)
 
   - id: wm_operations.order_journey_events
     version: 0.1.0
@@ -3729,60 +3783,79 @@ contracts:
       - name: plant_id
         type: string
         required: true
+        description: SAP plant ID
       - name: order_id
         type: string
         required: true
+        description: Process order number (AUFNR)
       - name: material_id
         type: string
         required: false
+        description: Finished-good material code
       - name: material_name
         type: string
         required: false
+        description: Finished-good material description
       - name: production_line
         type: string
         required: false
+        description: Production line (AUFK CRVER)
       - name: planned_qty
         type: double
         required: false
+        description: Planned order quantity (AFKO GAMNG)
       - name: delivered_qty
         type: double
         required: false
+        description: Net goods receipt quantity (movement 101 minus 102 reversals; clamped at 0)
       - name: uom
         type: string
         required: false
+        description: Order quantity unit of measure
       - name: yield_pct
         type: double
         required: false
+        description: delivered_qty / planned_qty (null when planned_qty is zero or null)
       - name: has_goods_receipt
         type: boolean
         required: false
+        description: True when delivered_qty > 0 (at least one GR movement 101 exists)
       - name: is_complete
         type: boolean
         required: false
+        description: True when actual_finish_date is not null (order has an actual finish)
       - name: is_released
         type: boolean
         required: false
+        description: True when the order has been released (AUFK is_released or actual_release_date present)
       - name: is_completed
         type: boolean
         required: false
+        description: True when the order carries the TECO (technically complete) status flag
       - name: is_closed
         type: boolean
         required: false
+        description: True when the order is closed (AUFK is_closed)
       - name: scheduled_start_date
         type: date
         required: false
+        description: Scheduled production start date (AFKO GSTRS)
       - name: scheduled_finish_date
         type: date
         required: false
+        description: Scheduled production finish date (AFKO GLTRS)
       - name: actual_finish_date
         type: date
         required: false
+        description: Actual finish date (AFKO IEDD — the primary completion signal)
       - name: first_gr_date
         type: date
         required: false
+        description: Earliest goods receipt posting date (movement 101 against this order)
       - name: last_gr_date
         type: date
         required: false
+        description: Latest goods receipt posting date (movement 101 against this order)
 
   - id: wm_operations.component_variance
     version: 0.2.0
@@ -3817,42 +3890,58 @@ contracts:
       - name: plant_id
         type: string
         required: true
+        description: SAP plant ID
       - name: order_id
         type: string
         required: true
+        description: Process order number (AUFNR)
       - name: material_id
         type: string
         required: true
+        description: Component material code
       - name: material_name
         type: string
         required: false
+        description: Component material description
       - name: uom
         type: string
         required: false
+        description: Base unit of measure for quantities in this row
       - name: movement_type_code
         type: string
         required: false
+        description: SAP movement type code (261 = goods issue for production; 261X = batch-where variant)
       - name: required_qty
         type: double
         required: true
+        description: Required component quantity aggregated from reservation_requirement (RESB) at order+material grain
       - name: withdrawn_qty
         type: double
         required: false
+        description: Withdrawn quantity from reservations (RESB ENMNG — already-issued signal from planning)
       - name: issued_qty
         type: double
         required: false
+        description: Net issued quantity from goods movements (261 minus 262 reversals) against this order+material
       - name: variance_qty
         type: double
         required: false
+        description: issued_qty minus required_qty (positive = over-issue / loss; negative = under-issue)
       - name: variance_pct
         type: double
         required: false
+        description: variance_qty / required_qty (null when required_qty is zero; positive = over-issued fraction)
       - name: est_loss_value
         type: double
         required: false
+        description: >
+          Estimated over-issue value = MAX(variance_qty, 0) × standard_price / price_unit
+          (null when no standard_price available from material_valuation)
       - name: standard_price
         type: double
         required: false
+        description: Standard price per price_unit from material_valuation (MBEW STPRS)
       - name: is_final_issue
         type: boolean
         required: false
+        description: True when the reservation carries the final-issue flag (RESB KZEAR)
