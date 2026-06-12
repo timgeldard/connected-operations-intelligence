@@ -12,42 +12,6 @@ function severityColor(severity: string): string {
   return 'var(--shell-fg-3)'
 }
 
-/** Maps risk status to a display colour. */
-function riskStatusColor(status: string): string {
-  if (status === 'critical') return '#DC2626'
-  if (status === 'at-risk') return '#D97706'
-  if (status === 'on-track') return '#16A34A'
-  return 'var(--shell-fg-3)'
-}
-
-/**
- * Mock plan risk items shown in the Operations section.
- * Surfaced from the same mock data as the OperationsPlanRiskAdapter.
- * In production this would be driven by an API call.
- */
-const MOCK_PLAN_RISK_ITEMS = [
-  {
-    planDate: '2026-05-14',
-    plantId: 'IE10',
-    plantName: 'Kerry Listowel',
-    riskStatus: 'critical' as const,
-    openBlockers: 5,
-    lateOrders: 3,
-    topRiskReason: 'Block press breakdown on L-04 blocking 2 process orders',
-    supervisor: 'Aoife Murphy',
-  },
-  {
-    planDate: '2026-05-15',
-    plantId: 'IE10',
-    plantName: 'Kerry Listowel',
-    riskStatus: 'at-risk' as const,
-    openBlockers: 2,
-    lateOrders: 1,
-    topRiskReason: 'Brine cooler PM on L-02 scheduled during shift — monitor throughput',
-    supervisor: 'Aoife Murphy',
-  },
-] as const
-
 /**
  * Mock priority release items shown in the Quality section.
  * These are surfaced from the same mock data as the QualityReleaseAdapter.
@@ -80,51 +44,6 @@ function priorityColor(priority: string): string {
   if (priority === 'expedited') return '#D97706'
   return 'var(--shell-fg-3)'
 }
-
-/**
- * Mock active environmental monitoring alerts surfaced on the home screen.
- * Mirrors the envmon mock data for Kerry Listowel (IE10).
- */
-const MOCK_ENVMON_ALERTS = [
-  {
-    alertId: 'ALT-IE10-001',
-    plantId: 'IE10',
-    plantName: 'Kerry Listowel',
-    zoneId: 'ZONE-05',
-    organism: 'Listeria monocytogenes',
-    severity: 'critical' as const,
-    status: 'under-investigation' as const,
-    detectedAt: '2026-05-13T14:32:00Z',
-    description: 'Positive Listeria detection in high-risk Zone 5 — investigation active',
-  },
-  {
-    alertId: 'ALT-IE10-002',
-    plantId: 'IE10',
-    plantName: 'Kerry Listowel',
-    zoneId: 'ZONE-04',
-    organism: 'Listeria innocua',
-    severity: 'high' as const,
-    status: 'corrective-action' as const,
-    detectedAt: '2026-05-11T09:15:00Z',
-    description: 'Consecutive positives in Zone 4 — corrective action in progress',
-  },
-] as const
-
-/**
- * Mock production staging readiness summary surfaced on the home screen.
- * Mirrors the production staging mock data for WH-IE10-01.
- */
-const MOCK_STAGING_SUMMARY = {
-  warehouseId: 'WH-IE10-01',
-  warehouseName: 'Listowel Main Warehouse',
-  planDate: '2026-05-15',
-  riskStatus: 'at-risk' as const,
-  totalOrders: 18,
-  percentReady: 66.7,
-  openShortfalls: 2,
-  pendingPickTasks: 4,
-  openMoveRequests: 2,
-} as const
 
 /**
  * Mock SPC signals surfaced on the home screen.
@@ -187,40 +106,6 @@ function holdReasonColor(reason: string): string {
   return '#D97706'
 }
 
-/**
- * Mock critical maintenance work orders surfaced on the home screen.
- * Mirrors the maintenance reliability mock data for Kerry Listowel IE10.
- */
-const MOCK_CRITICAL_WORK_ORDERS = [
-  {
-    workOrderId: 'WO-2024-01847',
-    title: 'PHE gasket replacement — Line 2 down',
-    equipmentId: 'EQ-IE10-PHE-001',
-    equipmentDescription: 'Plate Heat Exchanger — Pasteurisation',
-    priority: 'critical' as const,
-    productionImpact: 'line-down' as const,
-    status: 'open' as const,
-    estimatedHours: 4,
-  },
-  {
-    workOrderId: 'WO-2024-01832',
-    title: 'Filler head bearing noise — Line 3',
-    equipmentId: 'EQ-IE10-FILL-003',
-    equipmentDescription: 'Filler Head Assembly Line 3',
-    priority: 'high' as const,
-    productionImpact: 'risk-only' as const,
-    status: 'in-progress' as const,
-    estimatedHours: 2,
-  },
-] as const
-
-function workOrderPriorityColor(priority: string): string {
-  if (priority === 'critical') return '#DC2626'
-  if (priority === 'high') return '#D97706'
-  if (priority === 'medium') return '#CA8A04'
-  return 'var(--shell-fg-3)'
-}
-
 const MOCK_RECENT_INVESTIGATIONS = [
   {
     investigationId: 'INV-2026-00041',
@@ -268,12 +153,8 @@ export function RoleAwareHome() {
     setWorkspace,
     navigateToTraceInvestigation,
     navigateToBatchRelease,
-    navigateToOperationsPlanRisk,
-    navigateToEnvMon,
-    navigateToProductionStaging,
     navigateToSPCMonitoring,
     navigateToWarehouse360,
-    navigateToMaintenanceReliability,
   } = useWorkspaceShellState()
   const [pinnedWorkspaces] = usePinnedWorkspaces(workspaceRegistry.map(w => w.workspaceId))
 
@@ -292,28 +173,12 @@ export function RoleAwareHome() {
     w => w.workspaceId === 'quality-batch-release' && isNavigable(w.lifecycle) && isWorkspaceFlagEnabled(w.workspaceId),
   )
 
-  const hasOperationsPlanRisk = workspaceRegistry.some(
-    w => w.workspaceId === 'operations-plan-risk' && isNavigable(w.lifecycle) && isWorkspaceFlagEnabled(w.workspaceId),
-  )
-
-  const hasEnvMon = workspaceRegistry.some(
-    w => w.workspaceId === 'envmon-monitoring' && isNavigable(w.lifecycle) && isWorkspaceFlagEnabled(w.workspaceId),
-  )
-
-  const hasProductionStaging = workspaceRegistry.some(
-    w => w.workspaceId === 'production-staging' && isNavigable(w.lifecycle) && isWorkspaceFlagEnabled(w.workspaceId),
-  )
-
   const hasSPCMonitoring = workspaceRegistry.some(
     w => w.workspaceId === 'spc-monitoring' && isNavigable(w.lifecycle) && isWorkspaceFlagEnabled(w.workspaceId),
   )
 
   const hasWarehouse360 = workspaceRegistry.some(
     w => w.workspaceId === 'warehouse-360-overview' && isNavigable(w.lifecycle) && isWorkspaceFlagEnabled(w.workspaceId),
-  )
-
-  const hasMaintenanceReliability = workspaceRegistry.some(
-    w => w.workspaceId === 'maintenance-reliability' && isNavigable(w.lifecycle) && isWorkspaceFlagEnabled(w.workspaceId),
   )
 
   return (
@@ -610,208 +475,6 @@ export function RoleAwareHome() {
         </section>
       )}
 
-      {/* Operations section — shown when operations-plan-risk is navigable */}
-      {hasOperationsPlanRisk && (
-        <section style={{ marginTop: 32 }}>
-          <h2
-            style={{
-              margin: '0 0 12px',
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: 'var(--shell-fg-3)',
-            }}
-          >
-            Plan Risk — Operations
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 680 }}>
-            {MOCK_PLAN_RISK_ITEMS.map(item => (
-              <button
-                key={item.planDate}
-                type="button"
-                onClick={() => navigateToOperationsPlanRisk(item.planDate, 'plan-overview')}
-                style={{
-                  padding: '12px 16px',
-                  background: 'var(--shell-surface)',
-                  border: '1px solid var(--shell-line)',
-                  borderLeft: `3px solid ${riskStatusColor(item.riskStatus)}`,
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 12,
-                }}
-                aria-label={`Open plan risk for ${item.plantName} on ${item.planDate}`}
-              >
-                <div>
-                  <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--shell-fg)' }}>
-                    {item.plantName} — {item.planDate}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--shell-fg-3)', marginTop: 2 }}>
-                    {item.topRiskReason}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      letterSpacing: '0.08em',
-                      textTransform: 'uppercase',
-                      color: riskStatusColor(item.riskStatus),
-                    }}
-                  >
-                    {item.riskStatus.replace(/-/g, ' ')}
-                  </span>
-                  <span style={{ fontSize: 10, color: 'var(--shell-fg-3)' }}>
-                    {item.openBlockers} blockers · {item.lateOrders} late
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-          <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--shell-fg-3)' }}>
-            Showing 2 plan days (mock data). Open Operations Plan Risk workspace for full shift view.
-          </p>
-        </section>
-      )}
-
-      {/* Environmental Monitoring section — shown when envmon-monitoring is navigable */}
-      {hasEnvMon && (
-        <section style={{ marginTop: 32 }}>
-          <h2
-            style={{
-              margin: '0 0 12px',
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: 'var(--shell-fg-3)',
-            }}
-          >
-            Active Alerts — Environmental Monitoring
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 680 }}>
-            {MOCK_ENVMON_ALERTS.map(alert => (
-              <button
-                key={alert.alertId}
-                type="button"
-                onClick={() => navigateToEnvMon('alerts')}
-                style={{
-                  padding: '12px 16px',
-                  background: 'var(--shell-surface)',
-                  border: '1px solid var(--shell-line)',
-                  borderLeft: `3px solid ${severityColor(alert.severity)}`,
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 12,
-                }}
-                aria-label={`Open environmental alert ${alert.alertId} in ${alert.plantName}`}
-              >
-                <div>
-                  <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--shell-fg)' }}>
-                    {alert.organism}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--shell-fg-3)', marginTop: 2 }}>
-                    {alert.zoneId} · {alert.plantName} · {alert.description}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      letterSpacing: '0.08em',
-                      textTransform: 'uppercase',
-                      color: severityColor(alert.severity),
-                    }}
-                  >
-                    {alert.severity}
-                  </span>
-                  <span style={{ fontSize: 10, color: 'var(--shell-fg-3)', textTransform: 'uppercase' }}>
-                    {alert.status.replace(/-/g, ' ')}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-          <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--shell-fg-3)' }}>
-            Showing 2 active alerts (mock data). Open Environmental Monitoring workspace for full zone view.
-          </p>
-        </section>
-      )}
-
-      {/* Production Staging section — shown when production-staging is navigable */}
-      {hasProductionStaging && (
-        <section style={{ marginTop: 32 }}>
-          <h2
-            style={{
-              margin: '0 0 12px',
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: 'var(--shell-fg-3)',
-            }}
-          >
-            Staging Readiness — Production
-          </h2>
-          <button
-            type="button"
-            onClick={() => navigateToProductionStaging(MOCK_STAGING_SUMMARY.planDate, 'staging-overview')}
-            style={{
-              padding: '16px',
-              background: 'var(--shell-surface)',
-              border: '1px solid var(--shell-line)',
-              borderLeft: `3px solid ${riskStatusColor(MOCK_STAGING_SUMMARY.riskStatus)}`,
-              borderRadius: 6,
-              cursor: 'pointer',
-              textAlign: 'left',
-              maxWidth: 680,
-              width: '100%',
-            }}
-            aria-label={`Open production staging for ${MOCK_STAGING_SUMMARY.warehouseName} on ${MOCK_STAGING_SUMMARY.planDate}`}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-              <div>
-                <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--shell-fg)' }}>
-                  {MOCK_STAGING_SUMMARY.warehouseName} — {MOCK_STAGING_SUMMARY.planDate}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--shell-fg-3)', marginTop: 4, display: 'flex', gap: 12 }}>
-                  <span>{Math.round(MOCK_STAGING_SUMMARY.percentReady)}% orders ready</span>
-                  <span>{MOCK_STAGING_SUMMARY.openShortfalls} open shortfalls</span>
-                  <span>{MOCK_STAGING_SUMMARY.pendingPickTasks} pending pick tasks</span>
-                  <span>{MOCK_STAGING_SUMMARY.openMoveRequests} move requests</span>
-                </div>
-              </div>
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  color: riskStatusColor(MOCK_STAGING_SUMMARY.riskStatus),
-                  flexShrink: 0,
-                  paddingTop: 2,
-                }}
-              >
-                {MOCK_STAGING_SUMMARY.riskStatus.replace(/-/g, ' ')}
-              </span>
-            </div>
-          </button>
-          <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--shell-fg-3)' }}>
-            Showing today&apos;s staging status (mock data). Open Production Staging workspace for order detail.
-          </p>
-        </section>
-      )}
-
       {/* SPC Monitoring section — shown when spc-monitoring is navigable */}
       {hasSPCMonitoring && (
         <section style={{ marginTop: 32 }}>
@@ -932,66 +595,6 @@ export function RoleAwareHome() {
         </section>
       )}
 
-      {/* Maintenance & Reliability section — shown when maintenance-reliability is navigable */}
-      {hasMaintenanceReliability && (
-        <section style={{ marginTop: 32 }}>
-          <h2
-            style={{
-              margin: '0 0 12px',
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: 'var(--shell-fg-3)',
-            }}
-          >
-            Priority Work Orders — Maintenance
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 680 }}>
-            {MOCK_CRITICAL_WORK_ORDERS.map(wo => (
-              <button
-                key={wo.workOrderId}
-                type="button"
-                onClick={() => navigateToMaintenanceReliability('work-orders')}
-                style={{
-                  padding: '12px 16px',
-                  background: 'var(--shell-surface)',
-                  border: '1px solid var(--shell-line)',
-                  borderLeft: `3px solid ${workOrderPriorityColor(wo.priority)}`,
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 12,
-                }}
-                aria-label={`Open work order ${wo.workOrderId}: ${wo.title}`}
-              >
-                <div>
-                  <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--shell-fg)' }}>
-                    {wo.title}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--shell-fg-3)', marginTop: 2 }}>
-                    {wo.equipmentDescription} · est. {wo.estimatedHours}h · {wo.workOrderId}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: workOrderPriorityColor(wo.priority) }}>
-                    {wo.priority}
-                  </span>
-                  <span style={{ fontSize: 10, color: 'var(--shell-fg-3)', textTransform: 'uppercase' }}>
-                    {wo.productionImpact.replace(/-/g, ' ')}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-          <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--shell-fg-3)' }}>
-            Showing 2 priority work orders (mock data). Open Maintenance & Reliability workspace for full view.
-          </p>
-        </section>
-      )}
     </div>
   )
 }

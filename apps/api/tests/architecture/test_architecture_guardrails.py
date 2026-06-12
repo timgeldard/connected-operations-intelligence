@@ -270,7 +270,6 @@ class TestQuerySpecObjectQualification:
         """Each native adapter that queries Databricks must use resolve_domain_object
         or produce fully-qualified backtick-quoted objects in SQL."""
         native_adapters = [
-            _ADAPTERS_DIR / "envmon" / "envmon_databricks_adapter.py",
             _ADAPTERS_DIR / "poh" / "poh_databricks_adapter.py",
             _ADAPTERS_DIR / "cq" / "cq_databricks_adapter.py",
             _ADAPTERS_DIR / "trace2" / "trace2_databricks_adapter.py",

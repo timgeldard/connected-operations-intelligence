@@ -45,15 +45,6 @@ _STATIC_MANIFEST: list[WorkspaceManifestEntry] = [
         ],
     ),
     WorkspaceManifestEntry(
-        id="quality-workspace",
-        label="Quality",
-        icon="check-circle",
-        lifecycle="concept-lab",
-        scopeLevel="plant",
-        defaultTab="overview",
-        tabs=[TabDefinition(id="overview", label="Overview", icon="layout-grid")],
-    ),
-    WorkspaceManifestEntry(
         id="operations-workspace",
         label="Operations",
         icon="activity",

@@ -14,9 +14,6 @@ const ACCESS_EXCEPTIONS: readonly AccessException[] = [
     exceptionId: 'AE-002', roleId: 'plant-manager', workspaceId: 'quality-batch-release', scopeLevel: 'plant', expectedAccess: true, actualAccess: false, severity: 'warning', owner: 'security-team', status: 'open', recommendation: 'Plant manager cross-workspace read access not yet provisioned. Required for SCN-006.', blocksProduction: true,
   },
   {
-    exceptionId: 'AE-003', roleId: 'qa-technician', workspaceId: 'operations-plan-risk', scopeLevel: 'plant', expectedAccess: false, actualAccess: true, severity: 'critical', owner: 'security-team', status: 'open', recommendation: 'QA Technician should not have write access to Operations Plan Risk. Review and correct Azure AD group assignment.', blocksProduction: true,
-  },
-  {
     exceptionId: 'AE-004', roleId: 'food-safety-lead', workspaceId: 'trace-investigation', scopeLevel: 'batch', expectedAccess: true, actualAccess: true, severity: 'info', owner: 'security-team', status: 'resolved', recommendation: 'No exception — access confirmed as expected.', blocksProduction: false,
   },
   {
@@ -24,9 +21,6 @@ const ACCESS_EXCEPTIONS: readonly AccessException[] = [
   },
   {
     exceptionId: 'AE-006', roleId: 'operations-supervisor', workspaceId: 'quality-batch-release', scopeLevel: 'batch', expectedAccess: false, actualAccess: false, severity: 'info', owner: 'security-team', status: 'resolved', recommendation: 'No exception — access correctly restricted for this role.', blocksProduction: false,
-  },
-  {
-    exceptionId: 'AE-007', roleId: 'maintenance-technician', workspaceId: 'maintenance-reliability', scopeLevel: 'plant', expectedAccess: true, actualAccess: false, severity: 'warning', owner: 'security-team', status: 'deferred', recommendation: 'Maintenance Reliability excluded from pilot scope (SAP PM contract not signed). Defer access exception until workspace is in scope.', blocksProduction: false,
   },
   {
     exceptionId: 'AE-008', roleId: 'plant-manager', workspaceId: 'trace-investigation', scopeLevel: 'plant', expectedAccess: true, actualAccess: false, severity: 'critical', owner: 'security-team', status: 'open', recommendation: 'Plant manager cross-workspace read required for SCN-006. Must be resolved before SCN-006 can be executed.', blocksProduction: true,

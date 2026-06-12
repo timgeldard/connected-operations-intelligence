@@ -50,7 +50,7 @@ const SIMULATION_PAIRS: readonly SimulationPair[] = [
   },
   {
     pairId: 'operations-phasemanager',
-    workspaceIds: ['operations-plan-risk', 'process-order-review'],
+    workspaceIds: ['process-order-review'],
     legacySystemId: 'rockwell-phasemanager',
     legacySystemName: 'Rockwell PhaseManager MES',
     currentMode: 'observe',
@@ -68,7 +68,7 @@ const SIMULATION_PAIRS: readonly SimulationPair[] = [
   },
   {
     pairId: 'staging-wms',
-    workspaceIds: ['production-staging', 'warehouse-360-overview'],
+    workspaceIds: ['warehouse-360-overview'],
     legacySystemId: 'manhattan-wms',
     legacySystemName: 'Manhattan SCALE WMS',
     currentMode: 'off',
@@ -77,7 +77,7 @@ const SIMULATION_PAIRS: readonly SimulationPair[] = [
   },
   {
     pairId: 'maintenance-sap-pm',
-    workspaceIds: ['maintenance-reliability'],
+    workspaceIds: [],
     legacySystemId: 'sap-pm',
     legacySystemName: 'SAP Plant Maintenance',
     currentMode: 'off',

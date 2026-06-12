@@ -86,28 +86,6 @@ const SEED_FEEDBACK = [
     targetPhase: 'Phase 8',
     linkedFindingIds: [],
   },
-  {
-    feedbackId: 'FB-SEED-003',
-    title: 'Missing keyboard navigation in operations plan risk filters',
-    description:
-      'The date filter and risk status filter buttons in Operations Plan Risk cannot be operated with keyboard alone.',
-    submittedBy: 'Aoife Murphy',
-    submittedRole: 'operations-supervisor',
-    workspaceId: 'operations-plan-risk',
-    viewId: 'plan-overview',
-    panelId: null,
-    actionId: null,
-    route: '?workspace=operations-plan-risk',
-    category: 'accessibility' as FeedbackCategory,
-    severity: 'blocker' as const,
-    priority: 'high' as FeedbackPriority,
-    status: 'new' as FeedbackStatus,
-    owner: 'platform-engineering',
-    createdAt: '2026-05-14T08:30:00Z',
-    updatedAt: '2026-05-14T08:30:00Z',
-    targetPhase: 'Phase 7',
-    linkedFindingIds: [],
-  },
 ]
 
 export function FeedbackTriagePage() {

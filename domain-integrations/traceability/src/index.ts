@@ -36,20 +36,11 @@ export type {
 } from './trace-investigation-workspace.js'
 
 // ---------------------------------------------------------------------------
-// Phase 5 — Trace App workspace (search-driven standalone, pilot)
+// Consumer Trace workspace
 // ---------------------------------------------------------------------------
 
-export { traceAppRegistration } from './trace-app-registration.js'
 export { traceConsumerRegistration } from './trace-consumer-registration.js'
-export { TraceAppWorkspace } from './trace-app-workspace.js'
 export { TraceConsumerWorkspace, TraceConsumerApp } from './trace-consumer/app.js'
-export type { TraceAppWorkspaceProps } from './trace-app-workspace.js'
-export { PLANTS, TRACE_APP_TABS } from './trace-app/plants.js'
-export type {
-  PlantDescriptor,
-  TraceAppTabId,
-  TraceAppTabDescriptor,
-} from './trace-app/plants.js'
 
 // Evidence panels
 export { BatchHeaderPanel } from './panels/batch-header-panel.js'

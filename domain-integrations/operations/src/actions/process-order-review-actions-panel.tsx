@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ProcessOrderReviewContext } from '@connectio/data-contracts'
-import { ActionSheet, Field, SheetActions, SuccessMessage, ActionButton } from './operations-plan-risk-actions-panel.js'
+import { ActionSheet, Field, SheetActions, SuccessMessage, ActionButton } from './action-sheet-primitives.js'
 
 function LinkAction({ label, href, onClose }: { label: string; href: string; onClose: () => void }) {
   return (

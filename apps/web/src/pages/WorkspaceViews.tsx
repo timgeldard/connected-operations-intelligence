@@ -1,11 +1,10 @@
-import { TraceInvestigationWorkspace, TraceAppWorkspace, TraceConsumerWorkspace } from '@connectio/di-traceability'
+import { TraceInvestigationWorkspace, TraceConsumerWorkspace } from '@connectio/di-traceability'
 import { BatchReleaseWorkspace, ConnectedQualityLabBoardStandaloneApp } from '@connectio/di-quality'
-import { OperationsPlanRiskWorkspace, ProcessOrderReviewWorkspace, ProcessOrderConsumerWorkspace } from '@connectio/di-operations'
-import { EnvMonWorkspace, EnvMonConsumerWorkspace } from '@connectio/di-envmon'
-import { ProductionStagingWorkspace, Warehouse360Workspace } from '@connectio/di-warehouse'
+import { ProcessOrderReviewWorkspace, ProcessOrderConsumerWorkspace } from '@connectio/di-operations'
+import { EnvMonConsumerWorkspace } from '@connectio/di-envmon'
+import { Warehouse360Workspace } from '@connectio/di-warehouse'
 import { WmOperationsWorkspace } from '@connectio/di-wm-operations'
 import { SPCMonitoringWorkspace, SPCConsumerWorkspace } from '@connectio/di-spc'
-import { MaintenanceReliabilityWorkspace } from '@connectio/di-maintenance'
 import { useWorkspaceShellState } from '../shell/useWorkspaceShellState.js'
 import { useAuthScope } from '@connectio/auth-scope'
 
@@ -21,7 +20,8 @@ interface Props {
  * @remarks
  * Routes to the appropriate workspace component based on `workspaceId`.
  * Phase 1: trace-investigation. Phase 2: quality-batch-release.
- * Phase 3: operations-plan-risk. Phase 4: envmon-monitoring, production-staging.
+ * Phase 5: spc-monitoring, process-order-review, warehouse-360-overview, wm-operations.
+ * Consumer surfaces: trace-consumer, envmon-consumer, poh-consumer, spc-consumer.
  * All other workspace IDs render a placeholder until implemented.
  *
  * The `scope` from `useAuthScope()` and URL params (`investigationId`,
@@ -31,7 +31,7 @@ interface Props {
  * @param props - Component props.
  */
 export default function WorkspaceViews({ workspaceId }: Props) {
-  const { investigationId, releaseCaseId, planDate, viewId, setReleaseCaseId, navigateToBatchRelease, setView, setWorkspace } =
+  const { investigationId, releaseCaseId, viewId, setReleaseCaseId, setView, setWorkspace } =
     useWorkspaceShellState()
   const { activeScope, setActiveScope } = useAuthScope()
 
@@ -43,14 +43,6 @@ export default function WorkspaceViews({ workspaceId }: Props) {
           investigationId={investigationId ?? undefined}
           viewId={viewId ?? 'overview'}
         />
-      </div>
-    )
-  }
-
-  if (workspaceId === 'trace') {
-    return (
-      <div className="connectio-page" data-testid="workspace-view-trace">
-        <TraceAppWorkspace />
       </div>
     )
   }
@@ -84,48 +76,11 @@ export default function WorkspaceViews({ workspaceId }: Props) {
     )
   }
 
-  if (workspaceId === 'operations-plan-risk') {
-    return (
-      <div className="connectio-page" data-testid="workspace-view-operations-plan-risk">
-        <OperationsPlanRiskWorkspace
-          scope={activeScope}
-          planDate={planDate ?? undefined}
-          viewId={viewId ?? 'plan-overview'}
-          onNavigateToBatchRelease={navigateToBatchRelease}
-        />
-      </div>
-    )
-  }
-
-  if (workspaceId === 'envmon-monitoring') {
-    return (
-      <div className="connectio-page" data-testid="workspace-view-envmon-monitoring">
-        <EnvMonWorkspace
-          scope={activeScope}
-          viewId={viewId ?? 'native-monitoring'}
-        />
-      </div>
-    )
-  }
-
   if (workspaceId === 'envmon-consumer') {
     return (
       <div className="connectio-page" data-testid="workspace-view-envmon-consumer">
         <EnvMonConsumerWorkspace
           scope={activeScope}
-        />
-      </div>
-    )
-  }
-
-  if (workspaceId === 'production-staging') {
-    return (
-      <div className="connectio-page" data-testid="workspace-view-production-staging">
-        <ProductionStagingWorkspace
-          scope={activeScope}
-          planDate={planDate ?? undefined}
-          viewId={viewId ?? 'staging-overview'}
-          onNavigateToWorkspace={setWorkspace}
         />
       </div>
     )
@@ -195,18 +150,6 @@ export default function WorkspaceViews({ workspaceId }: Props) {
       <div className="connectio-page" data-testid="workspace-view-poh-consumer">
         <ProcessOrderConsumerWorkspace
           scope={activeScope}
-        />
-      </div>
-    )
-  }
-
-  if (workspaceId === 'maintenance-reliability') {
-    return (
-      <div className="connectio-page" data-testid="workspace-view-maintenance-reliability">
-        <MaintenanceReliabilityWorkspace
-          scope={activeScope}
-          viewId={viewId ?? 'overview'}
-          onNavigateToView={setView}
         />
       </div>
     )
