@@ -89,6 +89,7 @@ def _seed_worklist_inputs(spark, tr_rows, to_rows=None):
         Row(order_number="900001", plant_code="C061", material_code="FG1",
             order_quantity=1000.0, order_quantity_uom="KG",
             scheduled_start_date=datetime.date(2026, 6, 2),
+            scheduled_start_datetime=datetime.datetime(2026, 6, 2, 6, 30, 0),
             scheduled_finish_date=datetime.date(2026, 6, 3),
             is_released=True, is_closed=False,
             production_line=None, production_line_description=None),
@@ -137,6 +138,44 @@ def test_worklist_aggregates_and_classifies_staging(spark):
     assert r["pick_progress_fraction"] == 0.5
     # Order enrichment via BETYP='P' reference
     assert r["order_material_code"] == "FG1"
+    assert r["demand_due_ts"] == datetime.datetime(2026, 6, 2, 6, 30, 0)
+    assert r["priority_intervention_bump"] == 0
+
+
+def test_worklist_demand_due_falls_back_and_intervention_bump_is_static(spark):
+    from gold.wm_operations_gold import gold_wm_staging_worklist
+
+    _seed_worklist_inputs(
+        spark,
+        tr_rows=[
+            _tr_row(
+                transfer_requirement_number="0000000555",
+                source_reference_type=None,
+                source_reference_number=None,
+                planned_execution_datetime=datetime.datetime(2026, 6, 1, 9, 15, 0),
+                manual_pick_status="N",
+            ),
+            _tr_row(
+                transfer_requirement_number="0000000666",
+                source_reference_type=None,
+                source_reference_number=None,
+                planned_execution_datetime=None,
+                manual_pick_status=None,
+            ),
+        ],
+    )
+
+    rows = {r["transfer_requirement_number"]: r for r in all_rows(gold_wm_staging_worklist())}
+
+    fallback = rows["0000000555"]
+    assert fallback["demand_due_ts"] == datetime.datetime(2026, 6, 1, 9, 15, 0)
+    assert fallback["worklist_status"] == "NO_STOCK"
+    assert fallback["priority_intervention_bump"] == 10
+
+    unscheduled = rows["0000000666"]
+    assert unscheduled["demand_due_ts"] is None
+    assert unscheduled["worklist_status"] == "OPEN"
+    assert unscheduled["priority_intervention_bump"] == 0
 
 
 def test_worklist_dispensary_pick_uses_direct_status_and_strips_park_prefix(spark):

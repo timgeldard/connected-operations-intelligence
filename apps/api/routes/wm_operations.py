@@ -82,6 +82,8 @@ class WmWorklistItem(BaseModel):
     transfer_priority: Optional[str] = Field(None, alias='transferPriority')
     created_ts: Optional[str] = Field(None, alias='createdTs')
     planned_execution_ts: Optional[str] = Field(None, alias='plannedExecutionTs')
+    demand_due_ts: Optional[str] = Field(None, alias='demandDueTs')
+    priority_score: Optional[int] = Field(None, alias='priorityScore')
     item_count: Optional[int] = Field(None, alias='itemCount')
     open_item_count: Optional[int] = Field(None, alias='openItemCount')
     material_count: Optional[int] = Field(None, alias='materialCount')

@@ -116,6 +116,8 @@ class TestWorklistRoute:
             "transfer_priority": None,
             "created_ts": "2026-06-10T06:00:00Z",
             "planned_execution_ts": "2026-06-10T08:00:00Z",
+            "demand_due_ts": "2026-06-10T07:30:00Z",
+            "priority_score": 90,
             "item_count": 3,
             "open_item_count": 2,
             "material_count": 3,
@@ -150,6 +152,8 @@ class TestWorklistRoute:
         assert row["workArea"] == "PRODUCTION_STAGING"
         assert row["worklistStatus"] == "IN_PROGRESS"
         assert row["assignedOperator"] == "OPER1"
+        assert row["demandDueTs"] == "2026-06-10T07:30:00Z"
+        assert row["priorityScore"] == 90
         assert row["pickProgressFraction"] == 0.5
         assert row["isOverdue"] is True
         assert response.headers.get("x-contract-id") == "wm_operations.worklist"
@@ -158,6 +162,7 @@ class TestWorklistRoute:
         # Status filter is normalised to upper case and bound as a parameter.
         executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
         assert "worklist_status = :status" in executed_sql
+        assert "ORDER BY priority_score DESC NULLS LAST, demand_due_ts ASC NULLS LAST" in executed_sql
 
     async def test_excludes_complete_by_default(self, wm_ops_databricks_env) -> None:
         with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[]) as mock_exec:
