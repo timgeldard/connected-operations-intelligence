@@ -24,16 +24,17 @@ the central plant, NOT the lot plant — gate via the parent QALS plant, per the
 ## Design
 
 1. **Gold `gold_wm_quality_release_ageing`** — lot/batch grain awaiting disposition: plant_code
-   (from parent QALS, NOT QAVE — see prerequisite below), material+desc, batch, inspection_lot, process_order, stock_qty,
+   (the lot's real plant from parent QALS — R001 is a reference plant, never an axis), material+desc,
+   batch, inspection_lot, process_order, stock_qty,
    stock_status, lot_status, ud_status, the ageing basis timestamps, priority inputs, confidence.
-   Reuse `gold_wm_qm_lot_status`. **⚠ PREREQUISITE — the existing `gold_wm_qm_lot_status` currently
-   carries the QAVE bug this spec warns about:** in `wm_operations_gold.py` (~L1603–1615) `latest_ud`
-   groups the UD frame (QAVE) by `plant_code` — which is always the central `'R001'` — and then
-   joins to lots (QALS) on `["plant_code", "inspection_lot"]`, so the UD join silently mismatches
-   for any lot whose real plant ≠ R001. Before QRS reuses this table for plant-correct ageing, that
-   join MUST be fixed (gate/derive plant from the parent QALS, drop QAVE.VWERKS from the join key).
-   Treat this as a precursor fix (raise it as its own small PR / backlog item); do NOT inherit the
-   bug into the new ageing table.
+   Reuse `gold_wm_qm_lot_status`. **NOTE (verified — the reused UD join is plant-correct, NOT a bug):**
+   `silver.quality_inspection_usage_decision` already derives `plant_code` from the QALS PARENT lot
+   (the lot's real plant) and keeps `QAVE.VWERKS`='R001' separately as `responsible_plant_code` — the
+   central/reference QM plant, explicitly "NOT the lot's plant" (`silver/tables/quality.py` ~L268, 286).
+   So `gold_wm_qm_lot_status` grouping UD by `plant_code` and joining lots on
+   `[plant_code, inspection_lot_number]` matches on the lot's real plant — correct. QRS inherits it
+   safely. (A code reviewer flagged this as a bug assuming `plant_code` was raw R001; the silver
+   layer already resolves it — no precursor fix required.)
 2. **Ageing basis** (QRS-002): carry the candidate start timestamps (lot creation / GR / batch mfg
    date / order completion / first-or-last result / UD-due) in gold; the **age = now − basis** is
    computed query-time, and the **selected basis is a visible field/param** (default documented).
