@@ -874,7 +874,8 @@ WHERE plant_code IS NOT NULL;
 
 -- 40. Daily activity baseline (DOW percentile bands — trend chart reference bands)
 -- Grain: 1 row per plant_id + metric_name + day_of_week.
--- Partial-day exclusion: apply WHERE activity_date < CURRENT_DATE() at query time.
+-- Partial-day exclusion: handled at gold source layer (gold_wm_daily_activity_baseline sources from
+-- gold_wm_daily_activity where SAP extracts are closed daily; no activity_date column in this view).
 -- Source: gold_wm_daily_activity_baseline_secured.
 CREATE OR REPLACE VIEW vw_consumption_wm_operations_daily_activity_baseline AS
 SELECT

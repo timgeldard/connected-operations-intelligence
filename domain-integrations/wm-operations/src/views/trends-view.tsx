@@ -20,9 +20,9 @@ type BaselineLookup = Record<string, Record<number, DowBand>>
 
 /** Parse ISO date string (YYYY-MM-DD) → Spark day_of_week (1=Sun … 7=Sat) */
 function dateToDow(isoDate: string): number {
-  // new Date('YYYY-MM-DD') parses as UTC midnight; getUTCDay() is 0=Sun
-  const d = new Date(isoDate)
-  return d.getUTCDay() + 1  // 0→1(Sun) … 6→7(Sat)
+  // Parse parts explicitly to avoid off-by-one in positive timezones
+  const [y, m, d] = isoDate.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 1  // 0→1(Sun) … 6→7(Sat)
 }
 
 /** Returns 'flagged-high' | 'flagged-low' | 'normal' | 'unknown' */
@@ -44,6 +44,7 @@ function BarChart({ rows, value, color, label, metricKey, baseline }: {
 }) {
   const max = Math.max(1, ...rows.map(value))
   const lastRow = rows.length > 0 ? rows[rows.length - 1] : null
+  const lastRowPos = lastRow ? bandPosition(value(lastRow), baseline[metricKey]?.[dateToDow(lastRow.activityDate)]) : null
 
   return (
     <div className="kw-card">
@@ -55,7 +56,7 @@ function BarChart({ rows, value, color, label, metricKey, baseline }: {
             const dow = dateToDow(r.activityDate)
             const band = baseline[metricKey]?.[dow]
             const isLast = i === rows.length - 1
-            const pos = isLast ? bandPosition(v, band) : 'unknown'
+            const pos = isLast ? (lastRowPos ?? 'unknown') : 'unknown'
 
             // Bar colour: last bar coloured by band position; others use default color
             const barColor = isLast && pos === 'flagged-high' ? 'var(--kw-sunset)'
@@ -132,7 +133,7 @@ function BarChart({ rows, value, color, label, metricKey, baseline }: {
         </span>
         {lastRow && (
           <span style={{ color: 'var(--kw-forest-60)' }}>
-            Last point: {bandPosition(value(lastRow), baseline[metricKey]?.[dateToDow(lastRow.activityDate)]) === 'normal' ? '✓ in band' : bandPosition(value(lastRow), baseline[metricKey]?.[dateToDow(lastRow.activityDate)]) === 'unknown' ? '–' : '⚑ out of band'}
+            Last point: {lastRowPos === 'normal' ? '✓ in band' : lastRowPos === 'unknown' ? '–' : '⚑ out of band'}
           </span>
         )}
       </div>

@@ -1166,7 +1166,7 @@ def gold_wm_daily_activity_baseline():
             F.percentile_approx(F.col("metric_value").cast("double"), 0.5).cast("double").alias("median_value"),
             F.percentile_approx(F.col("metric_value").cast("double"), 0.1).cast("double").alias("p10_value"),
             F.percentile_approx(F.col("metric_value").cast("double"), 0.9).cast("double").alias("p90_value"),
-            F.count(F.when(F.col("metric_value").isNotNull(), F.lit(1))).alias("sample_days"),
+            F.count_distinct(F.when(F.col("metric_value").isNotNull(), F.col("activity_date"))).cast("long").alias("sample_days"),
         )
     )
 

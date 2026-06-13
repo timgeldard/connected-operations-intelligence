@@ -8,19 +8,15 @@ from __future__ import annotations
 
 import datetime
 
-import pytest
-from pyspark.sql import Row, SparkSession
-
-from tests.conftest import all_rows, create_df
-
 # ─────────────────────────────────────────────────────────────────────────────
 # DLT mock setup (dlt is installed by conftest autouse)
 # ─────────────────────────────────────────────────────────────────────────────
-
 import dlt  # noqa: E402  — mocked by conftest before this import
+import pytest
+from pyspark.sql import Row, SparkSession
 
 from gold.wm_operations_gold import gold_wm_daily_activity_baseline  # noqa: E402
-
+from tests.conftest import all_rows, create_df
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -98,8 +94,8 @@ class TestPercentileNullSafe:
     """Verify null values don't corrupt percentile or sample_days counts."""
 
     def test_null_metric_excluded_from_sample_days(self, spark: SparkSession):
-        from pyspark.sql.types import IntegerType, StructField, StructType, StringType, DateType
         from pyspark.sql import Row as SparkRow
+        from pyspark.sql.types import DateType, IntegerType, StringType, StructField, StructType
         schema = StructType([
             StructField("plant_code", StringType(), True),
             StructField("activity_date", DateType(), True),
@@ -226,8 +222,9 @@ class TestExistingSeriesRegression:
         spark.conf.set("silver_schema", "silver")
         spark.sql("CREATE DATABASE IF NOT EXISTS silver")
 
-        from tests.conftest import create_df
         from pyspark.sql import Row
+
+        from tests.conftest import create_df
 
         _TS = datetime.datetime(2026, 6, 1, 8, 0, 0)
 
