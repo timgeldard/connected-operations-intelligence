@@ -55,10 +55,15 @@ def _build_order_quality_release(
 ) -> DataFrame:
     """Per-order quality-release rollup from component-material stock and open QM lots.
 
-    NO_QM_DATA when quality_inspection_lot silver is absent (dev). When QM is present but
+    NO_QM_DATA when either QM silver source (quality_inspection_lot or
+    quality_inspection_usage_decision) is absent, or when batch_stock is absent (holds
+    cannot be assessed without stock data). When QM is present and stock is available but
     a material has no lots and no held stock, status is RELEASED (not NO_QM_DATA).
     """
-    qm_source_available = table_exists(spark, f"{ss}.quality_inspection_lot")
+    qm_source_available = (
+        table_exists(spark, f"{ss}.quality_inspection_lot")
+        and table_exists(spark, f"{ss}.quality_inspection_usage_decision")
+    )
     stock_available = table_exists(spark, f"{ss}.batch_stock")
 
     component_mats = (
@@ -75,15 +80,15 @@ def _build_order_quality_release(
     )
 
     if not stock_available:
+        # Without batch_stock, holds cannot be assessed — always NO_QM_DATA regardless
+        # of whether the QM silver sources are present.
         return component_mats.select(
             "plant_code",
             "order_number",
             F.lit(0.0).alias("qty_unrestricted"),
             F.lit(0.0).alias("quality_hold_qty"),
             F.lit(0).alias("open_lot_count"),
-            F.when(F.lit(qm_source_available), F.lit("RELEASED"))
-            .otherwise(F.lit("NO_QM_DATA"))
-            .alias("quality_release_status"),
+            F.lit("NO_QM_DATA").alias("quality_release_status"),
         ).dropDuplicates(["plant_code", "order_number"])
 
     stock_by_mat = (
