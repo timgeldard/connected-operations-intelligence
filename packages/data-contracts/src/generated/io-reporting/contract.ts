@@ -2835,6 +2835,103 @@ export const WmOperationsComponentVarianceContract = {
 } as const;
 
 /**
+ * Dated supply/demand ledger per plant×material for shortage projection arithmetic. SUPPLY: ON_HAND (batch_stock unrestricted) + INBOUND_DELIVERY (open EL/ELST lines, base UOM). DEMAND: open reservation_requirement (261 family). running_balance is cumulative signed qty. v1 excludes PO lines (deliveries only) to avoid double-count. Source: gold_wm_supply_demand_ledger.
+
+ * Source View: vw_consumption_wm_operations_supply_demand_ledger
+ * Version: 0.1.0
+ */
+export interface WmOperationsSupplyDemandLedger {
+  plant_id: string;
+  material_id: string;
+  material_name?: string;
+  /** SUPPLY or DEMAND */
+  event_type: string;
+  /** ON_HAND | INBOUND_DELIVERY | RESERVATION */
+  event_subtype: string;
+  /** Null for current on-hand snapshot row */
+  event_date?: string;
+  /** Absolute event quantity in base UOM */
+  quantity: number;
+  /** Positive for supply, negative for demand */
+  signed_qty: number;
+  /** Running balance immediately before this event */
+  balance_before: number;
+  /** Cumulative balance after this event */
+  running_balance: number;
+  source_document_id: string;
+  /** Process order for DEMAND events */
+  order_id?: string;
+  /** Tiebreaker ordering within event_date */
+  sort_seq: number;
+  uom?: string;
+}
+
+export const WmOperationsSupplyDemandLedgerContract = {
+  id: "wm_operations.supply_demand_ledger",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_supply_demand_ledger",
+  grain: "one row per plant_id, material_id, and ledger event",
+  primaryKey: ["plant_id", "material_id", "source_document_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Open order-component shortage projection. projected_balance_at_demand is the ledger balance before the component requirement_date; is_projected_short when balance < open_qty. Scope: released unfinished orders only. Source: gold_wm_order_shortage_projection.
+
+ * Source View: vw_consumption_wm_operations_shortage_projection
+ * Version: 0.1.0
+ */
+export interface WmOperationsShortageProjection {
+  plant_id: string;
+  order_id: string;
+  material_id: string;
+  material_name?: string;
+  open_qty: number;
+  uom?: string;
+  /** Component requirement date (RESB BDTER) */
+  requirement_date?: string;
+  reservation_ref: string;
+  projected_balance_at_demand?: number;
+  is_projected_short: boolean;
+  /** Earliest date running balance went negative for this material */
+  first_short_date?: string;
+  scheduled_start_date?: string;
+  scheduled_finish_date?: string;
+  production_line?: string;
+}
+
+export const WmOperationsShortageProjectionContract = {
+  id: "wm_operations.shortage_projection",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_shortage_projection",
+  grain: "one row per plant_id, order_id, material_id, and reservation_ref",
+  primaryKey: ["plant_id", "order_id", "material_id", "reservation_ref"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
  * Order-grain adherence miss root-cause classification for Production Progress. One row per late/missed process order. root_cause_class precedence: LATE_RELEASE (release after scheduled start) > MATERIAL_SHORT (component under-issue) > CAPACITY (production start lagged >24h after release) > UNCLASSIFIED. is_open_late is query-time (unfinished past scheduled_finish_date). Source: gold_wm_adherence_root_cause.
 
  * Source View: vw_consumption_wm_operations_adherence_root_cause
@@ -2963,6 +3060,8 @@ export const ioReportingContracts = {
     "wm_operations.order_yield": WmOperationsOrderYieldContract,
     "wm_operations.recipe_benchmark": WmOperationsRecipeBenchmarkContract,
     "wm_operations.component_variance": WmOperationsComponentVarianceContract,
+    "wm_operations.supply_demand_ledger": WmOperationsSupplyDemandLedgerContract,
+    "wm_operations.shortage_projection": WmOperationsShortageProjectionContract,
     "wm_operations.adherence_root_cause": WmOperationsAdherenceRootCauseContract,
   },
 } as const;

@@ -16,6 +16,8 @@ Tables:
   gold_wm_order_yield       — order-grain yield summary (planned vs delivered qty, yield %)
   gold_wm_recipe_run_benchmark — recipe-line benchmark percentiles for complete GR runs
   gold_wm_order_component_variance — order+component grain material variance (issued vs required)
+  gold_wm_supply_demand_ledger    — dated supply/demand events per plant×material with running balance
+  gold_wm_order_shortage_projection — open order components with projected balance at demand date
   gold_wm_adherence_root_cause   — order-grain adherence miss root-cause classification
 
 Storage-zone classification: derived from the governed storage_type_role_mapping table
@@ -2942,7 +2944,239 @@ def gold_wm_order_component_variance():
     )
 
 
-# -- 24. ADHERENCE ROOT CAUSE (order-grain miss classification) -----------------
+# -- 24. SUPPLY / DEMAND LEDGER + SHORTAGE PROJECTION --------------------------
+
+_LEDGER_SORT_ON_HAND = 1
+_LEDGER_SORT_INBOUND = 2
+_LEDGER_SORT_DEMAND = 3
+
+
+def _active_open_orders(orders: DataFrame) -> DataFrame:
+    """Released, unfinished orders — date-evidence release (PHAS flags blank in UAT)."""
+    return orders.filter(
+        (
+            F.coalesce(F.col("is_released"), F.lit(False))
+            | F.col("actual_release_date").isNotNull()
+        )
+        & F.col("actual_finish_date").isNull()
+    )
+
+
+def _open_reservation_demand(reservations: DataFrame) -> DataFrame:
+    """Open production-component demand — same filters as gold_wm_order_component_variance."""
+    return reservations.filter(
+        (~F.coalesce(F.col("is_deletion_flagged"), F.lit(False)))
+        & (F.coalesce(F.col("required_quantity"), F.lit(0.0)) > 0)
+        & F.col("movement_type_code").isin("261", "261X")
+        & (F.coalesce(F.col("open_quantity"), F.lit(0.0)) > 0)
+        & F.col("order_number").isNotNull()
+        & F.col("material_code").isNotNull()
+    )
+
+
+def _build_supply_demand_events(spark, ss: str) -> DataFrame:
+    """Union on-hand, inbound-delivery supply, and open reservation demand into one event set."""
+    stock = spark.read.table(f"{ss}.batch_stock")
+    on_hand = (
+        stock.groupBy("plant_code", "material_code")
+        .agg(
+            F.coalesce(F.sum("unrestricted_quantity"), F.lit(0.0)).alias("quantity"),
+            F.first("base_uom", ignorenulls=True).alias("base_uom"),
+        )
+        .filter(F.col("quantity") > 0)
+        .select(
+            "plant_code",
+            "material_code",
+            F.lit("SUPPLY").alias("event_type"),
+            F.lit("ON_HAND").alias("event_subtype"),
+            F.lit(None).cast("date").alias("event_date"),
+            F.col("quantity"),
+            F.lit("ON_HAND").alias("source_document_id"),
+            F.lit(None).cast("string").alias("order_number"),
+            F.lit(_LEDGER_SORT_ON_HAND).alias("sort_seq"),
+            "base_uom",
+        )
+    )
+
+    # v1 inbound supply: EL/ELST delivery lines only (not PO) to avoid PO↔delivery double-count.
+    # Caveat: snapshot-era inbound dates/quantities; only lines with delivery_quantity_base.
+    deliveries = anti_join_optional_deleted_headers(
+        spark.read.table(f"{ss}.outbound_delivery"),
+        ss,
+        "outbound_delivery_header_delete",
+        ["delivery_number"],
+    )
+    open_inbound_qty = (
+        F.coalesce(F.col("delivery_quantity_base"), F.lit(0.0))
+        - F.coalesce(F.col("actual_delivered_base_quantity"), F.lit(0.0))
+    )
+    inbound = (
+        deliveries.filter(
+            F.coalesce(F.col("delivery_type"), F.lit("")).isin("EL", "ELST")
+            & F.col("actual_goods_issue_date").isNull()
+            & F.col("delivery_quantity_base").isNotNull()
+            & (open_inbound_qty > 0)
+        )
+        .select(
+            "plant_code",
+            "material_code",
+            F.lit("SUPPLY").alias("event_type"),
+            F.lit("INBOUND_DELIVERY").alias("event_subtype"),
+            F.col("planned_goods_issue_date").alias("event_date"),
+            open_inbound_qty.alias("quantity"),
+            F.concat_ws(
+                "-",
+                F.col("delivery_number").cast("string"),
+                F.col("item_number").cast("string"),
+            ).alias("source_document_id"),
+            F.lit(None).cast("string").alias("order_number"),
+            F.lit(_LEDGER_SORT_INBOUND).alias("sort_seq"),
+            F.col("base_uom"),
+        )
+    )
+
+    reservations = _open_reservation_demand(spark.read.table(f"{ss}.reservation_requirement"))
+    demand = reservations.select(
+        "plant_code",
+        "material_code",
+        F.lit("DEMAND").alias("event_type"),
+        F.lit("RESERVATION").alias("event_subtype"),
+        F.col("requirement_date").alias("event_date"),
+        F.col("open_quantity").alias("quantity"),
+        F.concat_ws(
+            "-",
+            F.col("reservation_number").cast("string"),
+            F.col("reservation_item").cast("string"),
+        ).alias("source_document_id"),
+        F.col("order_number"),
+        F.lit(_LEDGER_SORT_DEMAND).alias("sort_seq"),
+        F.col("base_uom"),
+    )
+
+    return on_hand.unionByName(inbound).unionByName(demand)
+
+
+def _ledger_with_running_balance(events: DataFrame) -> DataFrame:
+    """Deterministic running balance: event_date NULLS FIRST, sort_seq, source_document_id."""
+    signed = events.withColumn(
+        "signed_qty",
+        F.when(F.col("event_type") == "DEMAND", -F.col("quantity")).otherwise(F.col("quantity")),
+    )
+    w = Window.partitionBy("plant_code", "material_code").orderBy(
+        F.col("event_date").asc_nulls_first(),
+        F.col("sort_seq").asc(),
+        F.col("source_document_id").asc(),
+    )
+    return (
+        signed.withColumn(
+            "running_balance",
+            F.sum("signed_qty").over(w.rowsBetween(Window.unboundedPreceding, Window.currentRow)),
+        )
+        .withColumn("balance_before", F.col("running_balance") - F.col("signed_qty"))
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Dated supply/demand ledger per plant_code × material_code for shortage projection. "
+        "SUPPLY events: ON_HAND (batch_stock unrestricted qty, event_date NULL = current stock) "
+        "and INBOUND_DELIVERY (open EL/ELST outbound_delivery lines with base-UOM qty only — "
+        "PO lines excluded in v1 to avoid double-count with deliveries). "
+        "DEMAND events: open reservation_requirement rows (movement 261 family, BDTER date). "
+        "Window ordering: event_date NULLS FIRST, sort_seq (1=on-hand, 2=inbound, 3=demand), "
+        "source_document_id. running_balance is cumulative signed_qty (+supply, −demand). "
+        "UOM: same-material only; inbound restricted to delivery_quantity_base rows. "
+        "Deterministic: no current_date(). cluster_by plant_code, material_code."
+    ),
+    cluster_by=["plant_code", "material_code"],
+))
+@dlt.expect("event_type valid", "event_type IN ('SUPPLY', 'DEMAND')")
+@dlt.expect("quantity positive", "quantity > 0.0")
+def gold_wm_supply_demand_ledger():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+    material = _material_lookup(spark, ss)
+
+    events = _build_supply_demand_events(spark, ss)
+    ledger = _ledger_with_running_balance(events)
+
+    return (
+        ledger.join(F.broadcast(material), ["plant_code", "material_code"], "left")
+        .select(
+            "plant_code",
+            "material_code",
+            F.col("material_description").alias("material_name"),
+            "event_type",
+            "event_subtype",
+            "event_date",
+            "quantity",
+            "signed_qty",
+            "balance_before",
+            "running_balance",
+            "source_document_id",
+            "order_number",
+            "sort_seq",
+            "base_uom",
+        )
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Open order-component shortage projection for the Shortage Projection board. "
+        "Grain: plant_code × order_number × material_code × reservation (one row per open "
+        "component demand). Scope: active open orders (released by date-evidence, not finished). "
+        "projected_balance_at_demand = ledger balance_before at the component requirement_date; "
+        "is_projected_short when balance_before < open quantity. first_short_date = earliest "
+        "ledger event_date where running_balance < 0 for that plant×material. "
+        "Deterministic: no current_date(). cluster_by plant_code, requirement_date."
+    ),
+    cluster_by=["plant_code", "requirement_date"],
+))
+@dlt.expect("open_qty positive", "open_qty > 0.0")
+def gold_wm_order_shortage_projection():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    orders = _active_open_orders(spark.read.table(f"{ss}.process_order"))
+    material = _material_lookup(spark, ss)
+    ledger = dlt.read("gold_wm_supply_demand_ledger")
+
+    first_short = (
+        ledger.filter(F.col("running_balance") < 0)
+        .groupBy("plant_code", "material_code")
+        .agg(F.min("event_date").alias("first_short_date"))
+    )
+
+    demand_rows = ledger.filter(
+        (F.col("event_type") == "DEMAND")
+        & F.col("order_number").isNotNull()
+    )
+
+    return (
+        demand_rows.join(orders, ["plant_code", "order_number"], "inner")
+        .join(F.broadcast(material), ["plant_code", "material_code"], "left")
+        .join(first_short, ["plant_code", "material_code"], "left")
+        .select(
+            "plant_code",
+            "order_number",
+            "material_code",
+            F.col("material_description").alias("material_name"),
+            F.col("quantity").alias("open_qty"),
+            F.col("base_uom").alias("uom"),
+            F.col("event_date").alias("requirement_date"),
+            F.col("source_document_id").alias("reservation_ref"),
+            F.col("balance_before").alias("projected_balance_at_demand"),
+            (F.col("balance_before") < F.col("quantity")).alias("is_projected_short"),
+            "first_short_date",
+            F.col("scheduled_start_date"),
+            F.col("scheduled_finish_date"),
+            F.col("production_line"),
+        )
+    )
+
+
+# -- 26. ADHERENCE ROOT CAUSE (order-grain miss classification) -----------------
 
 _MATERIAL_SHORT_TOLERANCE = 0.01
 _CAPACITY_RELEASE_TO_PROD_HOURS = 24.0

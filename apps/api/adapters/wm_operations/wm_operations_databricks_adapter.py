@@ -1563,6 +1563,34 @@ SIMPLE_DATASETS: dict[str, dict] = {
         boolean=("is_final_issue",),
         has_warehouse=False,
     ),
+    "supply_demand_ledger": dict(
+        contract="wm_operations.supply_demand_ledger",
+        endpoint="/api/wm-operations/supply-demand-ledger",
+        columns=(
+            "plant_id, material_id, material_name, event_type, event_subtype, event_date, "
+            "quantity, signed_qty, balance_before, running_balance, "
+            "source_document_id, order_id, sort_seq, uom"
+        ),
+        order_by="event_date ASC NULLS FIRST, sort_seq ASC, source_document_id ASC",
+        numeric=("quantity", "signed_qty", "balance_before", "running_balance"),
+        integer=("sort_seq",),
+        boolean=(),
+        has_warehouse=False,
+    ),
+    "shortage_projection": dict(
+        contract="wm_operations.shortage_projection",
+        endpoint="/api/wm-operations/shortage-projection",
+        columns=(
+            "plant_id, order_id, material_id, material_name, open_qty, uom, "
+            "requirement_date, reservation_ref, projected_balance_at_demand, is_projected_short, "
+            "first_short_date, scheduled_start_date, scheduled_finish_date, production_line"
+        ),
+        order_by="requirement_date ASC NULLS LAST",
+        numeric=("open_qty", "projected_balance_at_demand"),
+        integer=(),
+        boolean=("is_projected_short",),
+        has_warehouse=False,
+    ),
     "adherence_root_cause": dict(
         contract="wm_operations.adherence_root_cause",
         endpoint="/api/wm-operations/adherence-root-cause",

@@ -159,6 +159,8 @@ GOLD_TABLES = [
     "gold_wm_order_yield",
     "gold_wm_recipe_run_benchmark",
     "gold_wm_order_component_variance",
+    "gold_wm_supply_demand_ledger",
+    "gold_wm_order_shortage_projection",
     "gold_wm_adherence_root_cause",
     # spc_gold.py
     "gold_spc_quality_metric_subgroup",

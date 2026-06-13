@@ -1466,3 +1466,67 @@ class TestComponentVarianceRoute:
                 headers=_HEADERS_WITH_TOKEN,
             )
         assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# Shortage Projection (supply/demand ledger + at-risk components)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.anyio
+class TestShortageProjectionRoutes:
+    async def test_shortage_projection_returns_mapped_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "order_id": "900001",
+            "material_id": "RM1",
+            "material_name": "Raw Material",
+            "open_qty": 50.0,
+            "uom": "KG",
+            "requirement_date": "2026-06-10",
+            "reservation_ref": "100-1",
+            "projected_balance_at_demand": 10.0,
+            "is_projected_short": True,
+            "first_short_date": "2026-06-08",
+            "scheduled_start_date": "2026-06-10",
+            "scheduled_finish_date": "2026-06-12",
+            "production_line": "LINE_A",
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/shortage-projection",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        row = response.json()[0]
+        assert row["orderId"] == "900001"
+        assert row["isProjectedShort"] is True
+        assert response.headers.get("x-contract-id") == "wm_operations.shortage_projection"
+
+    async def test_supply_demand_ledger_returns_mapped_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "material_id": "RM1",
+            "material_name": "Raw Material",
+            "event_type": "SUPPLY",
+            "event_subtype": "ON_HAND",
+            "event_date": None,
+            "quantity": 100.0,
+            "signed_qty": 100.0,
+            "balance_before": 0.0,
+            "running_balance": 100.0,
+            "source_document_id": "ON_HAND",
+            "order_id": None,
+            "sort_seq": 1,
+            "uom": "KG",
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/supply-demand-ledger",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        assert response.headers.get("x-contract-id") == "wm_operations.supply_demand_ledger"
