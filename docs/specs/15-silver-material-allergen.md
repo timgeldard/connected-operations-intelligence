@@ -48,8 +48,10 @@ Key differences from the `recipe_process_line` template:
    data shape in your report; if `OBJEK` is unexpectedly a CUOBJ for 001, fall back to the
    INOB pattern and say so.
 2. **Characteristic selection.** Filter `AUSP` to `KLART='001'` and the allergen
-   characteristic. Add a module constant `ALLERGEN_ATINN = "0000000849"` (mirror the
-   existing `PROCESS_LINE_ATINN` convention) and filter `ATINN == ALLERGEN_ATINN`.
+   characteristic. Define the constant `ALLERGEN_ATINN = "0000000849"` in
+   `silver/helpers.py` (where `PROCESS_LINE_ATINN` lives — `helpers.py:137`) and import it into
+   `reference.py`, exactly mirroring the `PROCESS_LINE_ATINN` convention (do NOT hardcode it in
+   the table file). Filter `ATINN == ALLERGEN_ATINN`.
    **Robustness:** ATINN is an internal counter and could differ by environment — in your
    report, confirm `0000000849` resolves to the "Allergens" characteristic via the
    characteristic master (CABN `ATNAM` / CABNT description); if a clean name-based lookup is
@@ -101,7 +103,9 @@ classification simply have no rows — downstream joins must be LEFT and treat a
   NULL name (row still present), grain uniqueness.
 - `material_allergen` appears in the slow silver pipeline's registered tables and in
   `silver/design_spec.md`'s table catalogue (silver-internal doc — allowed and expected;
-  this is part of building the table, not downstream surfacing).
+  this is part of building the table, not downstream surfacing). When documenting the schema,
+  the dev environment schema is **`silver_io_reporting`** (the active dev schema), NOT the
+  retired `silver_dev` — match the catalogue's existing convention.
 - Offline suite green: `py_compile`, `ruff`, plus the silver helper tests still pass. (No
   gold/contract/OKF/adapter checks apply — you changed none of those.)
 
