@@ -1125,6 +1125,52 @@ def gold_wm_daily_activity():
     )
 
 
+# ── 9b. DAILY ACTIVITY BASELINE (DOW percentile bands) ───────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Day-of-week baseline bands for daily warehouse activity metrics per plant. "
+        "Grain: one row per plant_code × metric_name × day_of_week (1=Sun … 7=Sat). "
+        "Computed via unpivot of gold_wm_daily_activity then percentile_approx groupBy. "
+        "Partial-day exclusion is query-time (consumption view filters activity_date < CURRENT_DATE()); "
+        "all rows present in gold_wm_daily_activity are included here (SAP extracts are closed daily). "
+        "No current_date()/current_timestamp() — deterministic base MV."
+    ),
+    cluster_by=["plant_code", "metric_name"],
+))
+def gold_wm_daily_activity_baseline():
+    src = dlt.read("gold_wm_daily_activity")
+
+    # Unpivot wide → long: plant_code, activity_date, metric_name, metric_value
+    metrics = [
+        "to_items_confirmed",
+        "active_operators",
+        "trs_created",
+        "goods_receipt_lines",
+        "goods_issue_lines",
+    ]
+    n = len(metrics)
+    stack_expr = ", ".join([f"'{m}', {m}" for m in metrics])
+
+    long_df = src.select(
+        F.col("plant_code"),
+        F.dayofweek(F.col("activity_date")).alias("day_of_week"),
+        F.col("activity_date"),
+        F.expr(f"stack({n}, {stack_expr}) AS (metric_name, metric_value)"),
+    )
+
+    return (
+        long_df
+        .groupBy("plant_code", "metric_name", "day_of_week")
+        .agg(
+            F.percentile_approx(F.col("metric_value").cast("double"), 0.5).cast("double").alias("median_value"),
+            F.percentile_approx(F.col("metric_value").cast("double"), 0.1).cast("double").alias("p10_value"),
+            F.percentile_approx(F.col("metric_value").cast("double"), 0.9).cast("double").alias("p90_value"),
+            F.count_distinct(F.when(F.col("metric_value").isNotNull(), F.col("activity_date"))).cast("long").alias("sample_days"),
+        )
+    )
+
+
 # ── 10. SLOW MOVERS / DEAD STOCK ──────────────────────────────────────────────
 
 @dlt.table(**gold_table_args(

@@ -1,8 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type {
-  ConnectedQualityLabFailuresResponse,
-  ConnectedQualityLabPlantsResponse,
-} from '@connectio/data-contracts'
+import type { ConnectedQualityLabFailuresResponse } from '@connectio/data-contracts'
 import type { AdapterResult } from '@connectio/source-adapters'
 import {
   connectedQualityLabAdapterInstance,
@@ -67,16 +64,3 @@ export function useConnectedQualityLabFailures(request: ConnectedQualityLabAdapt
   })
 }
 
-export function useConnectedQualityLabPlants() {
-  return useQuery<AdapterResult<ConnectedQualityLabPlantsResponse>>({
-    queryKey: ['connected-quality-lab', 'plants'] as const,
-    queryFn: async () => {
-      try {
-        return await connectedQualityLabAdapterInstance.getLabPlants()
-      } catch (e) {
-        return toConnectedQualityLabAdapterError<ConnectedQualityLabPlantsResponse>(e)
-      }
-    },
-    staleTime: LAB_PLANTS_STALE_TIME_MS,
-  })
-}

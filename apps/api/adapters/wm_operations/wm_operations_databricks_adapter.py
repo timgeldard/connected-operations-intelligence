@@ -1381,6 +1381,16 @@ SIMPLE_DATASETS: dict[str, dict] = {
                  "goods_receipt_lines", "goods_issue_lines"), boolean=(), has_warehouse=False,
         days_col="activity_date",
     ),
+    "daily_activity_baseline": dict(
+        contract="wm_operations.daily_activity_baseline",
+        endpoint="/api/wm-operations/daily-activity-baseline",
+        columns="plant_id, metric_name, day_of_week, median_value, p10_value, p90_value, sample_days",
+        order_by="metric_name ASC, day_of_week ASC",
+        numeric=("median_value", "p10_value", "p90_value"),
+        integer=("day_of_week", "sample_days"),
+        boolean=(),
+        has_warehouse=False,
+    ),
     "physical_inventory": dict(
         contract="wm_operations.physical_inventory", endpoint="/api/wm-operations/physical-inventory",
         columns="plant_id, pi_document_id, fiscal_year, item_number, storage_location_id, "

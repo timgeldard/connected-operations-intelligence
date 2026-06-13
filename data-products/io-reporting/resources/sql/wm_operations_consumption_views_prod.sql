@@ -872,7 +872,24 @@ SELECT
 FROM connected_plant_prod.gold_io_reporting.gold_wm_adherence_root_cause_secured
 WHERE plant_code IS NOT NULL;
 
--- 40. Lineside Now (Lineside Monitor — running orders + current phase, PEX-E-35)
+-- 40. Daily activity baseline (DOW percentile bands — trend chart reference bands)
+-- Grain: 1 row per plant_id + metric_name + day_of_week.
+-- Partial-day exclusion: handled at gold source layer (gold_wm_daily_activity_baseline sources from
+-- gold_wm_daily_activity where SAP extracts are closed daily; no activity_date column in this view).
+-- Source: gold_wm_daily_activity_baseline_secured.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_daily_activity_baseline AS
+SELECT
+  plant_code AS plant_id,
+  metric_name,
+  day_of_week,
+  CAST(median_value AS DOUBLE) AS median_value,
+  CAST(p10_value AS DOUBLE) AS p10_value,
+  CAST(p90_value AS DOUBLE) AS p90_value,
+  CAST(sample_days AS BIGINT) AS sample_days
+FROM connected_plant_prod.gold_io_reporting.gold_wm_daily_activity_baseline_secured
+WHERE plant_code IS NOT NULL;
+
+-- 41. Lineside Now (Lineside Monitor — running orders + current phase, PEX-E-35)
 -- Grain: 1 row per plant_id + line_id + order_id.
 -- Source: gold_wm_lineside_now_live (adds elapsed_minutes + projected_finish at query time).
 -- Wall-clock rule (ADR 012): elapsed_minutes and projected_finish computed in _live layer.
@@ -901,7 +918,7 @@ SELECT
 FROM connected_plant_prod.gold_io_reporting.gold_wm_lineside_now_live
 WHERE plant_code IS NOT NULL;
 
--- 41. Lineside Lines (Lineside Monitor — line picker for config panel, PEX-E-35)
+-- 42. Lineside Lines (Lineside Monitor — line picker for config panel, PEX-E-35)
 -- Grain: 1 row per plant_id + line_id.
 -- Source: gold_wm_lineside_lines_secured (deterministic; no date-relative columns).
 -- active_order_count: released, not closed, not finished orders on that line right now.
