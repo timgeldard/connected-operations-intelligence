@@ -4847,6 +4847,140 @@
       ]
     },
     {
+      "id": "wm_operations.qm_characteristic_pareto",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "QM characteristic (MIC) Pareto for the Command Centre drill view. Counts all lab results in the silver lookback window; fail_rate = fail_count/result_count. last_result_date is the per-plant\u00d7material data freshness signal (replication may lag by plant). Source: gold_qm_characteristic_pareto.\n",
+      "source_view": "vw_consumption_wm_operations_qm_characteristic_pareto",
+      "grain": "one row per plant_id, material_id, and characteristic_id",
+      "primary_key": [
+        "plant_id",
+        "material_id",
+        "characteristic_id"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "characteristic_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "characteristic_text",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "unit",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "result_count",
+          "type": "long",
+          "required": true
+        },
+        {
+          "name": "fail_count",
+          "type": "long",
+          "required": true
+        },
+        {
+          "name": "warn_count",
+          "type": "long",
+          "required": true
+        },
+        {
+          "name": "fail_rate",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "last_result_date",
+          "type": "date",
+          "required": false,
+          "description": "Latest result recording date for this plant\u00d7material (freshness signal)"
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.qm_ud_code_pareto",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "QM usage-decision code distribution Pareto. Plant from parent lot (not QAVE VWERKS). Source: gold_qm_ud_code_pareto.\n",
+      "source_view": "vw_consumption_wm_operations_qm_ud_code_pareto",
+      "grain": "one row per plant_id and usage_decision_code",
+      "primary_key": [
+        "plant_id",
+        "usage_decision_code"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "usage_decision_code",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "usage_decision",
+          "type": "string",
+          "required": false,
+          "description": "Accepted | Rejected | Other Decision"
+        },
+        {
+          "name": "usage_decision_valuation",
+          "type": "string",
+          "required": false,
+          "description": "Raw QAVE VBEWERTUNG (A/R/blank)"
+        },
+        {
+          "name": "lot_count",
+          "type": "long",
+          "required": true
+        },
+        {
+          "name": "last_decision_date",
+          "type": "date",
+          "required": false
+        }
+      ]
+    },
+    {
       "id": "wm_operations.order_journey",
       "version": "0.1.0",
       "domain": "warehouse",
@@ -5635,6 +5769,151 @@
           "type": "boolean",
           "required": false,
           "description": "True when the reservation carries the final-issue flag (RESB KZEAR)"
+        }
+      ]
+    },
+    {
+      "id": "wm_operations.adherence_root_cause",
+      "version": "0.1.0",
+      "domain": "warehouse",
+      "owner": "warehouse-operations",
+      "lifecycle": "draft",
+      "description": "Order-grain adherence miss root-cause classification for Production Progress. One row per late/missed process order. root_cause_class precedence: LATE_RELEASE (release after scheduled start) > MATERIAL_SHORT (component under-issue) > CAPACITY (production start lagged >24h after release) > UNCLASSIFIED. is_open_late is query-time (unfinished past scheduled_finish_date). Source: gold_wm_adherence_root_cause.\n",
+      "source_view": "vw_consumption_wm_operations_adherence_root_cause",
+      "grain": "one row per plant_id and order_id",
+      "primary_key": [
+        "plant_id",
+        "order_id"
+      ],
+      "freshness": {
+        "expected_minutes": 60,
+        "warning_minutes": 120,
+        "critical_minutes": 240
+      },
+      "access_policy": {
+        "row_level_key": "plant_id",
+        "entitlement_source": "published.central_services.user_plant_access"
+      },
+      "fields": [
+        {
+          "name": "plant_id",
+          "type": "string",
+          "required": true,
+          "description": "SAP plant ID"
+        },
+        {
+          "name": "order_id",
+          "type": "string",
+          "required": true,
+          "description": "Process order number (AUFNR)"
+        },
+        {
+          "name": "material_id",
+          "type": "string",
+          "required": false,
+          "description": "Header material code (AFPO MATNR)"
+        },
+        {
+          "name": "material_name",
+          "type": "string",
+          "required": false,
+          "description": "Material description"
+        },
+        {
+          "name": "order_qty",
+          "type": "double",
+          "required": false,
+          "description": "Planned order quantity (AFKO GAMNG)"
+        },
+        {
+          "name": "uom",
+          "type": "string",
+          "required": false,
+          "description": "Order quantity unit of measure"
+        },
+        {
+          "name": "production_line",
+          "type": "string",
+          "required": false,
+          "description": "Production line / work centre"
+        },
+        {
+          "name": "scheduled_start_date",
+          "type": "date",
+          "required": false,
+          "description": "Scheduled start date (AFKO GSTRS)"
+        },
+        {
+          "name": "scheduled_finish_date",
+          "type": "date",
+          "required": false,
+          "description": "Scheduled finish date (AFKO GLTRS)"
+        },
+        {
+          "name": "actual_release_date",
+          "type": "date",
+          "required": false,
+          "description": "Actual release date (AUFK FTRMI)"
+        },
+        {
+          "name": "actual_finish_date",
+          "type": "date",
+          "required": false,
+          "description": "Actual finish date (AUFK GLTRI); null when order still open"
+        },
+        {
+          "name": "root_cause_class",
+          "type": "string",
+          "required": true,
+          "description": "LATE_RELEASE | MATERIAL_SHORT | CAPACITY | UNCLASSIFIED"
+        },
+        {
+          "name": "is_late_release",
+          "type": "boolean",
+          "required": false,
+          "description": "True when actual_release_date > scheduled_start_date"
+        },
+        {
+          "name": "has_material_short",
+          "type": "boolean",
+          "required": false,
+          "description": "True when any component variance_qty is below tolerance (under-issue)"
+        },
+        {
+          "name": "shortfall_component_count",
+          "type": "long",
+          "required": false,
+          "description": "Count of components with under-issue beyond tolerance"
+        },
+        {
+          "name": "min_variance_qty",
+          "type": "double",
+          "required": false,
+          "description": "Most negative component variance_qty on the order (under-issue depth)"
+        },
+        {
+          "name": "release_to_production_hours",
+          "type": "double",
+          "required": false,
+          "description": "Hours from release to first operation actual start (capacity signal)"
+        },
+        {
+          "name": "production_first_actual_start",
+          "type": "timestamp",
+          "required": false,
+          "description": "First operation actual start timestamp (AFVC/operation confirmations)"
+        },
+        {
+          "name": "is_finish_late",
+          "type": "boolean",
+          "required": false,
+          "description": "True when actual_finish_date > scheduled_finish_date"
+        },
+        {
+          "name": "is_open_late",
+          "type": "boolean",
+          "required": false,
+          "description": "True when unfinished and scheduled_finish_date is before today (query-time)"
         }
       ]
     }

@@ -2,6 +2,7 @@
 
 This directory lists all `warehouse` contracts in the io-reporting data product.
 
+- [Adherence Root Cause](/warehouse/wm_operations/adherence_root_cause.md) -- Order-grain adherence miss root-cause classification for Production Progress.
 - [Batch Hold Status](/warehouse/warehouse360/batch_hold_status.md) -- Warehouse stock and hold status for a batch, release-decision oriented.
 - [Bin Occupancy](/warehouse/wm_operations/bin_occupancy.md) -- Bin occupancy and capacity by storage type and bin type (putaway planning).
 - [Bin Stock](/warehouse/wm_operations/bin_stock.md) -- Quant-grain stock & bin explorer with storage-zone classification (dispensary / production supply / palletising / interim / warehouse), stock category, block flags and expiry.
