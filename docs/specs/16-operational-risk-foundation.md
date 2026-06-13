@@ -93,10 +93,16 @@ to:
   (config-driven, not hardcoded — SHD-003/SHD-008).
 - Expose a consumption view `vw_consumption_data_freshness` (domain, last_refresh_at,
   age_minutes computed query-time, status warning/critical/ok) the cockpits read (ORC-009).
-- Emit a **Data Trust risk row** into `gold_operational_risk_item` when a domain is stale beyond
-  critical (ORC-010, `STALE_SOURCE` reason) — "Warehouse TO data is 87 min old; staging risk may
-  be understated." The age comparison is query-time (current_timestamp in the view), so the gold
-  freshness table stays deterministic (stores last_refresh watermark only).
+- Surface a **Data Trust risk row** when a domain is stale beyond critical (ORC-010,
+  `STALE_SOURCE` reason) — "Warehouse TO data is 87 min old; staging risk may be understated."
+  **Determinism reconciliation:** the staleness test is query-time (`now − last_refresh`), so
+  these Data-Trust rows are NOT materialised into the deterministic `gold_operational_risk_item`
+  MV. The gold freshness table stores only the `last_refresh` watermark (deterministic); the age
+  comparison AND the data-trust row's emission both live in the `_live`/consumption layer. The
+  cockpit's risk feed is therefore: **the deterministic gold union MV (evidence-derived domain
+  rows) UNIONed at the view layer with the query-time data-trust rows.** (This keeps Primitive 1's
+  MV purely evidence-derived — the `data_trust` arm is the one producer that joins in query-time,
+  not in gold.)
 
 ## Shared conventions (apply to all of specs 17–20)
 

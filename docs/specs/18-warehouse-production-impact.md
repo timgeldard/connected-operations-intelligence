@@ -70,9 +70,14 @@ ageing) are configurable per SHD-008.
 
 ## Gotchas
 
-- **plant_code axis** (conventions §2): joining order × TR/TO × stock — drop the non-axis side's
-  plant before joining (the order's plant is canonical; cross-plant staging exists). This is the
-  AMBIGUOUS_REFERENCE class that only surfaces at DLT analysis — get it right offline.
+- **plant_code axis** (conventions §2): when joining the ORDER to TR/TO, drop the non-axis side's
+  duplicate `plant_code` before the join (the order's plant is canonical) to avoid the
+  AMBIGUOUS_REFERENCE class that only surfaces at DLT analysis. **BUT do NOT drop the plant
+  constraint when joining STOCK** (`batch_stock`/`storage_bin`): stock carries no `order_number`,
+  so a global `material_code`+`batch_number` join with no plant/warehouse predicate will match
+  stock from unrelated plants. Stock MUST be constrained to the order's plant (and warehouse where
+  applicable) — i.e. drop the *ambiguous duplicate column*, but keep the plant as a join *predicate*
+  to the order's axis. Verify the available stock per the order's plant, not estate-wide.
 - **"Candidate", not root cause** — the classifier asserts likelihood with evidence, never blame.
   Exclusions must be exhaustive; insufficient evidence → Unknown.
 - Time-to-start / ageing-as-of-now / impact-ranking are query-time; durations between fixed
