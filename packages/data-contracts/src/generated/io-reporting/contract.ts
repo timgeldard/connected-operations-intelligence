@@ -1771,6 +1771,49 @@ export const WmOperationsDailyActivityContract = {
 } as const;
 
 /**
+ * Day-of-week baseline bands (median, p10, p90) for daily warehouse activity metrics per plant. Used to render normal-range reference bands behind the Trends chart series.
+
+ * Source View: vw_consumption_wm_operations_daily_activity_baseline
+ * Version: 0.1.0
+ */
+export interface WmOperationsDailyActivityBaseline {
+  /** SAP plant code. */
+  plant_id: string;
+  /** Metric identifier (to_items_confirmed, active_operators, trs_created, goods_receipt_lines, goods_issue_lines). */
+  metric_name: string;
+  /** Day of week 1 (Sunday) through 7 (Saturday) per Spark dayofweek(). */
+  day_of_week: number;
+  /** Percentile 50 (median) of the metric for this plant, metric, and day-of-week combination. */
+  median_value?: number;
+  /** Percentile 10 of the metric for this plant, metric, and day-of-week combination. */
+  p10_value?: number;
+  /** Percentile 90 of the metric for this plant, metric, and day-of-week combination. */
+  p90_value?: number;
+  /** Count of distinct activity days contributing to this group (days where metric value was non-null). */
+  sample_days?: number;
+}
+
+export const WmOperationsDailyActivityBaselineContract = {
+  id: "wm_operations.daily_activity_baseline",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_daily_activity_baseline",
+  grain: "one row per plant_id, metric_name and day_of_week",
+  primaryKey: ["plant_id", "metric_name", "day_of_week"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
  * Physical inventory count-vs-book detail (counts due, recounts, unposted differences). Candidate contract pending DEV profiling.
 
  * Source View: vw_consumption_wm_operations_physical_inventory
@@ -3000,6 +3043,287 @@ export const WmOperationsAdherenceRootCauseContract = {
   },
 } as const;
 
+/**
+ * Physical-inventory count accuracy KPIs aggregated to plant × storage_location × ABC cycle-count class × currency × month grain. Source: gold_wm_pi_accuracy (aggregates gold_physical_inventory_recon). "due_lines" = all PI document lines with count_date in the month — honest denominator; recounts appear as distinct lines. storage_zone is intentionally absent: ISEG carries only LGORT (storage_location_code), not storage_type, so a clean join to storage_type_role_mapping is not possible. delta_value / total_adjustment_value is in local currency; do not aggregate across currencies (currency is a grain key). count_accuracy_pct and coverage_pct are deterministic at aggregate level (no current_date).
+
+ * Source View: vw_consumption_wm_operations_pi_accuracy
+ * Version: 0.1.0
+ */
+export interface WmOperationsPiAccuracy {
+  /** SAP plant code (ISEG WERKS) */
+  plant_id: string;
+  /** Storage location (ISEG LGORT); zone mapping not available at this grain */
+  storage_location_id: string;
+  /** ABC cycle-counting indicator (ISEG ABCIN); empty string when not set */
+  abc_indicator: string;
+  /** Local currency code (ISEG WAERS); group key — do not sum across currencies */
+  currency?: string;
+  /** First day of the count month; derived from date_trunc('month', count_date) */
+  count_month?: string;
+  /** Total PI document lines in the period (all ISEG lines with count_date in count_month, regardless of status). Honest coverage denominator — recounts are counted as distinct lines.
+ */
+  due_lines: number;
+  /** Lines where is_counted = true (ISEG XZAEL) */
+  counted_lines: number;
+  /** Lines where physical_inventory_status = MATCHED (delta_quantity within 0.001) */
+  matched_lines: number;
+  /** Lines where is_recount_required = true (ISEG XNZAE) */
+  recount_required_lines: number;
+  /** Lines with status DIFFERENCE_POSTED or DIFFERENCE_NOT_POSTED */
+  lines_with_difference: number;
+  /** matched_lines / counted_lines; null when counted_lines = 0 */
+  count_accuracy_pct?: number;
+  /** counted_lines / due_lines; null when due_lines = 0 */
+  coverage_pct?: number;
+  /** recount_required_lines / counted_lines; null when counted_lines = 0 */
+  recount_rate_pct?: number;
+  /** Sum of delta_value (ISEG DMBTR) in local currency; net signed adjustment */
+  total_adjustment_value?: number;
+  /** Sum of abs(delta_value); absolute magnitude of inventory adjustments */
+  abs_adjustment_value?: number;
+  /** Sum of abs_delta_quantity across all lines in the group */
+  net_adjustment_qty?: number;
+}
+
+export const WmOperationsPiAccuracyContract = {
+  id: "wm_operations.pi_accuracy",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_pi_accuracy",
+  grain: "one row per plant_id, storage_location_id, abc_indicator, currency and count_month",
+  primaryKey: ["plant_id", "storage_location_id", "abc_indicator", "currency", "count_month"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Running orders + current-phase surface for the Lineside Monitor wall display (PEX-E-35). Grain: plant_id × line_id × order_id — one row per order currently in execution on a production line (released, not finished, not closed). current_operation_* fields derived from the latest confirmed process_order_operation (OPERATION_CONFIRMED logic, same as order journey). elapsed_minutes and projected_finish are computed at query time in the _live serving view (wall-clock rule ADR 012 — no timestamps in the base MV). FRESHNESS CAVEAT: data age reflects the last gold pipeline run; monitor shows a STALE banner when data_age exceeds 2× the configured refresh interval. Full operational value requires ADR 017 pilot cadence (15-min triggered); at daily/paused cadence this is demonstrable but not live-accurate. Source: gold_wm_lineside_now_live.
+
+ * Source View: vw_consumption_wm_operations_lineside_now
+ * Version: 0.1.0
+ */
+export interface WmOperationsLinesideNow {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Production line code (CRVER via recipe_process_line classification) */
+  line_id: string;
+  /** Process order number (AUFNR) */
+  order_id: string;
+  /** Header material code (AFKO PLNBEZ) */
+  material_id?: string;
+  /** Material description from material master */
+  material_name?: string;
+  /** Planned order quantity (AFKO GAMNG) */
+  planned_qty?: number;
+  /** Order quantity unit of measure (AFKO GMEIN) */
+  uom?: string;
+  /** Percentage complete (yield_pct × 100, clamped 0–100); null when no GR evidence */
+  pct_complete?: number;
+  /** Planned production duration in minutes (scheduled_finish − scheduled_start); null when undated */
+  planned_minutes?: number;
+  /** First actual start timestamp (actual_start_date cast to timestamp) */
+  production_first_actual_start?: string;
+  /** Operation number (AFVC VORNR) of the latest confirmed operation; null when no confirmation yet */
+  current_operation_number?: string;
+  /** Operation description text (AFVC LTXA1); falls back to "Op <number>" */
+  current_operation_description?: string;
+  /** Activity type label derived from control_key (AFVC STEUS) — Setup / Processing / Teardown / Cleaning / Inspection */
+  current_activity_type?: string;
+  /** Minutes elapsed since production_first_actual_start (query-time, _live layer) */
+  elapsed_minutes?: number;
+  /** Projected finish = production_first_actual_start + planned_minutes (query-time, _live layer); null when undated */
+  projected_finish?: string;
+}
+
+export const WmOperationsLinesideNowContract = {
+  id: "wm_operations.lineside_now",
+  version: "0.1.0",
+  domain: "production",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_lineside_now",
+  grain: "one row per plant_id, line_id, and order_id",
+  primaryKey: ["plant_id", "line_id", "order_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Distinct production lines with active order count — line picker for the Lineside Monitor config panel (PEX-E-35). Grain: plant_id × line_id. active_order_count counts currently running orders (released, not closed, not finished). line_label is the human-readable line description (production_line_description) or falls back to the production_line code. Source: gold_wm_lineside_lines_secured.
+
+ * Source View: vw_consumption_wm_operations_lineside_lines
+ * Version: 0.1.0
+ */
+export interface WmOperationsLinesideLines {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Production line code (CRVER via recipe_process_line classification) */
+  line_id: string;
+  /** Human-readable line description; falls back to line_id when no description available */
+  line_label: string;
+  /** Count of running orders (released, not closed, not finished) on this line right now */
+  active_order_count: number;
+}
+
+export const WmOperationsLinesideLinesContract = {
+  id: "wm_operations.lineside_lines",
+  version: "0.1.0",
+  domain: "production",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_lineside_lines",
+  grain: "one row per plant_id and line_id",
+  primaryKey: ["plant_id", "line_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Order-grain Gantt data for the Production Planning Board (PEX-E-36). Grain: plant_id × order_id — one row per process order, joinable to lanes via line_id (production_line / CRVER). Date windowing is a query parameter (from/to dates passed at query time); NOT baked into this view (keeps source MVs deterministic). Wall-clock columns (projected_finish, is_overdue, status) are computed at query time. Sources joined: gold_wm_order_journey_summary + gold_wm_order_yield + gold_wm_lineside_now (for running-order pct/elapsed) + gold_wm_adherence_root_cause + gold_wm_order_shortage_projection + gold_wm_order_readiness. Status values: running | atrisk | material-short | completed | firm | open. OMITTED: changeover/cleaning/maintenance — no governed SAP source for operation types. READ-ONLY: no scheduling controls; the view is consumed by read-only plan board endpoints.
+
+ * Source View: vw_consumption_wm_operations_plan_board
+ * Version: 0.1.0
+ */
+export interface WmOperationsPlanBoard {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Process order number (AUFNR) */
+  order_id: string;
+  /** Production line code (CRVER via recipe_process_line); null when line unassigned */
+  line_id?: string;
+  /** Header material code (AFKO PLNBEZ) */
+  material_id?: string;
+  /** Material description from material master */
+  material_name?: string;
+  /** Planned order quantity (AFKO GAMNG) */
+  planned_qty?: number;
+  /** Order quantity unit of measure (AFKO GMEIN) */
+  uom?: string;
+  /** Scheduled start date (AFKO GSTRP) */
+  scheduled_start_date?: string;
+  /** Scheduled finish date (AFKO GLTRP) */
+  scheduled_finish_date?: string;
+  /** First operation actual start timestamp (from AFVC confirmations via journey_summary) */
+  actual_start?: string;
+  /** Actual finish date (AUFK GLTRI); null when order still open */
+  actual_finish?: string;
+  /** Net goods receipts posted against order (movement 101 minus 102, floored at 0) */
+  delivered_qty?: number;
+  /** Percentage complete — lineside_now override when available, else yield_pct * 100 */
+  pct_complete?: number;
+  /** Planned production duration in minutes (scheduled_finish − scheduled_start); null when undated */
+  planned_minutes?: number;
+  /** Minutes since actual_start (query-time from lineside_now _live); null when not running */
+  elapsed_minutes?: number;
+  /** Extrapolated finish for running orders (elapsed/pct); null when complete or not running */
+  projected_finish?: string;
+  /** Query-time order status — running | atrisk | material-short | completed | firm | open. Precedence: completed > material-short > atrisk > running > firm > open. changeover/cleaning/maintenance are omitted (no governed SAP source).
+ */
+  status: string;
+  /** TR coverage status from order_readiness — NONE | PARTIAL | FULL */
+  staging_status?: string;
+  /** PSA supply status from order_readiness — NOT_SUPPLIED | PARTIAL | SUPPLIED */
+  supply_status?: string;
+  /** True when order has no scheduled_start or is overdue and not started */
+  is_backlog?: boolean;
+  /** True when scheduled_finish_date < today and order is still open (query-time) */
+  is_overdue?: boolean;
+  /** True when any component is projected short (from shortage_projection) */
+  has_shortage?: boolean;
+  /** Order has been released for production (AUFK IPRKZ) */
+  is_released?: boolean;
+  /** Order completion flag (AUFK RÜCKMELDESTATUS) */
+  is_completed?: boolean;
+  /** Order closure flag */
+  is_closed?: boolean;
+}
+
+export const WmOperationsPlanBoardContract = {
+  id: "wm_operations.plan_board",
+  version: "0.1.0",
+  domain: "production",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_plan_board",
+  grain: "one row per plant_id and order_id",
+  primaryKey: ["plant_id", "order_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * KPI strip for the Production Planning Board (PEX-E-36). Aggregates over the query window: lines_running (distinct lines with active orders), today_qty_delivered, at_risk_count, shortage_count, backlog_count, on_time_pct (last 48h completed orders). All values are computed at query time from vw_consumption_wm_operations_plan_board. Grain: one row per plant_id (and optional line_id filter applied upstream).
+
+ * Source View: vw_consumption_wm_operations_plan_board
+ * Version: 0.1.0
+ */
+export interface WmOperationsPlanBoardKpis {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Distinct production lines with a running or at-risk order in the window */
+  lines_running?: number;
+  /** Total delivered qty for orders with scheduled_finish on or before today */
+  today_qty_delivered?: number;
+  /** Count of at-risk orders in the window */
+  at_risk_count?: number;
+  /** Count of orders with has_shortage = true */
+  shortage_count?: number;
+  /** Count of backlog orders (is_backlog = true) */
+  backlog_count?: number;
+  /** On-time completion % — completed orders in last 48h where actual_finish <= scheduled_finish_date */
+  on_time_pct?: number;
+}
+
+export const WmOperationsPlanBoardKpisContract = {
+  id: "wm_operations.plan_board_kpis",
+  version: "0.1.0",
+  domain: "production",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_plan_board",
+  grain: "one row per plant_id",
+  primaryKey: ["plant_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
 export const ioReportingContracts = {
   contractVersion: "0.1.0",
   product: "connected-operations-intelligence",
@@ -3037,6 +3361,7 @@ export const ioReportingContracts = {
     "wm_operations.recon_value_summary": WmOperationsReconValueSummaryContract,
     "wm_operations.campaigns": WmOperationsCampaignsContract,
     "wm_operations.daily_activity": WmOperationsDailyActivityContract,
+    "wm_operations.daily_activity_baseline": WmOperationsDailyActivityBaselineContract,
     "wm_operations.physical_inventory": WmOperationsPhysicalInventoryContract,
     "wm_operations.bin_occupancy": WmOperationsBinOccupancyContract,
     "wm_operations.slow_movers": WmOperationsSlowMoversContract,
@@ -3063,5 +3388,10 @@ export const ioReportingContracts = {
     "wm_operations.supply_demand_ledger": WmOperationsSupplyDemandLedgerContract,
     "wm_operations.shortage_projection": WmOperationsShortageProjectionContract,
     "wm_operations.adherence_root_cause": WmOperationsAdherenceRootCauseContract,
+    "wm_operations.pi_accuracy": WmOperationsPiAccuracyContract,
+    "wm_operations.lineside_now": WmOperationsLinesideNowContract,
+    "wm_operations.lineside_lines": WmOperationsLinesideLinesContract,
+    "wm_operations.plan_board": WmOperationsPlanBoardContract,
+    "wm_operations.plan_board_kpis": WmOperationsPlanBoardKpisContract,
   },
 } as const;

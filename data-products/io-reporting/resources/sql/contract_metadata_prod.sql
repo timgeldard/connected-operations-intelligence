@@ -3,7 +3,7 @@
 -- Run once as a UC admin after the consumption views are created / updated.
 -- Re-runnable: COMMENT ON and SET TAGS are idempotent (they overwrite existing values).
 --
--- Covers 56 contract(s) with a matched source_view.
+-- Covers 64 contract(s) with a matched source_view.
 -- Skipped 1 contract(s) whose source_view is not yet created in
 -- resources/sql/*consumption_views_prod.sql (see generator output for details).
 --
@@ -523,12 +523,12 @@ COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_warehous
 COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_goods_movements.transaction_code IS
   'SAP transaction code';
 
--- ── Contract: wm_operations.worklist v0.1.0 ──
+-- ── Contract: wm_operations.worklist v0.2.0 ──
 COMMENT ON VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_worklist IS
-  'Supervisor staging/picking worklist at transfer-requirement (job) grain for the WM Operations workspace — read-only mirror of the SAP WM Cockpit (WMA-E-19) Job Assignment grid: work area, RF pick status, assigned operator, queue, campaign and pick progress from linked transfer orders. Candidate contract pending DEV profiling. Grain: one row per plant_id, warehouse_id and transfer requirement. Contract: wm_operations.worklist v0.1.0. Freshness SLA: expected 30 min, warning 60 min, critical 120 min. Row-level access key: plant_id.';
+  'Supervisor staging/picking worklist at transfer-requirement (job) grain for the WM Operations workspace — read-only mirror of the SAP WM Cockpit (WMA-E-19) Job Assignment grid: work area, RF pick status, assigned operator, queue, campaign and pick progress from linked transfer orders. Candidate contract pending DEV profiling. Grain: one row per plant_id, warehouse_id and transfer requirement. Contract: wm_operations.worklist v0.2.0. Freshness SLA: expected 30 min, warning 60 min, critical 120 min. Row-level access key: plant_id.';
 ALTER VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_worklist SET TAGS (
   'contract_id' = 'wm_operations.worklist',
-  'contract_version' = '0.1.0',
+  'contract_version' = '0.2.0',
   'contract_grain' = 'one row per plant_id, warehouse_id and transfer requirement',
   'freshness_expected_minutes' = '30'
 );
@@ -576,6 +576,10 @@ COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_opera
   'TR creation timestamp';
 COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_worklist.planned_execution_ts IS
   'Planned execution timestamp (PDATU/PZEIT)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_worklist.demand_due_ts IS
+  'Demand-wave due timestamp used for worklist urgency ranking. For order-linked TRs (BETYP=''P'') this is the linked process order scheduled start; otherwise it falls back to the TR planned execution timestamp.';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_worklist.priority_score IS
+  'Query-time urgency score for default worklist ranking: overdue demand=100, due within 2h=80, within 8h=60, within 24h=40, later=20, no demand date=10, plus +10 for PARKED or NO_STOCK intervention statuses.';
 COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_worklist.item_count IS
   'TR item count';
 COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_worklist.open_item_count IS
@@ -649,12 +653,12 @@ COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_opera
 COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_worklist_summary.earliest_created_ts IS
   'Earliest TR creation timestamp in the bucket';
 
--- ── Contract: wm_operations.order_readiness v0.1.0 ──
+-- ── Contract: wm_operations.order_readiness v0.2.0 ──
 COMMENT ON VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_order_readiness IS
-  'Released process orders with derived TR coverage (component demand converted to TRs — the WM Cockpit ''TR'' status) and PSA supply status (stock in order-keyed Production Supply bins — the cockpit ''ST'' status), plus a query-time readiness band. Coverage denominators use WM-managed components only; quantity comparisons assume base-UoM consistency. Candidate contract pending DEV profiling. Grain: one row per plant_id and process order. Contract: wm_operations.order_readiness v0.1.0. Freshness SLA: expected 30 min, warning 60 min, critical 120 min. Row-level access key: plant_id.';
+  'Released process orders with derived TR coverage (component demand converted to TRs — the WM Cockpit ''TR'' status) and PSA supply status (stock in order-keyed Production Supply bins — the cockpit ''ST'' status), plus a query-time readiness band. Coverage denominators use WM-managed components only; quantity comparisons assume base-UoM consistency. Candidate contract pending DEV profiling. Grain: one row per plant_id and process order. Contract: wm_operations.order_readiness v0.2.0. Freshness SLA: expected 30 min, warning 60 min, critical 120 min. Row-level access key: plant_id.';
 ALTER VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_order_readiness SET TAGS (
   'contract_id' = 'wm_operations.order_readiness',
-  'contract_version' = '0.1.0',
+  'contract_version' = '0.2.0',
   'contract_grain' = 'one row per plant_id and process order',
   'freshness_expected_minutes' = '30'
 );
@@ -704,6 +708,16 @@ COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_opera
   'Days until scheduled start (query-time, _live view)';
 COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_order_readiness.readiness_band IS
   'red | amber | green | grey (query-time traffic light)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_order_readiness.qty_unrestricted IS
+  'Sum of unrestricted batch_stock across order component materials';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_order_readiness.quality_hold_qty IS
+  'Sum of quality-inspection + blocked stock across component materials';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_order_readiness.open_lot_count IS
+  'Open QM lots (no usage decision) across component materials';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_order_readiness.quality_release_status IS
+  'RELEASED | PARTIAL_HOLD | QUALITY_BLOCKED | NO_QM_DATA';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_order_readiness.readiness_reason IS
+  'QUALITY_HOLD | QUALITY_PARTIAL_HOLD | QM_SOURCE_ABSENT when applicable';
 COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_order_readiness.production_line IS
   'Production line (AUFK CRVER) of the process order — 99.99% populated at C061/P817 (35 lines / 18-19 lines respectively, verified UAT 2026-06-11).';
 
@@ -954,6 +968,30 @@ ALTER VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_d
   'freshness_expected_minutes' = '30'
 );
 -- (no column descriptions in manifest for vw_consumption_wm_operations_daily_activity)
+
+-- ── Contract: wm_operations.daily_activity_baseline v0.1.0 ──
+COMMENT ON VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_daily_activity_baseline IS
+  'Day-of-week baseline bands (median, p10, p90) for daily warehouse activity metrics per plant. Used to render normal-range reference bands behind the Trends chart series. Grain: one row per plant_id, metric_name and day_of_week. Contract: wm_operations.daily_activity_baseline v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
+ALTER VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_daily_activity_baseline SET TAGS (
+  'contract_id' = 'wm_operations.daily_activity_baseline',
+  'contract_version' = '0.1.0',
+  'contract_grain' = 'one row per plant_id, metric_name and day_of_week',
+  'freshness_expected_minutes' = '60'
+);
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_daily_activity_baseline.plant_id IS
+  'SAP plant code.';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_daily_activity_baseline.metric_name IS
+  'Metric identifier (to_items_confirmed, active_operators, trs_created, goods_receipt_lines, goods_issue_lines).';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_daily_activity_baseline.day_of_week IS
+  'Day of week 1 (Sunday) through 7 (Saturday) per Spark dayofweek().';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_daily_activity_baseline.median_value IS
+  'Percentile 50 (median) of the metric for this plant, metric, and day-of-week combination.';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_daily_activity_baseline.p10_value IS
+  'Percentile 10 of the metric for this plant, metric, and day-of-week combination.';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_daily_activity_baseline.p90_value IS
+  'Percentile 90 of the metric for this plant, metric, and day-of-week combination.';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_daily_activity_baseline.sample_days IS
+  'Count of distinct activity days contributing to this group (days where metric value was non-null).';
 
 -- ── Contract: wm_operations.physical_inventory v0.1.0 ──
 COMMENT ON VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_physical_inventory IS
@@ -1375,6 +1413,48 @@ COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_opera
 COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_component_variance.is_final_issue IS
   'True when the reservation carries the final-issue flag (RESB KZEAR)';
 
+-- ── Contract: wm_operations.supply_demand_ledger v0.1.0 ──
+COMMENT ON VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_supply_demand_ledger IS
+  'Dated supply/demand ledger per plant×material for shortage projection arithmetic. SUPPLY: ON_HAND (batch_stock unrestricted) + INBOUND_DELIVERY (open EL/ELST lines, base UOM). DEMAND: open reservation_requirement (261 family). running_balance is cumulative signed qty. v1 excludes PO lines (deliveries only) to avoid double-count. Source: gold_wm_supply_demand_ledger. Grain: one row per plant_id, material_id, and ledger event. Contract: wm_operations.supply_demand_ledger v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
+ALTER VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_supply_demand_ledger SET TAGS (
+  'contract_id' = 'wm_operations.supply_demand_ledger',
+  'contract_version' = '0.1.0',
+  'contract_grain' = 'one row per plant_id, material_id, and ledger event',
+  'freshness_expected_minutes' = '60'
+);
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_supply_demand_ledger.event_type IS
+  'SUPPLY or DEMAND';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_supply_demand_ledger.event_subtype IS
+  'ON_HAND | INBOUND_DELIVERY | RESERVATION';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_supply_demand_ledger.event_date IS
+  'Null for current on-hand snapshot row';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_supply_demand_ledger.quantity IS
+  'Absolute event quantity in base UOM';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_supply_demand_ledger.signed_qty IS
+  'Positive for supply, negative for demand';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_supply_demand_ledger.balance_before IS
+  'Running balance immediately before this event';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_supply_demand_ledger.running_balance IS
+  'Cumulative balance after this event';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_supply_demand_ledger.order_id IS
+  'Process order for DEMAND events';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_supply_demand_ledger.sort_seq IS
+  'Tiebreaker ordering within event_date';
+
+-- ── Contract: wm_operations.shortage_projection v0.1.0 ──
+COMMENT ON VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_shortage_projection IS
+  'Open order-component shortage projection. projected_balance_at_demand is the ledger balance before the component requirement_date; is_projected_short when balance < open_qty. Scope: released unfinished orders only. Source: gold_wm_order_shortage_projection. Grain: one row per plant_id, order_id, material_id, and reservation_ref. Contract: wm_operations.shortage_projection v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
+ALTER VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_shortage_projection SET TAGS (
+  'contract_id' = 'wm_operations.shortage_projection',
+  'contract_version' = '0.1.0',
+  'contract_grain' = 'one row per plant_id, order_id, material_id, and reservation_ref',
+  'freshness_expected_minutes' = '60'
+);
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_shortage_projection.requirement_date IS
+  'Component requirement date (RESB BDTER)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_shortage_projection.first_short_date IS
+  'Earliest date running balance went negative for this material';
+
 -- ── Contract: wm_operations.adherence_root_cause v0.1.0 ──
 COMMENT ON VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause IS
   'Order-grain adherence miss root-cause classification for Production Progress. One row per late/missed process order. root_cause_class precedence: LATE_RELEASE (release after scheduled start) > MATERIAL_SHORT (component under-issue) > CAPACITY (production start lagged >24h after release) > UNCLASSIFIED. is_open_late is query-time (unfinished past scheduled_finish_date). Source: gold_wm_adherence_root_cause. Grain: one row per plant_id and order_id. Contract: wm_operations.adherence_root_cause v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
@@ -1424,3 +1504,187 @@ COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_opera
   'True when actual_finish_date > scheduled_finish_date';
 COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.is_open_late IS
   'True when unfinished and scheduled_finish_date is before today (query-time)';
+
+-- ── Contract: wm_operations.pi_accuracy v0.1.0 ──
+COMMENT ON VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy IS
+  'Physical-inventory count accuracy KPIs aggregated to plant × storage_location × ABC cycle-count class × currency × month grain. Source: gold_wm_pi_accuracy (aggregates gold_physical_inventory_recon). "due_lines" = all PI document lines with count_date in the month — honest denominator; recounts appear as distinct lines. storage_zone is intentionally absent: ISEG carries only LGORT (storage_location_code), not storage_type, so a clean join to storage_type_role_mapping is not possible. delta_value / total_adjustment_value is in local currency; do not aggregate across currencies (currency is a grain key). count_accuracy_pct and coverage_pct are deterministic at aggregate level (no current_date). Grain: one row per plant_id, storage_location_id, abc_indicator, currency and count_month. Contract: wm_operations.pi_accuracy v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
+ALTER VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy SET TAGS (
+  'contract_id' = 'wm_operations.pi_accuracy',
+  'contract_version' = '0.1.0',
+  'contract_grain' = 'one row per plant_id, storage_location_id, abc_indicator, currency and count_month',
+  'freshness_expected_minutes' = '60'
+);
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.plant_id IS
+  'SAP plant code (ISEG WERKS)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.storage_location_id IS
+  'Storage location (ISEG LGORT); zone mapping not available at this grain';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.abc_indicator IS
+  'ABC cycle-counting indicator (ISEG ABCIN); empty string when not set';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.currency IS
+  'Local currency code (ISEG WAERS); group key — do not sum across currencies';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.count_month IS
+  'First day of the count month; derived from date_trunc(''month'', count_date)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.due_lines IS
+  'Total PI document lines in the period (all ISEG lines with count_date in count_month, regardless of status). Honest coverage denominator — recounts are counted as distinct lines.';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.counted_lines IS
+  'Lines where is_counted = true (ISEG XZAEL)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.matched_lines IS
+  'Lines where physical_inventory_status = MATCHED (delta_quantity within 0.001)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.recount_required_lines IS
+  'Lines where is_recount_required = true (ISEG XNZAE)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.lines_with_difference IS
+  'Lines with status DIFFERENCE_POSTED or DIFFERENCE_NOT_POSTED';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.count_accuracy_pct IS
+  'matched_lines / counted_lines; null when counted_lines = 0';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.coverage_pct IS
+  'counted_lines / due_lines; null when due_lines = 0';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.recount_rate_pct IS
+  'recount_required_lines / counted_lines; null when counted_lines = 0';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.total_adjustment_value IS
+  'Sum of delta_value (ISEG DMBTR) in local currency; net signed adjustment';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.abs_adjustment_value IS
+  'Sum of abs(delta_value); absolute magnitude of inventory adjustments';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_pi_accuracy.net_adjustment_qty IS
+  'Sum of abs_delta_quantity across all lines in the group';
+
+-- ── Contract: wm_operations.lineside_now v0.1.0 ──
+COMMENT ON VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now IS
+  'Running orders + current-phase surface for the Lineside Monitor wall display (PEX-E-35). Grain: plant_id × line_id × order_id — one row per order currently in execution on a production line (released, not finished, not closed). current_operation_* fields derived from the latest confirmed process_order_operation (OPERATION_CONFIRMED logic, same as order journey). elapsed_minutes and projected_finish are computed at query time in the _live serving view (wall-clock rule ADR 012 — no timestamps in the base MV). FRESHNESS CAVEAT: data age reflects the last gold pipeline run; monitor shows a STALE banner when data_age exceeds 2× the configured refresh interval. Full operational value requires ADR 017 pilot cadence (15-min triggered); at daily/paused cadence this is demonstrable but not live-accurate. Source: gold_wm_lineside_now_live. Grain: one row per plant_id, line_id, and order_id. Contract: wm_operations.lineside_now v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
+ALTER VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now SET TAGS (
+  'contract_id' = 'wm_operations.lineside_now',
+  'contract_version' = '0.1.0',
+  'contract_grain' = 'one row per plant_id, line_id, and order_id',
+  'freshness_expected_minutes' = '60'
+);
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.plant_id IS
+  'SAP plant ID';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.line_id IS
+  'Production line code (CRVER via recipe_process_line classification)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.order_id IS
+  'Process order number (AUFNR)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.material_id IS
+  'Header material code (AFKO PLNBEZ)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.material_name IS
+  'Material description from material master';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.planned_qty IS
+  'Planned order quantity (AFKO GAMNG)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.uom IS
+  'Order quantity unit of measure (AFKO GMEIN)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.pct_complete IS
+  'Percentage complete (yield_pct × 100, clamped 0–100); null when no GR evidence';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.planned_minutes IS
+  'Planned production duration in minutes (scheduled_finish − scheduled_start); null when undated';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.production_first_actual_start IS
+  'First actual start timestamp (actual_start_date cast to timestamp)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.current_operation_number IS
+  'Operation number (AFVC VORNR) of the latest confirmed operation; null when no confirmation yet';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.current_operation_description IS
+  'Operation description text (AFVC LTXA1); falls back to "Op <number>"';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.current_activity_type IS
+  'Activity type label derived from control_key (AFVC STEUS) — Setup / Processing / Teardown / Cleaning / Inspection';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.elapsed_minutes IS
+  'Minutes elapsed since production_first_actual_start (query-time, _live layer)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_now.projected_finish IS
+  'Projected finish = production_first_actual_start + planned_minutes (query-time, _live layer); null when undated';
+
+-- ── Contract: wm_operations.lineside_lines v0.1.0 ──
+COMMENT ON VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_lines IS
+  'Distinct production lines with active order count — line picker for the Lineside Monitor config panel (PEX-E-35). Grain: plant_id × line_id. active_order_count counts currently running orders (released, not closed, not finished). line_label is the human-readable line description (production_line_description) or falls back to the production_line code. Source: gold_wm_lineside_lines_secured. Grain: one row per plant_id and line_id. Contract: wm_operations.lineside_lines v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
+ALTER VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_lines SET TAGS (
+  'contract_id' = 'wm_operations.lineside_lines',
+  'contract_version' = '0.1.0',
+  'contract_grain' = 'one row per plant_id and line_id',
+  'freshness_expected_minutes' = '60'
+);
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_lines.plant_id IS
+  'SAP plant ID';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_lines.line_id IS
+  'Production line code (CRVER via recipe_process_line classification)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_lines.line_label IS
+  'Human-readable line description; falls back to line_id when no description available';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_lineside_lines.active_order_count IS
+  'Count of running orders (released, not closed, not finished) on this line right now';
+
+-- ── Contract: wm_operations.plan_board v0.1.0 ──
+COMMENT ON VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board IS
+  'Order-grain Gantt data for the Production Planning Board (PEX-E-36). Grain: plant_id × order_id — one row per process order, joinable to lanes via line_id (production_line / CRVER). Date windowing is a query parameter (from/to dates passed at query time); NOT baked into this view (keeps source MVs deterministic). Wall-clock columns (projected_finish, is_overdue, status) are computed at query time. Sources joined: gold_wm_order_journey_summary + gold_wm_order_yield + gold_wm_lineside_now (for running-order pct/elapsed) + gold_wm_adherence_root_cause + gold_wm_order_shortage_projection + gold_wm_order_readiness. Status values: running | atrisk | material-short | completed | firm | open. OMITTED: changeover/cleaning/maintenance — no governed SAP source for operation types. READ-ONLY: no scheduling controls; the view is consumed by read-only plan board endpoints. Grain: one row per plant_id and order_id. Contract: wm_operations.plan_board v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
+ALTER VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board SET TAGS (
+  'contract_id' = 'wm_operations.plan_board',
+  'contract_version' = '0.1.0',
+  'contract_grain' = 'one row per plant_id and order_id',
+  'freshness_expected_minutes' = '60'
+);
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.plant_id IS
+  'SAP plant ID';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.order_id IS
+  'Process order number (AUFNR)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.line_id IS
+  'Production line code (CRVER via recipe_process_line); null when line unassigned';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.material_id IS
+  'Header material code (AFKO PLNBEZ)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.material_name IS
+  'Material description from material master';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.planned_qty IS
+  'Planned order quantity (AFKO GAMNG)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.uom IS
+  'Order quantity unit of measure (AFKO GMEIN)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.scheduled_start_date IS
+  'Scheduled start date (AFKO GSTRP)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.scheduled_finish_date IS
+  'Scheduled finish date (AFKO GLTRP)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.actual_start IS
+  'First operation actual start timestamp (from AFVC confirmations via journey_summary)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.actual_finish IS
+  'Actual finish date (AUFK GLTRI); null when order still open';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.delivered_qty IS
+  'Net goods receipts posted against order (movement 101 minus 102, floored at 0)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.pct_complete IS
+  'Percentage complete — lineside_now override when available, else yield_pct * 100';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.planned_minutes IS
+  'Planned production duration in minutes (scheduled_finish − scheduled_start); null when undated';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.elapsed_minutes IS
+  'Minutes since actual_start (query-time from lineside_now _live); null when not running';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.projected_finish IS
+  'Extrapolated finish for running orders (elapsed/pct); null when complete or not running';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.status IS
+  'Query-time order status — running | atrisk | material-short | completed | firm | open. Precedence: completed > material-short > atrisk > running > firm > open. changeover/cleaning/maintenance are omitted (no governed SAP source).';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.staging_status IS
+  'TR coverage status from order_readiness — NONE | PARTIAL | FULL';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.supply_status IS
+  'PSA supply status from order_readiness — NOT_SUPPLIED | PARTIAL | SUPPLIED';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.is_backlog IS
+  'True when order has no scheduled_start or is overdue and not started';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.is_overdue IS
+  'True when scheduled_finish_date < today and order is still open (query-time)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.has_shortage IS
+  'True when any component is projected short (from shortage_projection)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.is_released IS
+  'Order has been released for production (AUFK IPRKZ)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.is_completed IS
+  'Order completion flag (AUFK RÜCKMELDESTATUS)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.is_closed IS
+  'Order closure flag';
+
+-- ── Contract: wm_operations.plan_board_kpis v0.1.0 ──
+COMMENT ON VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board IS
+  'KPI strip for the Production Planning Board (PEX-E-36). Aggregates over the query window: lines_running (distinct lines with active orders), today_qty_delivered, at_risk_count, shortage_count, backlog_count, on_time_pct (last 48h completed orders). All values are computed at query time from vw_consumption_wm_operations_plan_board. Grain: one row per plant_id (and optional line_id filter applied upstream). Grain: one row per plant_id. Contract: wm_operations.plan_board_kpis v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
+ALTER VIEW connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board SET TAGS (
+  'contract_id' = 'wm_operations.plan_board_kpis',
+  'contract_version' = '0.1.0',
+  'contract_grain' = 'one row per plant_id',
+  'freshness_expected_minutes' = '60'
+);
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.plant_id IS
+  'SAP plant ID';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.lines_running IS
+  'Distinct production lines with a running or at-risk order in the window';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.today_qty_delivered IS
+  'Total delivered qty for orders with scheduled_finish on or before today';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.at_risk_count IS
+  'Count of at-risk orders in the window';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.shortage_count IS
+  'Count of orders with has_shortage = true';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.backlog_count IS
+  'Count of backlog orders (is_backlog = true)';
+COMMENT ON COLUMN connected_plant_prod.gold_io_reporting.vw_consumption_wm_operations_plan_board.on_time_pct IS
+  'On-time completion % — completed orders in last 48h where actual_finish <= scheduled_finish_date';

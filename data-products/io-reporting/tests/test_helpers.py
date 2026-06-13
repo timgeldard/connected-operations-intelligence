@@ -5,7 +5,7 @@ These functions are the foundation of every silver table — a mistake here
 propagates to all 14 tables, so every edge case is covered explicitly.
 """
 
-from datetime import date, datetime
+from datetime import date
 
 from pyspark.sql import Row
 from pyspark.sql import functions as F
