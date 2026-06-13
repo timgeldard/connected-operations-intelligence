@@ -19,6 +19,7 @@ Tables:
   gold_wm_supply_demand_ledger    — dated supply/demand events per plant×material with running balance
   gold_wm_order_shortage_projection — open order components with projected balance at demand date
   gold_wm_adherence_root_cause   — order-grain adherence miss root-cause classification
+  gold_wm_pi_accuracy            — physical-inventory KPI aggregate (plant × storage_location × ABC × month)
 
 Storage-zone classification: derived from the governed storage_type_role_mapping table
 (role + storage_type_description). Dispensaries are identified by description
@@ -3300,4 +3301,128 @@ def gold_wm_adherence_root_cause():
         F.col("min_variance_qty"),
         release_to_prod_hours.alias("release_to_production_hours"),
         F.col("production_first_actual_start"),
+    )
+
+
+# -- 27. PHYSICAL INVENTORY ACCURACY (PI KPI aggregate) -----------------------
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Physical-inventory count accuracy KPIs aggregated to plant × storage_location_code × "
+        "cycle_counting_indicator (ABC class) × count_month grain. Source: "
+        "gold_physical_inventory_recon via dlt.read — no current_date(); deterministic base MV. "
+        "count_month = date_trunc('month', count_date). "
+        "'due_lines' = all PI document lines in the period (documents created/counted in that "
+        "month, regardless of status) — honest denominator for coverage; recounts are counted "
+        "as distinct lines as they appear in ISEG. "
+        "storage_zone is intentionally null: IKPF/ISEG carry only storage_location_code (LGORT), "
+        "not storage_type, so a clean join to storage_type_role_mapping is not possible. "
+        "Best-effort grouping by storage_location_code is preserved; a future enhancement can "
+        "add LGORT→LGTYP mapping once it is replicated. "
+        "delta_value is local currency — do not sum across currencies; currency is surfaced and "
+        "grouped so cross-currency aggregation is an explicit consumer choice. "
+        "count_accuracy_pct and coverage_pct are query-time ratios computed here at the "
+        "per-group level only (deterministic within the group). "
+        "cluster_by plant_code, count_month."
+    ),
+    cluster_by=["plant_code", "count_month"],
+))
+@dlt.expect("count_month present", "count_month IS NOT NULL OR count_date IS NULL")
+@dlt.expect("due_lines non-negative", "due_lines >= 0")
+@dlt.expect("counted_lines non-negative", "counted_lines >= 0")
+@dlt.expect("matched_lines non-negative", "matched_lines >= 0")
+def gold_wm_pi_accuracy():
+    pi = dlt.read("gold_physical_inventory_recon")
+
+    # Derive count_month from count_date (deterministic transform — no current_date).
+    # Rows where count_date IS NULL are ungrouped and carried as null month so they don't
+    # inflate any period bucket.
+    pi = pi.withColumn(
+        "count_month",
+        F.date_trunc("month", F.col("count_date")),
+    )
+
+    return (
+        pi
+        .groupBy(
+            "plant_code",
+            "storage_location_code",
+            "cycle_counting_indicator",
+            "currency",
+            "count_month",
+        )
+        .agg(
+            # ── Volume counts (all as bigint — convention §6)
+            F.count(F.lit(1)).cast("long").alias("due_lines"),
+            F.sum(F.col("is_counted").cast("long")).alias("counted_lines"),
+            F.sum(
+                F.when(F.col("physical_inventory_status") == "MATCHED", F.lit(1)).otherwise(F.lit(0))
+            ).cast("long").alias("matched_lines"),
+            F.sum(
+                F.when(F.col("is_recount_required"), F.lit(1)).otherwise(F.lit(0))
+            ).cast("long").alias("recount_required_lines"),
+            F.sum(
+                F.when(
+                    F.col("physical_inventory_status").isin("DIFFERENCE_POSTED", "DIFFERENCE_NOT_POSTED"),
+                    F.lit(1),
+                ).otherwise(F.lit(0))
+            ).cast("long").alias("lines_with_difference"),
+
+            # ── Value metrics (local currency — do not sum across currencies; group key carries currency)
+            F.coalesce(F.sum("delta_value"), F.lit(0.0)).alias("total_adjustment_value"),
+            F.coalesce(F.sum("abs_delta_quantity"), F.lit(0.0)).alias("net_adjustment_qty"),
+            F.coalesce(F.sum(F.abs(F.col("delta_value"))), F.lit(0.0)).alias("abs_adjustment_value"),
+        )
+        .withColumn(
+            # count_accuracy_pct = matched / counted — guarded for zero/null denominator.
+            # Deterministic at the aggregate level (no wall-clock dependency).
+            "count_accuracy_pct",
+            F.when(
+                F.coalesce(F.col("counted_lines"), F.lit(0)) > 0,
+                F.col("matched_lines").cast("double") / F.col("counted_lines").cast("double"),
+            ).otherwise(F.lit(None).cast("double")),
+        )
+        .withColumn(
+            # coverage_pct = counted / due — how many lines in the period were actually counted.
+            # due_lines = all ISEG lines with a count_date in the month (honest: documents
+            # created/counted in the period; see table comment for caveat on recounts).
+            "coverage_pct",
+            F.when(
+                F.coalesce(F.col("due_lines"), F.lit(0)) > 0,
+                F.col("counted_lines").cast("double") / F.col("due_lines").cast("double"),
+            ).otherwise(F.lit(None).cast("double")),
+        )
+        .withColumn(
+            # recount_rate_pct = recount_required_lines / counted — fraction that require a recheck.
+            "recount_rate_pct",
+            F.when(
+                F.coalesce(F.col("counted_lines"), F.lit(0)) > 0,
+                F.col("recount_required_lines").cast("double") / F.col("counted_lines").cast("double"),
+            ).otherwise(F.lit(None).cast("double")),
+        )
+        .select(
+            # ── Grain
+            "plant_code",
+            "storage_location_code",
+            F.coalesce(F.col("cycle_counting_indicator"), F.lit("")).alias("cycle_counting_indicator"),
+            "currency",
+            "count_month",
+
+            # ── Volume counts
+            "due_lines",
+            "counted_lines",
+            "matched_lines",
+            "recount_required_lines",
+            "lines_with_difference",
+
+            # ── Accuracy / coverage ratios
+            "count_accuracy_pct",
+            "coverage_pct",
+            "recount_rate_pct",
+
+            # ── Value
+            "total_adjustment_value",
+            "abs_adjustment_value",
+            "net_adjustment_qty",
+        )
     )

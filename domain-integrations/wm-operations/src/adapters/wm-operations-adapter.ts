@@ -723,6 +723,26 @@ export interface WmShortageProjectionItem {
   readonly productionLine: string | null
 }
 
+/** PI accuracy aggregate — plant × storage_location × ABC × currency × month grain. */
+export interface WmPiAccuracyItem {
+  readonly plantId: string
+  readonly storageLocationId: string
+  readonly abcIndicator: string
+  readonly currency: string | null
+  readonly countMonth: string | null
+  readonly dueLines: number
+  readonly countedLines: number
+  readonly matchedLines: number
+  readonly recountRequiredLines: number
+  readonly linesWithDifference: number
+  readonly countAccuracyPct: number | null
+  readonly coveragePct: number | null
+  readonly recountRatePct: number | null
+  readonly totalAdjustmentValue: number | null
+  readonly absAdjustmentValue: number | null
+  readonly netAdjustmentQty: number | null
+}
+
 export interface WmDrillRequest {
   readonly plantId?: string
   readonly warehouseId?: string

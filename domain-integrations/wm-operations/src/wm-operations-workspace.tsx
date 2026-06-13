@@ -29,6 +29,7 @@ import { ProductionProgressView } from './views/production-progress-view.js'
 import { YieldLossView } from './views/yield-loss-view.js'
 import { ExpiryRiskView } from './views/expiry-risk-view.js'
 import { ShortageProjectionView } from './views/shortage-projection-view.js'
+import { InventoryAccuracyView } from './views/inventory-accuracy-view.js'
 import { EmptyNote, ViewHeader } from './components/kerry.js'
 import './theme/kerry-theme.css'
 
@@ -58,6 +59,7 @@ export type WmOperationsViewId =
   | 'yield-loss'
   | 'expiry-risk'
   | 'shortage-projection'
+  | 'inventory-accuracy'
 
 export interface WmOperationsWorkspaceProps {
   readonly scope: ScopeContext
@@ -118,6 +120,7 @@ const VIEW_GROUPS: Array<{ label: string; views: Array<{ id: WmOperationsViewId;
       { id: 'production-progress', label: 'Production Progress' },
       { id: 'yield-loss', label: 'Yield & Loss' },
       { id: 'expiry-risk', label: 'Expiry Risk' },
+      { id: 'inventory-accuracy', label: 'Inventory Accuracy' },
     ],
   },
 ]
@@ -289,6 +292,8 @@ function resolveView(viewId: string, request: WmOperationsAdapterRequest, onNavi
       return <ExpiryRiskView request={request} onNavigateToView={onNavigateToView} />
     case 'shortage-projection':
       return <ShortageProjectionView request={request} onNavigateToView={onNavigateToView} />
+    case 'inventory-accuracy':
+      return <InventoryAccuracyView request={request} onNavigateToView={onNavigateToView} />
     case 'staging-worklist':
     default:
       return <StagingWorklistView request={request} onOpenProcessOrder={onOpenProcessOrder} onNavigateToView={onNavigateToView} />

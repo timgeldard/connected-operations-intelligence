@@ -73,6 +73,7 @@ REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_order_comp
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_supply_demand_ledger FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_order_shortage_projection FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_adherence_root_cause FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_pi_accuracy FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_spc_quality_metric_subgroup FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_trace_anchor FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_batch_stock_summary FROM `users`;

@@ -34,6 +34,7 @@ This directory lists all `warehouse` contracts in the io-reporting data product.
 - [Outbound Backlog](/warehouse/warehouse360/outbound_backlog.md) -- Outbound deliveries picking backlog and cutoff risk.
 - [Overview](/warehouse/warehouse360/overview.md) -- Overview metrics for the Warehouse 360 dashboard.
 - [Physical Inventory](/warehouse/wm_operations/physical_inventory.md) -- Physical inventory count-vs-book detail (counts due, recounts, unposted differences).
+- [Pi Accuracy](/warehouse/wm_operations/pi_accuracy.md) -- Physical-inventory count accuracy KPIs aggregated to plant × storage_location × ABC cycle-count class × currency × month grain.
 - [Pick Tasks](/warehouse/warehouse360/pick_tasks.md) -- Open transfer-order items (item_status != 'Fully Confirmed') as staging pick tasks, with source/destination locations, quantities, status, and process-order linkage (BETYP/BENUM).
 - [Plants](/warehouse/wm_operations/plants.md) -- Onboarded WM Operations plants — one row per plant_id and warehouse_id, derived from vw_consumption_wm_operations_worklist_summary (RLS inherited).
 - [Qm Characteristic Pareto](/warehouse/wm_operations/qm_characteristic_pareto.md) -- QM characteristic (MIC) Pareto for the Command Centre drill view.

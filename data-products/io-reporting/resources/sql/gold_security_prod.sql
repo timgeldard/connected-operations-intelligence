@@ -1131,6 +1131,22 @@ CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_wm_adherence_
   );
 GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_wm_adherence_root_cause_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_wm_pi_accuracy_secured AS
+  SELECT * FROM connected_plant_prod.gold_io_reporting.gold_wm_pi_accuracy
+  WHERE EXISTS (
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_wm_pi_accuracy_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_spc_quality_metric_subgroup_secured AS
   SELECT * FROM connected_plant_prod.gold_io_reporting.gold_spc_quality_metric_subgroup
   WHERE EXISTS (

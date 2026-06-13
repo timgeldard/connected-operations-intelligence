@@ -871,3 +871,31 @@ SELECT
   (actual_finish_date IS NULL AND scheduled_finish_date < CURRENT_DATE()) AS is_open_late
 FROM connected_plant_uat.gold_io_reporting.gold_wm_adherence_root_cause_secured
 WHERE plant_code IS NOT NULL;
+
+-- 40. PI Accuracy (Inventory Accuracy — plant × storage_location × ABC × month aggregate)
+-- Grain: 1 row per plant_id + storage_location_id + abc_indicator + currency + count_month.
+-- Source: gold_wm_pi_accuracy_secured (no date-relative columns — no _live view needed).
+-- "due" definition: all PI document lines with count_date in the month (honest — see gold table comment).
+-- storage_zone is intentionally null: ISEG carries only LGORT (not storage_type); best-effort
+-- grouping by storage_location_id is preserved. See gold_wm_pi_accuracy table comment.
+-- delta_value / total_adjustment_value is in local currency — do not aggregate across currencies.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_pi_accuracy AS
+SELECT
+  plant_code AS plant_id,
+  storage_location_code AS storage_location_id,
+  cycle_counting_indicator AS abc_indicator,
+  currency,
+  CAST(count_month AS DATE) AS count_month,
+  due_lines,
+  counted_lines,
+  matched_lines,
+  recount_required_lines,
+  lines_with_difference,
+  count_accuracy_pct,
+  coverage_pct,
+  recount_rate_pct,
+  total_adjustment_value,
+  abs_adjustment_value,
+  net_adjustment_qty
+FROM connected_plant_uat.gold_io_reporting.gold_wm_pi_accuracy_secured
+WHERE plant_code IS NOT NULL;
