@@ -5,7 +5,7 @@ description: "Supervisor staging/picking worklist at transfer-requirement (job) 
 resource: connected_plant_uat.gold_io_reporting.vw_consumption_wm_operations_worklist
 tags: [warehouse, draft]
 contract_id: wm_operations.worklist
-contract_version: "0.1.0"
+contract_version: "0.2.0"
 ---
 
 # Worklist
@@ -36,6 +36,8 @@ contract_version: "0.1.0"
 | `created_by_user` | string | no | TR creator (BNAME) |
 | `created_ts` | timestamp | no | TR creation timestamp |
 | `planned_execution_ts` | timestamp | no | Planned execution timestamp (PDATU/PZEIT) |
+| `demand_due_ts` | timestamp | no | Demand-wave due timestamp used for worklist urgency ranking. For order-linked TRs (BETYP='P') this is the linked process order scheduled start; otherwise it falls back to the TR planned execution timestamp. |
+| `priority_score` | integer | no | Query-time urgency score for default worklist ranking: overdue demand=100, due within 2h=80, within 8h=60, within 24h=40, later=20, no demand date=10, plus +10 for PARKED or NO_STOCK intervention statuses. |
 | `item_count` | long | no | TR item count |
 | `open_item_count` | long | no | Items still open (not ELIKZ, open qty > 0) |
 | `material_count` | long | no | Distinct materials on the TR |

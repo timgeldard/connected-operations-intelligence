@@ -211,6 +211,7 @@
 .kerry-wm .kw-chip--open        { color: var(--kw-valentia-slate); background: var(--kw-slate-10); border-color: var(--kw-slate-20); }
 .kerry-wm .kw-chip--in-progress { color: #1d6e74; background: color-mix(in srgb, var(--kw-sage) 14%, white); border-color: color-mix(in srgb, var(--kw-sage) 35%, white); }
 .kerry-wm .kw-chip--parked      { color: #8a6a00; background: color-mix(in srgb, var(--kw-sunrise) 16%, white); border-color: color-mix(in srgb, var(--kw-sunrise) 45%, white); }
+.kerry-wm .kw-chip--priority-yellow { color: #6f6400; background: color-mix(in srgb, var(--kw-sunrise) 10%, white); border-color: color-mix(in srgb, var(--kw-sunrise) 28%, white); }
 .kerry-wm .kw-chip--no-stock    { color: #b53700; background: color-mix(in srgb, var(--kw-sunset) 12%, white); border-color: color-mix(in srgb, var(--kw-sunset) 35%, white); }
 .kerry-wm .kw-chip--complete    { color: #1d7a55; background: color-mix(in srgb, var(--kw-jade) 14%, white); border-color: color-mix(in srgb, var(--kw-jade) 40%, white); }
 .kerry-wm .kw-chip--neutral     { color: var(--kw-forest-60); background: color-mix(in srgb, var(--kw-forest) 6%, white); border-color: var(--kw-stroke-soft); }
