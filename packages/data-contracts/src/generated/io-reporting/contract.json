@@ -2985,7 +2985,7 @@
       "domain": "warehouse",
       "owner": "warehouse-operations",
       "lifecycle": "draft",
-      "description": "Batch-level shelf-life risk with query-time expiry buckets. Candidate contract pending DEV profiling.\n",
+      "description": "Batch-level shelf-life value at risk with query-time expiry buckets and FEFO issue signals. Candidate contract pending DEV profiling.\n",
       "source_view": "vw_consumption_wm_operations_expiry_risk",
       "grain": "one row per plant_id, material_id and batch_id",
       "primary_key": [
@@ -3029,8 +3029,64 @@
           "required": false
         },
         {
-          "name": "minimum_expiry_date",
+          "name": "unrestricted_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "quality_inspection_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "blocked_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "restricted_use_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "in_transfer_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "blocked_returns_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "total_stock_qty",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "expiry_date",
           "type": "date",
+          "required": false
+        },
+        {
+          "name": "days_to_expiry",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "expiry_band",
+          "type": "string",
+          "required": true,
+          "description": "Query-time expiry bucket: EXPIRED, LT_30_DAYS, DAYS_30_90, DAYS_90_180, GT_180_DAYS, or NO_DATE"
+        },
+        {
+          "name": "manufacture_date",
+          "type": "date",
+          "required": false
+        },
+        {
+          "name": "vendor_batch_number",
+          "type": "string",
           "required": false
         },
         {
@@ -3044,28 +3100,33 @@
           "required": false
         },
         {
-          "name": "total_stock_qty",
+          "name": "standard_price",
           "type": "double",
           "required": false
         },
         {
-          "name": "minimum_days_to_expiry",
-          "type": "long",
-          "required": false
-        },
-        {
-          "name": "expired_qty",
+          "name": "price_unit",
           "type": "double",
           "required": false
         },
         {
-          "name": "highest_expiry_risk_bucket",
+          "name": "est_stock_value",
+          "type": "double",
+          "required": false
+        },
+        {
+          "name": "fefo_risk_flag",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "earlier_expiring_batch",
           "type": "string",
           "required": false
         },
         {
-          "name": "has_minimum_shelf_life_breach",
-          "type": "boolean",
+          "name": "latest_issue_date",
+          "type": "date",
           "required": false
         }
       ]

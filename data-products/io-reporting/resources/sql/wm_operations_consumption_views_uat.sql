@@ -281,10 +281,24 @@ WHERE plant_code IS NOT NULL;
 -- 11. Stock expiry risk (stock health)
 CREATE OR REPLACE VIEW vw_consumption_wm_operations_expiry_risk AS
 SELECT plant_code AS plant_id, material_code AS material_id, material_description AS material_name,
-  batch_number AS batch_id, base_uom AS uom, CAST(minimum_expiry_date AS DATE) AS minimum_expiry_date,
-  shelf_life_days, minimum_remaining_shelf_life_days, total_stock_qty,
-  minimum_days_to_expiry, expired_qty, highest_expiry_risk_bucket, has_minimum_shelf_life_breach
-FROM connected_plant_uat.gold_io_reporting.gold_stock_expiry_risk_live
+  batch_number AS batch_id, base_uom AS uom,
+  unrestricted_qty, quality_inspection_qty, blocked_qty, restricted_use_qty,
+  in_transfer_qty, blocked_returns_qty, total_stock_qty,
+  CAST(expiry_date AS DATE) AS expiry_date,
+  CASE WHEN expiry_date IS NULL THEN NULL ELSE datediff(expiry_date, current_date()) END AS days_to_expiry,
+  CASE
+    WHEN expiry_date IS NULL THEN 'NO_DATE'
+    WHEN datediff(expiry_date, current_date()) < 0 THEN 'EXPIRED'
+    WHEN datediff(expiry_date, current_date()) < 30 THEN 'LT_30_DAYS'
+    WHEN datediff(expiry_date, current_date()) < 90 THEN 'DAYS_30_90'
+    WHEN datediff(expiry_date, current_date()) < 180 THEN 'DAYS_90_180'
+    ELSE 'GT_180_DAYS'
+  END AS expiry_band,
+  CAST(manufacture_date AS DATE) AS manufacture_date, vendor_batch_number,
+  shelf_life_days, minimum_remaining_shelf_life_days,
+  standard_price, price_unit, est_stock_value,
+  fefo_risk_flag, earlier_expiring_batch, CAST(latest_issue_date AS DATE) AS latest_issue_date
+FROM connected_plant_uat.gold_io_reporting.gold_wm_expiry_risk_secured
 WHERE plant_code IS NOT NULL;
 
 -- 12. Stock holds (stock health)

@@ -1471,7 +1471,7 @@ export const WmOperationsHandlingUnitsContract = {
 } as const;
 
 /**
- * Batch-level shelf-life risk with query-time expiry buckets. Candidate contract pending DEV profiling.
+ * Batch-level shelf-life value at risk with query-time expiry buckets and FEFO issue signals. Candidate contract pending DEV profiling.
 
  * Source View: vw_consumption_wm_operations_expiry_risk
  * Version: 0.1.0
@@ -1482,14 +1482,27 @@ export interface WmOperationsExpiryRisk {
   material_name?: string;
   batch_id: string;
   uom?: string;
-  minimum_expiry_date?: string;
+  unrestricted_qty?: number;
+  quality_inspection_qty?: number;
+  blocked_qty?: number;
+  restricted_use_qty?: number;
+  in_transfer_qty?: number;
+  blocked_returns_qty?: number;
+  total_stock_qty?: number;
+  expiry_date?: string;
+  days_to_expiry?: number;
+  /** Query-time expiry bucket: EXPIRED, LT_30_DAYS, DAYS_30_90, DAYS_90_180, GT_180_DAYS, or NO_DATE */
+  expiry_band: string;
+  manufacture_date?: string;
+  vendor_batch_number?: string;
   shelf_life_days?: number;
   minimum_remaining_shelf_life_days?: number;
-  total_stock_qty?: number;
-  minimum_days_to_expiry?: number;
-  expired_qty?: number;
-  highest_expiry_risk_bucket?: string;
-  has_minimum_shelf_life_breach?: boolean;
+  standard_price?: number;
+  price_unit?: number;
+  est_stock_value?: number;
+  fefo_risk_flag?: boolean;
+  earlier_expiring_batch?: string;
+  latest_issue_date?: string;
 }
 
 export const WmOperationsExpiryRiskContract = {

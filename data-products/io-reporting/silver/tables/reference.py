@@ -113,7 +113,38 @@ def storage_location():
     )
 
 
-# ── 3. WORK CENTRE ────────────────────────────────────────────────────────────
+# ── 3. BATCH MASTER ───────────────────────────────────────────────────────────
+# MCH1 is client-level batch master data: material + batch, but no plant. Downstream stock-risk
+# tables join it to plant-scoped MCHB stock so the plant axis remains the batch_stock plant.
+if bronze_columns_exist("crossplantbatch_mch1", ["MANDT", "MATNR", "CHARG", "VFDAT", "HSDAT", "LICHA", "AEDATTM"]):
+
+    @dlt.table(
+        comment="Batch master — client-level MCH1 material/batch shelf-life attributes; no plant column in source.",
+        table_properties={"delta.enableChangeDataFeed": "true"},
+        cluster_by=["material_code", "batch_number"],
+    )
+    @dlt.expect_all_or_drop({
+        "material_code present": "material_code IS NOT NULL",
+        "batch_number present": "batch_number IS NOT NULL",
+    })
+    def batch_master():
+        spark = get_spark()
+        src = spark.read.table(f"{BRONZE}.crossplantbatch_mch1")
+        return src.select(
+            F.col("MANDT").alias("client"),
+            strip_zeros("MATNR").alias("material_code"),
+            F.col("MATNR").alias("material_code_raw"),
+            # CHARG is an exact SAP identifier — preserve as replicated.
+            F.col("CHARG").alias("batch_number"),
+            F.col("CHARG").alias("batch_number_raw"),
+            sap_date("VFDAT").alias("expiry_date"),
+            sap_date("HSDAT").alias("manufacture_date"),
+            F.col("LICHA").alias("vendor_batch_number"),
+            F.col("AEDATTM").alias("_replicated_at"),
+        )
+
+
+# ── 4. WORK CENTRE ────────────────────────────────────────────────────────────
 # CRHD/CRTX are NOT in connected_plant.sap — they live in the PUBLISHED (central_services) catalog
 # (published_uat.central_services.workcenterheader_crhd / workcentertext_crtx; located by Tim
 # Geldard 2026-06-11, verified live: 7,296 work centres, 43–70 per onboarded plant). Same source
@@ -1128,4 +1159,3 @@ def site_lifecycle():
             reviewed_by=None, notes="Bootstrap seed — replace with site_lifecycle_config (ADR 016)."),
     ]
     return spark.createDataFrame(data, schema)
-

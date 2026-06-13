@@ -143,6 +143,19 @@ Warehouse Gold flow KPIs use `silver.movement_type_classification` for event-fam
 * **Date-relative columns served live**: the MV is deterministic (absolute dates only) so it stays incrementally refreshable; the expiry **bucket/flag columns** (`minimum_days_to_expiry`, `expired_qty`, `expiry_risk_*`, `minimum_shelf_life_breach_qty`, `highest_expiry_risk_bucket`, `has_minimum_shelf_life_breach`) are computed at query time by the **`gold_stock_expiry_risk_live`** serving view (`scripts/generate_gold_serving_views_sql.py`). Consumers needing risk buckets read the `_live` view.
 * **Freshness Expectation**: Batch triggered.
 
+### 9a. `gold.gold_wm_expiry_risk`
+* **Status**: Draft / WM Operations candidate
+* **Grain**: 1 row per plant × material × batch × base UOM
+* **Source Silver Tables**: `silver.batch_stock`, `silver.batch_master`, `silver.material`, `silver.material_valuation`, `silver.goods_movement`
+* **Aggregation Logic**:
+  * Aggregates MCHB batch stock quantities by stock category and filters zero-on-hand batches.
+  * Enriches with client-level MCH1 expiry/manufacture/vendor-batch attributes; MCH1 has no plant, so plant remains the MCHB `plant_code` axis.
+  * Estimates stock value as `total_stock_qty × standard_price / price_unit`; missing price or zero price unit yields NULL.
+  * Flags FEFO v1 where a later-expiring stocked batch has 261/601 issue evidence while an earlier-expiring batch for the same plant/material remains on hand.
+* **Date-relative columns served live**: `days_to_expiry` and `expiry_band` are computed in `vw_consumption_wm_operations_expiry_risk`, not in the gold table.
+* **Consumption Contract**: `wm_operations.expiry_risk` via `vw_consumption_wm_operations_expiry_risk`.
+* **Freshness Expectation**: Batch triggered.
+
 ### 10. `gold.gold_data_freshness_status`
 * **Status**: Production
 * **Grain**: 1 row per monitored Silver dependency

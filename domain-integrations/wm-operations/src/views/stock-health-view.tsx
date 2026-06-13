@@ -4,9 +4,9 @@ import { EmptyNote, KpiTile, LoadingRows, ViewHeader, formatDate, formatQty } fr
 
 interface ExpiryLine {
   plantId: string; materialId: string; materialName: string | null; batchId: string
-  uom: string | null; minimumExpiryDate: string | null; minimumDaysToExpiry: number | null
+  uom: string | null; expiryDate: string | null; daysToExpiry: number | null
   totalStockQty: number | null; expiredQty: number | null
-  highestExpiryRiskBucket: string | null; hasMinimumShelfLifeBreach: boolean | null
+  expiryBand: string | null; fefoRiskFlag: boolean | null
 }
 interface HoldLine {
   plantId: string; warehouseId: string; storageType: string | null; binId: string | null
@@ -25,8 +25,9 @@ interface ExceptionLine {
 }
 
 const BUCKET_CHIP: Record<string, string> = {
-  EXPIRED: 'kw-chip--no-stock', LT_7_DAYS: 'kw-chip--no-stock',
-  DAYS_7_30: 'kw-chip--parked', DAYS_30_90: 'kw-chip--open', OK: 'kw-chip--complete',
+  EXPIRED: 'kw-chip--no-stock', LT_30_DAYS: 'kw-chip--no-stock',
+  DAYS_30_90: 'kw-chip--parked', DAYS_90_180: 'kw-chip--open',
+  GT_180_DAYS: 'kw-chip--complete', NO_DATE: 'kw-chip--neutral',
 }
 
 /** Screen: shelf-life risk, QI/blocked holds, and aged exceptions in one workbench. */
@@ -45,8 +46,8 @@ export function StockHealthView({ request }: { readonly request: WmOperationsAda
   const exceptionsError = exceptions.data && !exceptions.data.ok ? exceptions.data.error : null
   const qmByKey = new Map(qmRows.map(l => [`${l.materialId}|${l.batchId ?? ''}`, l]))
 
-  const expired = expiryRows.filter(r => r.highestExpiryRiskBucket === 'EXPIRED').length
-  const next7 = expiryRows.filter(r => r.highestExpiryRiskBucket === 'LT_7_DAYS').length
+  const expired = expiryRows.filter(r => r.expiryBand === 'EXPIRED').length
+  const next30 = expiryRows.filter(r => r.expiryBand === 'LT_30_DAYS').length
 
   return (
     <section>
@@ -57,7 +58,7 @@ export function StockHealthView({ request }: { readonly request: WmOperationsAda
       />
       <div className="kw-kpi-row">
         <KpiTile label="Expired batches" value={expired} tone={expired > 0 ? 'alert' : 'none'} />
-        <KpiTile label="Expiring ≤7d" value={next7} tone={next7 > 0 ? 'warn' : 'none'} />
+        <KpiTile label="Expiring <30d" value={next30} tone={next30 > 0 ? 'warn' : 'none'} />
         <KpiTile label="Held quants" value={holdRows.length} tone={holdRows.length > 0 ? 'warn' : 'none'} />
         <KpiTile label="Aged exceptions" value={exceptionRows.length} tone={exceptionRows.length > 0 ? 'alert' : 'none'} />
       </div>
@@ -68,17 +69,17 @@ export function StockHealthView({ request }: { readonly request: WmOperationsAda
           : expiry.isLoading ? <LoadingRows rows={5} /> : expiryRows.length === 0 ? <EmptyNote>No batches with expiry data.</EmptyNote> : (
           <div className="kw-table-wrap">
             <table className="kw-table">
-              <thead><tr><th>Bucket</th><th>Material</th><th>Batch</th><th>Stock</th><th>Expiry</th><th>Days</th><th>MSL breach</th></tr></thead>
+              <thead><tr><th>Bucket</th><th>Material</th><th>Batch</th><th>Stock</th><th>Expiry</th><th>Days</th><th>FEFO</th></tr></thead>
               <tbody>
                 {expiryRows.slice(0, 40).map(r => (
                   <tr key={`${r.materialId}-${r.batchId}`}>
-                    <td><span className={`kw-chip ${BUCKET_CHIP[r.highestExpiryRiskBucket ?? ''] ?? 'kw-chip--neutral'}`}>{r.highestExpiryRiskBucket ?? '—'}</span></td>
+                    <td><span className={`kw-chip ${BUCKET_CHIP[r.expiryBand ?? ''] ?? 'kw-chip--neutral'}`}>{r.expiryBand ?? '—'}</span></td>
                     <td title={r.materialId}>{r.materialName ?? r.materialId}</td>
                     <td className="kw-mono">{r.batchId}</td>
                     <td className="kw-num">{formatQty(r.totalStockQty, r.uom)}</td>
-                    <td className="kw-num">{formatDate(r.minimumExpiryDate)}</td>
-                    <td className="kw-num">{r.minimumDaysToExpiry ?? '—'}</td>
-                    <td>{r.hasMinimumShelfLifeBreach ? <span className="kw-chip kw-chip--no-stock">MSL</span> : '—'}</td>
+                    <td className="kw-num">{formatDate(r.expiryDate)}</td>
+                    <td className="kw-num">{r.daysToExpiry ?? '—'}</td>
+                    <td>{r.fefoRiskFlag ? <span className="kw-chip kw-chip--no-stock">FEFO</span> : '—'}</td>
                   </tr>
                 ))}
               </tbody>

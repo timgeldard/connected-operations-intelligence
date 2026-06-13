@@ -1291,6 +1291,65 @@ class TestOrderYieldRoute:
 
 
 # ---------------------------------------------------------------------------
+# Expiry Risk (SIMPLE_DATASETS declarative route)
+# ---------------------------------------------------------------------------
+
+class TestExpiryRiskRoute:
+    async def test_returns_mapped_expiry_risk_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "material_id": "RM1",
+            "material_name": "Raw Material One",
+            "batch_id": "B0001",
+            "uom": "KG",
+            "unrestricted_qty": 10.0,
+            "quality_inspection_qty": 2.0,
+            "blocked_qty": 1.0,
+            "restricted_use_qty": 0.0,
+            "in_transfer_qty": 0.0,
+            "blocked_returns_qty": 0.0,
+            "total_stock_qty": 13.0,
+            "expiry_date": "2026-07-01",
+            "days_to_expiry": 18,
+            "expiry_band": "LT_30_DAYS",
+            "manufacture_date": "2026-01-01",
+            "vendor_batch_number": "SUP-B1",
+            "shelf_life_days": 180,
+            "minimum_remaining_shelf_life_days": 30,
+            "standard_price": 2.5,
+            "price_unit": 1.0,
+            "est_stock_value": 32.5,
+            "fefo_risk_flag": True,
+            "earlier_expiring_batch": "B0000",
+            "latest_issue_date": "2026-06-10",
+        }
+
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]) as mock_exec:
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/expiry-risk",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 200
+        row = response.json()[0]
+        assert row["plantId"] == "C061"
+        assert row["materialId"] == "RM1"
+        assert row["expiryDate"] == "2026-07-01"
+        assert row["daysToExpiry"] == 18
+        assert row["expiryBand"] == "LT_30_DAYS"
+        assert row["estStockValue"] == 32.5
+        assert row["fefoRiskFlag"] is True
+        assert row["earlierExpiringBatch"] == "B0000"
+        assert response.headers.get("x-contract-id") == "wm_operations.expiry_risk"
+
+        executed_sql = mock_exec.call_args.kwargs.get("sql") or mock_exec.call_args.args[0]
+        assert "plant_id = :plant_id" in executed_sql
+        assert "days_to_expiry ASC NULLS LAST" in executed_sql
+
+
+# ---------------------------------------------------------------------------
 # Recipe Benchmark (SIMPLE_DATASETS declarative route)
 # ---------------------------------------------------------------------------
 

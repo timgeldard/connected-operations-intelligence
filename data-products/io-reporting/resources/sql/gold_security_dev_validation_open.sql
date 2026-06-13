@@ -216,6 +216,10 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_slow_movers
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_slow_movers;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_slow_movers_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_expiry_risk_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_expiry_risk;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_expiry_risk_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_staging_pace_hourly_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_staging_pace_hourly;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_staging_pace_hourly_secured TO `users`;

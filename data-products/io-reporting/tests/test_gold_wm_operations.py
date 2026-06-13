@@ -37,9 +37,12 @@ def setup_silver(spark: SparkSession):
     ], "storage_type_role_mapping")
 
     _save(spark, [
-        Row(plant_code="C061", material_code="FG1", material_description="Finished Good One"),
-        Row(plant_code="C061", material_code="RM1", material_description="Raw Material One"),
-        Row(plant_code="C061", material_code="RM2", material_description="Raw Material Two"),
+        Row(plant_code="C061", material_code="FG1", material_description="Finished Good One",
+            shelf_life_days=None, minimum_remaining_shelf_life_days=None),
+        Row(plant_code="C061", material_code="RM1", material_description="Raw Material One",
+            shelf_life_days=180, minimum_remaining_shelf_life_days=30),
+        Row(plant_code="C061", material_code="RM2", material_description="Raw Material Two",
+            shelf_life_days=None, minimum_remaining_shelf_life_days=None),
     ], "material")
 
     _save(spark, [
@@ -593,3 +596,84 @@ def test_bin_stock_detail_zones_and_categories(spark):
     assert interim["storage_zone"] == "INTERIM"
     assert interim["stock_category"] == "UNRESTRICTED"
     assert interim["is_bin_blocked"] is True
+
+
+# ── Expiry risk ───────────────────────────────────────────────────────────────
+
+def _seed_expiry_inputs(spark, include_batch_master=True):
+    _save(spark, [
+        Row(client="100", plant_code="C061", material_code="RM1", batch_number="B1", base_uom="KG",
+            unrestricted_quantity=10.0, quality_inspection_quantity=2.0, blocked_quantity=0.0,
+            restricted_use_quantity=0.0, in_transfer_quantity=0.0, blocked_returns_quantity=0.0),
+        Row(client="100", plant_code="C061", material_code="RM1", batch_number="B0", base_uom="KG",
+            unrestricted_quantity=5.0, quality_inspection_quantity=0.0, blocked_quantity=0.0,
+            restricted_use_quantity=0.0, in_transfer_quantity=0.0, blocked_returns_quantity=0.0),
+        Row(client="100", plant_code="C061", material_code="RM2", batch_number="NOEXP", base_uom="KG",
+            unrestricted_quantity=4.0, quality_inspection_quantity=0.0, blocked_quantity=0.0,
+            restricted_use_quantity=0.0, in_transfer_quantity=0.0, blocked_returns_quantity=0.0),
+        Row(client="100", plant_code="C061", material_code="RM1", batch_number="EMPTY", base_uom="KG",
+            unrestricted_quantity=0.0, quality_inspection_quantity=0.0, blocked_quantity=0.0,
+            restricted_use_quantity=0.0, in_transfer_quantity=0.0, blocked_returns_quantity=0.0),
+    ], "batch_stock")
+    _save(spark, [
+        Row(valuation_area="C061", material_code="RM1", standard_price=2.0, price_unit=1.0),
+        Row(valuation_area="C061", material_code="RM2", standard_price=None, price_unit=1.0),
+    ], "material_valuation")
+    _save(spark, [
+        Row(plant_code="C061", material_code="RM1", batch_number="B1",
+            movement_type_code="261", posting_date=datetime.date(2026, 6, 10)),
+        Row(plant_code="C061", material_code="RM1", batch_number="B0",
+            movement_type_code="101", posting_date=datetime.date(2026, 5, 1)),
+    ], "goods_movement")
+    if include_batch_master:
+        _save(spark, [
+            Row(client="100", material_code="RM1", batch_number="B0",
+                expiry_date=datetime.date(2026, 6, 20), manufacture_date=datetime.date(2026, 1, 1),
+                vendor_batch_number="SUP-B0"),
+            Row(client="100", material_code="RM1", batch_number="B1",
+                expiry_date=datetime.date(2026, 7, 20), manufacture_date=datetime.date(2026, 1, 10),
+                vendor_batch_number="SUP-B1"),
+            Row(client="100", material_code="RM2", batch_number="NOEXP",
+                expiry_date=None, manufacture_date=None, vendor_batch_number=None),
+        ], "batch_master")
+
+
+def test_expiry_risk_enriches_value_and_fefo_signal(spark, monkeypatch):
+    import gold.wm_operations_gold as wm_gold
+
+    _seed_expiry_inputs(spark, include_batch_master=True)
+    monkeypatch.setattr(wm_gold, "table_exists", lambda spark, table_name: table_name.endswith(".batch_master"))
+
+    rows = {
+        (r["material_code"], r["batch_number"]): r
+        for r in all_rows(wm_gold.gold_wm_expiry_risk())
+    }
+
+    assert ("RM1", "EMPTY") not in rows
+    later = rows[("RM1", "B1")]
+    assert later["total_stock_qty"] == pytest.approx(12.0)
+    assert later["est_stock_value"] == pytest.approx(24.0)
+    assert later["expiry_date"] == datetime.date(2026, 7, 20)
+    assert later["vendor_batch_number"] == "SUP-B1"
+    assert later["fefo_risk_flag"] is True
+    assert later["earlier_expiring_batch"] == "B0"
+    assert later["latest_issue_date"] == datetime.date(2026, 6, 10)
+
+    no_expiry = rows[("RM2", "NOEXP")]
+    assert no_expiry["expiry_date"] is None
+    assert no_expiry["est_stock_value"] is None
+    assert no_expiry["fefo_risk_flag"] is False
+
+
+def test_expiry_risk_degrades_when_batch_master_absent(spark, monkeypatch):
+    import gold.wm_operations_gold as wm_gold
+
+    _seed_expiry_inputs(spark, include_batch_master=False)
+    monkeypatch.setattr(wm_gold, "table_exists", lambda spark, table_name: False)
+
+    rows = all_rows(wm_gold.gold_wm_expiry_risk())
+    assert rows
+    assert all(r["expiry_date"] is None for r in rows)
+    assert all(r["manufacture_date"] is None for r in rows)
+    assert all(r["vendor_batch_number"] is None for r in rows)
+    assert all(r["fefo_risk_flag"] is False for r in rows)
