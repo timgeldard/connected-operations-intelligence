@@ -1911,7 +1911,7 @@
     },
     {
       "id": "wm_operations.order_readiness",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "domain": "warehouse",
       "owner": "warehouse-operations",
       "lifecycle": "draft",
@@ -2069,6 +2069,36 @@
           "type": "string",
           "required": false,
           "description": "red | amber | green | grey (query-time traffic light)"
+        },
+        {
+          "name": "qty_unrestricted",
+          "type": "double",
+          "required": false,
+          "description": "Sum of unrestricted batch_stock across order component materials"
+        },
+        {
+          "name": "quality_hold_qty",
+          "type": "double",
+          "required": false,
+          "description": "Sum of quality-inspection + blocked stock across component materials"
+        },
+        {
+          "name": "open_lot_count",
+          "type": "long",
+          "required": false,
+          "description": "Open QM lots (no usage decision) across component materials"
+        },
+        {
+          "name": "quality_release_status",
+          "type": "string",
+          "required": false,
+          "description": "RELEASED | PARTIAL_HOLD | QUALITY_BLOCKED | NO_QM_DATA"
+        },
+        {
+          "name": "readiness_reason",
+          "type": "string",
+          "required": false,
+          "description": "QUALITY_HOLD | QUALITY_PARTIAL_HOLD | QM_SOURCE_ABSENT when applicable"
         },
         {
           "name": "production_line",

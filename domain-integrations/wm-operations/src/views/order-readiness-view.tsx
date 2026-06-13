@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { WmOperationsAdapterRequest } from '../adapters/wm-operations-adapter.js'
+import type { WmOperationsAdapterRequest, WmOrderReadinessItem } from '../adapters/wm-operations-adapter.js'
 import { OrderDetailOverlay } from '../components/overlays.js'
 import { setWorklistDeepLink } from '../state/deep-link.js'
 import { useWmOrderReadiness } from '../adapters/wm-operations-queries.js'
@@ -39,6 +39,28 @@ const READINESS_LABEL: Record<string, string> = {
   NO_WM_DEMAND: 'No WM demand',
 }
 
+const QUALITY_LABEL: Record<string, string> = {
+  RELEASED: 'Released',
+  PARTIAL_HOLD: 'Partial hold',
+  QUALITY_BLOCKED: 'QM blocked',
+  NO_QM_DATA: 'No QM data',
+}
+
+function qualityChipClass(status: string | null | undefined): string {
+  if (status === 'RELEASED') return 'kw-chip--complete'
+  if (status === 'PARTIAL_HOLD') return 'kw-chip--parked'
+  if (status === 'QUALITY_BLOCKED') return 'kw-chip--alert'
+  return 'kw-chip--neutral'
+}
+
+function effectiveBand(
+  band: WmOrderReadinessItem['readinessBand'],
+  qualityStatus: WmOrderReadinessItem['qualityReleaseStatus'],
+): WmOrderReadinessItem['readinessBand'] {
+  if (band === 'green' && qualityStatus === 'QUALITY_BLOCKED') return 'amber'
+  return band
+}
+
 const HORIZONS = [
   { value: '', label: 'All scheduled dates' },
   { value: '7', label: 'Next 7 days' },
@@ -66,9 +88,9 @@ export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrd
   const effectiveLineFilter = lineFilter && distinctLines.includes(lineFilter) ? lineFilter : ''
   const orders = effectiveLineFilter ? allOrders.filter(o => o.productionLine === effectiveLineFilter) : allOrders
 
-  const atRisk = orders.filter(o => o.readinessBand === 'red').length
-  const watch = orders.filter(o => o.readinessBand === 'amber').length
-  const ready = orders.filter(o => o.readinessBand === 'green').length
+  const atRisk = orders.filter(o => effectiveBand(o.readinessBand, o.qualityReleaseStatus) === 'red').length
+  const watch = orders.filter(o => effectiveBand(o.readinessBand, o.qualityReleaseStatus) === 'amber').length
+  const ready = orders.filter(o => effectiveBand(o.readinessBand, o.qualityReleaseStatus) === 'green').length
 
   return (
     <section>
@@ -131,13 +153,14 @@ export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrd
                   <th>WM components</th>
                   <th>TR coverage</th>
                   <th>Line supply</th>
+                  <th>Quality</th>
                   <th>Readiness</th>
                 </tr>
               </thead>
               <tbody>
                 {orders.map(order => (
                   <tr key={`${order.plantId}-${order.orderId}`}>
-                    <td><BandDot band={order.readinessBand} /></td>
+                    <td><BandDot band={effectiveBand(order.readinessBand, order.qualityReleaseStatus)} /></td>
                     <td className="kw-mono">
                       <button type="button" className="kw-link" onClick={() => setDrillOrder({ plantId: order.plantId, orderId: order.orderId, label: order.materialName ?? undefined })}>{order.orderId}</button>
                     </td>
@@ -164,6 +187,29 @@ export function OrderReadinessView({ request, onNavigateToView, onOpenProcessOrd
                       <span className={`kw-chip ${order.supplyStatus === 'SUPPLIED' ? 'kw-chip--complete' : order.supplyStatus === 'PARTIAL' ? 'kw-chip--parked' : 'kw-chip--neutral'}`}>
                         {SUPPLY_LABEL[order.supplyStatus] ?? order.supplyStatus}
                       </span>
+                    </td>
+                    <td
+                      title={
+                        order.qualityReleaseStatus === 'QUALITY_BLOCKED' || order.qualityReleaseStatus === 'PARTIAL_HOLD'
+                          ? `Held ${formatQty(order.qualityHoldQty, order.uom)} vs required ${formatQty(order.wmComponentRequiredQty, order.uom)} · ${order.openLotCount ?? 0} open lots`
+                          : undefined
+                      }
+                    >
+                      <span className={`kw-chip ${qualityChipClass(order.qualityReleaseStatus)}`}>
+                        {QUALITY_LABEL[order.qualityReleaseStatus ?? ''] ?? order.qualityReleaseStatus ?? '—'}
+                      </span>
+                      {onNavigateToView && order.qualityReleaseStatus && order.qualityReleaseStatus !== 'NO_QM_DATA' && (
+                        <>
+                          {' '}
+                          <button
+                            type="button"
+                            className="kw-link"
+                            onClick={() => onNavigateToView('qm-command-centre')}
+                          >
+                            QM
+                          </button>
+                        </>
+                      )}
                     </td>
                     <td>{READINESS_LABEL[order.readinessStatus] ?? order.readinessStatus}</td>
                   </tr>

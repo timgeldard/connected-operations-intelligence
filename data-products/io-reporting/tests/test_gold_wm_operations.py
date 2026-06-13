@@ -333,6 +333,160 @@ def test_order_readiness_tr_coverage_and_psa_supply(spark):
     assert partial["tr_coverage_status"] == "PARTIAL"
     assert partial["supply_status"] == "NOT_SUPPLIED"
     assert partial["readiness_status"] == "PARTIALLY_PLANNED"
+    # Quality dimension additive — no batch_stock in fixture ⇒ NO_QM_DATA, core columns unchanged
+    assert full["quality_release_status"] == "NO_QM_DATA"
+    assert partial["quality_release_status"] == "NO_QM_DATA"
+
+
+def test_order_readiness_quality_release_statuses(spark, monkeypatch):
+    import dlt
+
+    from gold import wm_operations_gold
+    from gold.wm_operations_gold import gold_wm_order_readiness
+
+    real_exists = wm_operations_gold.table_exists
+
+    def _exists(spark_, fq):
+        if fq.endswith(".quality_inspection_lot"):
+            return True
+        return real_exists(spark_, fq)
+
+    monkeypatch.setattr(wm_operations_gold, "table_exists", _exists)
+    dlt.read.side_effect = lambda name: spark.read.table(f"silver.{name}")
+
+    _save(spark, [
+        Row(order_number="910001", plant_code="C061", material_code="FG1",
+            order_quantity=100.0, order_quantity_uom="KG",
+            scheduled_start_date=datetime.date(2026, 6, 10),
+            scheduled_finish_date=datetime.date(2026, 6, 11),
+            is_released=True, is_closed=False,
+            actual_release_date=None, actual_finish_date=None,
+            production_line="LINE_A", production_line_description=None),
+    ], "process_order")
+
+    _save(spark, [
+        Row(order_number="910001", plant_code="C061", warehouse_number="104",
+            material_code="RM1", production_supply_area="PSA1", movement_type_code="261",
+            required_quantity=100.0, open_quantity=100.0,
+            requirement_date=datetime.date(2026, 6, 10), is_deletion_flagged=False),
+    ], "reservation_requirement")
+
+    _save(spark, [], "gold_wm_qm_lot_status")
+
+    # Released: sufficient unrestricted, no holds
+    _save(spark, [
+        Row(plant_code="C061", material_code="RM1", unrestricted_quantity=200.0,
+            quality_inspection_quantity=0.0, blocked_quantity=0.0, base_uom="KG"),
+    ], "batch_stock")
+    released = all_rows(gold_wm_order_readiness())[0]
+    assert released["quality_release_status"] == "RELEASED"
+
+    # Partial hold: held stock exists but unrestricted still covers requirement
+    _save(spark, [
+        Row(plant_code="C061", material_code="RM1", unrestricted_quantity=150.0,
+            quality_inspection_quantity=30.0, blocked_quantity=0.0, base_uom="KG"),
+    ], "batch_stock")
+    assert all_rows(gold_wm_order_readiness())[0]["quality_release_status"] == "PARTIAL_HOLD"
+
+    # Quality blocked: held stock present AND unrestricted below component requirement
+    _save(spark, [
+        Row(plant_code="C061", material_code="RM1", unrestricted_quantity=50.0,
+            quality_inspection_quantity=20.0, blocked_quantity=0.0, base_uom="KG"),
+    ], "batch_stock")
+    blocked = all_rows(gold_wm_order_readiness())[0]
+    assert blocked["quality_release_status"] == "QUALITY_BLOCKED"
+    assert blocked["quality_hold_qty"] == 20.0
+
+    # Plain stock shortfall without QM hold must NOT surface as QUALITY_BLOCKED
+    _save(spark, [
+        Row(plant_code="C061", material_code="RM1", unrestricted_quantity=50.0,
+            quality_inspection_quantity=0.0, blocked_quantity=0.0, base_uom="KG"),
+    ], "batch_stock")
+    assert all_rows(gold_wm_order_readiness())[0]["quality_release_status"] == "RELEASED"
+
+    dlt.read.side_effect = None
+
+
+def test_order_readiness_no_qm_data_with_stock(spark, monkeypatch):
+    """batch_stock present but QM silver absent (dev) → NO_QM_DATA, not RELEASED."""
+    from gold import wm_operations_gold
+    from gold.wm_operations_gold import gold_wm_order_readiness
+
+    real_exists = wm_operations_gold.table_exists
+
+    def _exists(spark_, fq):
+        if fq.endswith(".quality_inspection_lot"):
+            return False
+        return real_exists(spark_, fq)
+
+    monkeypatch.setattr(wm_operations_gold, "table_exists", _exists)
+
+    _save(spark, [
+        Row(order_number="910002", plant_code="C061", material_code="FG1",
+            order_quantity=100.0, order_quantity_uom="KG",
+            scheduled_start_date=datetime.date(2026, 6, 10),
+            scheduled_finish_date=datetime.date(2026, 6, 11),
+            is_released=True, is_closed=False,
+            actual_release_date=None, actual_finish_date=None,
+            production_line="LINE_A", production_line_description=None),
+    ], "process_order")
+
+    _save(spark, [
+        Row(order_number="910002", plant_code="C061", warehouse_number="104",
+            material_code="RM1", production_supply_area="PSA1", movement_type_code="261",
+            required_quantity=100.0, open_quantity=100.0,
+            requirement_date=datetime.date(2026, 6, 10), is_deletion_flagged=False),
+    ], "reservation_requirement")
+
+    _save(spark, [
+        Row(plant_code="C061", material_code="RM1", unrestricted_quantity=200.0,
+            quality_inspection_quantity=0.0, blocked_quantity=0.0, base_uom="KG"),
+    ], "batch_stock")
+
+    row = all_rows(gold_wm_order_readiness())[0]
+    assert row["quality_release_status"] == "NO_QM_DATA"
+
+
+def test_order_readiness_no_qm_data_ud_absent_with_stock(spark, monkeypatch):
+    """batch_stock present, quality_inspection_lot present, but usage_decision absent
+    → NO_QM_DATA (gold_wm_qm_lot_status requires both QM sources; partial presence must
+    not reference an undefined dataset or silently fall back to RELEASED)."""
+    from gold import wm_operations_gold
+    from gold.wm_operations_gold import gold_wm_order_readiness
+
+    real_exists = wm_operations_gold.table_exists
+
+    def _exists(spark_, fq):
+        if fq.endswith(".quality_inspection_usage_decision"):
+            return False
+        return real_exists(spark_, fq)
+
+    monkeypatch.setattr(wm_operations_gold, "table_exists", _exists)
+
+    _save(spark, [
+        Row(order_number="910003", plant_code="C061", material_code="FG1",
+            order_quantity=100.0, order_quantity_uom="KG",
+            scheduled_start_date=datetime.date(2026, 6, 10),
+            scheduled_finish_date=datetime.date(2026, 6, 11),
+            is_released=True, is_closed=False,
+            actual_release_date=None, actual_finish_date=None,
+            production_line="LINE_A", production_line_description=None),
+    ], "process_order")
+
+    _save(spark, [
+        Row(order_number="910003", plant_code="C061", warehouse_number="104",
+            material_code="RM1", production_supply_area="PSA1", movement_type_code="261",
+            required_quantity=100.0, open_quantity=100.0,
+            requirement_date=datetime.date(2026, 6, 10), is_deletion_flagged=False),
+    ], "reservation_requirement")
+
+    _save(spark, [
+        Row(plant_code="C061", material_code="RM1", unrestricted_quantity=200.0,
+            quality_inspection_quantity=0.0, blocked_quantity=0.0, base_uom="KG"),
+    ], "batch_stock")
+
+    row = all_rows(gold_wm_order_readiness())[0]
+    assert row["quality_release_status"] == "NO_QM_DATA"
 
 
 # ── Recipe run benchmark ─────────────────────────────────────────────────────
