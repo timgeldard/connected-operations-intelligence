@@ -69,6 +69,24 @@ def _const_str(node: ast.expr | None) -> str | None:
     return None
 
 
+def _extract_dict_kv(node: ast.expr) -> "dict[str, ast.expr]":
+    """Return key->value-node for dict(...) call (keywords) and ast.Dict literals.
+
+    Supports the two ways a SIMPLE_DATASETS entry value can be written:
+      - dict(endpoint="/api/...", columns="...", ...)   -> ast.Call with keywords
+      - {"endpoint": "/api/...", "columns": "...", ...} -> ast.Dict
+    Returns an empty dict for any other node type.
+    """
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict":
+        return {kw.arg: kw.value for kw in node.keywords if kw.arg}
+    if isinstance(node, ast.Dict):
+        result: dict[str, ast.expr] = {}
+        for k, v in zip(node.keys, node.values):
+            if isinstance(k, ast.Constant) and isinstance(k.value, str) and v is not None:
+                result[k.value] = v
+        return result
+    return {}
+
 # ── Model extraction ────────────────────────────────────────────────────────
 
 class ModelInfo:
@@ -100,8 +118,10 @@ def _extract_models(tree: ast.Module) -> dict[str, ModelInfo]:
         info = ModelInfo(node.name)
 
         for stmt in node.body:
-            # ── extra='forbid' detection ─────────────────────────────────────
-            # model_config = ConfigDict(extra='forbid')
+            # -- extra=forbid detection -----------------------------------------
+            # Handles both:
+            #   model_config = ConfigDict(extra=forbid)              (ast.Assign)
+            #   model_config: ConfigDict = ConfigDict(extra=forbid)  (ast.AnnAssign)
             if isinstance(stmt, ast.Assign):
                 for t in stmt.targets:
                     if isinstance(t, ast.Name) and t.id == "model_config":
@@ -110,6 +130,14 @@ def _extract_models(tree: ast.Module) -> dict[str, ModelInfo]:
                             for kw in val.keywords:
                                 if kw.arg == "extra" and _const_str(kw.value) == "forbid":
                                     info.extra_forbid = True
+
+            if isinstance(stmt, ast.AnnAssign):
+                if isinstance(stmt.target, ast.Name) and stmt.target.id == "model_config":
+                    val = stmt.value
+                    if isinstance(val, ast.Call):
+                        for kw in val.keywords:
+                            if kw.arg == "extra" and _const_str(kw.value) == "forbid":
+                                info.extra_forbid = True
 
             # class Config: extra = 'forbid'
             if isinstance(stmt, ast.ClassDef) and stmt.name == "Config":
@@ -219,9 +247,11 @@ def _extract_simple_datasets(tree: ast.Module) -> dict[str, list[str]]:
         return datasets
     for k_node, v_node in zip(d.keys, d.values):
         dataset_name = _const_str(k_node)
-        if not dataset_name or not isinstance(v_node, ast.Call):
+        if not dataset_name or v_node is None:
             continue
-        kws = {kw.arg: kw.value for kw in v_node.keywords if kw.arg}
+        kws = _extract_dict_kv(v_node)
+        if not kws:
+            continue
         col_str = _const_str(kws.get("columns"))
         if col_str is None:
             continue
@@ -237,9 +267,11 @@ def _extract_endpoint_to_dataset(tree: ast.Module) -> dict[str, str]:
         return mapping
     for k_node, v_node in zip(d.keys, d.values):
         dataset_name = _const_str(k_node)
-        if not dataset_name or not isinstance(v_node, ast.Call):
+        if not dataset_name or v_node is None:
             continue
-        kws = {kw.arg: kw.value for kw in v_node.keywords if kw.arg}
+        kws = _extract_dict_kv(v_node)
+        if not kws:
+            continue
         ep = _const_str(kws.get("endpoint"))
         if ep:
             mapping[ep.removeprefix("/api")] = dataset_name
@@ -267,14 +299,16 @@ def _extract_explicit_route_mappers(tree: ast.Module) -> dict[str, str]:
                 path = _const_str(path_arg) if path_arg else None
         if not path:
             continue
-        for stmt in ast.walk(node):
-            if not isinstance(stmt, ast.Return):
+        # Walk the entire function body for any Call to a map_*_rows function.
+        # This covers both direct return and assign-then-return patterns.
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Call):
                 continue
-            val = stmt.value
-            if isinstance(val, ast.Call) and isinstance(val.func, ast.Name):
-                if val.func.id.startswith("map_") and val.func.id.endswith("_rows"):
-                    mapping[path] = val.func.id
-                    break
+            if not isinstance(child.func, ast.Name):
+                continue
+            if child.func.id.startswith("map_") and child.func.id.endswith("_rows"):
+                mapping[path] = child.func.id
+                break
     return mapping
 
 
@@ -384,6 +418,20 @@ def run() -> None:
             checked.append(
                 f"  OK    route '{route_path}' {mapper_name} -> {model_name} "
                 f"({len(mapper_keys)} keys)"
+            )
+
+    # ── Uncovered routes safety net ──────────────────────────────────────────
+    # Any route decorated with response_model= that is not covered by either
+    # route_mappers or endpoint_to_dataset (via SIMPLE_DATASETS) cannot be
+    # verified -- warn so it does not silently bypass the guard.
+    covered_paths: set[str] = set(route_mappers) | set(endpoint_to_dataset)
+    for route_path, model_name in sorted(route_response_models.items()):
+        if route_path not in covered_paths:
+            print(
+                f"WARNING: route '{route_path}' has response_model={model_name} but no "
+                f"recognised mapper was found -- guard cannot verify adapter output; "
+                f"add an explicit map_*_rows function or SIMPLE_DATASETS entry.",
+                file=sys.stderr,
             )
 
     # ── Summary ───────────────────────────────────────────────────────────

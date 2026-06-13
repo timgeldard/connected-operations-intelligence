@@ -15,6 +15,8 @@ import textwrap
 from check_route_response_models import (  # Import functions under test (no app import, AST-only)
     _camel,
     _check_keys,
+    _extract_dict_kv,
+    _extract_explicit_route_mappers,
     _extract_mapper_functions,
     _extract_models,
     _extract_route_response_models,
@@ -310,3 +312,152 @@ def test_simple_datasets_extraction():
     datasets = _extract_simple_datasets(tree)
     assert "myds" in datasets
     assert datasets["myds"] == ["plant_id", "some_count", "flag_val"]
+
+
+# ── Fix 1: AnnAssign model_config detection ─────────────────────────────────
+
+_ANNASSIGN_CONFIG_SRC = """
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Optional
+
+class AnnAssignItem(BaseModel):
+    model_config: ConfigDict = ConfigDict(extra='forbid', populate_by_name=True)
+    plant_id: str = Field(..., alias='plantId')
+    order_id: str = Field(..., alias='orderId')
+"""
+
+
+def test_annassign_model_config_forbid_detected():
+    """model_config: ConfigDict = ConfigDict(extra='forbid') (AnnAssign) -> extra_forbid=True.
+
+    Regression for the false-negative: previously only ast.Assign was handled;
+    annotated assignment was silently ignored, making extra='forbid' invisible.
+    """
+    tree = _parse(_ANNASSIGN_CONFIG_SRC)
+    models = _extract_models(tree)
+    assert "AnnAssignItem" in models
+    m = models["AnnAssignItem"]
+    assert m.extra_forbid is True, (
+        "AnnAssign model_config with extra='forbid' was not detected — "
+        "guard would silently miss this extra=forbid model"
+    )
+
+
+def test_annassign_model_config_fields_still_extracted():
+    """Fields on a model using AnnAssign model_config are correctly extracted."""
+    tree = _parse(_ANNASSIGN_CONFIG_SRC)
+    m = _extract_models(tree)["AnnAssignItem"]
+    assert "plant_id" in m.accepted_keys
+    assert "plantId" in m.accepted_keys
+    assert "order_id" in m.accepted_keys
+    assert "orderId" in m.accepted_keys
+
+
+# ── Fix 2: Mapper detection via full body walk ───────────────────────────────
+
+_ASSIGN_THEN_RETURN_ROUTE_SRC = """
+from fastapi import APIRouter
+router = APIRouter()
+
+class WorklistItem:
+    pass
+
+def map_worklist_rows(rows):
+    return [{"plantId": r["plant_id"]} for r in rows]
+
+@router.get("/wm-operations/worklist", response_model=list[WorklistItem])
+async def get_worklist(adapter=None):
+    rows = adapter.fetch()
+    result = map_worklist_rows(rows)
+    return result
+"""
+
+
+def test_mapper_detection_assign_then_return():
+    """route that assigns mapper result to variable then returns it is detected.
+
+    Previously only `return map_x_rows(...)` was found; this pattern was silently
+    skipped, meaning the route would not be checked at all.
+    """
+    tree = _parse(_ASSIGN_THEN_RETURN_ROUTE_SRC)
+    route_mappers = _extract_explicit_route_mappers(tree)
+    assert "/wm-operations/worklist" in route_mappers, (
+        "route using assign-then-return mapper pattern was not detected — "
+        "guard would silently skip this route"
+    )
+    assert route_mappers["/wm-operations/worklist"] == "map_worklist_rows"
+
+
+def test_mapper_detection_assign_then_return_not_empty_without_guard():
+    """Regression: without the guard the route IS absent from route_mappers (non-vacuous)."""
+    import ast as _ast
+    # Build a tree where the route uses assign-then-return; the mapper call is NOT in a
+    # return statement — confirm a naive return-only scan would miss it.
+    tree = _parse(_ASSIGN_THEN_RETURN_ROUTE_SRC)
+    # Count map_*_rows calls that appear directly as return values (old behaviour)
+    direct_return_mappers = []
+    for node in _ast.walk(tree):
+        if not isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            continue
+        for stmt in _ast.walk(node):
+            if not isinstance(stmt, _ast.Return):
+                continue
+            val = stmt.value
+            if (
+                isinstance(val, _ast.Call)
+                and isinstance(val.func, _ast.Name)
+                and val.func.id.startswith("map_")
+                and val.func.id.endswith("_rows")
+            ):
+                direct_return_mappers.append(val.func.id)
+    # The route handler returns a variable, not the mapper call directly,
+    # so the old scan finds nothing for this route handler.
+    assert "map_worklist_rows" not in direct_return_mappers, (
+        "Fixture must genuinely produce a false-negative with the old return-only scan"
+    )
+
+
+# ── Fix 3: dict-literal SIMPLE_DATASETS entries ─────────────────────────────
+
+_DICT_LITERAL_SD_SRC = """
+SIMPLE_DATASETS = {
+    "myds": {
+        "contract": "x.y",
+        "endpoint": "/api/wm-operations/myds",
+        "columns": "plant_id, some_count",
+        "order_by": "plant_id ASC",
+        "numeric": (),
+        "integer": ("some_count",),
+        "boolean": (),
+        "has_warehouse": False,
+    },
+}
+"""
+
+
+def test_extract_dict_kv_dict_call():
+    """_extract_dict_kv handles dict(...) call syntax (existing behaviour preserved)."""
+    import ast as _ast
+    src = "dict(endpoint='/api/x', columns='a, b')"
+    node = _ast.parse(src, mode='eval').body
+    kv = _extract_dict_kv(node)
+    assert "endpoint" in kv
+    assert "columns" in kv
+
+
+def test_extract_dict_kv_dict_literal():
+    """_extract_dict_kv handles dict-literal syntax (new capability)."""
+    import ast as _ast
+    src = "{'endpoint': '/api/x', 'columns': 'a, b'}"
+    node = _ast.parse(src, mode='eval').body
+    kv = _extract_dict_kv(node)
+    assert "endpoint" in kv
+    assert "columns" in kv
+
+
+def test_simple_datasets_dict_literal_extraction():
+    """SIMPLE_DATASETS written as a dict literal (not dict() calls) is parsed correctly."""
+    tree = _parse(_DICT_LITERAL_SD_SRC)
+    datasets = _extract_simple_datasets(tree)
+    assert "myds" in datasets
+    assert datasets["myds"] == ["plant_id", "some_count"]
