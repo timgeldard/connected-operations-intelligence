@@ -13,4 +13,5 @@ served via the governed `gold_io_reporting` layer.
 
 ## Domains
 
+- [Production](/production/index.md) -- 2 contract(s)
 - [Warehouse](/warehouse/index.md) -- 59 contract(s)

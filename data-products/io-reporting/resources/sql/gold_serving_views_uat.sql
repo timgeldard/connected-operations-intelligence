@@ -154,3 +154,11 @@ SELECT
 FROM connected_plant_uat.gold_io_reporting.gold_warehouse_exceptions_secured AS b
 WHERE CASE b.exception_type WHEN 'EXPIRED_BATCH_WITH_STOCK' THEN b.aging_reference_date < current_date() WHEN 'QI_STOCK_AGED_14D' THEN datediff(current_date(), b.aging_reference_date) > 14 WHEN 'BLOCKED_STOCK_AGED_3D' THEN datediff(current_date(), b.aging_reference_date) > 3 WHEN 'OPEN_TO_AGED_24H' THEN (unix_timestamp(current_timestamp()) - unix_timestamp(b.aging_reference_datetime)) / 3600.0 > 24 ELSE TRUE END;
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_warehouse_exceptions_live TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_lineside_now_live AS
+SELECT
+  b.*,
+  CASE WHEN b.production_first_actual_start IS NOT NULL THEN CAST((unix_timestamp(current_timestamp())           - unix_timestamp(b.production_first_actual_start)) / 60 AS INTEGER) END AS elapsed_minutes,
+  CASE WHEN b.production_first_actual_start IS NOT NULL      AND b.planned_minutes IS NOT NULL AND b.planned_minutes > 0 THEN from_unixtime(unix_timestamp(b.production_first_actual_start)                    + CAST(b.planned_minutes * 60 AS BIGINT)) END AS projected_finish
+FROM connected_plant_uat.gold_io_reporting.gold_wm_lineside_now_secured AS b;
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_lineside_now_live TO `users`;
