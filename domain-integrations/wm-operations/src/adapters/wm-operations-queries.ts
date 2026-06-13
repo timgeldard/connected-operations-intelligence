@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { wmOperationsAdapter } from './wm-operations-adapter.js'
-import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmAdherenceRootCauseItem, WmOrderYieldItem, WmRecipeBenchmarkItem, WmComponentVarianceItem, WmSupplyDemandLedgerItem, WmShortageProjectionItem, WmLinesideRequest } from './wm-operations-adapter.js'
+import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmAdherenceRootCauseItem, WmOrderYieldItem, WmRecipeBenchmarkItem, WmComponentVarianceItem, WmSupplyDemandLedgerItem, WmShortageProjectionItem, WmLinesideRequest, WmPlanBoardRequest, WmPlanBoardBlock, WmPlanBoardKpis, WmPlanBoardBacklogItem, WmPlanBoardWmOverlayItem } from './wm-operations-adapter.js'
 
 export function useWmOrderComponents(request: WmDrillRequest, enabled = true) {
   return useQuery({
@@ -314,3 +314,81 @@ export function useWmLinesideLines(plantId?: string, enabled = true) {
     enabled,
   })
 }
+
+// ── Production Planning Board (PEX-E-36) ──────────────────────────────────
+// READ-ONLY hooks — no schedule/mutate/POST. Date window drives refetch.
+// Query-cadence policy: load once, serve cache across page/panel navigation, and
+// re-query only on a configurable interval — NOT on every page change. Tune here.
+const PLAN_BOARD_REFRESH_MS = 5 * 60 * 1000
+
+export function useWmPlanBoard(request: WmPlanBoardRequest, enabled = true) {
+  return useQuery({
+    queryKey: [
+      'wm-ops-plan-board',
+      request.plantId,
+      request.lineId ?? null,
+      request.fromDate ?? null,
+      request.toDate ?? null,
+      request.limit ?? null,
+    ],
+    queryFn: () => wmOperationsAdapter.getPlanBoard(request),
+    staleTime: PLAN_BOARD_REFRESH_MS,
+    refetchInterval: PLAN_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
+    enabled: enabled && Boolean(request.plantId),
+  })
+}
+
+export function useWmPlanBoardKpis(request: WmPlanBoardRequest, enabled = true) {
+  return useQuery({
+    queryKey: [
+      'wm-ops-plan-board-kpis',
+      request.plantId,
+      request.lineId ?? null,
+      request.fromDate ?? null,
+      request.toDate ?? null,
+    ],
+    queryFn: () => wmOperationsAdapter.getPlanBoardKpis(request),
+    staleTime: PLAN_BOARD_REFRESH_MS,
+    refetchInterval: PLAN_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
+    enabled: enabled && Boolean(request.plantId),
+  })
+}
+
+export function useWmPlanBoardBacklog(request: WmPlanBoardRequest, enabled = true) {
+  return useQuery({
+    queryKey: [
+      'wm-ops-plan-board-backlog',
+      request.plantId,
+      request.lineId ?? null,
+      request.limit ?? null,
+    ],
+    queryFn: () => wmOperationsAdapter.getPlanBoardBacklog(request),
+    staleTime: PLAN_BOARD_REFRESH_MS,
+    refetchInterval: PLAN_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
+    enabled: enabled && Boolean(request.plantId),
+  })
+}
+
+export function useWmPlanBoardWmOverlay(request: WmPlanBoardRequest, enabled = true) {
+  return useQuery({
+    queryKey: [
+      'wm-ops-plan-board-wm-overlay',
+      request.plantId,
+      request.lineId ?? null,
+      request.fromDate ?? null,
+      request.toDate ?? null,
+      request.limit ?? null,
+    ],
+    queryFn: () => wmOperationsAdapter.getPlanBoardWmOverlay(request),
+    staleTime: PLAN_BOARD_REFRESH_MS,
+    refetchInterval: PLAN_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
+    enabled: enabled && Boolean(request.plantId),
+  })
+}
+
+// Re-export plan board types for consumers of this module.
+export type { WmPlanBoardBlock, WmPlanBoardKpis, WmPlanBoardBacklogItem, WmPlanBoardWmOverlayItem }

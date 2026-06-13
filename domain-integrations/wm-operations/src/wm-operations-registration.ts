@@ -119,6 +119,13 @@ export const wmOperationsRegistration: WorkspaceRegistration = {
       sortOrder: 25,
       defaultPanels: [{ panelId: 'wm-lineside-monitor', defaultVisible: true, defaultOrder: 0 }],
     },
+    {
+      viewId: 'planning-board',
+      displayName: 'Planning Board',
+      lifecycle: 'pilot',
+      sortOrder: 26,
+      defaultPanels: [{ panelId: 'wm-planning-board', defaultVisible: true, defaultOrder: 0 }],
+    },
   ],
   defaultPanels: [
     { panelId: 'wm-worklist-summary', defaultVisible: true, defaultOrder: 0 },

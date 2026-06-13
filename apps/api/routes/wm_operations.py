@@ -24,6 +24,7 @@ from adapters.wm_operations.wm_operations_databricks_adapter import (
     WmOrderOperationsRequest,
     WmOrderReadinessRequest,
     WmOutboundRequest,
+    WmPlanBoardRequest,
     WmQueueWorkloadRequest,
     WmReconAlertsRequest,
     WmSimpleRequest,
@@ -45,6 +46,10 @@ from adapters.wm_operations.wm_operations_databricks_adapter import (
     map_wm_order_operations_rows,
     map_wm_order_readiness_rows,
     map_wm_outbound_rows,
+    map_wm_plan_board_backlog_rows,
+    map_wm_plan_board_kpis_rows,
+    map_wm_plan_board_rows,
+    map_wm_plan_board_wm_overlay_rows,
     map_wm_queue_workload_rows,
     map_wm_recon_alerts_rows,
     map_wm_simple_rows,
@@ -938,3 +943,140 @@ async def wm_lineside_lines(
     rows, spec = await run_repository_fetch(lambda: repo.fetch_lineside_lines(plant))
     set_databricks_response_headers(response, spec)
     return map_wm_lineside_lines_rows(rows)
+
+
+# ── Production Planning Board routes (PEX-E-36) ────────────────────────────────
+# Read-only: NO write/schedule/mutation endpoints — grep for onDrag/onDrop/schedule/POST = 0.
+# Parameterised by plant_id (required) + optional line_id + from/to date window.
+# Date params: ISO date strings YYYY-MM-DD; 422 on malformed; default = today ± window.
+
+_MAX_PLAN_BOARD_LIMIT = 1000
+_PLAN_BOARD_DATE_LEN = 10  # "YYYY-MM-DD"
+
+
+def _parse_plan_board_date(value: str | None, param_name: str) -> str | None:
+    """Validate an ISO date string YYYY-MM-DD; raise 422 on malformed; return stripped or None."""
+    if not value:
+        return None
+    v = value.strip()
+    if len(v) != _PLAN_BOARD_DATE_LEN:
+        raise HTTPException(status_code=422, detail=f"{param_name} must be an ISO date YYYY-MM-DD")
+    try:
+        from datetime import date as _date
+        _date.fromisoformat(v)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"{param_name} must be an ISO date YYYY-MM-DD")
+    return v
+
+
+@router.get("/wm-operations/plan-board")
+async def wm_plan_board(
+    response: Response,
+    plant_id: str | None = None,
+    line_id: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    limit: int = 500,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[dict]:
+    """Gantt blocks for the Production Planning Board (PEX-E-36) — databricks-api only.
+
+    Returns order-grain rows for all process orders with scheduled dates overlapping
+    the from/to window, optionally filtered by production line. Date windowing is applied
+    at query time against vw_consumption_wm_operations_plan_board (the MV is deterministic).
+    Wall-clock columns (projected_finish, is_overdue, status) are computed by the view.
+    READ-ONLY — no scheduling, mutation, or POST endpoints exist.
+    """
+    _require_databricks_mode("WM Operations plan board")
+    _validate_limit(limit, _MAX_PLAN_BOARD_LIMIT)
+    if not plant_id or not plant_id.strip():
+        raise HTTPException(status_code=422, detail="plant_id is required")
+    plant = plant_id.strip()
+    line = line_id.strip() if line_id and line_id.strip() else None
+    from_d = _parse_plan_board_date(from_date, "from_date")
+    to_d = _parse_plan_board_date(to_date, "to_date")
+    req = WmPlanBoardRequest(plant_id=plant, line_id=line, from_date=from_d, to_date=to_d, limit=limit)
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_plan_board(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_plan_board_rows(rows)
+
+
+@router.get("/wm-operations/plan-board/kpis")
+async def wm_plan_board_kpis(
+    response: Response,
+    plant_id: str | None = None,
+    line_id: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[dict]:
+    """KPI strip for the Production Planning Board — databricks-api only."""
+    _require_databricks_mode("WM Operations plan board kpis")
+    if not plant_id or not plant_id.strip():
+        raise HTTPException(status_code=422, detail="plant_id is required")
+    plant = plant_id.strip()
+    line = line_id.strip() if line_id and line_id.strip() else None
+    from_d = _parse_plan_board_date(from_date, "from_date")
+    to_d = _parse_plan_board_date(to_date, "to_date")
+    req = WmPlanBoardRequest(plant_id=plant, line_id=line, from_date=from_d, to_date=to_d)
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_plan_board_kpis(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_plan_board_kpis_rows(rows)
+
+
+@router.get("/wm-operations/plan-board/backlog")
+async def wm_plan_board_backlog(
+    response: Response,
+    plant_id: str | None = None,
+    line_id: str | None = None,
+    limit: int = 200,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[dict]:
+    """Backlog rail for the Planning Board — informational only, no drag/schedule — databricks-api only."""
+    _require_databricks_mode("WM Operations plan board backlog")
+    _validate_limit(limit, _MAX_PLAN_BOARD_LIMIT)
+    if not plant_id or not plant_id.strip():
+        raise HTTPException(status_code=422, detail="plant_id is required")
+    plant = plant_id.strip()
+    line = line_id.strip() if line_id and line_id.strip() else None
+    req = WmPlanBoardRequest(plant_id=plant, line_id=line, limit=limit)
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_plan_board_backlog(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_plan_board_backlog_rows(rows)
+
+
+@router.get("/wm-operations/plan-board/wm-overlay")
+async def wm_plan_board_wm_overlay(
+    response: Response,
+    plant_id: str | None = None,
+    line_id: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    limit: int = 500,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[dict]:
+    """WM replenishment overlay — staging status per order — databricks-api only."""
+    _require_databricks_mode("WM Operations plan board wm overlay")
+    _validate_limit(limit, _MAX_PLAN_BOARD_LIMIT)
+    if not plant_id or not plant_id.strip():
+        raise HTTPException(status_code=422, detail="plant_id is required")
+    plant = plant_id.strip()
+    line = line_id.strip() if line_id and line_id.strip() else None
+    from_d = _parse_plan_board_date(from_date, "from_date")
+    to_d = _parse_plan_board_date(to_date, "to_date")
+    req = WmPlanBoardRequest(plant_id=plant, line_id=line, from_date=from_d, to_date=to_d, limit=limit)
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_plan_board_wm_overlay(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_plan_board_wm_overlay_rows(rows)

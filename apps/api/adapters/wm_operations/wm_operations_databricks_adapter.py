@@ -1211,10 +1211,42 @@ class WmOperationsRepository:
         )
 
     async def fetch_lineside_lines(
-        self, plant_id: Optional[str]
+        self, plant_id: str | None
     ) -> tuple[list[dict], QuerySpec]:
         return await self._repository.fetch(
             spec_factory=lambda: get_wm_lineside_lines_spec(plant_id),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_plan_board(
+        self, request: "WmPlanBoardRequest"
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_plan_board_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_plan_board_kpis(
+        self, request: "WmPlanBoardRequest"
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_plan_board_kpis_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_plan_board_backlog(
+        self, request: "WmPlanBoardRequest"
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_plan_board_backlog_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_plan_board_wm_overlay(
+        self, request: "WmPlanBoardRequest"
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_plan_board_wm_overlay_spec(request),
             mapper=lambda rows: rows,
         )
 
@@ -1999,4 +2031,246 @@ def map_wm_lineside_lines_rows(rows: list[dict]) -> list[dict]:
         numeric=(),
         integer=("active_order_count",),
         boolean=(),
+    )
+
+
+# ── Production Planning Board (PEX-E-36) ─────────────────────────────────────
+# Read-only board: order-grain Gantt blocks, KPI strip, backlog rail, WM overlay.
+# All endpoints are parameterised by plant_id (required) + optional line_id +
+# from_date/to_date (ISO date strings). NO write endpoints exist.
+
+
+@dataclass
+class WmPlanBoardRequest:
+    plant_id: str
+    line_id: Optional[str] = None
+    from_date: Optional[str] = None   # ISO date YYYY-MM-DD
+    to_date: Optional[str] = None     # ISO date YYYY-MM-DD
+    limit: int = 500
+
+
+def get_wm_plan_board_spec(request: WmPlanBoardRequest) -> QuerySpec:
+    """Order-grain Gantt blocks for the Production Planning Board."""
+    view = resolve_contract_object("wm_operations.plan_board", "wh360")
+    params: dict[str, object] = {"plant_id": request.plant_id}
+    clauses = ["plant_id = :plant_id"]
+    if request.line_id:
+        clauses.append("line_id = :line_id")
+        params["line_id"] = request.line_id
+    if request.from_date:
+        clauses.append("scheduled_finish_date >= :from_date")
+        params["from_date"] = request.from_date
+    if request.to_date:
+        clauses.append("scheduled_start_date <= :to_date")
+        params["to_date"] = request.to_date
+    where_str = " AND ".join(clauses)
+    sql = f"""
+    SELECT
+        plant_id,
+        order_id,
+        line_id,
+        material_id,
+        material_name,
+        planned_qty,
+        uom,
+        scheduled_start_date,
+        scheduled_finish_date,
+        actual_start,
+        actual_finish,
+        delivered_qty,
+        pct_complete,
+        planned_minutes,
+        elapsed_minutes,
+        projected_finish,
+        status,
+        staging_status,
+        supply_status,
+        is_backlog,
+        is_overdue,
+        has_shortage,
+        is_released,
+        is_completed,
+        is_closed
+    FROM {view}
+    WHERE {where_str}
+    ORDER BY line_id ASC NULLS LAST, scheduled_start_date ASC NULLS LAST
+    LIMIT {int(request.limit)}
+    """
+    return QuerySpec(
+        name="wm_operations.get_plan_board",
+        module="wh360",
+        endpoint="/api/wm-operations/plan-board",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "plan_board"],
+        contract_id="wm_operations.plan_board",
+    )
+
+
+def map_wm_plan_board_rows(rows: list[dict]) -> list[dict]:
+    return map_rows_generic(
+        rows,
+        numeric=("planned_qty", "delivered_qty", "pct_complete"),
+        integer=("planned_minutes", "elapsed_minutes"),
+        boolean=("is_backlog", "is_overdue", "has_shortage", "is_released", "is_completed", "is_closed"),
+    )
+
+
+def get_wm_plan_board_kpis_spec(request: WmPlanBoardRequest) -> QuerySpec:
+    """KPI strip for the Production Planning Board — aggregated from plan_board view."""
+    view = resolve_contract_object("wm_operations.plan_board", "wh360")
+    params: dict[str, object] = {"plant_id": request.plant_id}
+    clauses = ["plant_id = :plant_id"]
+    if request.line_id:
+        clauses.append("line_id = :line_id")
+        params["line_id"] = request.line_id
+    if request.from_date:
+        clauses.append("scheduled_finish_date >= :from_date")
+        params["from_date"] = request.from_date
+    if request.to_date:
+        clauses.append("scheduled_start_date <= :to_date")
+        params["to_date"] = request.to_date
+    where_str = " AND ".join(clauses)
+    sql = f"""
+    SELECT
+        plant_id,
+        COUNT(DISTINCT CASE WHEN status IN ('running', 'atrisk') THEN line_id END) AS lines_running,
+        COALESCE(SUM(CASE WHEN scheduled_finish_date <= CURRENT_DATE() THEN delivered_qty ELSE 0 END), 0) AS today_qty_delivered,
+        COUNT(CASE WHEN status = 'atrisk' THEN 1 END) AS at_risk_count,
+        COUNT(CASE WHEN has_shortage THEN 1 END) AS shortage_count,
+        COUNT(CASE WHEN is_backlog THEN 1 END) AS backlog_count,
+        CASE
+            WHEN COUNT(CASE WHEN actual_finish IS NOT NULL
+                            AND actual_finish >= CURRENT_DATE() - INTERVAL 2 DAYS THEN 1 END) = 0
+            THEN NULL
+            ELSE ROUND(100.0 * COUNT(CASE WHEN actual_finish IS NOT NULL
+                                         AND actual_finish >= CURRENT_DATE() - INTERVAL 2 DAYS
+                                         AND actual_finish <= scheduled_finish_date THEN 1 END)
+                       / COUNT(CASE WHEN actual_finish IS NOT NULL
+                                    AND actual_finish >= CURRENT_DATE() - INTERVAL 2 DAYS THEN 1 END), 1)
+        END AS on_time_pct
+    FROM {view}
+    WHERE {where_str}
+    GROUP BY plant_id
+    """
+    return QuerySpec(
+        name="wm_operations.get_plan_board_kpis",
+        module="wh360",
+        endpoint="/api/wm-operations/plan-board/kpis",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "plan_board", "kpis"],
+        contract_id="wm_operations.plan_board_kpis",
+    )
+
+
+def map_wm_plan_board_kpis_rows(rows: list[dict]) -> list[dict]:
+    return map_rows_generic(
+        rows,
+        numeric=("today_qty_delivered", "on_time_pct"),
+        integer=("lines_running", "at_risk_count", "shortage_count", "backlog_count"),
+        boolean=(),
+    )
+
+
+def get_wm_plan_board_backlog_spec(request: WmPlanBoardRequest) -> QuerySpec:
+    """Backlog rail for the Planning Board — unscheduled / overdue orders."""
+    view = resolve_contract_object("wm_operations.plan_board", "wh360")
+    params: dict[str, object] = {"plant_id": request.plant_id}
+    clauses = ["plant_id = :plant_id", "is_backlog = TRUE"]
+    if request.line_id:
+        clauses.append("line_id = :line_id")
+        params["line_id"] = request.line_id
+    where_str = " AND ".join(clauses)
+    sql = f"""
+    SELECT
+        plant_id,
+        order_id,
+        line_id,
+        material_id,
+        material_name,
+        planned_qty,
+        uom,
+        scheduled_start_date,
+        scheduled_finish_date,
+        status,
+        is_overdue,
+        has_shortage,
+        staging_status
+    FROM {view}
+    WHERE {where_str}
+    ORDER BY CASE WHEN is_overdue THEN 0 ELSE 1 END,
+             scheduled_finish_date ASC NULLS LAST
+    LIMIT {int(request.limit)}
+    """
+    return QuerySpec(
+        name="wm_operations.get_plan_board_backlog",
+        module="wh360",
+        endpoint="/api/wm-operations/plan-board/backlog",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "plan_board", "backlog"],
+        contract_id="wm_operations.plan_board",
+    )
+
+
+def map_wm_plan_board_backlog_rows(rows: list[dict]) -> list[dict]:
+    return map_rows_generic(
+        rows,
+        numeric=("planned_qty",),
+        integer=(),
+        boolean=("is_overdue", "has_shortage"),
+    )
+
+
+def get_wm_plan_board_wm_overlay_spec(request: WmPlanBoardRequest) -> QuerySpec:
+    """WM replenishment overlay for the Planning Board — staging status per order."""
+    view = resolve_contract_object("wm_operations.plan_board", "wh360")
+    params: dict[str, object] = {"plant_id": request.plant_id}
+    clauses = ["plant_id = :plant_id"]
+    if request.line_id:
+        clauses.append("line_id = :line_id")
+        params["line_id"] = request.line_id
+    if request.from_date:
+        clauses.append("scheduled_finish_date >= :from_date")
+        params["from_date"] = request.from_date
+    if request.to_date:
+        clauses.append("scheduled_start_date <= :to_date")
+        params["to_date"] = request.to_date
+    where_str = " AND ".join(clauses)
+    sql = f"""
+    SELECT
+        plant_id,
+        order_id,
+        line_id,
+        scheduled_start_date,
+        staging_status,
+        supply_status,
+        has_shortage
+    FROM {view}
+    WHERE {where_str}
+    ORDER BY line_id ASC NULLS LAST, scheduled_start_date ASC NULLS LAST
+    LIMIT {int(request.limit)}
+    """
+    return QuerySpec(
+        name="wm_operations.get_plan_board_wm_overlay",
+        module="wh360",
+        endpoint="/api/wm-operations/plan-board/wm-overlay",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "plan_board", "wm_overlay"],
+        contract_id="wm_operations.plan_board",
+    )
+
+
+def map_wm_plan_board_wm_overlay_rows(rows: list[dict]) -> list[dict]:
+    return map_rows_generic(
+        rows,
+        numeric=(),
+        integer=(),
+        boolean=("has_shortage",),
     )

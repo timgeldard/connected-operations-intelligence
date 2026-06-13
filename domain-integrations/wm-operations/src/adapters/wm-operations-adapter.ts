@@ -428,6 +428,49 @@ export class WmOperationsAdapter {
     })
     return this.fetchList<WmLinesideLine>(url)
   }
+
+  // ── Production Planning Board (PEX-E-36) ──────────────────────────────────
+
+  async getPlanBoard(request: WmPlanBoardRequest): Promise<AdapterResult<WmPlanBoardBlock[]>> {
+    const url = this.buildUrl('/api/wm-operations/plan-board', {
+      plant_id: request.plantId,
+      line_id: request.lineId,
+      from_date: request.fromDate,
+      to_date: request.toDate,
+      limit: request.limit,
+    })
+    return this.fetchList<WmPlanBoardBlock>(url)
+  }
+
+  async getPlanBoardKpis(request: WmPlanBoardRequest): Promise<AdapterResult<WmPlanBoardKpis[]>> {
+    const url = this.buildUrl('/api/wm-operations/plan-board/kpis', {
+      plant_id: request.plantId,
+      line_id: request.lineId,
+      from_date: request.fromDate,
+      to_date: request.toDate,
+    })
+    return this.fetchList<WmPlanBoardKpis>(url)
+  }
+
+  async getPlanBoardBacklog(request: WmPlanBoardRequest): Promise<AdapterResult<WmPlanBoardBacklogItem[]>> {
+    const url = this.buildUrl('/api/wm-operations/plan-board/backlog', {
+      plant_id: request.plantId,
+      line_id: request.lineId,
+      limit: request.limit,
+    })
+    return this.fetchList<WmPlanBoardBacklogItem>(url)
+  }
+
+  async getPlanBoardWmOverlay(request: WmPlanBoardRequest): Promise<AdapterResult<WmPlanBoardWmOverlayItem[]>> {
+    const url = this.buildUrl('/api/wm-operations/plan-board/wm-overlay', {
+      plant_id: request.plantId,
+      line_id: request.lineId,
+      from_date: request.fromDate,
+      to_date: request.toDate,
+      limit: request.limit,
+    })
+    return this.fetchList<WmPlanBoardWmOverlayItem>(url)
+  }
 }
 
 export interface WmOrderComponentItem {
@@ -905,4 +948,94 @@ export interface WmLinesideLine {
   readonly lineId: string
   readonly lineLabel: string
   readonly activeOrderCount: number
+}
+
+// ── Production Planning Board (PEX-E-36) ─────────────────────────────────────
+// READ-ONLY: no scheduling, no mutation, no POST. Gantt blocks + KPI strip + backlog + WM overlay.
+
+export interface WmPlanBoardRequest {
+  readonly plantId: string
+  readonly lineId?: string
+  /** ISO date YYYY-MM-DD; defaults to today at the route level */
+  readonly fromDate?: string
+  /** ISO date YYYY-MM-DD */
+  readonly toDate?: string
+  readonly limit?: number
+}
+
+/** Gantt block row — from vw_consumption_wm_operations_plan_board. */
+export interface WmPlanBoardBlock {
+  readonly plantId: string
+  readonly orderId: string
+  readonly lineId: string | null
+  readonly materialId: string | null
+  readonly materialName: string | null
+  readonly plannedQty: number | null
+  readonly uom: string | null
+  readonly scheduledStartDate: string | null
+  readonly scheduledFinishDate: string | null
+  readonly actualStart: string | null
+  readonly actualFinish: string | null
+  readonly deliveredQty: number | null
+  /** Percentage complete (0–100); null when no GR evidence. */
+  readonly pctComplete: number | null
+  /** Planned duration in minutes; null when undated. */
+  readonly plannedMinutes: number | null
+  /** Minutes since actual_start (query-time); null when not running. */
+  readonly elapsedMinutes: number | null
+  /** Extrapolated finish for running orders; null when complete or not running. */
+  readonly projectedFinish: string | null
+  /** running | atrisk | material-short | completed | firm | open */
+  readonly status: string
+  /** NONE | PARTIAL | FULL — WM overlay signal */
+  readonly stagingStatus: string | null
+  readonly supplyStatus: string | null
+  readonly isBacklog: boolean | null
+  readonly isOverdue: boolean | null
+  readonly hasShortage: boolean | null
+  readonly isReleased: boolean | null
+  readonly isCompleted: boolean | null
+  readonly isClosed: boolean | null
+}
+
+/** KPI strip row — aggregated query-time from the plan_board view. */
+export interface WmPlanBoardKpis {
+  readonly plantId: string
+  /** Distinct lines with a running/atrisk order. */
+  readonly linesRunning: number | null
+  /** Total delivered qty for orders scheduled to finish on or before today. */
+  readonly todayQtyDelivered: number | null
+  readonly atRiskCount: number | null
+  readonly shortageCount: number | null
+  readonly backlogCount: number | null
+  /** On-time % — completed orders in last 48h where actual_finish <= scheduled_finish. */
+  readonly onTimePct: number | null
+}
+
+/** Backlog rail row — informational only, no drag/schedule. */
+export interface WmPlanBoardBacklogItem {
+  readonly plantId: string
+  readonly orderId: string
+  readonly lineId: string | null
+  readonly materialId: string | null
+  readonly materialName: string | null
+  readonly plannedQty: number | null
+  readonly uom: string | null
+  readonly scheduledStartDate: string | null
+  readonly scheduledFinishDate: string | null
+  readonly status: string
+  readonly isOverdue: boolean | null
+  readonly hasShortage: boolean | null
+  readonly stagingStatus: string | null
+}
+
+/** WM overlay row — staging per order. */
+export interface WmPlanBoardWmOverlayItem {
+  readonly plantId: string
+  readonly orderId: string
+  readonly lineId: string | null
+  readonly scheduledStartDate: string | null
+  readonly stagingStatus: string | null
+  readonly supplyStatus: string | null
+  readonly hasShortage: boolean | null
 }
