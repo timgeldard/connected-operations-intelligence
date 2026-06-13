@@ -63,7 +63,10 @@ truncation). Acceptance (orchestrator, live): accuracy/coverage/value reconcile 
 plant+period; trend renders; honest "due" definition; no raw-recon duplication.
 
 ## Gotchas
-- `count_accuracy_pct` and any "last N days" are query-time; only `count_month` truncation lives in
-  the MV (deterministic). No current_date in the @dlt.table.
+- `count_accuracy_pct` IS computed in the MV — it is a ratio of two aggregates
+  (matched/counted), fully deterministic, so it belongs in `gold_wm_pi_accuracy` (this corrects an
+  earlier contradiction in this spec). What is query-time-only is **period-relative slicing**
+  ("last N days"), which lives in the consumption/_live layer. `count_month` is a deterministic
+  `date_trunc` transform and also lives in the MV. No `current_date` in the `@dlt.table`.
 - delta_value is local currency — surface currency; do not sum across currencies silently (group/flag).
 - Reuses `gold_physical_inventory_recon` + `_storage_zone_mapping` — confirm columns, don't rebuild.

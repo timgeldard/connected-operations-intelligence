@@ -20,10 +20,12 @@ baseline technique and the `gold_wm_recipe_run_benchmark` percentile pattern (`F
    "gold_wm_daily_activity")` aggregated to plant_code × metric × **day_of_week** (and/or an overall
    per-plant baseline): `median` (`percentile_approx(metric, 0.5)`), `p10`, `p90`, `sample_days`
    (count). Day-of-week baseline captures weekday/weekend rhythm (verify a date column exists to
-   derive `dayofweek` — deterministic transform, allowed in MV). If the daily_activity table is
-   "long" (metric/value rows) baseline per metric is a groupBy; if "wide" (one column per metric),
-   either unpivot first or compute per-column percentiles — choose to match its actual shape and
-   document it.
+   derive `dayofweek` — deterministic transform, allowed in MV). `gold_wm_daily_activity` is **wide**
+   (one column per metric: `to_items_confirmed`, `active_operators`, `trs_created`,
+   `goods_receipt_lines`, `goods_issue_lines` — see `gold/wm_operations_gold.py` ~L1077).
+   **Unpivot it to long `(metric_name, metric_value)` first** (e.g. `F.expr("stack(5, ...)")`),
+   THEN group + percentile — one percentile expression instead of repeating it per column.
+   Document the unpivot.
    - Exclude the current/partial day from the baseline sample (a day still in progress would drag
      the median) — exclude via a query-time filter in the consumption layer, OR compute baseline
      over completed days only (define "completed" without wall-clock in the MV — e.g. all days

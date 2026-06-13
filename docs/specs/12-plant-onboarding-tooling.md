@@ -17,8 +17,12 @@ sanity guard), NOT a gold/app feature — it touches `silver/tables/reference.py
   from the `site_config_plant_table` Spark conf when set, ELSE a **fallback seed** in reference.py
   (~L642 / L846) that is the LIVE plant config (per project memory: the seed IS what's used; the
   site_config SQL path is dead for plant/warehouse). Each plant entry carries: plant_code,
-  plant_name, country, business_unit, region, warehouse number(s), and the gate flags
+  plant_name, country, business_unit, region, and the gate flags
   `wm_enabled_flag`, `qm_enabled_flag`, `hu_enabled_flag`, `go_live_status`, valid_from/to, etc.
+  NOTE: `site_config_plant` does NOT carry warehouse numbers — the plant→warehouse relationship
+  lives in `site_config_warehouse` (derived from T320 `warehouse_storage_location_mapping`). The
+  onboarding live-validation checklist should probe T320 for the warehouse(s), but do NOT add a
+  warehouse field to the `site_config_plant` seed.
   READ the exact seed entry shape in reference.py and mirror it — do not invent fields.
 - Silver stage-gates (`silver/_plant_gate.py` + `silver_stage_gate_inventory.yml`) scope tables to
   onboarded plants via these flags. Adding a plant = adding a correct seed entry; the gates then

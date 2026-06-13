@@ -15,10 +15,16 @@ declared in the route's response model, and that a `forbid`-extra model can't be
 mapped field.
 
 ## What it must catch
-For every wm_operations (and similar) dataset/route where an adapter maps rows to a pydantic
-response model:
-1. Every key the adapter emits (the `columns` list in `SIMPLE_DATASETS`, and any explicit mapper
-   dict keys / camelCase output keys) has a corresponding field on the response model.
+
+SCOPE: the guard only validates routes that **declare an explicit `response_model=`**. The
+dynamically generated `SIMPLE_DATASETS` routes return raw `list[dict]` with **no** response model
+(see `routes/wm_operations.py` — `_make_simple_route` omits `response_model`), so they are out of
+scope and skipped — they can't 500 on an unexpected key. (Expect roughly 12 checked / 36 skipped.)
+
+For every route that DOES declare a response model and maps rows to it:
+1. Every key the adapter emits (the `columns` list in `SIMPLE_DATASETS` when that dataset is served
+   through a typed route, and any explicit mapper dict keys / camelCase output keys) has a
+   corresponding field on the response model.
 2. If the model sets `model_config = {"extra": "forbid"}` (or `class Config: extra='forbid'`), an
    adapter output key NOT on the model is a HARD failure (this is exactly the 500 that occurred).
 3. Required model fields (no default) are actually produced by the adapter (best-effort — flag
