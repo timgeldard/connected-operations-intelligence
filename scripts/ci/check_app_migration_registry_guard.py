@@ -3,6 +3,12 @@
 
 This offline CI guard prevents non-approved apps from accidentally gaining
 runtime governed-contract behavior while Warehouse360 remains the pilot.
+
+Deny-by-default: any adapter directory under apps/api/adapters/ that performs
+direct data access (contains a *_databricks_adapter.py or uses
+resolve_domain_object / resolve_contract_object) MUST be represented in the
+migration registry.  Unregistered directories fail the guard immediately with a
+named error, regardless of whether they trigger the governed-contract checks.
 """
 
 from __future__ import annotations
@@ -17,11 +23,17 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REGISTRY_PATH = REPO_ROOT / "data-products/io-reporting/contracts/app_migration_registry.yml"
 CONTRACTS_DIR = REPO_ROOT / "data-products/io-reporting/contracts"
+ADAPTERS_ROOT = REPO_ROOT / "apps/api/adapters"
 
 SOURCE_MODE_RE = re.compile(r"[A-Z0-9_]+_SOURCE_MODE")
 GOVERNED_MODE_RE = re.compile(r"governed_contracts")
 QUERYSPEC_CONTRACT_RE = re.compile(r"QuerySpec\s*\([^)]*contract_id\s*=", re.DOTALL)
 CONSUMPTION_VIEW_RE = re.compile(r"vw_consumption_[a-z0-9_]+")
+
+# Patterns that indicate direct data access in a Python file.
+DATA_ACCESS_RE = re.compile(
+    r"_databricks_adapter|resolve_domain_object|resolve_contract_object",
+)
 
 ACTIVE_MARKERS = {
     "active",
@@ -85,6 +97,47 @@ def _iter_python_files(path: Path) -> list[Path]:
     if path.is_file() and path.suffix == ".py":
         return [path]
     return sorted(p for p in path.rglob("*.py") if "tests" not in p.parts)
+
+
+def _dir_has_data_access(adapter_dir: Path) -> bool:
+    """Return True if any Python file in adapter_dir uses a direct data-access pattern."""
+    for py_file in _iter_python_files(adapter_dir):
+        text = py_file.read_text(encoding="utf-8", errors="ignore")
+        if DATA_ACCESS_RE.search(text):
+            return True
+    return False
+
+
+def _registered_adapter_dirs(apps: dict[str, Any]) -> set[Path]:
+    """Return the resolved set of all adapter paths declared in the registry."""
+    dirs: set[Path] = set()
+    for config in apps.values():
+        for adapter in config.get("adapters") or []:
+            dirs.add((REPO_ROOT / adapter).resolve())
+    return dirs
+
+
+def _check_unregistered_adapters(apps: dict[str, Any]) -> list[str]:
+    """Deny-by-default: fail if any adapter subdir with data access is not in the registry."""
+    errors: list[str] = []
+    if not ADAPTERS_ROOT.exists():
+        return errors
+
+    registered = _registered_adapter_dirs(apps)
+
+    for subdir in sorted(ADAPTERS_ROOT.iterdir()):
+        if not subdir.is_dir() or subdir.name.startswith("_"):
+            continue
+        if subdir.resolve() in registered:
+            continue
+        # Not registered — check whether it performs data access.
+        if _dir_has_data_access(subdir):
+            rel = subdir.relative_to(REPO_ROOT)
+            errors.append(
+                f"{rel}: adapter directory performs direct data access but is NOT registered "
+                "in app_migration_registry.yml — add it with the appropriate status before merging"
+            )
+    return errors
 
 
 def _scan_adapters(apps: dict[str, Any], allowed: set[str]) -> list[str]:
@@ -197,6 +250,7 @@ def run_checks() -> int:
 
     allowed = _allowed_apps(apps)
     errors = []
+    errors.extend(_check_unregistered_adapters(apps))
     errors.extend(_scan_adapters(apps, allowed))
     errors.extend(_scan_contract_yaml(apps, allowed))
 
