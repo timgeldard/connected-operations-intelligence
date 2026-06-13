@@ -224,7 +224,10 @@ def _zone_lookup(mapping: DataFrame, storage_type_col: str, zone_alias: str) -> 
         "dispensary replenishment / dispensary picking), operational status from the site "
         "RF pick-status fields (blank=open, A=in progress, P=parked, N=no stock, C=complete), "
         "assigned RF operator/queue/campaign, and pick progress from linked transfer orders "
-        "(LTAK.TBNUM). Read-only mirror of the ZWMAE0019_NEW Job Assignment grid."
+        "(LTAK.TBNUM). Carries deterministic demand_due_ts and a static intervention bump; "
+        "query-time consumption views score urgency as overdue=100, <=2h=80, <=8h=60, "
+        "<=24h=40, later=20, no demand date=10, plus +10 for PARKED/NO_STOCK. "
+        "Read-only mirror of the ZWMAE0019_NEW Job Assignment grid."
     ),
     cluster_by=["plant_code", "warehouse_number"],
 ))
@@ -246,6 +249,7 @@ def gold_wm_staging_worklist():
         "order_number",
         F.col("material_code").alias("order_material_code"),
         "scheduled_start_date",
+        "scheduled_start_datetime",
         "production_line",
     )
     material = _material_lookup(spark, ss)
@@ -422,6 +426,14 @@ def gold_wm_staging_worklist():
             "source_reference_number",
             F.col("order_material_code"),
             F.col("scheduled_start_date").alias("order_scheduled_start_date"),
+            F.coalesce(
+                F.col("scheduled_start_datetime"),
+                F.to_timestamp(F.col("scheduled_start_date")),
+                F.col("planned_execution_datetime"),
+            ).alias("demand_due_ts"),
+            F.when(F.col("worklist_status").isin("PARKED", "NO_STOCK"), F.lit(10))
+            .otherwise(F.lit(0))
+            .alias("priority_intervention_bump"),
             "source_storage_type",
             "source_zone",
             "destination_storage_type",

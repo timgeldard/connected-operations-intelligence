@@ -39,6 +39,8 @@ export interface WmWorklistItem {
   readonly transferPriority: string | null
   readonly createdTs: string | null
   readonly plannedExecutionTs: string | null
+  readonly demandDueTs: string | null
+  readonly priorityScore: number | null
   readonly itemCount: number | null
   readonly openItemCount: number | null
   readonly materialCount: number | null
