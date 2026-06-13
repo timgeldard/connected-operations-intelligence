@@ -52,6 +52,36 @@ R1 "missing `/cq/lab/plants` (P0)" — overstated, active picker uses the workin
   live consumption-view-backed routes.
 - **Phase 3 — roadmap:** R4b contract-govern trace2/spc/poh/cq (large; per-domain sequencing).
 
+## 1c. Operational Intelligence Risk Suite (ACCEPTED 2026-06-13 — specs 16–20)
+
+A four-capability program for cross-domain operational risk, requested by the product owner.
+Specs in `docs/specs/`. **Largely a composition layer over existing gold** (readiness,
+adherence-root-cause, shortage-projection, QM lot/UD, journey, lineside, expiry, delivery) plus
+four genuinely-new shared primitives. All read-only/advisory; Unknown is a first-class state.
+
+| # | Spec | Capability | Reuses / overlaps |
+|---|------|-----------|-------------------|
+| 16 | `16-operational-risk-foundation` | **Foundation** (keystone — build first): `OperationalRiskItem` contract, reason taxonomy, evidence-confidence framework, per-domain freshness service (extends `gold/freshness.py`), read-only wording guard, UTC date util | all of the below |
+| 17 | `17-operational-risk-cockpit` | **ORC** — next-24h cross-domain risk worklist, severity, domain grouping, freshness, drill-through, shift handover | subsumes parked *exceptions-triage*; unions all domain producers |
+| 18 | `18-warehouse-production-impact` | **WPI** — staging readiness → production-start risk; candidate-warehouse-impact classifier; recurring-issue + time-to-stage analytics | extends spec 04 root-cause + readiness + staging-pace |
+| 19 | `19-plan-adherence-delay-reasons` | **PAD** — line plan-vs-actual, late-start/finish, delay-reason inference + Pareto, plan volatility, previous-order dependency | extends spec 09 planning board + spec 04 + `gold_process_order_schedule_adherence` |
+| 20 | `20-quality-release-ageing` | **QRS** — quality-hold ageing queue, block-reason, UD analytics, service/customer + production exposure, conservative language | extends spec 06 readiness-QM + spec 07 QM Command Centre + spec 03 expiry |
+
+**MVP phasing** (product owner's §6): MVP1 = ORC foundation (worklist/severity/domain/freshness/
+drill-through, no predictive scoring); MVP2 = WPI; MVP3 = PAD; MVP4 = QRS. Foundation (16) gates
+all four.
+
+**The 10 first epics** (product owner's §7) map to the specs as: E1 cross-domain risk object model
++ E2 reason taxonomy + E7 evidence-confidence + E8 freshness service + E10 read-only guardrails →
+**spec 16 (Foundation)**; E3 next-24h cockpit → **spec 17**; E4 staging-readiness contract →
+**spec 18**; E5 plan-adherence contract → **spec 19**; E6 quality-hold impact contract → **spec
+20**; E9 UAT golden scenario pack → per-capability `tests/golden/` deliverable in each spec.
+
+**Dependencies / sequencing:** 16 → then 17 (needs the union MV) → 18/19/20 can proceed in
+parallel after 16 (each is an independent domain producer + view). Blocked-data caveats inherited:
+QRS MIC-result depth limited by the QAMR stall (§4); WPI capacity/line-scheduling needs the KAPA
+gap closed (§4); PAD plan-volatility needs schedule-change history if source carries it.
+
 ## 2. Trace track (Final Trace migration, ADR 016)
 
 - ~~Phase 2 — governed fan-out switchover~~ **SHIPPED 2026-06-12** (PR #129).
@@ -78,10 +108,12 @@ R1 "missing `/cq/lab/plants` (P0)" — overstated, active picker uses the workin
 
 KPI alerting service (email/Teams thresholds on gold KPIs) · master-data quality monitor ·
 governed Genie space · mock-recall drill mode (timed trace exercise for BRC/FSMA) ·
-pipeline observability dashboard (durations/freshness/cost) · PI & cycle-count analytics ·
-supplier quality scorecard · Order Journey stage-SLA overlays · exceptions triage workflow
-(ack/snooze, needs state store) · Staging Pace bulk-drop-log upgrade (`ZWMA_BULK_DROP_TO_LOG`)
-· Trends baseline bands · plant-onboarding tooling.
+pipeline observability dashboard (durations/freshness/cost) · supplier quality scorecard ·
+Order Journey stage-SLA overlays · Staging Pace bulk-drop-log upgrade (`ZWMA_BULK_DROP_TO_LOG`).
+
+> Promoted out of parked: PI & cycle-count analytics, Trends baseline bands, plant-onboarding
+> tooling (now specs 10–12, built). Exceptions-triage workflow's *read* side is subsumed by the
+> Operational Risk Cockpit (§1c spec 17); the ack/snooze state-store remains a separate future item.
 
 ## 4. Blocked on external parties
 
