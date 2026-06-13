@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { wmOperationsAdapter } from './wm-operations-adapter.js'
-import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmOrderYieldItem, WmRecipeBenchmarkItem, WmComponentVarianceItem, WmSupplyDemandLedgerItem, WmShortageProjectionItem } from './wm-operations-adapter.js'
+import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmAdherenceRootCauseItem, WmOrderYieldItem, WmRecipeBenchmarkItem, WmComponentVarianceItem, WmSupplyDemandLedgerItem, WmShortageProjectionItem } from './wm-operations-adapter.js'
 
 export function useWmOrderComponents(request: WmDrillRequest, enabled = true) {
   return useQuery({
@@ -148,6 +148,18 @@ export function useWmScheduleAdherenceDaily(plantId: string | null | undefined, 
     queryFn: () => wmOperationsAdapter.getList<WmScheduleAdherenceDailyItem>(
       '/api/wm-operations/schedule-adherence-daily',
       { plant_id: plantId ?? undefined, limit: 200 },
+    ),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(plantId),
+  })
+}
+
+export function useWmAdherenceRootCause(plantId: string | null | undefined, limit = 500, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-adherence-root-cause', plantId ?? null, limit],
+    queryFn: () => wmOperationsAdapter.getList<WmAdherenceRootCauseItem>(
+      '/api/wm-operations/adherence-root-cause',
+      { plant_id: plantId ?? undefined, limit },
     ),
     staleTime: 60 * 1000,
     enabled: enabled && Boolean(plantId),

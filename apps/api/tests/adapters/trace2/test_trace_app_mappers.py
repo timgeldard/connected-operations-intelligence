@@ -528,20 +528,13 @@ class TestTimelineMissingTimestampSurfacesExplicitly:
 
 
 def _mb_row(**overrides) -> dict:
-    """One row from gold_batch_event_ledger (governed Phase 2 source).
-    Quantity carries the natural sign (positive for IN receipts, negative
-    for OUT issues/dispatches). The mapper buckets by LINK_TYPE (movement_type
-    field in the SQL projection), not SAP numeric movement codes.
-
-    LINK_TYPE → bucket mapping:
-      "PRODUCTION"   → "101" (production bucket)
-      "VENDOR_RECEIPT"→ "101" (production bucket)
-      "DELIVERY"     → "601" (dispatch bucket)
-      "ADJUSTMENT_IN","ADJUSTMENT_OUT","BATCH_TRANSFER","MATERIAL_TRANSFER","STO_TRANSFER" → "701"
-      anything else  → "Z01"
-
-    Note: legacy SAP codes "101","261","601","701" bucket to "Z01" in the
-    governed mapper (they are not LINK_TYPE values).
+    """One row from gold_batch_event_ledger (Phase 2 governed source).
+    movement_type carries the LINK_TYPE string (e.g. 'PRODUCTION', 'DELIVERY').
+    Quantity carries the natural sign (positive for receipts/production,
+    negative for issues/dispatches) — pre-computed by the SQL via direction IN/OUT.
+    The mapper buckets on LINK_TYPE: PRODUCTION/VENDOR_RECEIPT → '101',
+    DELIVERY → '601', ADJUSTMENT_* / BATCH_TRANSFER / STO_TRANSFER → '701',
+    everything else → 'Z01'. There is no '261' bucket in the governed ledger.
     """
     base = {
         "movement_type": "PRODUCTION",
@@ -590,16 +583,22 @@ class TestMapMassBalanceLedgerRows:
 
     # --- sign preservation -------------------------------------------------
 
-    def test_negative_consumption_kept_negative(self) -> None:
-        """PRODUCTION OUT rows (component consumption) bucket to '101' with negative sign."""
+    def test_negative_production_out_kept_negative(self) -> None:
+        """Phase 2: governed ledger has no '261' consumption bucket. PRODUCTION rows
+        can carry negative quantities (direction=OUT, component consumed into a process order).
+        These are bucketed as '101' (produced bucket) with the natural negative sign.
+        The kpi.consumed field is always 0 in the governed ledger — see mapper comment."""
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
         rows = [_mb_row(movement_type="PRODUCTION", quantity=-150.0)]
         result = map_mass_balance_ledger_rows(rows)
         assert result is not None
         assert result["events"][0]["delta"] == -150.0
-        assert result["kpi"]["produced"] == -150.0  # consumption buckets into '101' with negative sign
+        assert result["events"][0]["code"] == "101"
+        # consumed is always 0 in the governed ledger — no '261' bucket
+        assert result["kpi"]["consumed"] == 0
 
     def test_negative_dispatch_kept_negative(self) -> None:
+        """DELIVERY rows carry negative quantities (dispatch out)."""
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
         rows = [_mb_row(movement_type="DELIVERY", quantity=-300.0)]
         result = map_mass_balance_ledger_rows(rows)
@@ -608,6 +607,7 @@ class TestMapMassBalanceLedgerRows:
         assert result["kpi"]["shipped"] == -300.0
 
     def test_positive_production_kept_positive(self) -> None:
+        """PRODUCTION rows with positive quantity (batch produced / received)."""
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
         rows = [_mb_row(movement_type="PRODUCTION", quantity=1000.0)]
         result = map_mass_balance_ledger_rows(rows)
@@ -656,9 +656,9 @@ class TestMapMassBalanceLedgerRows:
     # --- movement-type bucketing ------------------------------------------
 
     def test_unknown_movement_type_buckets_to_z01(self) -> None:
-        """Movement types outside the known {101/102/131, 261/262,
-        601/602, 701/702/711/712} sets fall into 'Z01' — they MUST NOT
-        be silently classified as production/consumption/dispatch."""
+        """LINK_TYPE strings outside the known set (PRODUCTION, VENDOR_RECEIPT,
+        DELIVERY, ADJUSTMENT_IN, ADJUSTMENT_OUT, BATCH_TRANSFER, MATERIAL_TRANSFER,
+        STO_TRANSFER) fall into 'Z01' — they MUST NOT be silently classified."""
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
         rows = [_mb_row(movement_type="999", quantity=50.0)]
         result = map_mass_balance_ledger_rows(rows)
@@ -678,13 +678,13 @@ class TestMapMassBalanceLedgerRows:
         assert result["events"][0]["code"] == "Z01"
 
     def test_postings_counts_match_per_bucket_events(self) -> None:
-        """Governed LINK_TYPE codes: PRODUCTION→'101', DELIVERY→'601', ADJUSTMENT_IN→'701'.
-        The '261' consumption bucket is always 0 in governed mapper (no LINK_TYPE maps to it).
-        """
+        """Phase 2: LINK_TYPE strings drive bucketing. PRODUCTION/VENDOR_RECEIPT → '101',
+        DELIVERY → '601', ADJUSTMENT_IN → '701'. No '261' bucket in governed ledger
+        (consumption bucket count always 0)."""
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
         rows = [
             _mb_row(movement_type="PRODUCTION", quantity=100.0),
-            _mb_row(movement_type="PRODUCTION", quantity=200.0),
+            _mb_row(movement_type="VENDOR_RECEIPT", quantity=200.0),
             _mb_row(movement_type="DELIVERY", quantity=-30.0),
             _mb_row(movement_type="ADJUSTMENT_IN", quantity=10.0),
         ]
@@ -692,7 +692,7 @@ class TestMapMassBalanceLedgerRows:
         assert result is not None
         postings = result["kpi"]["postings"]
         assert postings["production"] == 2
-        assert postings["consumption"] == 0   # '261' bucket always 0 in governed mapper
+        assert postings["consumption"] == 0  # no '261' bucket in governed ledger
         assert postings["dispatch"] == 1
         assert postings["adjustment"] == 1
 
@@ -711,8 +711,8 @@ class TestMapMassBalanceLedgerRows:
     def test_variance_is_not_zero_when_postings_dont_close(self) -> None:
         """Unexplained variance MUST surface as a non-zero value, not be
         hidden behind a zero default. variance = produced + adjusted +
-        consumed + shipped - current. With produced=100, current=50,
-        variance should be 50 (not zero)."""
+        consumed + shipped - current. With PRODUCTION row qty=100 but balance_qty=50,
+        produced=100, current=50, variance should be 50 (not zero)."""
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
         rows = [_mb_row(movement_type="PRODUCTION", quantity=100.0, balance_qty=50.0)]
         result = map_mass_balance_ledger_rows(rows)
@@ -720,10 +720,8 @@ class TestMapMassBalanceLedgerRows:
         assert result["kpi"]["variance"] == 50.0
 
     def test_variance_zero_only_when_postings_genuinely_close(self) -> None:
-        """Governed LINK_TYPE-based: PRODUCTION IN (receipt) + DELIVERY OUT (shipped).
-        produced(100) + shipped(-20) - current(80) = 0.
-        Note: '261' consumption bucket is 0 in governed mapper; use PRODUCTION/DELIVERY only.
-        """
+        """Phase 2: no '261' bucket — consume = 0. Use PRODUCTION + DELIVERY rows.
+        produced(100) + shipped(-20) + consumed(0) + adjusted(0) - current(80) = 0."""
         from adapters.trace2.trace2_databricks_adapter import map_mass_balance_ledger_rows
         rows = [
             _mb_row(movement_type="PRODUCTION", quantity=100.0, balance_qty=100.0),
@@ -731,7 +729,7 @@ class TestMapMassBalanceLedgerRows:
         ]
         result = map_mass_balance_ledger_rows(rows)
         assert result is not None
-        # produced(100) + shipped(-20) - current(80) = 0
+        # produced(100) + shipped(-20) + consumed(0) + adjusted(0) - current(80) = 0
         assert result["kpi"]["variance"] == 0
 
     # --- no unsafe claims --------------------------------------------------

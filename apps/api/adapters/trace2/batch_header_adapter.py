@@ -9,10 +9,7 @@ from __future__ import annotations
 from typing import Optional
 
 from shared.query_service.cache_policy import CacheTier
-from shared.query_service.object_resolver import (
-    resolve_domain_object,
-    resolve_governed_trace2_object,
-)
+from shared.query_service.object_resolver import resolve_governed_trace2_object
 from shared.query_service.query_spec import QuerySpec
 
 from ._types import Trace2BatchHeaderRequest, Trace2BatchSearchRequest
@@ -36,11 +33,13 @@ def get_batch_header_summary_spec(request: Trace2BatchHeaderRequest) -> QuerySpe
     Sources:
       - gold_batch_stock_summary_secured (TRACE_GOVERNED_SCHEMA, RLS) — stock position
       - gold_batch_event_ledger          (TRACE_GOVERNED_SCHEMA) — latest production activity
-      - gold_material                    (legacy TRACE_SCHEMA) — material name, UoM
-      - gold_plant                       (legacy TRACE_SCHEMA) — plant name
-      - gold_batch_material              (legacy TRACE_SCHEMA) — vendor batch ID
+      - gold_trace_material              (TRACE_GOVERNED_SCHEMA) — material name, UoM
+      - gold_trace_plant                 (TRACE_GOVERNED_SCHEMA) — plant name
+      - gold_trace_batch_material        (TRACE_GOVERNED_SCHEMA) — vendor batch ID
 
     Replaces legacy: gold_batch_stock_v + gold_batch_summary_v.
+    Phase 3: gold_material / gold_plant / gold_batch_material legacy reads replaced by
+    governed equivalents gold_trace_material / gold_trace_plant / gold_trace_batch_material.
 
     Column mapping vs legacy:
       stock_summary.unrestricted_quantity → unrestricted
@@ -49,12 +48,14 @@ def get_batch_header_summary_spec(request: Trace2BatchHeaderRequest) -> QuerySpe
       stock_summary.restricted_use_quantity     → restricted
       stock_summary.in_transfer_quantity        → transit
       stock_summary.total_quantity              → total_stock
-      stock_summary.base_unit_of_measure        → uom (via JOIN to gold_material fallback)
+      stock_summary.base_unit_of_measure        → uom (via JOIN to gold_trace_material)
 
     manufacture_date / expiry_date: these came from gold_batch_summary_v, which has
-    no governed equivalent. These fields are not available in the governed stack;
-    they are omitted from the SELECT. The mapper will not set manufactureDate /
-    expiryDate (same as if the legacy view had null values — fields absent from result).
+    no governed equivalent.  MCH1 (SAP batch master, carries MFRGR/VFDAT) is not replicated
+    in connected_plant.sap — see gold_trace_batch_material comment for the ingestion request
+    note.  These fields are omitted from the SELECT for now.  The mapper will not set
+    manufactureDate / expiryDate (same as if the legacy view had null values — fields absent
+    from result).
 
     process_order_id: sourced from gold_batch_event_ledger (latest PRODUCTION IN event),
     replacing the legacy gold_batch_production_history_v join.
@@ -67,9 +68,9 @@ def get_batch_header_summary_spec(request: Trace2BatchHeaderRequest) -> QuerySpe
     """
     tbl_stock = resolve_governed_trace2_object("gold_batch_stock_summary_secured")
     tbl_ledger = resolve_governed_trace2_object("gold_batch_event_ledger")
-    tbl_material = resolve_domain_object("trace2", "gold_material")
-    tbl_plant = resolve_domain_object("trace2", "gold_plant")
-    tbl_batch_material = resolve_domain_object("trace2", "gold_batch_material")
+    tbl_material = resolve_governed_trace2_object("gold_trace_material")
+    tbl_plant = resolve_governed_trace2_object("gold_trace_plant")
+    tbl_batch_material = resolve_governed_trace2_object("gold_trace_batch_material")
 
     sql = f"""
     SELECT
@@ -211,16 +212,16 @@ def get_batch_search_spec(request: Trace2BatchSearchRequest) -> QuerySpec:
           would resolve incorrectly (gold schema has no gold_trace_anchor_secured object).
       • gold_batch_lineage (po_match CTE) — TRACE_GOVERNED_SCHEMA (same governed schema).
           Anchor search and po_match must use the same edge universe as trace-graph.
-      • gold_material, gold_plant — legacy TRACE_SCHEMA ("gold").  No governed equivalents
-          exist for these enrichment tables yet; they stay on the legacy schema.
+      • gold_trace_material, gold_trace_plant — TRACE_GOVERNED_SCHEMA (Phase 3 switchover).
+          Replaced legacy TRACE_SCHEMA gold_material / gold_plant references.
     """
     # Governed objects: live in TRACE_GOVERNED_SCHEMA (gold_io_reporting), not TRACE_SCHEMA.
     tbl_anchor = resolve_governed_trace2_object("gold_trace_anchor_secured")
     # gold_batch_lineage in po_match must use the same edge universe as trace-graph traversal.
     tbl_lineage = resolve_governed_trace2_object("gold_batch_lineage")
-    # Legacy enrichment joins — no governed equivalents exist yet.
-    tbl_material = resolve_domain_object("trace2", "gold_material")
-    tbl_plant = resolve_domain_object("trace2", "gold_plant")
+    # Phase 3: governed enrichment lookups replace legacy TRACE_SCHEMA gold_material/gold_plant.
+    tbl_material = resolve_governed_trace2_object("gold_trace_material")
+    tbl_plant = resolve_governed_trace2_object("gold_trace_plant")
 
     sql = f"""
     WITH `po_match` AS (

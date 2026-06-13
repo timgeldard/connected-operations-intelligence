@@ -89,6 +89,12 @@ def test_gold_process_order_schedule_adherence(spark: SparkSession):
             actual_start_date=None, scheduled_start_date=date(2026, 5, 20),
             total_scrap_quantity=10.0, production_line="LINE03", production_line_description="Line 3 Desc",
             is_completed=True, is_closed=False),
+        # PHAS flags blank but actual_finish_date present (UAT replication pattern)
+        Row(order_number="5", plant_code="1000", material_code="MAT01", order_quantity=100.0, confirmed_yield_quantity=100.0,
+            scheduled_finish_date=date(2026, 5, 30), actual_finish_date=date(2026, 5, 28),
+            actual_start_date=date(2026, 5, 20), scheduled_start_date=date(2026, 5, 21),
+            total_scrap_quantity=0.0, production_line="LINE01", production_line_description="Line 1 Desc",
+            is_completed=False, is_closed=False),
     ]
 
     df_po = spark.createDataFrame(process_order_data)
@@ -97,8 +103,8 @@ def test_gold_process_order_schedule_adherence(spark: SparkSession):
     res_df = gold_process_order_schedule_adherence()
     results = all_rows(res_df)
 
-    # Should only have completed/closed orders (1, 2, 4)
-    assert len(results) == 3
+    # Should only have completed/closed orders (1, 2, 4, 5 — incl. PHAS-blank + finish date)
+    assert len(results) == 4
 
     otif_map = {r["order_number"]: r for r in results}
 
@@ -129,6 +135,10 @@ def test_gold_process_order_schedule_adherence(spark: SparkSession):
     assert abs(otif_map["4"]["scrap_rate"] - 0.1) < 0.0001
     assert otif_map["4"]["production_line"] == "LINE03"
     assert otif_map["4"]["production_line_description"] == "Line 3 Desc"
+
+    # Order 5: PHAS flags false but actual_finish_date present (UAT replication)
+    assert "5" in otif_map
+    assert otif_map["5"]["is_on_time"] == 1
 
 
 def test_gold_plant_production_quality_summary(spark: SparkSession):
