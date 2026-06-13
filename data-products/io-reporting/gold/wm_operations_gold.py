@@ -3416,7 +3416,10 @@ def gold_wm_pi_accuracy():
 
             # ── Value metrics (local currency — do not sum across currencies; group key carries currency)
             F.coalesce(F.sum("delta_value"), F.lit(0.0)).alias("total_adjustment_value"),
-            F.coalesce(F.sum("abs_delta_quantity"), F.lit(0.0)).alias("net_adjustment_qty"),
+            # net (signed) qty adjustment — sum the SIGNED delta_quantity (was abs_delta_quantity,
+            # which is a gross magnitude). Matches total_adjustment_value's signed semantics;
+            # the absolute magnitude is exposed separately as abs_adjustment_value.
+            F.coalesce(F.sum("delta_quantity"), F.lit(0.0)).alias("net_adjustment_qty"),
             F.coalesce(F.sum(F.abs(F.col("delta_value"))), F.lit(0.0)).alias("abs_adjustment_value"),
         )
         .withColumn(
