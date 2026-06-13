@@ -1,6 +1,6 @@
 # Connected Operations Intelligence — Comprehensive Architecture & Product Readiness Review
 
-This document provides a detailed architectural review and production-readiness assessment of the **Connected Operations Intelligence** monorepo. It evaluates the alignment of the Databricks DLT/Lakeflow pipeline data-product layer with the FastAPI/React application, analyzes the 44 new commits merged on `main` (including Shortage Projection, Expiry Risk, Adherence Root Cause, dynamic contract-resolver routing, and the OKF bundle mandate), identifies critical rollout risks, and recommends a phased remediation backlog.
+This document provides a detailed architectural review and production-readiness assessment of the **Connected Operations Intelligence** monorepo. It evaluates the alignment of the Databricks DLT/Lakeflow pipeline data-product layer with the FastAPI/React application, analyzes the latest changes merged from `main` (including the Lineside Monitor, Planning Board, and new CI guards), identifies critical rollout risks, and recommends a phased remediation backlog.
 
 ---
 
@@ -9,11 +9,11 @@ This document provides a detailed architectural review and production-readiness 
 | Dimension | Score | Verdict |
 | :--- | :---: | :--- |
 | **Architecture Direction** | **9 / 10** | **Excellent structural blueprint**. The migration of date-relative, non-deterministic logic to query-time serving views (`*_live`) built on RLS views (`*_secured`) is a highly sound pattern that preserves Enzyme incrementalization. The introduction of the Open Knowledge Format (OKF) bundle and generator guarantees that data contracts remain the single source of truth. |
-| **Production Readiness** | **6 / 10** | **In Progress**. Major progress has been made with the delivery of the WM Operations workspace (Shortage Projection, Expiry Risk, and Adherence Root Cause). However, a critical API route is still missing (`/api/cq/lab/plants`), unmigrated domains still bypass the contract resolver, and the home dashboard remains pilot-grade mock data. |
+| **Production Readiness** | **7 / 10** | **Significant Improvement**. Key runtime issues (e.g. Quality Lab Board plants lookup 404) have been resolved by consuming conformed routes. Registry guard loopholes are now plugged. The delivery of the Lineside Monitor, Planning Board, and onboarding tooling brings the repo much closer to production status. However, unmigrated domains still bypass the contract resolver, and the home dashboard remains pilot-grade mock data. |
 | **Databricks Best-Practice Alignment** | **8 / 10** | **Strong**. Triggered serverless Medallion pipelines, Enzyme-managed materialized views, and liquid clustering are correctly applied. The addition of the client-level `batch_master` silver table resolved a key data gap for FEFO. The AST-based determinism checks are excellent. |
 | **SAP Functional Correctness** | **8 / 10** | **Good**. Resilience against Aecorsoft datetime variations is robust. The new `adherence_root_cause` classifies late release, material shortage, and capacity lag accurately. However, capacity modeling remains disabled due to KAPA schema gaps, and there is a high risk of orphaned outbound delivery items. |
-| **App Maintainability** | **7 / 10** | **Moderate-High**. React and FastAPI remain modular. The addition of the dynamic `SIMPLE_DATASETS` router mapping in [wm_operations_databricks_adapter.py](file:///home/timgeldard/github/connected-operations-intelligence/apps/api/adapters/wm_operations/wm_operations_databricks_adapter.py) is clean, but a major governance loophole has been introduced where new domains bypass the migration registry guard. |
-| **Operational Supportability** | **6 / 10** | **Moderate**. Excellent offline OKF conformance and DLT PySpark unit tests have been added. However, the root `tests/` directory remains empty (no integration or E2E tests), and metastore groups are unverified in UAT. |
+| **App Maintainability** | **8 / 10** | **High**. React and FastAPI remain modular. The registry guard's new deny-by-default logic successfully secures new domain additions. The dynamic `SIMPLE_DATASETS` router mapping in [wm_operations_databricks_adapter.py](file:///home/timgeldard/github/connected-operations-intelligence/apps/api/adapters/wm_operations/wm_operations_databricks_adapter.py) is clean and scalable. |
+| **Operational Supportability** | **6 / 10** | **Moderate**. Excellent offline OKF conformance, DLT PySpark unit tests, and CI schema validators have been added. However, the root `tests/` directory remains empty (no integration or E2E tests), and metastore groups are unverified in UAT. |
 
 ---
 
@@ -23,73 +23,73 @@ This document provides a detailed architectural review and production-readiness 
 2. **Double-Secured serving views**: Each `*_live` view is built directly on top of the matching `*_secured` view, ensuring it inherits the plant row-level security (RLS) filter and does not bypass Central Security Model policies.
 3. **Open Knowledge Format (OKF) Bundle Mandate**: Enforces contract synchronicity by requiring that any change to the [app_contract_manifest.yml](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/contracts/app_contract_manifest.yml) must regenerate the OKF bundle under [okf/](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/okf/) via `make generate-okf`.
 4. **CI-Enforced Contract Drift Guards**: The CI pipeline runs [check_okf_bundle_fresh.py](file:///home/timgeldard/github/connected-operations-intelligence/scripts/ci/check_okf_bundle_fresh.py) and [test_okf_bundle.py](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/tests/test_okf_bundle.py) to block merges with stale or invalid documentation.
-5. **Decoupled Contract Resolver**: Governed domains like `warehouse360` and `wm_operations` resolve fully-qualified physical views at runtime through the centralized contract resolver in [contract_resolver.py](file:///home/timgeldard/github/connected-operations-intelligence/apps/api/shared/query_service/contract_resolver.py).
-6. **Robust FEFO Expiry Risk Engine**: The `gold_wm_expiry_risk` model in [wm_operations_gold.py](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/gold/wm_operations_gold.py) successfully joins the new client-level `batch_master` (MCH1) table with plant-scoped `batch_stock` to flag First Expiring, First Out (FEFO) issues.
-7. **Schedule Adherence Root Cause Classification**: The new `gold_wm_adherence_root_cause` table implements a rigorous prioritization (LATE_RELEASE > MATERIAL_SHORT > CAPACITY > UNCLASSIFIED) to automate bottleneck diagnostic reporting.
-8. **Dynamic Router Dataset Mapping**: The use of `SIMPLE_DATASETS` in [wm_operations_databricks_adapter.py](file:///home/timgeldard/github/connected-operations-intelligence/apps/api/adapters/wm_operations/wm_operations_databricks_adapter.py) reduces route boilerplate in FastAPI, mapping multiple routes to their respective contract definitions dynamically.
-9. **AST-Based Determinism Guards**: The CI scanner (`check_gold_mv_determinism.py`) prevents developers from introducing non-deterministic expressions in DLT materialized tables.
-10. **Dual-Format Datetime Resilience**: The `sap_date()` and `sap_datetime()` helpers in [helpers.py](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/silver/helpers.py) gracefully parse both Aecorsoft compact (`yyyyMMdd`) and ISO (`yyyy-MM-dd`) formats.
+5. **FastAPI Pydantic Response Model Guard**: The new CI script [check_route_response_models.py](file:///home/timgeldard/github/connected-operations-intelligence/scripts/ci/check_route_response_models.py) validates that every key emitted by FastAPI adapters matches a declared field or alias in the route's Pydantic response model, preventing runtime 500 errors (ResponseValidationError) in strict routes.
+6. **Deny-by-Default Migration Registry Guard**: The updated [check_app_migration_registry_guard.py](file:///home/timgeldard/github/connected-operations-intelligence/scripts/ci/check_app_migration_registry_guard.py) scans all subdirectories under `apps/api/adapters/` and fails if any unregistered folder contains direct data access, fully plugging previous governance loopholes.
+7. **Clean Conformed Routing Resolution**: By refactoring the frontend Quality Lab Board to call the conformed `/api/wm-operations/plants` route (and falling back to `FALLBACK_PLANTS` on error) rather than the missing `/api/cq/lab/plants` endpoint, the frontend prevents 404 lookup failures.
+8. **Decoupled Contract Resolver**: Governed domains like `warehouse360` and `wm_operations` resolve fully-qualified physical views at runtime through the centralized contract resolver in [contract_resolver.py](file:///home/timgeldard/github/connected-operations-intelligence/apps/api/shared/query_service/contract_resolver.py).
+9. **Rigorous Onboarding Checklists**: The onboarding script [onboard_plant.py](file:///home/timgeldard/github/connected-operations-intelligence/scripts/onboarding/onboard_plant.py) provides offline YAML validation, duplicate detection, and copy-paste generation to safely configure and register new plants.
+10. **Site Config Parity Verification**: The CI script [check_site_config_plant_seed.py](file:///home/timgeldard/github/connected-operations-intelligence/scripts/ci/check_site_config_plant_seed.py) validates structural alignment and prevents drift between the CSV configuration file and the hardcoded fallback seeds in [reference.py](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/silver/tables/reference.py).
 
 ---
 
 ## 3. Top 10 Critical Risks
 
-### Risk 1: Missing `/api/cq/lab/plants` Route in Backend (P0)
-* **Evidence**: The React Quality Lab Board standalone view queries `useConnectedQualityLabPlants()`, which calls the API route `/api/cq/lab/plants` (defined in [connected-quality-lab-databricks-adapter.ts:L102](file:///home/timgeldard/github/connected-operations-intelligence/domain-integrations/quality/src/adapters/connected-quality-lab-databricks-adapter.ts#L102)). However, this route is completely missing from all router files in `apps/api/routes/`.
-* **Impact**: When `BACKEND_ADAPTER_MODE=databricks-api` is active, the Quality Lab Board throws a 404, resulting in an empty plant dropdown picker in UAT and production.
-* **Remediation**: Add the `/cq/lab/plants` GET route to [quality_lab.py](file:///home/timgeldard/github/connected-operations-intelligence/apps/api/routes/quality_lab.py) and map it to `get_lab_plants_spec` in the `QualityLabRepository`.
-
-### Risk 2: Severe Loophole in Contract Migration Registry Guard (P1)
-* **Evidence**: The new `quality_lab` and `wm_operations` domains are not registered in the [app_migration_registry.yml](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/contracts/app_migration_registry.yml). Because the registry guard script [check_app_migration_registry_guard.py](file:///home/timgeldard/github/connected-operations-intelligence/scripts/ci/check_app_migration_registry_guard.py) only validates directories listed in the registry, these two directories completely bypassed sequencing restrictions.
-* **Impact**: Developers can bypass migration gates and deploy direct data access queries without undergoing UAT validation checks or registry approval.
-* **Remediation**: Update [check_app_migration_registry_guard.py](file:///home/timgeldard/github/connected-operations-intelligence/scripts/ci/check_app_migration_registry_guard.py) to scan all subdirectories under `apps/api/adapters/` and fail if any unregistered folder contains direct data access.
-
-### Risk 3: Hardcoded Mock Data on Home Dashboard (P1)
+### Risk 1: Hardcoded Mock Data on Home Dashboard (P1)
 * **Evidence**: The main landing page [RoleAwareHome.tsx](file:///home/timgeldard/github/connected-operations-intelligence/apps/web/src/pages/RoleAwareHome.tsx) uses hardcoded static arrays (`MOCK_PRIORITY_RELEASE_ITEMS`, `MOCK_SPC_SIGNALS`, `MOCK_WAREHOUSE_HOLDS`) rather than API calls.
 * **Impact**: Plant managers and operators are presented with static, pilot-grade placeholder data upon logging in, which could lead to confusion or operational mistakes.
 * **Remediation**: Implement FastAPI routes for these home widgets, back them with conformed `vw_consumption_*` views, and replace the static arrays with React Query hooks.
 
-### Risk 4: Bypassing of Contract Resolver in Unmigrated Domains (P1)
-* **Evidence**: Except for `warehouse360` and `wm_operations`, all other domains (POH, CQ, SPC, Trace2) bypass the contract manifest and query raw tables directly via `resolve_domain_object` in their adapters (e.g. `poh_databricks_adapter.py`, `spc_databricks_adapter.py`). Even the new `quality_lab` adapter uses `resolve_domain_object` directly in [quality_lab_databricks_adapter.py:L97](file:///home/timgeldard/github/connected-operations-intelligence/apps/api/adapters/quality_lab/quality_lab_databricks_adapter.py#L97) instead of `resolve_contract_object`.
+### Risk 2: Bypassing of Contract Resolver in Unmigrated Domains (P1)
+* **Evidence**: Except for `warehouse360` and `wm_operations`, all other domains (POH, CQ, SPC, Trace2) bypass the contract manifest and query raw tables directly via `resolve_domain_object` in their adapters (e.g. `poh_databricks_adapter.py`, `spc_databricks_adapter.py`). Even the `quality_lab` adapter uses `resolve_domain_object` directly in [quality_lab_databricks_adapter.py:L97](file:///home/timgeldard/github/connected-operations-intelligence/apps/api/adapters/quality_lab/quality_lab_databricks_adapter.py#L97) instead of `resolve_contract_object`.
 * **Impact**: These domains bypass the contract schema-validation checks. Any schema changes in the DLT pipelines will cause silent runtime failures in the application.
 * **Remediation**: Scaffold contracts for these unmigrated domains in `app_contract_manifest.yml` and migrate their adapters to use `resolve_contract_object`.
 
-### Risk 5: Empty Root Testing Folders (P1)
+### Risk 3: Empty Root Testing Folders (P1)
 * **Evidence**: The directories [tests/contract/](file:///home/timgeldard/github/connected-operations-intelligence/tests/contract), [tests/integration/](file:///home/timgeldard/github/connected-operations-intelligence/tests/integration), and [tests/e2e/](file:///home/timgeldard/github/connected-operations-intelligence/tests/e2e) contain only `.gitkeep` files.
 * **Impact**: There is no automated testing of end-to-end user flows, API integration, or data contract compliance before deployment to UAT.
-* **Remediation**: Implement a baseline suite of E2E tests using Playwright and integration tests to verify the FastAPI-to-Databricks queries.
+* **Remediation**: Implement a baseline suite of E2E tests using Playwright and integration tests to verify the FastAPI-to-Databricks-API queries.
 
-### Risk 6: Developer-Scoped Bundle Deployments in UAT/Prod (P1)
+### Risk 4: Developer-Scoped Bundle Deployments in UAT/Prod (P1)
 * **Evidence**: In [databricks.yml:L142](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/databricks.yml#L142) and [databricks.yml:L168](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/databricks.yml#L168), UAT and Prod deployment paths default to `/Workspace/Users/${workspace.current_user.userName}/.bundle/...`.
 * **Impact**: Multiple developers deploying to the same UAT workspace will create duplicate pipeline and job instances, leading to write conflicts and schema locks.
 * **Remediation**: Set up a CI/CD service principal deployment path under `/Workspace/Deployments/` with restricted access permissions.
 
-### Risk 7: Orphaned Outbound Delivery Items (P2)
+### Risk 5: Orphaned Outbound Delivery Items (P2)
 * **Evidence**: In `warehouse_flow_gold.py:L153` (defined in the data-products layer), `anti_join_optional_deleted_headers` checks `outbound_delivery_header_delete` by `delivery_number`. However, header-only deletes (where item fields are null) leave orphaned delivery items in the silver layer.
 * **Impact**: Outbound picking dashboards may display deleted delivery lines, misleading operators into processing canceled shipments.
 * **Remediation**: Update the anti-join logic to apply deletes at the document header level, removing all items associated with a deleted delivery number.
 
-### Risk 8: Partially Decommissioned Domain Remnants (P2)
+### Risk 6: Partially Decommissioned Domain Remnants (P2)
 * **Evidence**: The backend route and adapter for `envmon` have been deleted, but the frontend still imports `envmonConsumerRegistration` in [workspace-registry.ts:L5](file:///home/timgeldard/github/connected-operations-intelligence/apps/web/src/registry/workspace-registry.ts#L5) and defines `di-envmon` aliases in build files.
 * **Impact**: The UI mounts the Environmental Monitoring tab, but clicking it results in runtime errors and failed API calls.
 * **Remediation**: Remove `envmon` references from [workspace-registry.ts](file:///home/timgeldard/github/connected-operations-intelligence/apps/web/src/registry/workspace-registry.ts), `vite.config.ts`, and delete the empty `domain-integrations/envmon/` directory.
 
-### Risk 9: Capacity Utilisation Data Ingestion Gap (P2)
+### Risk 7: Capacity Utilisation Data Ingestion Gap (P2)
 * **Evidence**: In [reference.py:L216](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/silver/tables/reference.py#L216), the `capacity_utilisation` table is disabled because required columns (e.g. `DAFBI`, `DAFEI`) are missing from the replicated `shiftparametersavailablecapacity_kapa` table.
 * **Impact**: Any future capacity monitoring or line-scheduling features will display empty datasets.
 * **Remediation**: Update the Aecorsoft replication configuration to sync the full schema for the `KAPA` table.
 
-### Risk 10: Missing Consumer Groups in UAT Metastore (P2)
+### Risk 8: Missing Consumer Groups in UAT Metastore (P2)
 * **Evidence**: The UAT migration readiness checklist notes that the `users` and `warehouse360_app_users` consumer groups do not exist in the UAT metastore, which blocks grants and security hardening.
 * **Impact**: Row-level security cannot be verified in UAT, risking data leaks during pilot testing.
 * **Remediation**: Provision the consumer groups in Unity Catalog and sync them with the UAT workspace identity provider.
+
+### Risk 9: Potential SQL Injection Vector in Dynamic Datasets (P2)
+* **Evidence**: The dynamic query specification builder in [wm_operations_databricks_adapter.py:L1637](file:///home/timgeldard/github/connected-operations-intelligence/apps/api/adapters/wm_operations/wm_operations_databricks_adapter.py#L1637) compiles SQL dynamically using configuration fields (`cfg['columns']`, `cfg['order_by']`). While these configs are currently hardcoded, they pose a maintenance risk if any future refactoring permits user-supplied parameters to flow into these variables.
+* **Impact**: Potential SQL injection vulnerabilities if parameters are not sanitized before compile time.
+* **Remediation**: Enforce strict validation that `columns` and `order_by` remain code constants and are never populated from incoming query parameters.
+
+### Risk 10: Manual Sync Step for Plant Onboarding (P3)
+* **Evidence**: The onboarding tooling [onboard_plant.py](file:///home/timgeldard/github/connected-operations-intelligence/scripts/onboarding/onboard_plant.py) generates copy-paste snippets for CSV files and fallback seeds rather than executing the edits directly.
+* **Impact**: While the CI checker validates that the fallback seed matches the CSV, this manual step is prone to copy-paste errors, leading to build pipeline failures.
+* **Remediation**: Enhance [onboard_plant.py](file:///home/timgeldard/github/connected-operations-intelligence/scripts/onboarding/onboard_plant.py) to automatically write the CSV row and append the Python Row to [reference.py](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/silver/tables/reference.py) upon approval.
 
 ---
 
 ## 4. Section-by-Section Review
 
 ### A. Executive Summary
-The monorepo is designed to act as an integrated manufacturing operations intelligence platform. The architectural direction of utilizing conformed contracts and query-time serving views is excellent. However, due to incomplete migrations across multiple domains, a critical missing route in the quality lab board, and a lack of end-to-end testing, the repository is **not production-ready**.
+The monorepo is designed to act as an integrated manufacturing operations intelligence platform. The architectural direction of utilizing conformed contracts and query-time serving views is excellent. However, due to incomplete migrations across multiple domains, a lack of end-to-end testing, and hardcoded home dashboard widgets, the repository is **not production-ready**.
 
 ### B. Databricks Architecture
 * **Medallion structure**: Standard Bronze -> Silver -> Gold layout. Silver is the conformed layer, while Gold handles reporting aggregates.
@@ -100,7 +100,7 @@ The monorepo is designed to act as an integrated manufacturing operations intell
 ### C. Data Contracts & App Boundary
 * **Contracts**: Defined in [app_contract_manifest.yml](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/contracts/app_contract_manifest.yml).
 * **Coupling**: High coupling remains in unmigrated domains (POH, CQ, SPC, Trace2) where adapters query tables directly.
-* **Loophole**: `quality_lab` bypasses the contract manifest entirely by querying `vw_consumption_quality_lab_fails` through `resolve_domain_object` instead of `resolve_contract_object`. Both `quality_lab` and `wm_operations` bypass the CI registry guard.
+* **Loophole**: `quality_lab` bypasses the contract manifest entirely by querying `vw_consumption_quality_lab_fails` through `resolve_domain_object` instead of `resolve_contract_object`. Registry guard loopholes are now plugged.
 
 ### D. Security & Governance
 * **Row-Level Security**: Secured serving views (`*_secured`) implement plant-level filtering using `published_<env>.security.model`.
@@ -122,7 +122,7 @@ The monorepo is designed to act as an integrated manufacturing operations intell
 * **Orphaned items**: Risk of orphaned outbound delivery items from header-only deletes.
 
 ### H. Application Architecture
-* **FastAPI Router**: Clean routing structure, but missing the `/cq/lab/plants` route.
+* **FastAPI Router**: Clean routing structure.
 * **Database Connection**: Uses the Databricks Statement API with forwarded user OAuth tokens, ensuring the identity is propagated to Unity Catalog for RLS views.
 * **Queryspecs**: `packages/queryspecs` is a dummy package containing only a version constant.
 
@@ -132,7 +132,7 @@ The monorepo is designed to act as an integrated manufacturing operations intell
 
 ### J. Testing & CI
 * **Unit tests**: Excellent PySpark unit tests for DLT pipelines.
-* **CI guards**: Strict CI guards validate SQL drift, duplicate DLT names, forbidden data access, and OKF bundle drift.
+* **CI guards**: Strict CI guards validate SQL drift, duplicate DLT names, forbidden data access, OKF bundle drift, route models, and site configs.
 * **Monorepo tests**: The root `tests/` directory is empty, meaning there are no automated E2E or integration tests.
 
 ---
@@ -173,9 +173,7 @@ graph TD
 ## 6. Recommended Backlog
 
 ### Immediate P0 Fixes
-1. Add the missing GET `/api/cq/lab/plants` endpoint to [quality_lab.py](file:///home/timgeldard/github/connected-operations-intelligence/apps/api/routes/quality_lab.py).
-2. Update [check_app_migration_registry_guard.py](file:///home/timgeldard/github/connected-operations-intelligence/scripts/ci/check_app_migration_registry_guard.py) to scan all adapter directories and fail on unregistered adapters.
-3. Remove decommissioned `envmon` remnants from the frontend files ([workspace-registry.ts](file:///home/timgeldard/github/connected-operations-intelligence/apps/web/src/registry/workspace-registry.ts), `vite.config.ts`).
+1. Remove decommissioned `envmon` remnants from the frontend files ([workspace-registry.ts](file:///home/timgeldard/github/connected-operations-intelligence/apps/web/src/registry/workspace-registry.ts), `vite.config.ts`).
 
 ### Next 30 Days (Sprint 2 / Parity & Hardening)
 1. Scaffold contracts for unmigrated domains (POH, CQ, SPC, Trace2) in [app_contract_manifest.yml](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/contracts/app_contract_manifest.yml) and route them through `resolve_contract_object`.
