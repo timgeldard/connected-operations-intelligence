@@ -27,6 +27,7 @@ import { QmDispositionQueueView } from './views/qm-disposition-queue-view.js'
 import { OrderJourneyView } from './views/order-journey-view.js'
 import { ProductionProgressView } from './views/production-progress-view.js'
 import { YieldLossView } from './views/yield-loss-view.js'
+import { ExpiryRiskView } from './views/expiry-risk-view.js'
 import { EmptyNote, ViewHeader } from './components/kerry.js'
 import './theme/kerry-theme.css'
 
@@ -54,6 +55,7 @@ export type WmOperationsViewId =
   | 'order-journey'
   | 'production-progress'
   | 'yield-loss'
+  | 'expiry-risk'
 
 export interface WmOperationsWorkspaceProps {
   readonly scope: ScopeContext
@@ -112,6 +114,7 @@ const VIEW_GROUPS: Array<{ label: string; views: Array<{ id: WmOperationsViewId;
       { id: 'production-health', label: 'Production Health' },
       { id: 'production-progress', label: 'Production Progress' },
       { id: 'yield-loss', label: 'Yield & Loss' },
+      { id: 'expiry-risk', label: 'Expiry Risk' },
     ],
   },
 ]
@@ -279,6 +282,8 @@ function resolveView(viewId: string, request: WmOperationsAdapterRequest, onNavi
       return <ProductionProgressView request={request} onOpenProcessOrder={onOpenProcessOrder} onNavigateToView={onNavigateToView} />
     case 'yield-loss':
       return <YieldLossView request={request} onNavigateToView={onNavigateToView} />
+    case 'expiry-risk':
+      return <ExpiryRiskView request={request} onNavigateToView={onNavigateToView} />
     case 'staging-worklist':
     default:
       return <StagingWorklistView request={request} onOpenProcessOrder={onOpenProcessOrder} onNavigateToView={onNavigateToView} />

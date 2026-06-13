@@ -19,7 +19,7 @@ Specs for coding agents live in `docs/specs/` (one file per item, same numbering
 |---|------|------|----------------|
 | 1 | **Worklist: TO priority scoring** — rank worklist TOs by demand-wave urgency (staging-pace demand model computes the wave) instead of creation order | Extension | Ready — cheap, builds on staging-pace gold |
 | 2 | **Campaigns: recipe benchmarking** — duration/yield distribution across runs of the same recipe/process line | Extension | Ready — reuses `gold_wm_order_yield`; process-line axis on `process_order.production_line` |
-| 3 | **Expiry & shelf-life risk** — stock value at risk by expiry horizon, estate-wide FEFO-violation detection, write-off forecasting | New build | Ready — batch expiry (MCH1 `VFDAT`) + batch stock + valuation all in silver |
+| 3 | **Expiry & shelf-life risk** — stock value at risk by expiry horizon, estate-wide FEFO-violation detection, write-off forecasting | New build | In review — `feature/expiry-shelf-life-risk` |
 | 4 | **Production Progress: adherence root-cause tagging** — classify misses (late release / material short / capacity) | Extension | **Prerequisite:** investigate why `gold_process_order_schedule_adherence` is empty at gold level (S-curve currently renders empty state) |
 | 5 | **Shortage projection board** — forward-looking readiness: open orders vs stock vs inbound, projecting *when* an order goes short | New build | Ready |
 | 6 | **Readiness: quality-release dimension** — component batch QM release status joined into readiness bands | Extension | Ready — QM lot/UD silver is estate-wide since ADR 016 §4 widening (2026-06-12) |
@@ -40,8 +40,8 @@ Specs for coding agents live in `docs/specs/` (one file per item, same numbering
 - **Legacy `gold` schema retirement** — after Phase 4 + confirmation that no external
   consumer (Power BI etc.) reads the legacy views. Legacy 168M-edge
   `gold.gold_batch_lineage` is already unread by the app.
-- MCH1 (batch master) NOT replicated to bronze — ingestion request needed; supplies
-  manufacture/expiry dates for recall-readiness gaps AND queue item 3 (expiry risk).
+- MCH1 (batch master) is now represented in the source catalogue as `crossplantbatch_mch1`;
+  queue item 3 uses it behind a guarded `silver.batch_master` definition.
 - ADR 016 rename: Final Trace mount (`traceability-workspace`) → workspace id `trace`
   (unblocked by the legacy `trace` workspace decommission).
 - Batch passport surface; i18n phases; trace2 parity leftovers (B1 customer/delivery tables,

@@ -1045,6 +1045,183 @@ def gold_wm_slow_movers():
     )
 
 
+# ── 11. EXPIRY & SHELF-LIFE RISK ─────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Plant/material/batch shelf-life risk from plant-scoped MCHB batch stock enriched with "
+        "client-level MCH1 batch master expiry/manufacture dates and MBEW valuation. Gold carries "
+        "deterministic expiry_date only; days_to_expiry and expiry bands are computed in the "
+        "consumption view. FEFO v1 flags later-expiring stocked batches that have issue evidence "
+        "(261/601) while an earlier-expiring batch for the same plant/material remains on hand."
+    ),
+    cluster_by=["plant_code", "material_code"],
+))
+def gold_wm_expiry_risk():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    stock = (
+        spark.read.table(f"{ss}.batch_stock")
+        .groupBy("client", "plant_code", "material_code", "batch_number", "base_uom")
+        .agg(
+            F.coalesce(F.sum("unrestricted_quantity"), F.lit(0.0)).alias("unrestricted_qty"),
+            F.coalesce(F.sum("quality_inspection_quantity"), F.lit(0.0)).alias("quality_inspection_qty"),
+            F.coalesce(F.sum("blocked_quantity"), F.lit(0.0)).alias("blocked_qty"),
+            F.coalesce(F.sum("restricted_use_quantity"), F.lit(0.0)).alias("restricted_use_qty"),
+            F.coalesce(F.sum("in_transfer_quantity"), F.lit(0.0)).alias("in_transfer_qty"),
+            F.coalesce(F.sum("blocked_returns_quantity"), F.lit(0.0)).alias("blocked_returns_qty"),
+        )
+        .withColumn(
+            "total_stock_qty",
+            F.col("unrestricted_qty")
+            + F.col("quality_inspection_qty")
+            + F.col("blocked_qty")
+            + F.col("restricted_use_qty")
+            + F.col("in_transfer_qty")
+            + F.col("blocked_returns_qty"),
+        )
+        .filter(F.col("total_stock_qty") > 0)
+    )
+
+    if table_exists(spark, f"{ss}.batch_master"):
+        batch_master = (
+            spark.read.table(f"{ss}.batch_master")
+            .groupBy("client", "material_code", "batch_number")
+            .agg(
+                F.min("expiry_date").alias("expiry_date"),
+                F.min("manufacture_date").alias("manufacture_date"),
+                F.first("vendor_batch_number", ignorenulls=True).alias("vendor_batch_number"),
+            )
+        )
+    else:
+        batch_master = (
+            stock.select("client", "material_code", "batch_number")
+            .dropDuplicates()
+            .select(
+                "client",
+                "material_code",
+                "batch_number",
+                F.lit(None).cast("date").alias("expiry_date"),
+                F.lit(None).cast("date").alias("manufacture_date"),
+                F.lit(None).cast("string").alias("vendor_batch_number"),
+            )
+        )
+
+    material = (
+        spark.read.table(f"{ss}.material")
+        .groupBy("plant_code", "material_code")
+        .agg(
+            F.first("material_description", ignorenulls=True).alias("material_description"),
+            F.first("shelf_life_days", ignorenulls=True).alias("shelf_life_days"),
+            F.first("minimum_remaining_shelf_life_days", ignorenulls=True).alias(
+                "minimum_remaining_shelf_life_days"
+            ),
+        )
+    )
+
+    price = (
+        spark.read.table(f"{ss}.material_valuation")
+        .groupBy(F.col("valuation_area").alias("plant_code"), "material_code")
+        .agg(
+            F.first("standard_price", ignorenulls=True).alias("standard_price"),
+            F.first("price_unit", ignorenulls=True).alias("price_unit"),
+        )
+    )
+
+    enriched = (
+        stock
+        .join(batch_master, ["client", "material_code", "batch_number"], "left")
+        .join(F.broadcast(material), ["plant_code", "material_code"], "left")
+        .join(price, ["plant_code", "material_code"], "left")
+        .withColumn(
+            "est_stock_value",
+            F.when(
+                F.col("standard_price").isNotNull()
+                & (F.coalesce(F.col("price_unit").cast("double"), F.lit(0.0)) > 0),
+                F.col("total_stock_qty") * F.col("standard_price") / F.col("price_unit").cast("double"),
+            ),
+        )
+    )
+
+    issue_evidence = (
+        spark.read.table(f"{ss}.goods_movement")
+        .filter(
+            F.col("movement_type_code").isin("261", "601")
+            & F.col("batch_number").isNotNull()
+            & F.col("material_code").isNotNull()
+            & F.col("plant_code").isNotNull()
+        )
+        .groupBy("plant_code", "material_code", "batch_number")
+        .agg(F.max("posting_date").alias("latest_issue_date"))
+    )
+
+    earlier_candidates = (
+        enriched.filter(F.col("expiry_date").isNotNull()).alias("later")
+        .join(
+            enriched.filter(F.col("expiry_date").isNotNull()).alias("earlier"),
+            (F.col("later.plant_code") == F.col("earlier.plant_code"))
+            & (F.col("later.material_code") == F.col("earlier.material_code"))
+            & (F.col("earlier.expiry_date") < F.col("later.expiry_date"))
+            & (F.col("earlier.batch_number") != F.col("later.batch_number")),
+            "inner",
+        )
+        .select(
+            F.col("later.plant_code").alias("plant_code"),
+            F.col("later.material_code").alias("material_code"),
+            F.col("later.batch_number").alias("batch_number"),
+            F.col("earlier.batch_number").alias("earlier_expiring_batch"),
+            F.col("earlier.expiry_date").alias("earlier_expiry_date"),
+        )
+        .withColumn(
+            "_rank",
+            F.row_number().over(
+                Window.partitionBy("plant_code", "material_code", "batch_number")
+                .orderBy("earlier_expiry_date", "earlier_expiring_batch")
+            ),
+        )
+        .filter(F.col("_rank") == 1)
+        .drop("_rank", "earlier_expiry_date")
+    )
+
+    fefo = (
+        earlier_candidates
+        .join(issue_evidence, ["plant_code", "material_code", "batch_number"], "inner")
+        .withColumn("fefo_risk_flag", F.lit(True))
+    )
+
+    return (
+        enriched
+        .join(fefo, ["plant_code", "material_code", "batch_number"], "left")
+        .select(
+            F.col("client"),
+            F.col("plant_code"),
+            F.col("material_code"),
+            F.col("material_description"),
+            F.col("batch_number"),
+            F.col("base_uom"),
+            F.col("unrestricted_qty"),
+            F.col("quality_inspection_qty"),
+            F.col("blocked_qty"),
+            F.col("restricted_use_qty"),
+            F.col("in_transfer_qty"),
+            F.col("blocked_returns_qty"),
+            F.col("total_stock_qty"),
+            F.col("expiry_date"),
+            F.col("manufacture_date"),
+            F.col("vendor_batch_number"),
+            F.col("shelf_life_days"),
+            F.col("minimum_remaining_shelf_life_days"),
+            F.col("standard_price"),
+            F.col("price_unit"),
+            F.col("est_stock_value"),
+            F.coalesce(F.col("fefo_risk_flag"), F.lit(False)).alias("fefo_risk_flag"),
+            F.col("earlier_expiring_batch"),
+            F.col("latest_issue_date"),
+        )
+    )
+
+
 # ── 11. STAGING PACE (hourly staged-in throughput) ───────────────────────────
 
 @dlt.table(**gold_table_args(

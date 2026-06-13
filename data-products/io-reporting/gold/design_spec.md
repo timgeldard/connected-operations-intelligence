@@ -119,6 +119,12 @@ Managed via Declarative Automation Bundle (DAB).
 - **Description:** Current batch expiry exposure from storage-bin quants joined to material shelf-life policy, with expired, <7 day, 7-30 day, 30-90 day, and OK quantity buckets.
 - **Freshness:** Depends on `silver_fast_pipeline` storage-bin refresh, `silver_slow_pipeline` material refresh, and the triggered Gold refresh job.
 
+### `gold_wm_expiry_risk`
+- **Granularity:** 1 row per plant × material × batch × base UOM.
+- **Description:** Current WM Operations expiry/value-at-risk from `silver.batch_stock` (MCHB) enriched with client-level `silver.batch_master` (MCH1 expiry/manufacture/vendor batch) and `silver.material_valuation`. Gold carries deterministic absolute dates and values; query-time `days_to_expiry` and `expiry_band` are served by `vw_consumption_wm_operations_expiry_risk`.
+- **FEFO v1:** Flags later-expiring stocked batches with 261/601 issue evidence while an earlier-expiring batch for the same plant/material remains on hand. No moving wall-clock window is used in gold so the table remains deterministic.
+- **Freshness:** Depends on `silver_fast_pipeline` batch-stock / goods-movement refresh, `silver_slow_pipeline` batch-master / material / valuation refresh, and the triggered Gold refresh job.
+
 ### `gold_data_freshness_status`
 - **Granularity:** 1 row per monitored Silver dependency.
 - **Description:** Freshness SLA monitor with latest `_replicated_at`, lag minutes, criticality, and `FRESH`/`STALE`/`NO_DATA`/`STATIC` status. `gold_critical_freshness_gate` fails the run for stale/no-data critical dependencies.
@@ -362,6 +368,7 @@ One-line definition per warehouse Gold table (grain · key measures · scope/fil
 | `gold_bin_occupancy` | wh × plant × storage_type × bin_type | occupancy_rate, occupied/empty/blocked counts | current bin state |
 | `gold_stock_availability` | plant × sloc × material × batch × UOM | unrestricted/QI/blocked/restricted/in-transfer | batch stock (MCHB) |
 | `gold_stock_expiry_risk` | plant × material × batch × UOM | expiry buckets (expired/<7/7-30/30-90/OK) | bin stock joined to shelf-life |
+| `gold_wm_expiry_risk` | plant × material × batch × UOM | stock qty by category, expiry date, est_stock_value, FEFO flag | MCHB batch stock + MCH1 batch master + MBEW valuation; query-time expiry band in WM consumption view |
 | `gold_dispensary_backlog` | plant × supply area × wh | open task/order count, open/required qty, urgency dates | RESB rows where `is_production_consumption`, not deleted, open_qty>0 |
 | `gold_lineside_stock` | plant × wh × storage_type × material × batch × UOM | total/available qty, min days-to-expiry | occupied bins in line-side STs (`_LINESIDE_PREDICATE`) |
 | `gold_delivery_pick_status` | delivery | pick_fraction, line_count, is_shipped, `risk_band`, ship-to/sold-to, header gross weight | LIPS base-UoM pick % (not TO-level; null for mixed-base-UoM deliveries); SD roles use LIKP KUNNR/KUNAG; gross_weight uses LIKP BTGEW; RAG: shipped→green, null GI→grey |

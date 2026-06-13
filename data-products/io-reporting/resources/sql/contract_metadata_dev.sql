@@ -3,7 +3,7 @@
 -- Run once as a UC admin after the consumption views are created / updated.
 -- Re-runnable: COMMENT ON and SET TAGS are idempotent (they overwrite existing values).
 --
--- Covers 53 contract(s) with a matched source_view.
+-- Covers 56 contract(s) with a matched source_view.
 -- Skipped 1 contract(s) whose source_view is not yet created in
 -- resources/sql/*consumption_views_dev.sql (see generator output for details).
 --
@@ -879,14 +879,15 @@ ALTER VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_ha
 
 -- ── Contract: wm_operations.expiry_risk v0.1.0 ──
 COMMENT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_expiry_risk IS
-  'Batch-level shelf-life risk with query-time expiry buckets. Candidate contract pending DEV profiling. Grain: one row per plant_id, material_id and batch_id. Contract: wm_operations.expiry_risk v0.1.0. Freshness SLA: expected 30 min, warning 60 min, critical 120 min. Row-level access key: plant_id.';
+  'Batch-level shelf-life value at risk with query-time expiry buckets and FEFO issue signals. Candidate contract pending DEV profiling. Grain: one row per plant_id, material_id and batch_id. Contract: wm_operations.expiry_risk v0.1.0. Freshness SLA: expected 30 min, warning 60 min, critical 120 min. Row-level access key: plant_id.';
 ALTER VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_expiry_risk SET TAGS (
   'contract_id' = 'wm_operations.expiry_risk',
   'contract_version' = '0.1.0',
   'contract_grain' = 'one row per plant_id, material_id and batch_id',
   'freshness_expected_minutes' = '30'
 );
--- (no column descriptions in manifest for vw_consumption_wm_operations_expiry_risk)
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_expiry_risk.expiry_band IS
+  'Query-time expiry bucket: EXPIRED, LT_30_DAYS, DAYS_30_90, DAYS_90_180, GT_180_DAYS, or NO_DATE';
 
 -- ── Contract: wm_operations.stock_holds v0.1.0 ──
 COMMENT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_stock_holds IS
@@ -1118,6 +1119,32 @@ ALTER VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_qm
 );
 -- (no column descriptions in manifest for vw_consumption_wm_operations_qm_disposition_queue)
 
+-- ── Contract: wm_operations.qm_characteristic_pareto v0.1.0 ──
+COMMENT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_qm_characteristic_pareto IS
+  'QM characteristic (MIC) Pareto for the Command Centre drill view. Counts all lab results in the silver lookback window; fail_rate = fail_count/result_count. last_result_date is the per-plant×material data freshness signal (replication may lag by plant). Source: gold_qm_characteristic_pareto. Grain: one row per plant_id, material_id, and characteristic_id. Contract: wm_operations.qm_characteristic_pareto v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
+ALTER VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_qm_characteristic_pareto SET TAGS (
+  'contract_id' = 'wm_operations.qm_characteristic_pareto',
+  'contract_version' = '0.1.0',
+  'contract_grain' = 'one row per plant_id, material_id, and characteristic_id',
+  'freshness_expected_minutes' = '60'
+);
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_qm_characteristic_pareto.last_result_date IS
+  'Latest result recording date for this plant×material (freshness signal)';
+
+-- ── Contract: wm_operations.qm_ud_code_pareto v0.1.0 ──
+COMMENT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_qm_ud_code_pareto IS
+  'QM usage-decision code distribution Pareto. Plant from parent lot (not QAVE VWERKS). Source: gold_qm_ud_code_pareto. Grain: one row per plant_id and usage_decision_code. Contract: wm_operations.qm_ud_code_pareto v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
+ALTER VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_qm_ud_code_pareto SET TAGS (
+  'contract_id' = 'wm_operations.qm_ud_code_pareto',
+  'contract_version' = '0.1.0',
+  'contract_grain' = 'one row per plant_id and usage_decision_code',
+  'freshness_expected_minutes' = '60'
+);
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_qm_ud_code_pareto.usage_decision IS
+  'Accepted | Rejected | Other Decision';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_qm_ud_code_pareto.usage_decision_valuation IS
+  'Raw QAVE VBEWERTUNG (A/R/blank)';
+
 -- ── Contract: wm_operations.order_journey v0.1.0 ──
 COMMENT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_order_journey IS
   'Order/Batch Journey Timeline summary -- one row per plant_id x order_id. Milestones aggregated from five silver sources (process_order, TR/TO via TBNUM, process_order_operation, pi_sheet_execution, goods_movement) to populate the flagship per-order journey view. All milestone timestamps nullable; PI columns absent at plants without PI data (P806). Derived lag hours (release->staged->produced->GR) only populated when both endpoints exist. No date-relative columns -- no _live wrapper; reads _secured directly. Grain: one row per plant_id and order_id. Contract: wm_operations.order_journey v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
@@ -1347,3 +1374,53 @@ COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operat
   'Standard price per price_unit from material_valuation (MBEW STPRS)';
 COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_component_variance.is_final_issue IS
   'True when the reservation carries the final-issue flag (RESB KZEAR)';
+
+-- ── Contract: wm_operations.adherence_root_cause v0.1.0 ──
+COMMENT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause IS
+  'Order-grain adherence miss root-cause classification for Production Progress. One row per late/missed process order. root_cause_class precedence: LATE_RELEASE (release after scheduled start) > MATERIAL_SHORT (component under-issue) > CAPACITY (production start lagged >24h after release) > UNCLASSIFIED. is_open_late is query-time (unfinished past scheduled_finish_date). Source: gold_wm_adherence_root_cause. Grain: one row per plant_id and order_id. Contract: wm_operations.adherence_root_cause v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
+ALTER VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause SET TAGS (
+  'contract_id' = 'wm_operations.adherence_root_cause',
+  'contract_version' = '0.1.0',
+  'contract_grain' = 'one row per plant_id and order_id',
+  'freshness_expected_minutes' = '60'
+);
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.plant_id IS
+  'SAP plant ID';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.order_id IS
+  'Process order number (AUFNR)';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.material_id IS
+  'Header material code (AFPO MATNR)';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.material_name IS
+  'Material description';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.order_qty IS
+  'Planned order quantity (AFKO GAMNG)';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.uom IS
+  'Order quantity unit of measure';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.production_line IS
+  'Production line / work centre';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.scheduled_start_date IS
+  'Scheduled start date (AFKO GSTRS)';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.scheduled_finish_date IS
+  'Scheduled finish date (AFKO GLTRS)';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.actual_release_date IS
+  'Actual release date (AUFK FTRMI)';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.actual_finish_date IS
+  'Actual finish date (AUFK GLTRI); null when order still open';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.root_cause_class IS
+  'LATE_RELEASE | MATERIAL_SHORT | CAPACITY | UNCLASSIFIED';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.is_late_release IS
+  'True when actual_release_date > scheduled_start_date';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.has_material_short IS
+  'True when any component variance_qty is below tolerance (under-issue)';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.shortfall_component_count IS
+  'Count of components with under-issue beyond tolerance';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.min_variance_qty IS
+  'Most negative component variance_qty on the order (under-issue depth)';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.release_to_production_hours IS
+  'Hours from release to first operation actual start (capacity signal)';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.production_first_actual_start IS
+  'First operation actual start timestamp (AFVC/operation confirmations)';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.is_finish_late IS
+  'True when actual_finish_date > scheduled_finish_date';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_adherence_root_cause.is_open_late IS
+  'True when unfinished and scheduled_finish_date is before today (query-time)';

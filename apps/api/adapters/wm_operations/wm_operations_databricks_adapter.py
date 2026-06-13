@@ -1213,14 +1213,26 @@ SIMPLE_DATASETS: dict[str, dict] = {
     ),
     "expiry_risk": dict(
         contract="wm_operations.expiry_risk", endpoint="/api/wm-operations/expiry-risk",
-        columns="plant_id, material_id, material_name, batch_id, uom, minimum_expiry_date, "
-                "shelf_life_days, minimum_remaining_shelf_life_days, total_stock_qty, "
-                "minimum_days_to_expiry, expired_qty, highest_expiry_risk_bucket, "
-                "has_minimum_shelf_life_breach",
-        order_by="minimum_days_to_expiry ASC NULLS LAST",
-        numeric=("total_stock_qty", "expired_qty"),
-        integer=("shelf_life_days", "minimum_remaining_shelf_life_days", "minimum_days_to_expiry"),
-        boolean=("has_minimum_shelf_life_breach",), has_warehouse=False,
+        columns=(
+            "plant_id, material_id, material_name, batch_id, uom, unrestricted_qty, "
+            "quality_inspection_qty, blocked_qty, restricted_use_qty, in_transfer_qty, "
+            "blocked_returns_qty, total_stock_qty, expiry_date, days_to_expiry, expiry_band, "
+            "manufacture_date, vendor_batch_number, shelf_life_days, "
+            "minimum_remaining_shelf_life_days, standard_price, price_unit, est_stock_value, "
+            "fefo_risk_flag, earlier_expiring_batch, latest_issue_date"
+        ),
+        order_by=(
+            "CASE expiry_band WHEN 'EXPIRED' THEN 0 WHEN 'LT_30_DAYS' THEN 1 "
+            "WHEN 'DAYS_30_90' THEN 2 WHEN 'DAYS_90_180' THEN 3 "
+            "WHEN 'GT_180_DAYS' THEN 4 ELSE 5 END ASC, days_to_expiry ASC NULLS LAST"
+        ),
+        numeric=(
+            "unrestricted_qty", "quality_inspection_qty", "blocked_qty", "restricted_use_qty",
+            "in_transfer_qty", "blocked_returns_qty", "total_stock_qty", "standard_price",
+            "price_unit", "est_stock_value",
+        ),
+        integer=("days_to_expiry", "shelf_life_days", "minimum_remaining_shelf_life_days"),
+        boolean=("fefo_risk_flag",), has_warehouse=False,
     ),
     "stock_holds": dict(
         contract="wm_operations.stock_holds", endpoint="/api/wm-operations/stock-holds",
