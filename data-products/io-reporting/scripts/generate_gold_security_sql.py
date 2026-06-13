@@ -163,6 +163,7 @@ GOLD_TABLES = [
     "gold_wm_supply_demand_ledger",
     "gold_wm_order_shortage_projection",
     "gold_wm_adherence_root_cause",
+    "gold_wm_pi_accuracy",
     # wm_operations_gold.py — Lineside Monitor (PEX-E-35)
     "gold_wm_lineside_now",
     "gold_wm_lineside_lines",

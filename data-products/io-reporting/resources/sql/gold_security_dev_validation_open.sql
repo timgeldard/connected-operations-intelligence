@@ -212,6 +212,10 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_daily_activ
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_daily_activity;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_daily_activity_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_daily_activity_baseline_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_daily_activity_baseline;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_daily_activity_baseline_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_slow_movers_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_slow_movers;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_slow_movers_secured TO `users`;
@@ -291,6 +295,10 @@ GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_shortag
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_adherence_root_cause_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_adherence_root_cause;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_adherence_root_cause_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_pi_accuracy_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_pi_accuracy;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_pi_accuracy_secured TO `users`;
 
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_lineside_now_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_lineside_now;

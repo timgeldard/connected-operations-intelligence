@@ -289,6 +289,10 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_adherence_r
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_adherence_root_cause;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_adherence_root_cause_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_pi_accuracy_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_pi_accuracy;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_pi_accuracy_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_lineside_now_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_lineside_now;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_lineside_now_secured TO `users`;

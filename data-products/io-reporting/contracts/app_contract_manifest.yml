@@ -4487,6 +4487,103 @@ contracts:
         required: false
         description: True when unfinished and scheduled_finish_date is before today (query-time)
 
+  - id: wm_operations.pi_accuracy
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Physical-inventory count accuracy KPIs aggregated to plant × storage_location × ABC
+      cycle-count class × currency × month grain. Source: gold_wm_pi_accuracy (aggregates
+      gold_physical_inventory_recon). "due_lines" = all PI document lines with count_date in the
+      month — honest denominator; recounts appear as distinct lines. storage_zone is intentionally
+      absent: ISEG carries only LGORT (storage_location_code), not storage_type, so a clean join to
+      storage_type_role_mapping is not possible. delta_value / total_adjustment_value is in local
+      currency; do not aggregate across currencies (currency is a grain key).
+      count_accuracy_pct and coverage_pct are deterministic at aggregate level (no current_date).
+    source_view: vw_consumption_wm_operations_pi_accuracy
+    grain: one row per plant_id, storage_location_id, abc_indicator, currency and count_month
+    primary_key:
+      - plant_id
+      - storage_location_id
+      - abc_indicator
+      - currency
+      - count_month
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant code (ISEG WERKS)
+      - name: storage_location_id
+        type: string
+        required: true
+        description: Storage location (ISEG LGORT); zone mapping not available at this grain
+      - name: abc_indicator
+        type: string
+        required: true
+        description: ABC cycle-counting indicator (ISEG ABCIN); empty string when not set
+      - name: currency
+        type: string
+        required: false
+        description: Local currency code (ISEG WAERS); group key — do not sum across currencies
+      - name: count_month
+        type: date
+        required: false
+        description: First day of the count month; derived from date_trunc('month', count_date)
+      - name: due_lines
+        type: long
+        required: true
+        description: >
+          Total PI document lines in the period (all ISEG lines with count_date in count_month,
+          regardless of status). Honest coverage denominator — recounts are counted as distinct lines.
+      - name: counted_lines
+        type: long
+        required: true
+        description: Lines where is_counted = true (ISEG XZAEL)
+      - name: matched_lines
+        type: long
+        required: true
+        description: Lines where physical_inventory_status = MATCHED (delta_quantity within 0.001)
+      - name: recount_required_lines
+        type: long
+        required: true
+        description: Lines where is_recount_required = true (ISEG XNZAE)
+      - name: lines_with_difference
+        type: long
+        required: true
+        description: Lines with status DIFFERENCE_POSTED or DIFFERENCE_NOT_POSTED
+      - name: count_accuracy_pct
+        type: double
+        required: false
+        description: matched_lines / counted_lines; null when counted_lines = 0
+      - name: coverage_pct
+        type: double
+        required: false
+        description: counted_lines / due_lines; null when due_lines = 0
+      - name: recount_rate_pct
+        type: double
+        required: false
+        description: recount_required_lines / counted_lines; null when counted_lines = 0
+      - name: total_adjustment_value
+        type: double
+        required: false
+        description: Sum of delta_value (ISEG DMBTR) in local currency; net signed adjustment
+      - name: abs_adjustment_value
+        type: double
+        required: false
+        description: Sum of abs(delta_value); absolute magnitude of inventory adjustments
+      - name: net_adjustment_qty
+        type: double
+        required: false
+        description: Sum of abs_delta_quantity across all lines in the group
+
   # ── Lineside Monitor (PEX-E-35) ──────────────────────────────────────────────
 
   - id: wm_operations.lineside_now

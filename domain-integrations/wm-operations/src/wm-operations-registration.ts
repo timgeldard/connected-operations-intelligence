@@ -126,6 +126,7 @@ export const wmOperationsRegistration: WorkspaceRegistration = {
       sortOrder: 26,
       defaultPanels: [{ panelId: 'wm-planning-board', defaultVisible: true, defaultOrder: 0 }],
     },
+    { viewId: 'inventory-accuracy', displayName: 'Inventory Accuracy', lifecycle: 'pilot', sortOrder: 27, defaultPanels: [{ panelId: 'wm-inventory-accuracy', defaultVisible: true, defaultOrder: 0 }] },
   ],
   defaultPanels: [
     { panelId: 'wm-worklist-summary', defaultVisible: true, defaultOrder: 0 },

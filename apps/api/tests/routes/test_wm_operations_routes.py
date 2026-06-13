@@ -1532,6 +1532,76 @@ class TestShortageProjectionRoutes:
         assert response.headers.get("x-contract-id") == "wm_operations.supply_demand_ledger"
 
 
+# ---------------------------------------------------------------------------
+# PI Accuracy (SIMPLE_DATASETS declarative route)
+# ---------------------------------------------------------------------------
+
+class TestPiAccuracyRoute:
+    async def test_returns_mapped_pi_accuracy_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "storage_location_id": "0001",
+            "abc_indicator": "A",
+            "currency": "EUR",
+            "count_month": "2026-06-01",
+            "due_lines": 120,
+            "counted_lines": 115,
+            "matched_lines": 110,
+            "recount_required_lines": 3,
+            "lines_with_difference": 5,
+            "count_accuracy_pct": 0.956521739,
+            "coverage_pct": 0.958333333,
+            "recount_rate_pct": 0.026086956,
+            "total_adjustment_value": -1500.0,
+            "abs_adjustment_value": 2200.0,
+            "net_adjustment_qty": 180.5,
+        }
+
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/pi-accuracy",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["plantId"] == "C061"
+        assert row["storageLocationId"] == "0001"
+        assert row["abcIndicator"] == "A"
+        assert row["currency"] == "EUR"
+        assert row["countMonth"] == "2026-06-01"
+        # integer fields coerced
+        assert row["dueLines"] == 120
+        assert row["countedLines"] == 115
+        assert row["matchedLines"] == 110
+        assert row["recountRequiredLines"] == 3
+        assert row["linesWithDifference"] == 5
+        # numeric fields preserved
+        assert abs(row["countAccuracyPct"] - 0.956521739) < 1e-6
+        assert abs(row["coveragePct"] - 0.958333333) < 1e-6
+        assert abs(row["totalAdjustmentValue"] - (-1500.0)) < 1e-6
+        assert response.headers.get("x-contract-id") == "wm_operations.pi_accuracy"
+
+    async def test_returns_401_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/pi-accuracy", params={"plant_id": "C061"}
+            )
+        assert response.status_code == 401
+
+    async def test_returns_503_legacy(self, monkeypatch) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/pi-accuracy",
+                params={"plant_id": "C061"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 503
 class TestDailyActivityBaselineRoute:
     async def test_returns_200_with_baseline_rows(self, wm_ops_databricks_env) -> None:
         fake_row = {

@@ -1699,6 +1699,24 @@ SIMPLE_DATASETS: dict[str, dict] = {
         boolean=("is_late_release", "has_material_short", "is_finish_late", "is_open_late"),
         has_warehouse=False,
     ),
+    "pi_accuracy": dict(
+        contract="wm_operations.pi_accuracy",
+        endpoint="/api/wm-operations/pi-accuracy",
+        columns=(
+            "plant_id, storage_location_id, abc_indicator, currency, count_month, "
+            "due_lines, counted_lines, matched_lines, recount_required_lines, lines_with_difference, "
+            "count_accuracy_pct, coverage_pct, recount_rate_pct, "
+            "total_adjustment_value, abs_adjustment_value, net_adjustment_qty"
+        ),
+        order_by="count_month DESC NULLS LAST, plant_id ASC",
+        numeric=("count_accuracy_pct", "coverage_pct", "recount_rate_pct",
+                 "total_adjustment_value", "abs_adjustment_value", "net_adjustment_qty"),
+        integer=("due_lines", "counted_lines", "matched_lines",
+                 "recount_required_lines", "lines_with_difference"),
+        boolean=(),
+        has_warehouse=False,
+        days_col="count_month",
+    ),
 }
 
 
