@@ -79,9 +79,14 @@ SITE_CONFIG_PATH = REPO_ROOT / "data-products/io-reporting/resources/config/site
 
 def load_onboarded_plants() -> List[str]:
     """Read site_config_plant.csv and return a list of active plant IDs."""
+    override = os.getenv("PLANT_LIST_OVERRIDE")
+    if override:
+        return [p.strip() for p in override.split(",") if p.strip()]
+
     plants = []
     if not SITE_CONFIG_PATH.exists():
-        return ["C061", "P817"]  # Fallbacks
+        print(f"WARNING: SITE_CONFIG_PATH does not exist at {SITE_CONFIG_PATH}. Failing closed and returning empty list.", file=sys.stderr)
+        return []
     with open(SITE_CONFIG_PATH, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -110,6 +115,9 @@ class CacheWarmer:
 
     async def run(self):
         plants = load_onboarded_plants()
+        if not plants:
+            print("No active plants resolved. Exiting cache warming daemon.")
+            return
         print(f"Beginning cache warming for active plants: {plants}")
 
         # List of critical dashboard endpoints to warm
@@ -123,6 +131,12 @@ class CacheWarmer:
 
         # Configure keep-alive HTTP client
         limits = httpx.Limits(max_keepalive_connections=10, max_connections=20)
+        sem = asyncio.Semaphore(10)  # Limit concurrent requests to 10
+
+        async def warm_with_sem(client: httpx.AsyncClient, endpoint: str, payload: dict[str, Any]):
+            async with sem:
+                await self.warm_endpoint(client, endpoint, payload)
+
         async with httpx.AsyncClient(limits=limits) as client:
             tasks = []
             for plant in plants:
@@ -132,16 +146,24 @@ class CacheWarmer:
                         "plant_code": plant,
                         "limit": 250
                     }
-                    tasks.append(self.warm_endpoint(client, endpoint, payload))
+                    tasks.append(warm_with_sem(client, endpoint, payload))
             
-            # Execute all warming requests concurrently
+            # Execute all warming requests with bounded concurrency
             await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--api-url", default=os.getenv("CONNECTIO_API_URL", "http://localhost:8000"))
-    parser.add_argument("--secret", default=os.getenv("CACHE_WARMING_SECRET", "WARMING_DEV_TOKEN"))
+    parser.add_argument(
+        "--secret", 
+        default=os.getenv("CACHE_WARMING_SECRET"), 
+        help="Cache warming shared secret key"
+    )
     args = parser.parse_args()
+
+    if not args.secret:
+        print("ERROR: --secret argument or CACHE_WARMING_SECRET environment variable is required.", file=sys.stderr)
+        sys.exit(1)
 
     warmer = CacheWarmer(args.api_url, args.secret)
     asyncio.run(warmer.run())

@@ -43,16 +43,24 @@ The platform is preparing for deployment across multiple manufacturing plants, s
 
 ## 3. Technical Feasibility & Dependency Mapping
 
-An inspection of [package.json](file:///home/timgeldard/github/connected-operations-intelligence/apps/web/package.json) shows that the project is well-positioned for an immediate upgrade:
+An inspection of [package.json](file:///home/timgeldard/github/connected-operations-intelligence/apps/web/package.json) shows that the project is well-positioned for an immediate upgrade. However, compatibility of developer tooling is a necessary but not sufficient condition for a successful upgrade. While the build and test tools support React 19, the application itself is currently on `react`/`react-dom` `^18.x`. React 19 introduces critical code-level behavioral and API changes (most notably the deprecation of `forwardRef` in favor of standard `ref` passing) that require manual code-level verification. Tooling compatibility does not guarantee that custom component rendering or state synchronization logic will work without regression.
+
+The baseline version checklist for key dependencies is as follows:
 
 * **Vite 6**: The build tool is already at version 6 (`"vite": "^6"`), which fully supports React 19.
 * **TypeScript 5.6.3**: TypeScript is modern enough to support the new JSX and types definitions without version conflicts.
 * **TanStack React Query v5**: Already in use. Minor versions of v5 officially support React 19, requiring no major query-layer migration.
 * **React Testing Library**: RTL 16.x is already in use (`"@testing-library/react": "16.3.0"`), which was built specifically to support React 19's concurrent testing patterns.
 
+### Next Steps Checklist for Verification:
+* [ ] **Code Audit**: Audit all component signatures that use `forwardRef` to verify transition to React 19's direct `ref` prop.
+* [ ] **Run the Full Test Suite**: Execute the full Vitest and React Testing Library suite to identify any concurrent rendering mismatches.
+* [ ] **Audit Third-Party Components**: Verify that any external UI libraries are compatible with React 19.
+* [ ] **Canary Rollout**: Perform a staged deployment starting with a single, low-risk test workspace before enabling it globally.
+
 ### Expected Code Adjustments:
 1. **Ref Propagation**: Remove `forwardRef` boilerplate. In React 19, `ref` is passed as a standard prop.
-2. **Context as Provider**: Replace `<MyContext.Provider>` with `<MyContext>`. React 19 simplifies context consumption.
+2. **Context as Provider**: Replace `<MyContext.Provider>` with the new `<MyContext>` shorthand. Note that you must preserve the provider's `value` prop (e.g., `<MyContext value={someValue}>...</MyContext>`). Omitting the `value` prop will cause consumers to receive `undefined` or the default value configured in `createContext`. Any existing value expressions passed to `MyContext.Provider` must be preserved in the new shorthand form.
 3. **Type Typings**: Resolve any strict TypeScript definition changes (e.g. `React.ReactNode` vs `React.JSX.Element` differences in custom component interfaces).
 
 ---

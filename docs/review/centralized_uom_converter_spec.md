@@ -59,9 +59,9 @@ flowchart TD
 
 ## 4. Code Implementation Blueprint
 
-### A. Silver Table Definition ([reference.py](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/silver/tables/reference.py))
+### A. Silver Table Definition ([reference.py](../../data-products/io-reporting/silver/tables/reference.py))
 
-The Silver table is materialized in [reference.py](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/silver/tables/reference.py) as follows:
+The Silver table is materialized in [reference.py](../../data-products/io-reporting/silver/tables/reference.py) as follows:
 
 ```python
 @dlt.table(
@@ -96,9 +96,9 @@ def material_uom_conversion():
     )
 ```
 
-### B. PySpark Gold Helper ([_shared.py](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/gold/_shared.py))
+### B. PySpark Gold Helper ([_shared.py](../../data-products/io-reporting/gold/_shared.py))
 
-The conformed PySpark helper in [_shared.py](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/gold/_shared.py) dynamically performs scale conversion with built-in unverified safety flags:
+The conformed PySpark helper in [_shared.py](../../data-products/io-reporting/gold/_shared.py) dynamically performs scale conversion with built-in unverified safety flags:
 
 ```python
 def convert_uom(
@@ -160,13 +160,15 @@ def convert_uom(
 
     # 3. Load base UoM reference to identify unverified conversions
     # Material table is plant-scoped, so select distinct material_code/base_uom pairs
-    mat_base = spark.read.table(f"{ss}.material").select("material_code", "base_uom").distinct()
+    mat_base = spark.read.table(f"{ss}.material").select(
+        F.col("material_code").alias("_base_mat"), "base_uom"
+    ).distinct()
 
     df_base = df_to.join(
-        mat_base.alias("mb"),
-        F.col(material_col) == F.col("mb.material_code"),
+        mat_base,
+        F.col(material_col) == F.col("_base_mat"),
         "left"
-    ).drop("material_code")
+    ).drop("_base_mat")
 
     # 4. Perform conversion logic with fallback safety
     # If factors are missing (left-join returns NULL), default to 1.0 to prevent null multiplication.
@@ -187,8 +189,8 @@ def convert_uom(
             F.upper(F.trim(F.col(from_uom_col))) == F.upper(F.trim(F.col(to_uom_col))),
             F.lit(False)
         ).otherwise(
-            ((F.upper(F.trim(F.col(from_uom_col))) != F.upper(F.trim(F.col("base_uom")))) & F.col("from_factor").isNull()) |
-            ((F.upper(F.trim(F.col(to_uom_col))) != F.upper(F.trim(F.col("base_uom")))) & F.col("to_factor").isNull())
+            ((~F.upper(F.trim(F.col(from_uom_col))).eqNullSafe(F.upper(F.trim(F.col("base_uom"))))) & F.col("from_factor").isNull()) |
+            ((~F.upper(F.trim(F.col(to_uom_col))).eqNullSafe(F.upper(F.trim(F.col("base_uom"))))) & F.col("to_factor").isNull())
         )
     ).drop("from_factor", "to_factor", "base_uom")
 
@@ -199,7 +201,7 @@ def convert_uom(
 
 ## 5. Usage Example: Staging Component Variance
 
-Here is an example of applying the UoM converter in [wm_operations_gold.py](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/gold/wm_operations_gold.py) to reconcile process order component reservations (which might be in alternative units like `CAR`) with actual goods movements (which are always recorded in the base unit `KG`):
+Here is an example of applying the UoM converter in [wm_operations_gold.py](../../data-products/io-reporting/gold/wm_operations_gold.py) to reconcile process order component reservations (which might be in alternative units like `CAR`) with actual goods movements (which are always recorded in the base unit `KG`):
 
 ```python
 from gold._shared import convert_uom
@@ -215,7 +217,7 @@ def gold_wm_order_component_variance():
     
     # Goods movements (recorded in issue UoM)
     mvt = spark.read.table(f"{ss}.goods_movement").select(
-        "material_code", "order_number", "quantity", "unit_of_measure"
+        "material_code", "order_number", "quantity", "unit_of_measure", "base_uom"
     )
     
     # Reconcile quantities by converting goods movement 'unit_of_measure' to the reservation 'base_uom'

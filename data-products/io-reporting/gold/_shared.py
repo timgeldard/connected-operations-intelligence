@@ -176,11 +176,13 @@ def convert_uom(
 
     # 3. Load base UoM reference to identify unverified conversions
     # Material table is plant-scoped, so select distinct material_code/base_uom pairs
-    mat_base = spark.read.table(f"{ss}.material").select("material_code", "base_uom").distinct()
+    mat_base = spark.read.table(f"{ss}.material").select(
+        F.col("material_code").alias("_base_mat"), "base_uom"
+    ).distinct()
 
     df_base = df_to.join(
-        mat_base.alias("mb"), F.col(material_col) == F.col("mb.material_code"), "left"
-    ).drop("material_code")
+        mat_base, F.col(material_col) == F.col("_base_mat"), "left"
+    ).drop("_base_mat")
 
     # 4. Perform conversion logic with fallback safety
     # If factors are missing (left-join returns NULL), default to 1.0 to prevent null multiplication.
@@ -205,11 +207,11 @@ def convert_uom(
                 F.lit(False),
             ).otherwise(
                 (
-                    (F.upper(F.trim(F.col(from_uom_col))) != F.upper(F.trim(F.col("base_uom"))))
+                    (~F.upper(F.trim(F.col(from_uom_col))).eqNullSafe(F.upper(F.trim(F.col("base_uom")))))
                     & F.col("from_factor").isNull()
                 )
                 | (
-                    (F.upper(F.trim(F.col(to_uom_col))) != F.upper(F.trim(F.col("base_uom"))))
+                    (~F.upper(F.trim(F.col(to_uom_col))).eqNullSafe(F.upper(F.trim(F.col("base_uom")))))
                     & F.col("to_factor").isNull()
                 )
             ),

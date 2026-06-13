@@ -62,14 +62,15 @@ CREATE TABLE public.spc_locked_limits (
     ucl NUMERIC(12, 4) NOT NULL,
     lcl NUMERIC(12, 4) NOT NULL,
     locked_by VARCHAR(100) NOT NULL,
-    locked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    locked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_spc_scope UNIQUE (material_code, plant_code, mic_code, operation_code)
 );
 
 -- Enable full replication logging to capture old/new states during updates
 ALTER TABLE public.spc_locked_limits REPLICA IDENTITY FULL;
 
--- Index for fast runtime validation checks
-CREATE INDEX idx_spc_limits_lookup ON public.spc_locked_limits (plant_code, material_code, mic_code);
+-- Index for fast runtime validation checks (updated to include operation_code)
+CREATE INDEX idx_spc_limits_lookup ON public.spc_locked_limits (plant_code, material_code, mic_code, operation_code);
 ```
 
 ### B. User Configurations Table
@@ -91,17 +92,25 @@ CREATE INDEX idx_spc_user_configs_data ON public.spc_user_configs USING gin (con
 
 ---
 
-## 4. Code Implementation Blueprints
-
-### A. FastAPI Routes ([spc.py](file:///home/timgeldard/github/connected-operations-intelligence/apps/api/routes/spc.py))
+### A. FastAPI Routes ([spc.py](../../apps/api/routes/spc.py))
 
 Implement these endpoints to replace the V1 legacy proxy hooks:
 
 ```python
-from fastapi import APIRouter, Header, HTTPException, Depends
-from pydantic import BaseModel, Field
+from decimal import Decimal
+import math
 from typing import Any, Dict
-from services.spc_writeback_service import SpcWritebackService
+from fastapi import APIRouter, Header, HTTPException, Depends
+from pydantic import BaseModel, Field, condecimal, model_validator
+
+from services.spc_writeback_service import (
+    SpcWritebackService,
+    ValidationError,
+    AuthenticationError,
+    NotFoundError,
+    UpstreamServiceError
+)
+from shared.query_service.identity import extract_user_identity, UserIdentity
 
 router = APIRouter()
 
@@ -110,9 +119,22 @@ class LockLimitsRequest(BaseModel):
     plant_code: str = Field(..., alias="plantCode")
     mic_code: str = Field(..., alias="micCode")
     operation_code: str = Field(..., alias="operationCode")
-    mean_value: float = Field(..., alias="meanValue")
-    ucl: float
-    lcl: float
+    mean_value: condecimal(max_digits=12, decimal_places=4) = Field(..., alias="meanValue")
+    ucl: condecimal(max_digits=12, decimal_places=4) = Field(..., alias="ucl")
+    lcl: condecimal(max_digits=12, decimal_places=4) = Field(..., alias="lcl")
+
+    @model_validator(mode="after")
+    def validate_limit_ranges(self) -> 'LockLimitsRequest':
+        for field in ("mean_value", "ucl", "lcl"):
+            val = getattr(self, field)
+            if not isinstance(val, Decimal) or not math.isfinite(val):
+                raise ValueError(f"{field} must be a finite decimal number")
+
+        if self.lcl > self.mean_value:
+            raise ValueError("lcl must be less than or equal to mean_value")
+        if self.mean_value > self.ucl:
+            raise ValueError("mean_value must be less than or equal to ucl")
+        return self
 
 class SaveConfigRequest(BaseModel):
     plant_code: str = Field(..., alias="plantCode")
@@ -122,35 +144,53 @@ class SaveConfigRequest(BaseModel):
 @router.post("/spc/lock-limits", status_code=201)
 async def lock_spc_limits(
     body: LockLimitsRequest,
-    x_forwarded_user: str | None = Header(default=None),
+    identity: UserIdentity = Depends(extract_user_identity),
 ):
-    if not x_forwarded_user:
-        raise HTTPException(status_code=401, detail="Authentication credentials missing.")
-        
+    # Enforce OAuth authentication and trusted proxy validation
+    identity.require_user_oauth()
+    
     service = SpcWritebackService()
     try:
-        limit_id = await service.lock_limits(body, locked_by=x_forwarded_user)
+        limit_id = await service.lock_limits(body, locked_by=identity.user_id)
         return {"status": "SUCCESS", "limitId": limit_id}
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except AuthenticationError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except UpstreamServiceError as e:
+        raise HTTPException(status_code=502, detail="Upstream service communication failure.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to persist control limits: {str(e)}")
+        # Log e server-side here
+        raise HTTPException(status_code=500, detail="Internal server error occurred.")
 
 @router.post("/spc/user-config")
 async def save_user_config(
     body: SaveConfigRequest,
-    x_forwarded_user: str | None = Header(default=None),
+    identity: UserIdentity = Depends(extract_user_identity),
 ):
-    if not x_forwarded_user:
-        raise HTTPException(status_code=401, detail="Authentication credentials missing.")
-        
+    # Enforce OAuth authentication and trusted proxy validation
+    identity.require_user_oauth()
+    
     service = SpcWritebackService()
     try:
-        await service.save_config(user_id=x_forwarded_user, request=body)
+        await service.save_config(user_id=identity.user_id, request=body)
         return {"status": "SUCCESS"}
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except AuthenticationError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except UpstreamServiceError as e:
+        raise HTTPException(status_code=502, detail="Upstream service communication failure.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to persist configuration: {str(e)}")
+        # Log e server-side here
+        raise HTTPException(status_code=500, detail="Internal server error occurred.")
 ```
 
-### B. PySpark DLT Pipeline Ingestion ([reference.py](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/silver/tables/reference.py))
+### B. PySpark DLT Pipeline Ingestion ([reference.py](../../data-products/io-reporting/silver/tables/reference.py))
 
 Add this pipeline step to conjoin the CDC history table `lb_spc_locked_limits_history` into the Silver reporting layer:
 
@@ -167,8 +207,8 @@ def spc_locked_limits():
     # Schema name matches the Lakehouse Sync target mapping
     history = spark.read.table("connected_plant.bronze.lb_spc_locked_limits_history")
     
-    # Deduplicate changes: select the latest LSN (Log Sequence Number) state per limit
-    window_spec = Window.partitionBy("limit_id").orderBy(F.col("_pg_lsn").desc())
+    # Deduplicate changes: select the latest LSN (Log Sequence Number) state per SPC scope
+    window_spec = Window.partitionBy("material_code", "plant_code", "mic_code", "operation_code").orderBy(F.col("_pg_lsn").desc())
     
     deduplicated = (
         history
@@ -224,7 +264,7 @@ def spc_locked_limits():
 2. Write unit tests utilizing mock database connections to ensure constraints (e.g. valid float values for limits, limit ranges) are fully validated before execution.
 
 ### Phase 3: Pipeline Deployment
-1. Add the `spc_locked_limits` table to the Silver pipeline in [reference.py](file:///home/timgeldard/github/connected-operations-intelligence/data-products/io-reporting/silver/tables/reference.py).
+1. Add the `spc_locked_limits` table to the Silver pipeline in [reference.py](../../data-products/io-reporting/silver/tables/reference.py).
 2. Deploy the data bundle using the Databricks CLI:
    ```bash
    databricks bundle deploy -t dev

@@ -33,8 +33,8 @@ These extensions enhance query performance, security, data validation, and devel
 * **Benefit**: Prevents join failures between user input (e.g. manual text entry) and warehouse inventory logs.
 
 ### 7. Central Security Model (CSM) Local Fixture Builder
-* **Description**: A local CLI script that extracts user query history and exports mock access models to standard JSON fixtures for local development.
-* **Benefit**: Enables developer shakedowns and RLS checking in fully disconnected local modes.
+* **Description**: A local CLI script that builds mock access models for local development. To protect user privacy and prevent data exposure, the fixture builder produces synthetic or redacted fixtures: it does not serialize raw queries or identifiers. Instead, it replaces PII and operational context with deterministic hashes or canonical placeholders, strips or generalizes timestamps, and synthesizes non-sensitive metadata. The builder pipeline (including the CLI entrypoint and fixture generation function) implements these redactions by default, with any raw-history export path requiring an explicit opt-in flag and containing clear documentation so raw-history export is disabled by default.
+* **Benefit**: Enables developer shakedowns and RLS checking in fully disconnected local modes without risking exposure of sensitive queries or user identifiers.
 
 ### 8. QuerySpec Performance Profiling Middleware
 * **Description**: A telemetry extension that intercepts the `QueryExecutor`, logs exact query timings, cache hit/miss rates, and dataset sizes, and logs them to a monitoring database.
@@ -69,8 +69,8 @@ These extensions enhance query performance, security, data validation, and devel
 * **Benefit**: Limits the scanned data size, reducing execution costs and Statement API execution times.
 
 ### 16. Dynamic QuerySpec Sanitizer
-* **Description**: A regex validator in the API layer that sanitizes custom SQL sorting (`order_by`) or custom projection configurations before executing queries.
-* **Benefit**: Secures the Statement API against potential SQL injection vectors.
+* **Description**: An allow-list validator in the API layer for custom SQL sorting (`order_by`) and custom projection configurations before executing queries. Rather than using regex-based sanitizers, it implements a strict validation process (via functions like `validateQuerySpec`, `sanitizeOrderBy`, and `sanitizeProjections`) that checks each requested column and projection field against a predefined set of allowed column names and each sort direction against an allowed set (e.g., `ASC`, `DESC`, and optionally `NULLS FIRST/LAST`). The validator rejects or errors out on any unknown column or direction before passing the spec to the query builder, ensuring the query builder uses only the validated values to compose SQL.
+* **Benefit**: Secures the Statement API against potential SQL injection vectors by ensuring only pre-approved identifiers and directions are executed.
 
 ### 17. Unity Catalog Column-Masking Helper
 * **Description**: Integrates UC column masks into the serving views DDL generator, hiding sensitive data (e.g., standard price, standard labor cost) from non-finance users.

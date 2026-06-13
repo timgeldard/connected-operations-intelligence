@@ -30,6 +30,7 @@ def setup_uom_databases(spark: SparkSession):
     material_data = [
         Row(material_code="MAT01", base_uom="KG"),
         Row(material_code="MAT02", base_uom="EA"),
+        Row(material_code="MAT03", base_uom=None),
     ]
     spark.createDataFrame(material_data).write.mode("overwrite").saveAsTable("silver.material")
 
@@ -54,7 +55,7 @@ def test_convert_uom_alt_to_alt(spark: SparkSession):
 
     rows = all_rows(result_df)
     assert len(rows) == 1
-    assert rows[0]["converted"] == 1.0
+    assert rows[0]["converted"] == pytest.approx(1.0)
     assert rows[0]["is_uom_conversion_unverified"] is False
 
 
@@ -75,7 +76,7 @@ def test_convert_uom_alt_to_base(spark: SparkSession):
 
     rows = all_rows(result_df)
     assert len(rows) == 1
-    assert rows[0]["converted"] == 250.0
+    assert rows[0]["converted"] == pytest.approx(250.0)
     assert rows[0]["is_uom_conversion_unverified"] is False
 
 
@@ -96,7 +97,7 @@ def test_convert_uom_base_to_alt(spark: SparkSession):
 
     rows = all_rows(result_df)
     assert len(rows) == 1
-    assert rows[0]["converted"] == 10.0
+    assert rows[0]["converted"] == pytest.approx(10.0)
     assert rows[0]["is_uom_conversion_unverified"] is False
 
 
@@ -117,7 +118,7 @@ def test_convert_uom_same_units(spark: SparkSession):
 
     rows = all_rows(result_df)
     assert len(rows) == 1
-    assert rows[0]["converted"] == 15.0
+    assert rows[0]["converted"] == pytest.approx(15.0)
     assert rows[0]["is_uom_conversion_unverified"] is False
 
 
@@ -139,5 +140,59 @@ def test_convert_uom_unverified_missing_factor(spark: SparkSession):
     rows = all_rows(result_df)
     assert len(rows) == 1
     # from_factor is missing (default 1.0), to_factor is 250.0: 10.0 * 1.0 / 250.0 = 0.04
-    assert rows[0]["converted"] == 0.04
+    assert rows[0]["converted"] == pytest.approx(0.04)
     assert rows[0]["is_uom_conversion_unverified"] is True
+
+
+def test_convert_uom_different_material_col(spark: SparkSession):
+    # Case: check using a different material column name (e.g. material_code)
+    input_df = spark.createDataFrame(
+        [Row(material_code="MAT01", quantity=10.0, unit_from="CAR", unit_to="PAL")]
+    )
+
+    result_df = convert_uom(
+        input_df,
+        material_col="material_code",
+        qty_col="quantity",
+        from_uom_col="unit_from",
+        to_uom_col="unit_to",
+        output_col="converted",
+    )
+
+    rows = all_rows(result_df)
+    assert len(rows) == 1
+    assert rows[0]["converted"] == pytest.approx(1.0)
+    assert rows[0]["is_uom_conversion_unverified"] is False
+
+
+def test_convert_uom_missing_base_uom(spark: SparkSession):
+    # Case: MAT03 has base_uom = None in material table; MAT04 is completely missing from material table
+    input_df = spark.createDataFrame(
+        [
+            Row(material="MAT03", quantity=10.0, unit_from="CAR", unit_to="PAL"),
+            Row(material="MAT04", quantity=10.0, unit_from="CAR", unit_to="PAL"),
+        ]
+    )
+
+    result_df = convert_uom(
+        input_df,
+        material_col="material",
+        qty_col="quantity",
+        from_uom_col="unit_from",
+        to_uom_col="unit_to",
+        output_col="converted",
+    )
+
+    rows = all_rows(result_df)
+    assert len(rows) == 2
+
+    # MAT03: from_factor is NULL (1.0), to_factor is NULL (1.0). Converted = 10.0.
+    # base_uom is None. eqNullSafe checks if "CAR" (from_uom) == base_uom (None), which returns False,
+    # so ~False = True, and from_factor is null, so it triggers is_uom_conversion_unverified = True.
+    assert rows[0]["converted"] == pytest.approx(10.0)
+    assert rows[0]["is_uom_conversion_unverified"] is True
+
+    # MAT04: Same, since it's not in the material table at all, base_uom becomes NULL from left join.
+    assert rows[1]["converted"] == pytest.approx(10.0)
+    assert rows[1]["is_uom_conversion_unverified"] is True
+

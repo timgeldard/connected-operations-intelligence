@@ -120,15 +120,16 @@ def sanitize_sort_expression(order_by: str, direction: str) -> str:
     if clean_direction not in ("ASC", "DESC"):
         raise SQLInjectionAlert(f"Invalid sort direction: '{direction}'. Must be 'ASC' or 'DESC'.")
 
-    # 2. Split multi-column sort expressions and validate each column identifier independently
+    # 2. Split multi-column sort expressions and validate/append direction for each column independently
     parts = order_by.split(",")
     sanitized_parts = []
     for part in parts:
-        sanitized_parts.append(sanitize_identifier(part))
+        clean_part = sanitize_identifier(part)
+        sanitized_parts.append(f"{clean_part} {clean_direction}")
 
     # 3. Join back as a clean SQL fragment
     columns_clause = ", ".join(sanitized_parts)
-    return f"ORDER BY {columns_clause} {clean_direction}"
+    return f"ORDER BY {columns_clause}"
 
 
 def sanitize_projection(columns: List[str]) -> List[str]:
@@ -152,22 +153,25 @@ Integrate the sanitizer directly into the FastAPI request validation lifecycle u
 ```python
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, field_validator
-from shared.query_service.sanitizer import sanitize_identifier, SQLInjectionAlert
+from shared.query_service.sanitizer import sanitize_identifier, sanitize_sort_expression, SQLInjectionAlert
 
 router = APIRouter()
 
 class BinStockQueryRequest(BaseModel):
     plant_code: str
     limit: int = 100
-    # Client-controlled sort columns
-    sort_column: str = "material_code"
+    # Client-controlled sort columns (supports comma-separated columns)
+    sort_column: str = "material_code, storage_bin_code"
     sort_direction: str = "ASC"
 
     @field_validator("sort_column")
     @classmethod
     def validate_sort_column(cls, v: str) -> str:
         try:
-            return sanitize_identifier(v)
+            # Validate that each column name in the comma-separated list is a clean identifier
+            for part in v.split(","):
+                sanitize_identifier(part)
+            return v
         except SQLInjectionAlert as e:
             raise ValueError(str(e))
 
@@ -184,7 +188,8 @@ async def get_bin_stock(
     body: BinStockQueryRequest,
     x_forwarded_access_token: str | None = Header(default=None),
 ):
-    # Safe interpolation because columns and directions have been sanitized by Pydantic
+    # Securely build sort clause using the helper
+    sort_clause = sanitize_sort_expression(body.sort_column, body.sort_direction)
     sql_template = f"""
         SELECT 
             material_code, 
@@ -192,7 +197,7 @@ async def get_bin_stock(
             quantity 
         FROM {{ss}}.gold_wm_bin_stock 
         WHERE plant_code = :plant_code
-        ORDER BY {body.sort_column} {body.sort_direction}
+        {sort_clause}
         LIMIT :max_rows
     """
     # Execute query spec safely...
@@ -242,7 +247,7 @@ def test_malicious_identifiers():
 def test_sanitize_sort_expression_valid():
     """Verify clean sorting clauses are constructed."""
     expr = sanitize_sort_expression("material_code, plant_code", "DESC")
-    assert expr == "ORDER BY material_code, plant_code DESC"
+    assert expr == "ORDER BY material_code DESC, plant_code DESC"
 
 
 def test_sanitize_sort_expression_invalid():
