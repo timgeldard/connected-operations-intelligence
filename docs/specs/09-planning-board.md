@@ -26,8 +26,10 @@ Claude-Design draft (provided as the `Process Order History` package: `planning-
    the draft's static window chip. Keep the day/week zoom toggle. "Scroll to now" only when the
    window includes today.
 3. **Process_line lanes:** the draft already lanes by line (`data.lines`, lane header
-   `t.headerLine`) — keep that, but key the lane on `process_order.production_line` (CRVER; VERIFY
-   the alias in `silver/tables/process_order.py`). NEVER lane by work-centre/resource. Lane label =
+   `t.headerLine`) — keep that, but key the lane on `process_order.production_line`. NOTE: this is
+   NOT a raw `AUFK-CRVER` field — `silver.process_order` enriches `production_line` via a join to
+   the `recipe_process_line` reference map (CRVER → INOB → AUSP → CAWNT). Use the `production_line`
+   column as-is; don't hunt for a CRVER alias. NEVER lane by work-centre/resource. Lane label =
    line code + friendly name; lane meta (cap/shift) only if available, else omit honestly.
 
 ## Draft structure to port
@@ -95,11 +97,12 @@ Reuse heavily; add the minimum.
 
 ## Backend
 - Read-only routes under the wm_operations adapter, parameterized by `plant`, optional `line`,
-  `from`/`to` (date window): `GET /api/wm-operations/plan-board` (blocks), `/plan-board/kpis`,
-  `/plan-board/backlog`, `/plan-board/wm-overlay` (staging). Strip/validate date params (ISO dates;
-  reject malformed → 422; default = today ±window). Bind safely. Reuse `/pl1/wm-operations/plants`
-  and the new `/lineside/lines` (or `/plan-board/lines`) for the filters. A freshness value for the
-  header. NO write/schedule endpoints.
+  `from`/`to` (date window): `GET /api/wm-operations/plan-board` (blocks),
+  `/api/wm-operations/plan-board/kpis`, `/api/wm-operations/plan-board/backlog`,
+  `/api/wm-operations/plan-board/wm-overlay` (staging). Strip/validate date params (ISO dates;
+  reject malformed → 422; default = today ±window). Bind safely. Reuse `/api/wm-operations/plants`
+  and the new `/api/wm-operations/lineside/lines` (or `/api/wm-operations/plan-board/lines`) for the
+  filters. A freshness value for the header. NO write/schedule endpoints.
 
 ## Frontend
 - New `planning-board` view in the wm-operations workspace (it's an operator/planner tool, fits the
