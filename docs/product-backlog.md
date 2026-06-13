@@ -5,6 +5,11 @@
 > as any change that ships, parks, or reprioritises an item. Status date is below; if the
 > status date is stale relative to recent merges, treat git history as authoritative and
 > update this file.
+>
+> **Knowledge & documentation mandate:** any change to the data contracts
+> (`app_contract_manifest.yml`) or the data product's governed surface MUST be
+> accompanied in the same PR by (a) updated documentation and (b) a regenerated OKF
+> bundle (`make generate-okf`); CI (`check_okf_bundle_fresh.py`) blocks drift.
 
 **Status date:** 2026-06-12 (evening)
 
