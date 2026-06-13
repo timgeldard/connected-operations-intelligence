@@ -33,20 +33,17 @@ findings **override the source PDF's identity model** — follow these, not the 
   ZPUS only; do NOT gate on `ZNL1`/`NBC3`. (No `identification_method` column needed — there
   is one method.)
 
-**⚠️ BLOCKER FOR PRODUCT DECISION — staleness.** `SDABW='ZPUS'` on LIKP **stops at
-2023-12-05** (2020:2,646 / 2021:8,009 / 2022:9,093 / 2023:9,012; **zero in 2024/25/26**). The
-bronze LIKP replica is not delivering *current* Push Despatch deliveries. **This makes the
-KPI a HISTORICAL analysis, not a live-ops monitor, as built today.** Before building, the
-orchestrator/product owner must decide:
-  - (a) **Ship as historical** (≤2023 analysis) — valid, but the "today / overdue" tiles will
-    be empty; or
-  - (b) **Confirm the live source first** — date-profile VBKD `ZPUS` (61,712 rows) to see if
-    current push despatch is captured on the sales-doc side instead of LIKP; if so, re-anchor
-    on VBKD→delivery. If neither LIKP nor VBKD carries 2024+ ZPUS, this is an **ingestion gap**
-    (the SAP extract filters/omits the field) → raise in `docs/ingestion_requests.md` and
-    HOLD the build.
-  Do not start the gold build until (a) or (b) is chosen. The rest of this spec assumes the
-  ZPUS anchor is sound for whatever date range is in scope.
+**✅ RESOLVED — staleness is a UAT-snapshot artefact; PROCEED (product owner, 2026-06-14).**
+`SDABW='ZPUS'` on LIKP stops 2023-12-05 in UAT (2020:2,646 / 2021:8,009 / 2022:9,093 /
+2023:9,012) — this is the **UAT environment's stale SAP snapshot, not a feature flaw**; prod
+data is current. A consistency recon confirmed the historical set is **field-complete for every
+KPI**: WADAT 100%, WADAT_IST 99.94% (on-time/overdue computable), header+item weights ~100%,
+plant 100% via LIPS.WERKS (9 plants), TRAID 99.56%, VGBEL 95.3% (4.7% blank = expected
+non-order despatches → exceptions tile), VBTYP='J'/LFART='ZD04' 99.99% coherent, smooth
+2020→2023 history. **Build on the `TRIM(SDABW)='ZPUS'` anchor as specified.** The tiles render
+against whatever date range the bronze replica holds (today: ≤2023 in UAT; current in prod) — no
+re-anchoring needed. (If a future check shows prod ZPUS also absent post-2023, that would be a
+separate ingestion-gap to raise then — not a build blocker now.)
 
 **What's available / not (recon-confirmed):**
 - **916 loading-bay staging — AVAILABLE.** `transfer_order` source (LTAP) carries
