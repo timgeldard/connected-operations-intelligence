@@ -1,4 +1,4 @@
-.PHONY: install test lint typecheck contracts prep-app-deploy
+.PHONY: install test lint typecheck contracts prep-app-deploy generate-okf
 
 install:
 	pnpm install
@@ -19,6 +19,13 @@ typecheck:
 contracts:
 	.venv/bin/python scripts/contracts/validate_contracts.py
 	.venv/bin/python scripts/contracts/generate_contracts.py
+
+# Regenerate the OKF bundle from the single source-of-truth contract manifest.
+# Run this whenever app_contract_manifest.yml changes or the governed surface changes.
+# CI (scripts/ci/check_okf_bundle_fresh.py) blocks merges where the committed bundle
+# is out of sync with the manifest.
+generate-okf:
+	python3 data-products/io-reporting/scripts/generate_okf_bundle.py
 
 # Prepare the deploy artefact: copy the single source-of-truth contract manifest
 # from the data-products layer into apps/api/contracts/ so that `databricks bundle
