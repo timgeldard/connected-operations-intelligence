@@ -617,9 +617,9 @@ class TestBatchSearchDatabricksMode:
         # Both governed objects must be in gold_io_reporting, not gold.
         assert "`connected_plant_uat`.`gold_io_reporting`.`gold_trace_anchor_secured`" in spec.sql
         assert "`connected_plant_uat`.`gold_io_reporting`.`gold_batch_lineage`" in spec.sql
-        # Legacy enrichment joins must stay on gold.
-        assert "`connected_plant_uat`.`gold`.`gold_material`" in spec.sql
-        assert "`connected_plant_uat`.`gold`.`gold_plant`" in spec.sql
+        # Phase 3: enrichment lookups now on governed schema too.
+        assert "`connected_plant_uat`.`gold_io_reporting`.`gold_trace_material`" in spec.sql
+        assert "`connected_plant_uat`.`gold_io_reporting`.`gold_trace_plant`" in spec.sql
 
     def test_search_spec_po_match_deduplicates_with_row_number(self, monkeypatch) -> None:
         """PR #110 accept: a batch linked to multiple matching process orders must not
@@ -1135,8 +1135,8 @@ class TestCustomerExposureSuccess:
 
         # gold_batch_lineage must be in the governed schema.
         assert "`connected_plant_uat`.`gold_io_reporting`.`gold_batch_lineage`" in spec.sql
-        # gold_material enrichment must remain on legacy gold schema.
-        assert "`connected_plant_uat`.`gold`.`gold_material`" in spec.sql
+        # Phase 3: gold_trace_material enrichment also on governed schema.
+        assert "`connected_plant_uat`.`gold_io_reporting`.`gold_trace_material`" in spec.sql
 
 
 # ---------------------------------------------------------------------------
@@ -1480,6 +1480,7 @@ class TestSupplierExposureSuccess:
             async with _make_client() as client:
                 response = await client.post(_SE_URL, json=_SE_VALID_BODY, headers=_HEADERS_WITH_TOKEN)
         badge = response.headers.get("x-data-source", "")
+        # Phase 2 switchover: supplier exposure reads gold_batch_event_ledger + gold_trace_vendor.
         assert "gold_batch_event_ledger" in badge
         assert "gold_trace_vendor" in badge
 
@@ -1730,6 +1731,7 @@ class TestMassBalanceSuccess:
         with _patch_executor([_FAKE_MB_PRODUCTION_ROW]):
             async with _make_client() as client:
                 response = await client.post(_MB_URL, json=_MB_VALID_BODY, headers=_HEADERS_WITH_TOKEN)
+        # Phase 2 switchover: mass balance reads gold_batch_event_ledger, not legacy gold_batch_mass_balance_v.
         assert "gold_batch_event_ledger" in response.headers.get("x-data-source", "")
 
     async def test_uses_repository_facade_not_route_run_query(self, monkeypatch) -> None:
@@ -2326,6 +2328,7 @@ class TestInvestigationTimelineSuccess:
             async with _make_client() as client:
                 response = await client.post(_IT_URL, json=_IT_VALID_BODY, headers=_HEADERS_WITH_TOKEN)
         badge = response.headers.get("x-data-source", "")
+        # Phase 2 switchover: investigation timeline reads gold_batch_event_ledger.
         assert "gold_batch_event_ledger" in badge
 
     async def test_does_not_fall_back_on_databricks_error(self, monkeypatch) -> None:

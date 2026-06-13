@@ -951,3 +951,218 @@ def gold_trace_vendor():
             F.max("country_key").alias("country_key"),
         )
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gold_trace_material  (T4 — governed trace2 fan-out foundation)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Material lookup for traceability fan-out: material_code → material_description, "
+        "material_type, material_group, base_uom. "
+        "Source: silver.material (MARA + MARC + MAKT, plant-scoped). "
+        "GRAIN DECISION: silver.material is one row per (plant_code, material_code) because "
+        "MARA attributes live on MARC/plant rows.  This MV aggregates across plants using "
+        "F.max (deterministic — same description for a given material_code regardless of plant; "
+        "max() is a stable tiebreak that avoids arbitrary ordering).  One row per material_code. "
+        "LANGUAGE: silver.material is pre-filtered to MAKT.SPRAS='E' (English) in reference.py — "
+        "all rows are English; the LANGUAGE_ID='E' convention from legacy gold_material is "
+        "preserved as a literal column so adapter SQL can JOIN on LANGUAGE_ID = 'E' unchanged. "
+        "CONSUMER GRAIN: trace2 adapters join on MATERIAL_ID only (no plant), matching the "
+        "plant-independent grain produced here.  The legacy gold_material carried one row per "
+        "(MATERIAL_ID) with a LANGUAGE_ID column — this MV matches that contract. "
+        "Security: capability tier — NOT in GOLD_TABLES; GRANT added to "
+        "resources/sql/trace_security_{env}.sql (traceability-readers group, tolerated failure). "
+        "NOTE: silver.material is built by the slow reference pipeline. This gold MV reads it "
+        "via spark.read.table (cross-pipeline Delta read). "
+        "Deterministic base (no current_date / current_timestamp)."
+    ),
+    cluster_by=["MATERIAL_ID"],
+))
+@dlt.expect_all_or_drop({
+    "MATERIAL_ID present": "MATERIAL_ID IS NOT NULL",
+})
+def gold_trace_material():
+    """Material lookup: material_code → material_description, material_type, material_group, base_uom.
+
+    Source: silver.material (MARA + MARC + MAKT, English only).
+    Aggregates across plants (F.max) to produce one row per material_code.
+    Exposes a literal LANGUAGE_ID='E' column to match the legacy gold_material JOIN contract
+    (adapters use: JOIN gold_material m ON m.MATERIAL_ID = ... AND m.LANGUAGE_ID = 'E').
+    """
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+
+    return (
+        spark.read.table(f"{silver_schema}.material")
+        .groupBy("material_code")
+        .agg(
+            F.max("material_description").alias("MATERIAL_NAME"),
+            F.max("material_type").alias("material_type"),
+            F.max("material_group").alias("material_group"),
+            F.max("base_uom").alias("BASE_UNIT_OF_MEASURE"),
+        )
+        .select(
+            F.col("material_code").alias("MATERIAL_ID"),
+            F.col("MATERIAL_NAME"),
+            F.col("material_type"),
+            F.col("material_group"),
+            F.col("BASE_UNIT_OF_MEASURE"),
+            # Preserve legacy LANGUAGE_ID = 'E' join contract (silver.material is English-only;
+            # MAKT was pre-filtered to SPRAS='E' in reference.py — all rows are English).
+            F.lit("E").alias("LANGUAGE_ID"),
+        )
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gold_trace_plant  (T4 — governed trace2 fan-out foundation)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Plant lookup for traceability fan-out: plant_code → plant_name, country_key. "
+        "Source decision: silver.plant (T001W via published central_services) UNION "
+        "silver.site_lifecycle (estate-wide ~550-plant dimension, ADR 016). "
+        "silver.plant covers actively-replicated plants; site_lifecycle fills in estate plants "
+        "not yet in T001W (e.g. plants reviewed as CLOSED/SOLD that are in the traceability "
+        "graph but not in the live plant master).  Per-side dedup then FULL OUTER join with "
+        "F.coalesce — silver.plant (T001W) values are preferred wherever both sources carry "
+        "the plant; site_lifecycle fills estate-only plants. "
+        "silver.site_lifecycle.country maps to country_key (same attribute, different column name). "
+        "GRAIN: one row per plant_code (F.max tiebreak for determinism). "
+        "CONSUMER GRAIN: trace2 adapters join on PLANT_ID only, matching this grain. "
+        "Legacy contract target: gold_plant — PLANT_ID, PLANT_NAME (adapters reference p.PLANT_ID, "
+        "p.PLANT_NAME). "
+        "Security: capability tier — NOT in GOLD_TABLES; GRANT added to "
+        "resources/sql/trace_security_{env}.sql (traceability-readers group, tolerated failure). "
+        "NOTE: silver.plant and silver.site_lifecycle are built by the slow reference pipeline. "
+        "This gold MV reads them via spark.read.table (cross-pipeline Delta reads). "
+        "Deterministic base (no current_date / current_timestamp)."
+    ),
+    cluster_by=["PLANT_ID"],
+))
+@dlt.expect_all_or_drop({
+    "PLANT_ID present": "PLANT_ID IS NOT NULL",
+})
+def gold_trace_plant():
+    """Plant lookup: plant_code → PLANT_NAME, country_key.
+
+    Two-source UNION (silver.plant UNION ALL silver.site_lifecycle) so the lookup covers
+    the full estate including SOLD/CLOSED plants that still have edges in gold_batch_lineage.
+
+    silver.plant is the authoritative source for plant_name (T001W); silver.site_lifecycle
+    provides plant_code, plant_name, country for the reviewed estate.  Each side is first
+    deduplicated to one row per plant_code (F.max tiebreak), then FULL OUTER joined with
+    F.coalesce(plant.*, site_lifecycle.*) so the authoritative T001W values win wherever
+    both sources carry the plant; estate-only plants fall through to site_lifecycle.
+
+    Exposes PLANT_ID and PLANT_NAME (upper-case column names) to match the legacy
+    gold_plant JOIN contract (adapters use: JOIN gold_plant p ON p.PLANT_ID = ...).
+    """
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+
+    # silver.plant: T001W from published central_services — authoritative for live plants.
+    # Dedup to one row per plant_code (deterministic F.max tiebreak).
+    plant = (
+        spark.read.table(f"{silver_schema}.plant")
+        .groupBy("plant_code")
+        .agg(
+            F.max("plant_name").alias("_p_name"),
+            F.max("country_key").alias("_p_country"),
+        )
+    )
+
+    # silver.site_lifecycle: estate-wide reviewed dimension — covers SOLD/CLOSED/DIVESTED
+    # plants that are present in the traceability graph but may be absent from T001W.
+    # site_lifecycle.country is the same attribute as plant.country_key (LAND1 equivalent).
+    site_lc = (
+        spark.read.table(f"{silver_schema}.site_lifecycle")
+        .groupBy("plant_code")
+        .agg(
+            F.max("plant_name").alias("_l_name"),
+            F.max("country").alias("_l_country"),
+        )
+    )
+
+    # FULL OUTER join + coalesce: T001W values preferred, lifecycle fills estate-only plants.
+    return (
+        plant.join(site_lc, "plant_code", "full")
+        .select(
+            F.col("plant_code").alias("PLANT_ID"),
+            F.coalesce(F.col("_p_name"), F.col("_l_name")).alias("PLANT_NAME"),
+            F.coalesce(F.col("_p_country"), F.col("_l_country")).alias("country_key"),
+        )
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gold_trace_batch_material  (T4 — governed trace2 fan-out foundation)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Batch–supplier-batch linkage for traceability fan-out: "
+        "(material_code, batch_number) → SUPPLIER_BATCH_ID (vendor's own batch identifier). "
+        "Source: silver.batch_where_used (CHVW), which carries LICHA (vendor batch) on rows "
+        "where a batch was received from a supplier (LICHA populated on VENDOR_RECEIPT rows). "
+        "SOURCE DECISION — MCH1/MCHA NOT used: SAP MCH1 (client-level batch master, "
+        "material + batch grain, carries LICHA/MFRGR/VFDAT) and MCHA (plant-level batch, "
+        "carries LICHA) are listed in the data dictionary but are NOT replicated into the "
+        "connected_plant.sap source schema (no bronze table batchmaster_mch1 or equivalent "
+        "exists — confirmed by absence of any MCH1/MCHA reference in pipeline code outside of "
+        "generate_data_dictionary.py). An ingestion request for MCH1 would unlock manufacture_date "
+        "(MFRGR) and expiry_date (VFDAT) which are also missing from the governed stack; "
+        "raise as a follow-up ingestion request. "
+        "CHVW.LICHA IS available (confirmed in silver/tables/traceability.py, _CHVW_REQUIRED "
+        "list, line 62) and is already surfaced in silver.batch_where_used.vendor_batch_number. "
+        "GRAIN: one row per (material_code, batch_number) — SUPPLIER_BATCH_ID deduplicated with "
+        "F.max (a batch has at most one supplier batch reference; max() is a stable tiebreak "
+        "in the rare case LICHA changes across CHVW rows for the same batch). "
+        "NULL / blank LICHA rows are excluded (no vendor batch = no useful linkage). "
+        "Legacy contract target: gold_batch_material — MATERIAL_ID, BATCH_ID, SUPPLIER_BATCH_ID. "
+        "Security: capability tier — NOT in GOLD_TABLES; GRANT added to "
+        "resources/sql/trace_security_{env}.sql (traceability-readers group, tolerated failure). "
+        "NOTE: silver.batch_where_used is built by the slow reference pipeline (estate-wide "
+        "CHVW snapshot). This gold MV reads it via spark.read.table (cross-pipeline Delta read). "
+        "Deterministic base (no current_date / current_timestamp)."
+    ),
+    cluster_by=["MATERIAL_ID"],
+))
+@dlt.expect_all_or_drop({
+    "MATERIAL_ID present": "MATERIAL_ID IS NOT NULL",
+    "BATCH_ID present": "BATCH_ID IS NOT NULL",
+    "SUPPLIER_BATCH_ID present": "SUPPLIER_BATCH_ID IS NOT NULL",
+})
+def gold_trace_batch_material():
+    """Batch-to-vendor-batch linkage: (MATERIAL_ID, BATCH_ID) → SUPPLIER_BATCH_ID.
+
+    Source: silver.batch_where_used.vendor_batch_number (CHVW.LICHA).
+    Grain: one row per (material_code, batch_number) — SUPPLIER_BATCH_ID deduplicated with F.max.
+
+    MCH1/MCHA (SAP batch master tables) are NOT replicated in connected_plant.sap —
+    see table comment for full decision rationale and ingestion follow-up note.
+
+    Adapters join: LEFT JOIN gold_trace_batch_material bm ON s.material_code = bm.MATERIAL_ID
+    AND s.batch_number = bm.BATCH_ID — matching this plant-independent grain.
+    """
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+
+    bwu = (
+        spark.read.table(f"{silver_schema}.batch_where_used")
+        .filter(
+            F.col("vendor_batch_number").isNotNull()
+            & (F.trim(F.col("vendor_batch_number")) != "")
+        )
+        .groupBy("material_code", "batch_number")
+        .agg(F.max("vendor_batch_number").alias("SUPPLIER_BATCH_ID"))
+    )
+
+    return bwu.select(
+        F.col("material_code").alias("MATERIAL_ID"),
+        F.col("batch_number").alias("BATCH_ID"),
+        F.col("SUPPLIER_BATCH_ID"),
+    )

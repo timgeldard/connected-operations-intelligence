@@ -3,7 +3,7 @@
 -- Run once as a UC admin after the consumption views are created / updated.
 -- Re-runnable: COMMENT ON and SET TAGS are idempotent (they overwrite existing values).
 --
--- Covers 52 contract(s) with a matched source_view.
+-- Covers 53 contract(s) with a matched source_view.
 -- Skipped 1 contract(s) whose source_view is not yet created in
 -- resources/sql/*consumption_views_dev.sql (see generator output for details).
 --
@@ -1277,6 +1277,38 @@ COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operat
   'Earliest goods receipt posting date (movement 101 against this order)';
 COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_order_yield.last_gr_date IS
   'Latest goods receipt posting date (movement 101 against this order)';
+
+-- ── Contract: wm_operations.recipe_benchmark v0.1.0 ──
+COMMENT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark IS
+  'Recipe-line benchmark distribution for the Campaigns view. Aggregates complete process orders with goods receipt evidence from gold_wm_order_yield. Grain is plant_id, material_id, and production_line; null production_line is grouped as UNASSIGNED. Percentiles compare yield_pct and GR duration for runs of the same recipe on the same line. Grain: one row per plant_id, material_id, and production_line. Contract: wm_operations.recipe_benchmark v0.1.0. Freshness SLA: expected 60 min, warning 120 min, critical 240 min. Row-level access key: plant_id.';
+ALTER VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark SET TAGS (
+  'contract_id' = 'wm_operations.recipe_benchmark',
+  'contract_version' = '0.1.0',
+  'contract_grain' = 'one row per plant_id, material_id, and production_line',
+  'freshness_expected_minutes' = '60'
+);
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark.plant_id IS
+  'SAP plant ID';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark.material_id IS
+  'Finished-good material code';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark.production_line IS
+  'Production line used for benchmarking, with null source values grouped as UNASSIGNED';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark.run_count IS
+  'Count of complete orders with goods receipt evidence in this recipe-line distribution';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark.median_yield_pct IS
+  'Median delivered/planned yield percentage across qualifying runs';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark.p10_yield_pct IS
+  '10th percentile delivered/planned yield percentage across qualifying runs';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark.p90_yield_pct IS
+  '90th percentile delivered/planned yield percentage across qualifying runs';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark.median_duration_hours IS
+  'Median goods-receipt duration in hours, excluding zero/negative or missing spans';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark.p10_duration_hours IS
+  '10th percentile goods-receipt duration in hours';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark.p90_duration_hours IS
+  '90th percentile goods-receipt duration in hours';
+COMMENT ON COLUMN connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_recipe_benchmark.last_run_finish_date IS
+  'Latest goods receipt finish date contributing to this benchmark bucket';
 
 -- ── Contract: wm_operations.component_variance v0.2.0 ──
 COMMENT ON VIEW connected_plant_dev.gold_io_reporting.vw_consumption_wm_operations_component_variance IS

@@ -606,6 +606,31 @@ export interface WmScheduleAdherenceDailyItem {
   readonly maxActualDate: string | null
 }
 
+export type WmAdherenceRootCauseClass = 'LATE_RELEASE' | 'MATERIAL_SHORT' | 'CAPACITY' | 'UNCLASSIFIED'
+
+export interface WmAdherenceRootCauseItem {
+  readonly plantId: string
+  readonly orderId: string
+  readonly materialId: string | null
+  readonly materialName: string | null
+  readonly orderQty: number | null
+  readonly uom: string | null
+  readonly productionLine: string | null
+  readonly scheduledStartDate: string | null
+  readonly scheduledFinishDate: string | null
+  readonly actualReleaseDate: string | null
+  readonly actualFinishDate: string | null
+  readonly rootCauseClass: WmAdherenceRootCauseClass
+  readonly isLateRelease: boolean | null
+  readonly hasMaterialShort: boolean | null
+  readonly shortfallComponentCount: number | null
+  readonly minVarianceQty: number | null
+  readonly releaseToProductionHours: number | null
+  readonly productionFirstActualStart: string | null
+  readonly isFinishLate: boolean | null
+  readonly isOpenLate: boolean | null
+}
+
 export interface WmOrderYieldItem {
   readonly plantId: string
   readonly orderId: string
@@ -626,6 +651,20 @@ export interface WmOrderYieldItem {
   readonly actualFinishDate: string | null
   readonly firstGrDate: string | null
   readonly lastGrDate: string | null
+}
+
+export interface WmRecipeBenchmarkItem {
+  readonly plantId: string
+  readonly materialId: string
+  readonly productionLine: string
+  readonly runCount: number | null
+  readonly medianYieldPct: number | null
+  readonly p10YieldPct: number | null
+  readonly p90YieldPct: number | null
+  readonly medianDurationHours: number | null
+  readonly p10DurationHours: number | null
+  readonly p90DurationHours: number | null
+  readonly lastRunFinishDate: string | null
 }
 
 export interface WmComponentVarianceItem {

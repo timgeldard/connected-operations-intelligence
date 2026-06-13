@@ -14,7 +14,9 @@ Tables:
                               (the WM Cockpit TR / ST traffic-light logic, derived read-only)
   gold_wm_bin_stock_detail  — quant-grain stock & bin explorer with storage-zone classification
   gold_wm_order_yield       — order-grain yield summary (planned vs delivered qty, yield %)
+  gold_wm_recipe_run_benchmark — recipe-line benchmark percentiles for complete GR runs
   gold_wm_order_component_variance — order+component grain material variance (issued vs required)
+  gold_wm_adherence_root_cause   — order-grain adherence miss root-cause classification
 
 Storage-zone classification: derived from the governed storage_type_role_mapping table
 (role + storage_type_description). Dispensaries are identified by description
@@ -2385,7 +2387,78 @@ def gold_wm_order_yield():
     )
 
 
-# -- 24. ORDER COMPONENT VARIANCE (order+component grain, loss waterfall) -----
+# -- 24. RECIPE RUN BENCHMARK (recipe-line benchmark distribution) -----------
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Recipe-line benchmark distribution for completed production runs. One row per "
+        "plant_code × material_code × production_line, where null production_line is grouped "
+        "as UNASSIGNED. Source: gold_wm_order_yield via dlt.read. Distribution includes only "
+        "complete orders with goods receipt evidence (is_complete AND has_goods_receipt). "
+        "run_count counts qualifying runs; yield percentiles ignore null yield_pct. Duration "
+        "is last_gr_date - first_gr_date in hours and is null for zero/negative or missing GR "
+        "date spans. No current_date()/current_timestamp() — deterministic base MV. "
+        "cluster_by plant_code, material_code."
+    ),
+    cluster_by=["plant_code", "material_code"],
+))
+@dlt.expect("run_count positive", "run_count > 0")
+def gold_wm_recipe_run_benchmark():
+    runs = dlt.read("gold_wm_order_yield")
+
+    duration_hours = (
+        (
+            F.unix_timestamp(F.to_timestamp("last_gr_date"))
+            - F.unix_timestamp(F.to_timestamp("first_gr_date"))
+        ) / F.lit(3600.0)
+    )
+
+    qualified = (
+        runs
+        .filter(
+            F.coalesce(F.col("is_complete"), F.lit(False))
+            & F.coalesce(F.col("has_goods_receipt"), F.lit(False))
+        )
+        .withColumn(
+            "production_line_group",
+            F.coalesce(F.col("production_line"), F.lit("UNASSIGNED")),
+        )
+        .withColumn(
+            "duration_hours",
+            F.when(duration_hours > 0, duration_hours).otherwise(F.lit(None).cast("double")),
+        )
+    )
+
+    return (
+        qualified
+        .groupBy("plant_code", "material_code", "production_line_group")
+        .agg(
+            F.count(F.lit(1)).alias("run_count"),
+            F.percentile_approx("yield_pct", 0.5).cast("double").alias("median_yield_pct"),
+            F.percentile_approx("yield_pct", 0.1).cast("double").alias("p10_yield_pct"),
+            F.percentile_approx("yield_pct", 0.9).cast("double").alias("p90_yield_pct"),
+            F.percentile_approx("duration_hours", 0.5).cast("double").alias("median_duration_hours"),
+            F.percentile_approx("duration_hours", 0.1).cast("double").alias("p10_duration_hours"),
+            F.percentile_approx("duration_hours", 0.9).cast("double").alias("p90_duration_hours"),
+            F.max("last_gr_date").alias("last_run_finish_date"),
+        )
+        .select(
+            "plant_code",
+            "material_code",
+            F.col("production_line_group").alias("production_line"),
+            "run_count",
+            "median_yield_pct",
+            "p10_yield_pct",
+            "p90_yield_pct",
+            "median_duration_hours",
+            "p10_duration_hours",
+            "p90_duration_hours",
+            "last_run_finish_date",
+        )
+    )
+
+
+# -- 25. ORDER COMPONENT VARIANCE (order+component grain, loss waterfall) -----
 
 @dlt.table(**gold_table_args(
     comment=(
@@ -2558,4 +2631,128 @@ def gold_wm_order_component_variance():
 
         # ── Is final issue flag
         F.col("is_final_issue"),
+    )
+
+
+# -- 24. ADHERENCE ROOT CAUSE (order-grain miss classification) -----------------
+
+_MATERIAL_SHORT_TOLERANCE = 0.01
+_CAPACITY_RELEASE_TO_PROD_HOURS = 24.0
+
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Order-grain adherence miss root-cause classification for Production Progress. "
+        "One row per candidate miss (plant_code × order_number): scheduled_finish_date "
+        "present AND (actual_finish_date > scheduled_finish_date OR actual_finish_date "
+        "IS NULL for open-late candidates — consumption view derives is_open_late via "
+        "CURRENT_DATE). Classification precedence (first match wins): "
+        "1 LATE_RELEASE — actual_release_date > scheduled_start_date; "
+        "2 MATERIAL_SHORT — any gold_wm_order_component_variance row with "
+        f"variance_qty < -{_MATERIAL_SHORT_TOLERANCE}; "
+        "3 CAPACITY — not late release, no material short, but "
+        "production_first_actual_start is >24h after actual_release_date "
+        "(gold_wm_order_journey_summary); "
+        "4 UNCLASSIFIED. Evidence columns retained for UI drill-down. "
+        "Deterministic: no current_date(). cluster_by plant_code, scheduled_finish_date."
+    ),
+    cluster_by=["plant_code", "scheduled_finish_date"],
+))
+@dlt.expect("root_cause_class valid", (
+    "root_cause_class IN ('LATE_RELEASE', 'MATERIAL_SHORT', 'CAPACITY', 'UNCLASSIFIED')"
+))
+@dlt.expect("order_number present", "order_number IS NOT NULL")
+@dlt.expect("plant_code present", "plant_code IS NOT NULL")
+def gold_wm_adherence_root_cause():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    orders = spark.read.table(f"{ss}.process_order")
+    material = _material_lookup(spark, ss)
+
+    candidates = orders.filter(
+        F.col("scheduled_finish_date").isNotNull()
+        & (
+            (F.col("actual_finish_date") > F.col("scheduled_finish_date"))
+            | F.col("actual_finish_date").isNull()
+        )
+    )
+
+    shortfall = (
+        dlt.read("gold_wm_order_component_variance")
+        .groupBy("plant_code", "order_number")
+        .agg(
+            F.min("variance_qty").alias("min_variance_qty"),
+            F.sum(
+                F.when(
+                    F.col("variance_qty") < -F.lit(_MATERIAL_SHORT_TOLERANCE),
+                    F.lit(1),
+                ).otherwise(F.lit(0))
+            ).alias("shortfall_component_count"),
+        )
+    )
+
+    journey = dlt.read("gold_wm_order_journey_summary").select(
+        "plant_code",
+        "order_number",
+        "production_first_actual_start",
+    )
+
+    joined = (
+        candidates
+        .join(F.broadcast(material), ["plant_code", "material_code"], "left")
+        .join(shortfall, ["plant_code", "order_number"], "left")
+        .join(journey, ["plant_code", "order_number"], "left")
+    )
+
+    is_late_release = (
+        F.col("actual_release_date").isNotNull()
+        & F.col("scheduled_start_date").isNotNull()
+        & (F.col("actual_release_date") > F.col("scheduled_start_date"))
+    )
+    has_material_short = F.coalesce(F.col("min_variance_qty"), F.lit(0.0)) < -F.lit(
+        _MATERIAL_SHORT_TOLERANCE
+    )
+    release_to_prod_hours = F.when(
+        F.col("actual_release_date").isNotNull()
+        & F.col("production_first_actual_start").isNotNull(),
+        (
+            F.unix_timestamp(F.col("production_first_actual_start"))
+            - F.unix_timestamp(F.col("actual_release_date").cast("timestamp"))
+        )
+        / 3600.0,
+    )
+    is_capacity_lag = (
+        (~is_late_release)
+        & (~has_material_short)
+        & release_to_prod_hours.isNotNull()
+        & (release_to_prod_hours > F.lit(_CAPACITY_RELEASE_TO_PROD_HOURS))
+    )
+
+    root_cause_class = (
+        F.when(is_late_release, F.lit("LATE_RELEASE"))
+        .when(has_material_short, F.lit("MATERIAL_SHORT"))
+        .when(is_capacity_lag, F.lit("CAPACITY"))
+        .otherwise(F.lit("UNCLASSIFIED"))
+    )
+
+    return joined.select(
+        "plant_code",
+        "order_number",
+        F.col("material_code"),
+        F.col("material_description").alias("material_name"),
+        F.col("order_quantity").alias("order_qty"),
+        F.col("order_quantity_uom").alias("uom"),
+        "production_line",
+        "scheduled_start_date",
+        "scheduled_finish_date",
+        "actual_release_date",
+        "actual_finish_date",
+        root_cause_class.alias("root_cause_class"),
+        is_late_release.alias("is_late_release"),
+        has_material_short.alias("has_material_short"),
+        F.coalesce(F.col("shortfall_component_count"), F.lit(0)).alias("shortfall_component_count"),
+        F.col("min_variance_qty"),
+        release_to_prod_hours.alias("release_to_production_hours"),
+        F.col("production_first_actual_start"),
     )

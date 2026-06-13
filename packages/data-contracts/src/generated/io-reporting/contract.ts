@@ -2345,6 +2345,83 @@ export const WmOperationsQmDispositionQueueContract = {
 } as const;
 
 /**
+ * QM characteristic (MIC) Pareto for the Command Centre drill view. Counts all lab results in the silver lookback window; fail_rate = fail_count/result_count. last_result_date is the per-plant×material data freshness signal (replication may lag by plant). Source: gold_qm_characteristic_pareto.
+
+ * Source View: vw_consumption_wm_operations_qm_characteristic_pareto
+ * Version: 0.1.0
+ */
+export interface WmOperationsQmCharacteristicPareto {
+  plant_id: string;
+  material_id: string;
+  characteristic_id: string;
+  characteristic_text?: string;
+  unit?: string;
+  result_count: number;
+  fail_count: number;
+  warn_count: number;
+  fail_rate?: number;
+  /** Latest result recording date for this plant×material (freshness signal) */
+  last_result_date?: string;
+}
+
+export const WmOperationsQmCharacteristicParetoContract = {
+  id: "wm_operations.qm_characteristic_pareto",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_qm_characteristic_pareto",
+  grain: "one row per plant_id, material_id, and characteristic_id",
+  primaryKey: ["plant_id", "material_id", "characteristic_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * QM usage-decision code distribution Pareto. Plant from parent lot (not QAVE VWERKS). Source: gold_qm_ud_code_pareto.
+
+ * Source View: vw_consumption_wm_operations_qm_ud_code_pareto
+ * Version: 0.1.0
+ */
+export interface WmOperationsQmUdCodePareto {
+  plant_id: string;
+  usage_decision_code: string;
+  /** Accepted | Rejected | Other Decision */
+  usage_decision?: string;
+  /** Raw QAVE VBEWERTUNG (A/R/blank) */
+  usage_decision_valuation?: string;
+  lot_count: number;
+  last_decision_date?: string;
+}
+
+export const WmOperationsQmUdCodeParetoContract = {
+  id: "wm_operations.qm_ud_code_pareto",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_qm_ud_code_pareto",
+  grain: "one row per plant_id and usage_decision_code",
+  primaryKey: ["plant_id", "usage_decision_code"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
  * Order/Batch Journey Timeline summary -- one row per plant_id x order_id. Milestones aggregated from five silver sources (process_order, TR/TO via TBNUM, process_order_operation, pi_sheet_execution, goods_movement) to populate the flagship per-order journey view. All milestone timestamps nullable; PI columns absent at plants without PI data (P806). Derived lag hours (release->staged->produced->GR) only populated when both endpoints exist. No date-relative columns -- no _live wrapper; reads _secured directly.
 
  * Source View: vw_consumption_wm_operations_order_journey
@@ -2626,6 +2703,57 @@ export const WmOperationsOrderYieldContract = {
 } as const;
 
 /**
+ * Recipe-line benchmark distribution for the Campaigns view. Aggregates complete process orders with goods receipt evidence from gold_wm_order_yield. Grain is plant_id, material_id, and production_line; null production_line is grouped as UNASSIGNED. Percentiles compare yield_pct and GR duration for runs of the same recipe on the same line.
+
+ * Source View: vw_consumption_wm_operations_recipe_benchmark
+ * Version: 0.1.0
+ */
+export interface WmOperationsRecipeBenchmark {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Finished-good material code */
+  material_id: string;
+  /** Production line used for benchmarking, with null source values grouped as UNASSIGNED */
+  production_line: string;
+  /** Count of complete orders with goods receipt evidence in this recipe-line distribution */
+  run_count: number;
+  /** Median delivered/planned yield percentage across qualifying runs */
+  median_yield_pct?: number;
+  /** 10th percentile delivered/planned yield percentage across qualifying runs */
+  p10_yield_pct?: number;
+  /** 90th percentile delivered/planned yield percentage across qualifying runs */
+  p90_yield_pct?: number;
+  /** Median goods-receipt duration in hours, excluding zero/negative or missing spans */
+  median_duration_hours?: number;
+  /** 10th percentile goods-receipt duration in hours */
+  p10_duration_hours?: number;
+  /** 90th percentile goods-receipt duration in hours */
+  p90_duration_hours?: number;
+  /** Latest goods receipt finish date contributing to this benchmark bucket */
+  last_run_finish_date?: string;
+}
+
+export const WmOperationsRecipeBenchmarkContract = {
+  id: "wm_operations.recipe_benchmark",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_recipe_benchmark",
+  grain: "one row per plant_id, material_id, and production_line",
+  primaryKey: ["plant_id", "material_id", "production_line"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
  * Order + material grain material variance for the Yield & Loss waterfall. One row per plant_id, order_id, material_id (aggregated from reservation_requirement). Silver goods_movement carries no reservation references (MSEG has no RSNUM/RSPOS in the replication schema), so reservation grain would double-count issued_qty for orders with multiple RESB rows for the same material. Grain changed from reservation-item to order+material in v0.2.0. variance_qty = issued_qty - required_qty (positive = over-issue / loss; negative = under-issue). est_loss_value = over-issued qty × standard_price / price_unit (null when no price data). Quantities stay in each row's own base_uom — no cross-material aggregation in gold. Source: gold_wm_order_component_variance (reservation_requirement + goods_movement + material_valuation).
 
  * Source View: vw_consumption_wm_operations_component_variance
@@ -2672,6 +2800,75 @@ export const WmOperationsComponentVarianceContract = {
   sourceView: "vw_consumption_wm_operations_component_variance",
   grain: "one row per plant_id, order_id, and material_id",
   primaryKey: ["plant_id", "order_id", "material_id"],
+  freshness: {
+    expectedMinutes: 60,
+    warningMinutes: 120,
+    criticalMinutes: 240,
+  },
+  accessPolicy: {
+    rowLevelKey: "plant_id",
+    entitlementSource: "published.central_services.user_plant_access",
+  },
+} as const;
+
+/**
+ * Order-grain adherence miss root-cause classification for Production Progress. One row per late/missed process order. root_cause_class precedence: LATE_RELEASE (release after scheduled start) > MATERIAL_SHORT (component under-issue) > CAPACITY (production start lagged >24h after release) > UNCLASSIFIED. is_open_late is query-time (unfinished past scheduled_finish_date). Source: gold_wm_adherence_root_cause.
+
+ * Source View: vw_consumption_wm_operations_adherence_root_cause
+ * Version: 0.1.0
+ */
+export interface WmOperationsAdherenceRootCause {
+  /** SAP plant ID */
+  plant_id: string;
+  /** Process order number (AUFNR) */
+  order_id: string;
+  /** Header material code (AFPO MATNR) */
+  material_id?: string;
+  /** Material description */
+  material_name?: string;
+  /** Planned order quantity (AFKO GAMNG) */
+  order_qty?: number;
+  /** Order quantity unit of measure */
+  uom?: string;
+  /** Production line / work centre */
+  production_line?: string;
+  /** Scheduled start date (AFKO GSTRS) */
+  scheduled_start_date?: string;
+  /** Scheduled finish date (AFKO GLTRS) */
+  scheduled_finish_date?: string;
+  /** Actual release date (AUFK FTRMI) */
+  actual_release_date?: string;
+  /** Actual finish date (AUFK GLTRI); null when order still open */
+  actual_finish_date?: string;
+  /** LATE_RELEASE | MATERIAL_SHORT | CAPACITY | UNCLASSIFIED */
+  root_cause_class: string;
+  /** True when actual_release_date > scheduled_start_date */
+  is_late_release?: boolean;
+  /** True when any component variance_qty is below tolerance (under-issue) */
+  has_material_short?: boolean;
+  /** Count of components with under-issue beyond tolerance */
+  shortfall_component_count?: number;
+  /** Most negative component variance_qty on the order (under-issue depth) */
+  min_variance_qty?: number;
+  /** Hours from release to first operation actual start (capacity signal) */
+  release_to_production_hours?: number;
+  /** First operation actual start timestamp (AFVC/operation confirmations) */
+  production_first_actual_start?: string;
+  /** True when actual_finish_date > scheduled_finish_date */
+  is_finish_late?: boolean;
+  /** True when unfinished and scheduled_finish_date is before today (query-time) */
+  is_open_late?: boolean;
+}
+
+export const WmOperationsAdherenceRootCauseContract = {
+  id: "wm_operations.adherence_root_cause",
+  version: "0.1.0",
+  domain: "warehouse",
+  owner: "warehouse-operations",
+  lifecycle: "draft",
+  sourceView: "vw_consumption_wm_operations_adherence_root_cause",
+  grain: "one row per plant_id and order_id",
+  primaryKey: ["plant_id", "order_id"],
   freshness: {
     expectedMinutes: 60,
     warningMinutes: 120,
@@ -2734,11 +2931,15 @@ export const ioReportingContracts = {
     "wm_operations.downtime_events": WmOperationsDowntimeEventsContract,
     "wm_operations.qm_lot_status": WmOperationsQmLotStatusContract,
     "wm_operations.qm_disposition_queue": WmOperationsQmDispositionQueueContract,
+    "wm_operations.qm_characteristic_pareto": WmOperationsQmCharacteristicParetoContract,
+    "wm_operations.qm_ud_code_pareto": WmOperationsQmUdCodeParetoContract,
     "wm_operations.order_journey": WmOperationsOrderJourneyContract,
     "wm_operations.order_journey_events": WmOperationsOrderJourneyEventsContract,
     "wm_operations.wip_stages": WmOperationsWipStagesContract,
     "wm_operations.schedule_adherence_daily": WmOperationsScheduleAdherenceDailyContract,
     "wm_operations.order_yield": WmOperationsOrderYieldContract,
+    "wm_operations.recipe_benchmark": WmOperationsRecipeBenchmarkContract,
     "wm_operations.component_variance": WmOperationsComponentVarianceContract,
+    "wm_operations.adherence_root_cause": WmOperationsAdherenceRootCauseContract,
   },
 } as const;

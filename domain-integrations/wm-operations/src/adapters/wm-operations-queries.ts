@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { wmOperationsAdapter } from './wm-operations-adapter.js'
-import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmOrderYieldItem, WmComponentVarianceItem } from './wm-operations-adapter.js'
+import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmAdherenceRootCauseItem, WmOrderYieldItem, WmRecipeBenchmarkItem, WmComponentVarianceItem } from './wm-operations-adapter.js'
 
 export function useWmOrderComponents(request: WmDrillRequest, enabled = true) {
   return useQuery({
@@ -154,11 +154,35 @@ export function useWmScheduleAdherenceDaily(plantId: string | null | undefined, 
   })
 }
 
+export function useWmAdherenceRootCause(plantId: string | null | undefined, limit = 500, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-adherence-root-cause', plantId ?? null, limit],
+    queryFn: () => wmOperationsAdapter.getList<WmAdherenceRootCauseItem>(
+      '/api/wm-operations/adherence-root-cause',
+      { plant_id: plantId ?? undefined, limit },
+    ),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(plantId),
+  })
+}
+
 export function useWmOrderYield(plantId: string | null | undefined, limit = 500, enabled = true) {
   return useQuery({
     queryKey: ['wm-ops-order-yield', plantId ?? null, limit],
     queryFn: () => wmOperationsAdapter.getList<WmOrderYieldItem>(
       '/api/wm-operations/order-yield',
+      { plant_id: plantId ?? undefined, limit },
+    ),
+    staleTime: 60 * 1000,
+    enabled: enabled && Boolean(plantId),
+  })
+}
+
+export function useWmRecipeBenchmark(plantId: string | null | undefined, limit = 500, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-recipe-benchmark', plantId ?? null, limit],
+    queryFn: () => wmOperationsAdapter.getList<WmRecipeBenchmarkItem>(
+      '/api/wm-operations/recipe-benchmark',
       { plant_id: plantId ?? undefined, limit },
     ),
     staleTime: 60 * 1000,

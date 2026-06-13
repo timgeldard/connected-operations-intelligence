@@ -335,6 +335,61 @@ def test_order_readiness_tr_coverage_and_psa_supply(spark):
     assert partial["readiness_status"] == "PARTIALLY_PLANNED"
 
 
+# ── Recipe run benchmark ─────────────────────────────────────────────────────
+
+def test_recipe_run_benchmark_groups_unassigned_and_guards_duration(spark, monkeypatch):
+    import dlt
+
+    from gold.wm_operations_gold import gold_wm_recipe_run_benchmark
+
+    order_yield = create_df(spark, [
+        Row(plant_code="C061", order_number="900001", material_code="FG1", production_line="LINE_A",
+            planned_qty=100.0, delivered_qty=90.0, yield_pct=0.90,
+            first_gr_date=datetime.date(2026, 6, 1), last_gr_date=datetime.date(2026, 6, 3),
+            is_complete=True, has_goods_receipt=True),
+        Row(plant_code="C061", order_number="900002", material_code="FG1", production_line="LINE_A",
+            planned_qty=100.0, delivered_qty=100.0, yield_pct=1.00,
+            first_gr_date=datetime.date(2026, 6, 4), last_gr_date=datetime.date(2026, 6, 4),
+            is_complete=True, has_goods_receipt=True),
+        Row(plant_code="C061", order_number="900003", material_code="FG1", production_line=None,
+            planned_qty=0.0, delivered_qty=10.0, yield_pct=None,
+            first_gr_date=datetime.date(2026, 6, 5), last_gr_date=datetime.date(2026, 6, 7),
+            is_complete=True, has_goods_receipt=True),
+        Row(plant_code="C061", order_number="900004", material_code="FG1", production_line=None,
+            planned_qty=0.0, delivered_qty=20.0, yield_pct=None,
+            first_gr_date=datetime.date(2026, 6, 8), last_gr_date=datetime.date(2026, 6, 7),
+            is_complete=True, has_goods_receipt=True),
+        Row(plant_code="C061", order_number="900005", material_code="FG1", production_line="LINE_A",
+            planned_qty=100.0, delivered_qty=95.0, yield_pct=0.95,
+            first_gr_date=datetime.date(2026, 6, 9), last_gr_date=datetime.date(2026, 6, 10),
+            is_complete=False, has_goods_receipt=True),
+        Row(plant_code="C061", order_number="900006", material_code="FG1", production_line="LINE_A",
+            planned_qty=100.0, delivered_qty=0.0, yield_pct=0.0,
+            first_gr_date=None, last_gr_date=None,
+            is_complete=True, has_goods_receipt=False),
+    ])
+    monkeypatch.setattr(dlt, "read", lambda name: order_yield)
+
+    rows = {
+        (r["material_code"], r["production_line"]): r
+        for r in all_rows(gold_wm_recipe_run_benchmark())
+    }
+
+    line_a = rows[("FG1", "LINE_A")]
+    assert line_a["run_count"] == 2
+    assert line_a["median_yield_pct"] == pytest.approx(0.90)
+    assert line_a["p90_yield_pct"] == pytest.approx(1.00)
+    assert line_a["median_duration_hours"] == pytest.approx(48.0)
+    assert line_a["last_run_finish_date"] == datetime.date(2026, 6, 4)
+
+    unassigned = rows[("FG1", "UNASSIGNED")]
+    assert unassigned["run_count"] == 2
+    assert unassigned["median_yield_pct"] is None
+    assert unassigned["p10_yield_pct"] is None
+    assert unassigned["median_duration_hours"] == pytest.approx(48.0)
+    assert unassigned["last_run_finish_date"] == datetime.date(2026, 6, 7)
+
+
 # ── Bin / stock detail ────────────────────────────────────────────────────────
 
 def test_bin_stock_detail_zones_and_categories(spark):

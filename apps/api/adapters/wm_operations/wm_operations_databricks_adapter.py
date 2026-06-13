@@ -1376,6 +1376,30 @@ SIMPLE_DATASETS: dict[str, dict] = {
         boolean=("is_overdue",), has_warehouse=False,
         origin_col="inspection_lot_origin_code",
     ),
+    "qm_characteristic_pareto": dict(
+        contract="wm_operations.qm_characteristic_pareto",
+        endpoint="/api/wm-operations/qm-characteristic-pareto",
+        columns=(
+            "plant_id, material_id, characteristic_id, characteristic_text, unit, "
+            "result_count, fail_count, warn_count, fail_rate, last_result_date"
+        ),
+        order_by="fail_count DESC, result_count DESC",
+        numeric=("fail_rate",),
+        integer=("result_count", "fail_count", "warn_count"),
+        boolean=(), has_warehouse=False,
+    ),
+    "qm_ud_code_pareto": dict(
+        contract="wm_operations.qm_ud_code_pareto",
+        endpoint="/api/wm-operations/qm-ud-code-pareto",
+        columns=(
+            "plant_id, usage_decision_code, usage_decision, usage_decision_valuation, "
+            "lot_count, last_decision_date"
+        ),
+        order_by="lot_count DESC",
+        numeric=(),
+        integer=("lot_count",),
+        boolean=(), has_warehouse=False,
+    ),
     "downtime_pareto": dict(
         contract="wm_operations.downtime_pareto", endpoint="/api/wm-operations/downtime-pareto",
         columns="plant_id, week_start, downtime_reason_code, sub_reason_code, work_centre_code, "
@@ -1483,6 +1507,24 @@ SIMPLE_DATASETS: dict[str, dict] = {
         has_warehouse=False,
         open_only_clause="has_goods_receipt OR is_complete",
     ),
+    "recipe_benchmark": dict(
+        contract="wm_operations.recipe_benchmark",
+        endpoint="/api/wm-operations/recipe-benchmark",
+        columns=(
+            "plant_id, material_id, production_line, run_count, "
+            "median_yield_pct, p10_yield_pct, p90_yield_pct, "
+            "median_duration_hours, p10_duration_hours, p90_duration_hours, "
+            "last_run_finish_date"
+        ),
+        order_by="plant_id ASC, material_id ASC, production_line ASC",
+        numeric=(
+            "median_yield_pct", "p10_yield_pct", "p90_yield_pct",
+            "median_duration_hours", "p10_duration_hours", "p90_duration_hours",
+        ),
+        integer=("run_count",),
+        boolean=(),
+        has_warehouse=False,
+    ),
     "component_variance": dict(
         contract="wm_operations.component_variance",
         endpoint="/api/wm-operations/component-variance",
@@ -1497,6 +1539,22 @@ SIMPLE_DATASETS: dict[str, dict] = {
                  "variance_qty", "variance_pct", "est_loss_value", "standard_price"),
         integer=(),
         boolean=("is_final_issue",),
+        has_warehouse=False,
+    ),
+    "adherence_root_cause": dict(
+        contract="wm_operations.adherence_root_cause",
+        endpoint="/api/wm-operations/adherence-root-cause",
+        columns=(
+            "plant_id, order_id, material_id, material_name, order_qty, uom, production_line, "
+            "scheduled_start_date, scheduled_finish_date, actual_release_date, actual_finish_date, "
+            "root_cause_class, is_late_release, has_material_short, shortfall_component_count, "
+            "min_variance_qty, release_to_production_hours, production_first_actual_start, "
+            "is_finish_late, is_open_late"
+        ),
+        order_by="scheduled_finish_date DESC NULLS LAST",
+        numeric=("order_qty", "min_variance_qty", "release_to_production_hours"),
+        integer=("shortfall_component_count",),
+        boolean=("is_late_release", "has_material_short", "is_finish_late", "is_open_late"),
         has_warehouse=False,
     ),
 }

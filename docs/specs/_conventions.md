@@ -76,6 +76,8 @@ eslint on changed TS/TSX files
 PySpark unit tests: WRITE them (pattern: `tests/test_gold_yield_loss.py`,
 `tests/gold/test_gold_trace_anchor.py` — mock `dlt.read` via the autouse fixture pattern)
 but they only execute in CI (no local JVM). Say so in your report; do not skip writing them.
+No vacuous assertions — never ship `or True`, bare `assert True`, or other always-passing
+patterns; reviewers grep for these.
 
 ## What you must NOT do
 
