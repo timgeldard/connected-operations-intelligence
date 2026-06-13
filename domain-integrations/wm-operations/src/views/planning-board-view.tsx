@@ -75,7 +75,9 @@ function addDays(iso: string, n: number): string {
 }
 
 function todayIso(): string {
-  return toIso(new Date())
+  // Local calendar date — NOT toISOString() (UTC), which shifts "today" a day for non-UTC users.
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function isoToDate(iso: string): Date {

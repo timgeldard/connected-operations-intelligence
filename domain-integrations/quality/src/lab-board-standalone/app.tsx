@@ -425,7 +425,7 @@ function FailCard({ failure }: { readonly failure: ConnectedQualityLabFailure })
     <article className={`fail-card ${failure.sev}`}>
       <div className="fc-head">
         <div className="ttl">{failure.mat}</div>
-        <div className="lot-pill">04</div>
+        <div className="lot-pill">{failure.lotType}</div>
       </div>
       <div className="fc-body">
         <Field label="Material Number" value={failure.matNo} />
