@@ -3153,8 +3153,11 @@ def gold_wm_order_shortage_projection():
         & F.col("order_number").isNotNull()
     )
 
+    # Drop the order's finished-good material_code before joining: the shortage axis is the
+    # demand row's COMPONENT material_code (from the ledger). Keeping both collides on
+    # material_code (AMBIGUOUS_REFERENCE) at the material/first_short joins and the select.
     return (
-        demand_rows.join(orders, ["plant_code", "order_number"], "inner")
+        demand_rows.join(orders.drop("material_code"), ["plant_code", "order_number"], "inner")
         .join(F.broadcast(material), ["plant_code", "material_code"], "left")
         .join(first_short, ["plant_code", "material_code"], "left")
         .select(
