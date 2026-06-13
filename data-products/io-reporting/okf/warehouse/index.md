@@ -1,0 +1,60 @@
+# Warehouse -- Consumption Contracts
+
+This directory lists all `warehouse` contracts in the io-reporting data product.
+
+- [Batch Hold Status](/warehouse/warehouse360/batch_hold_status.md) -- Warehouse stock and hold status for a batch, release-decision oriented.
+- [Bin Occupancy](/warehouse/wm_operations/bin_occupancy.md) -- Bin occupancy and capacity by storage type and bin type (putaway planning).
+- [Bin Stock](/warehouse/wm_operations/bin_stock.md) -- Quant-grain stock & bin explorer with storage-zone classification (dispensary / production supply / palletising / interim / warehouse), stock category, block flags and expiry.
+- [Buffer Flow](/warehouse/wm_operations/buffer_flow.md) -- Hourly flows in/out of the palletising (bulk-drop) buffer from confirmed TO items — input for client-side B(t) buffer reconstruction.
+- [Campaigns](/warehouse/wm_operations/campaigns.md) -- Campaign-grouped picking progress (LTBK ZZ_CAMPAIGN).
+- [Component Variance](/warehouse/wm_operations/component_variance.md) -- Order + material grain material variance for the Yield & Loss waterfall.
+- [Daily Activity](/warehouse/wm_operations/daily_activity.md) -- Daily warehouse activity series (TO confirmations, TRs created, IM receipts/issues) for trend charts.
+- [Dispensary Queue](/warehouse/warehouse360/dispensary_queue.md) -- Dispensary staging component weighing and preparation queue.
+- [Downtime Events](/warehouse/wm_operations/downtime_events.md) -- Production downtime events at event grain — passthrough from silver.downtime_event.
+- [Downtime Pareto](/warehouse/wm_operations/downtime_pareto.md) -- Weekly production downtime pareto aggregated by plant, week, reason code, sub-reason code, and work centre.
+- [Exceptions](/warehouse/wm_operations/exceptions.md) -- Aged warehouse exceptions (expired-with-stock, aged QI/blocked, aged open TOs).
+- [Expiry Risk](/warehouse/wm_operations/expiry_risk.md) -- Batch-level shelf-life risk with query-time expiry buckets.
+- [Goods Movements](/warehouse/warehouse360/goods_movements.md) -- Goods-movement activity feed at material-document-line (MSEG) grain with movement-type classification flags.
+- [Handling Units](/warehouse/wm_operations/handling_units.md) -- Handling-unit (SSCC) counts by status for the inbound/putaway board.
+- [Im Wm Reconciliation](/warehouse/warehouse360/im_wm_reconciliation.md) -- IM/WM stock discrepancies summarised per material and exception type (first-wave AGGREGATE contract — ADR-0004 D6).
+- [Inbound Backlog](/warehouse/warehouse360/inbound_backlog.md) -- Inbound purchase-order backlog at PO-LINE grain (first wave — ADR-0004 D1; sourced from gold_inbound_po_line_backlog / silver.purchase_order EKKO/EKPO).
+- [Inbound Deliveries](/warehouse/wm_operations/inbound_deliveries.md) -- Inbound delivery expected-receipt board — EL (standard inbound) and ELST (inbound stock transport) SAP delivery types with expected receipt date, line counts, receipt progress, and query-time receipt_band.
+- [Move Requests](/warehouse/warehouse360/move_requests.md) -- Open transfer-requirement items (not processing-complete, open_quantity > 0) as warehouse move requests, with source/destination locations, queue, priority, and reference linkage.
+- [Movement Control](/warehouse/wm_operations/movement_control.md) -- IM goods-movement postings reconciled to WM confirmed-TO activity per posting date.
+- [Open Holds](/warehouse/warehouse360/open_holds.md) -- Occupied WM quants under hold (quality-inspection, blocked, or batch-restricted stock) with quantity and goods-receipt age.
+- [Operator Activity](/warehouse/wm_operations/operator_activity.md) -- RF operator pick activity per day from confirmed transfer-order items.
+- [Order Components](/warehouse/wm_operations/order_components.md) -- Component-level staging detail for active process orders — the drill-through behind Order Readiness.
+- [Order Journey](/warehouse/wm_operations/order_journey.md) -- Order/Batch Journey Timeline summary -- one row per plant_id x order_id.
+- [Order Journey Events](/warehouse/wm_operations/order_journey_events.md) -- Order/Batch Journey Timeline events -- long-format per-order event feed.
+- [Order Operations](/warehouse/wm_operations/order_operations.md) -- Process-order operations enriched with work-centre description — one row per plant_id, order_number, routing_number, and operation_counter.
+- [Order Readiness](/warehouse/wm_operations/order_readiness.md) -- Released process orders with derived TR coverage (component demand converted to TRs — the WM Cockpit 'TR' status) and PSA supply status (stock in order-keyed Production Supply bins — the cockpit 'ST' status), plus a query-time readiness band.
+- [Order Yield](/warehouse/wm_operations/order_yield.md) -- Order-grain yield summary for the Yield & Loss analytics view.
+- [Outbound](/warehouse/wm_operations/outbound.md) -- Outbound delivery picking board — pick progress and goods-issue risk per open delivery (reuses gold_delivery_pick_status with query-time risk bands).
+- [Outbound Backlog](/warehouse/warehouse360/outbound_backlog.md) -- Outbound deliveries picking backlog and cutoff risk.
+- [Overview](/warehouse/warehouse360/overview.md) -- Overview metrics for the Warehouse 360 dashboard.
+- [Physical Inventory](/warehouse/wm_operations/physical_inventory.md) -- Physical inventory count-vs-book detail (counts due, recounts, unposted differences).
+- [Pick Tasks](/warehouse/warehouse360/pick_tasks.md) -- Open transfer-order items (item_status != 'Fully Confirmed') as staging pick tasks, with source/destination locations, quantities, status, and process-order linkage (BETYP/BENUM).
+- [Plants](/warehouse/wm_operations/plants.md) -- Onboarded WM Operations plants — one row per plant_id and warehouse_id, derived from vw_consumption_wm_operations_worklist_summary (RLS inherited).
+- [Qm Characteristic Pareto](/warehouse/wm_operations/qm_characteristic_pareto.md) -- QM characteristic (MIC) Pareto for the Command Centre drill view.
+- [Qm Disposition Queue](/warehouse/wm_operations/qm_disposition_queue.md) -- QM disposition queue — open lots only (no usage decision), enriched with blocked stock quantity (MCHB.CINSM) and estimated blocked value (blocked_qty × standard_price / price_unit).
+- [Qm Lot Status](/warehouse/wm_operations/qm_lot_status.md) -- QM inspection lot status — one row per plant_id and lot_id (all lots in the silver lookback window).
+- [Qm Lots](/warehouse/wm_operations/qm_lots.md) -- Quality inspection-lot context per material and batch (open lots, latest usage decision) for held-stock and inbound enrichment.
+- [Qm Ud Code Pareto](/warehouse/wm_operations/qm_ud_code_pareto.md) -- QM usage-decision code distribution Pareto.
+- [Queue Workload](/warehouse/wm_operations/queue_workload.md) -- Current open WM workload by queue and work area (non-complete worklist jobs).
+- [Recipe Benchmark](/warehouse/wm_operations/recipe_benchmark.md) -- Recipe-line benchmark distribution for the Campaigns view.
+- [Recon Alerts](/warehouse/wm_operations/recon_alerts.md) -- Severe reconciliation alerts (IM-WM stock, HU, physical inventory) for the shift-handover digest.
+- [Recon Exceptions](/warehouse/wm_operations/recon_exceptions.md) -- IM-WM stock reconciliation exceptions at batch/category grain (workbench detail).
+- [Recon Value Summary](/warehouse/wm_operations/recon_value_summary.md) -- Value-control rollup of reconciliation exceptions by reason and severity.
+- [Schedule Adherence Daily](/warehouse/wm_operations/schedule_adherence_daily.md) -- Schedule adherence aggregated to plant x scheduled_finish_date (day) grain.
+- [Shortfalls](/warehouse/warehouse360/shortfalls.md) -- Material shortfalls — open transfer-requirement backlog aggregated to plant x material (ADR-0004 D2; upstream lineage: the transfer-requirement material-backlog gold MV over the silver warehouse transfer requirements).
+- [Slow Movers](/warehouse/wm_operations/slow_movers.md) -- Value-weighted stock aging by material and batch with query-time age buckets.
+- [Staging Demand](/warehouse/wm_operations/staging_demand.md) -- Planned staging demand wave: open TR quantity by planned execution hour and work area.
+- [Staging Pace](/warehouse/wm_operations/staging_pace.md) -- Hourly staged-in throughput (confirmed TO items into palletising/production-supply zones) — derived from TO flows pending bulk-drop log replication.
+- [Staging Readiness](/warehouse/warehouse360/staging_readiness.md) -- Production staging readiness summary counts.
+- [Staging Workload](/warehouse/warehouse360/staging_workload.md) -- Process-order staging workload and readiness at ORDER grain (first wave — ADR-0004 D3).
+- [Stock Exceptions](/warehouse/warehouse360/stock_exceptions.md) -- Warehouse stock exceptions including expiry, shelf life breach, and status blocks.
+- [Stock Holds](/warehouse/wm_operations/stock_holds.md) -- Quant-level QI/blocked/restricted holds with query-time age.
+- [Stock Zones](/warehouse/warehouse360/stock_zones.md) -- Warehouse stock zone capacities and bin counts.
+- [Wip Stages](/warehouse/wm_operations/wip_stages.md) -- Active process order WIP funnel — one row per plant_id x order_id for released, not-finished orders.
+- [Worklist](/warehouse/wm_operations/worklist.md) -- Supervisor staging/picking worklist at transfer-requirement (job) grain for the WM Operations workspace — read-only mirror of the SAP WM Cockpit (WMA-E-19) Job Assignment grid: work area, RF pick status, assigned operator, queue, campaign and pick progress from linked transfer orders.
+- [Worklist Summary](/warehouse/wm_operations/worklist_summary.md) -- WM worklist rolled up by plant, warehouse, work area and status — the WM Operations manager KPI strip.
