@@ -251,3 +251,157 @@ FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_im_wm_re
 GROUP BY plant_id
 ORDER BY rows DESC
 LIMIT 20;
+
+-- ============================================================================
+-- Contract: warehouse360.open_holds
+-- View: connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_open_holds
+-- Grain: one row per plant_id + warehouse_number + quant under hold
+-- ============================================================================
+
+DESCRIBE TABLE connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_open_holds;
+
+SELECT
+  'vw_consumption_warehouse360_open_holds' AS view_name,
+  COUNT(*) AS row_count
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_open_holds;
+
+SELECT
+  'vw_consumption_warehouse360_open_holds' AS view_name,
+  COUNT(*) AS total_rows,
+  COUNT_IF(plant_id IS NULL) AS null_plant_id_rows,
+  COUNT_IF(warehouse_number IS NULL) AS null_warehouse_number_rows,
+  COUNT_IF(quant_number IS NULL) AS null_quant_number_rows,
+  COUNT_IF(hold_type IS NULL) AS null_hold_type_rows
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_open_holds;
+
+SELECT
+  'vw_consumption_warehouse360_open_holds' AS view_name,
+  COUNT(*) AS total_rows,
+  COUNT(DISTINCT struct(plant_id, warehouse_number, quant_number)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(plant_id, warehouse_number, quant_number)) AS duplicate_pk_rows
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_open_holds;
+
+SELECT
+  plant_id,
+  COUNT(*) AS rows
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_open_holds
+GROUP BY plant_id
+ORDER BY rows DESC
+LIMIT 20;
+
+-- ============================================================================
+-- Contract: warehouse360.pick_tasks
+-- View: connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_pick_tasks
+-- Grain: one row per warehouse_number + task_id + item_number (open TO items)
+-- ============================================================================
+
+DESCRIBE TABLE connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_pick_tasks;
+
+SELECT
+  'vw_consumption_warehouse360_pick_tasks' AS view_name,
+  COUNT(*) AS row_count
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_pick_tasks;
+
+SELECT
+  'vw_consumption_warehouse360_pick_tasks' AS view_name,
+  COUNT(*) AS total_rows,
+  COUNT_IF(plant_id IS NULL) AS null_plant_id_rows,
+  COUNT_IF(warehouse_number IS NULL) AS null_warehouse_number_rows,
+  COUNT_IF(task_id IS NULL) AS null_task_id_rows,
+  COUNT_IF(item_number IS NULL) AS null_item_number_rows
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_pick_tasks;
+
+SELECT
+  'vw_consumption_warehouse360_pick_tasks' AS view_name,
+  COUNT(*) AS total_rows,
+  COUNT(DISTINCT struct(warehouse_number, task_id, item_number)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(warehouse_number, task_id, item_number)) AS duplicate_pk_rows
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_pick_tasks;
+
+SELECT
+  plant_id,
+  COUNT(*) AS rows
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_pick_tasks
+GROUP BY plant_id
+ORDER BY rows DESC
+LIMIT 20;
+
+-- ============================================================================
+-- Contract: warehouse360.move_requests
+-- View: connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_move_requests
+-- Grain: one row per warehouse_number + request_id + item_number (open TR items)
+-- ============================================================================
+
+DESCRIBE TABLE connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_move_requests;
+
+SELECT
+  'vw_consumption_warehouse360_move_requests' AS view_name,
+  COUNT(*) AS row_count
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_move_requests;
+
+SELECT
+  'vw_consumption_warehouse360_move_requests' AS view_name,
+  COUNT(*) AS total_rows,
+  COUNT_IF(plant_id IS NULL) AS null_plant_id_rows,
+  COUNT_IF(warehouse_number IS NULL) AS null_warehouse_number_rows,
+  COUNT_IF(request_id IS NULL) AS null_request_id_rows,
+  COUNT_IF(item_number IS NULL) AS null_item_number_rows
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_move_requests;
+
+SELECT
+  'vw_consumption_warehouse360_move_requests' AS view_name,
+  COUNT(*) AS total_rows,
+  COUNT(DISTINCT struct(warehouse_number, request_id, item_number)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(warehouse_number, request_id, item_number)) AS duplicate_pk_rows
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_move_requests;
+
+SELECT
+  plant_id,
+  COUNT(*) AS rows
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_move_requests
+GROUP BY plant_id
+ORDER BY rows DESC
+LIMIT 20;
+
+-- ============================================================================
+-- Contract: warehouse360.goods_movements
+-- View: connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_goods_movements
+-- Grain: one row per document_number + fiscal_year + line_item (MSEG line)
+-- ============================================================================
+
+DESCRIBE TABLE connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_goods_movements;
+
+SELECT
+  'vw_consumption_warehouse360_goods_movements' AS view_name,
+  COUNT(*) AS row_count
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_goods_movements;
+
+SELECT
+  'vw_consumption_warehouse360_goods_movements' AS view_name,
+  COUNT(*) AS total_rows,
+  COUNT_IF(plant_id IS NULL) AS null_plant_id_rows,
+  COUNT_IF(document_number IS NULL) AS null_document_number_rows,
+  COUNT_IF(fiscal_year IS NULL) AS null_fiscal_year_rows,
+  COUNT_IF(line_item IS NULL) AS null_line_item_rows,
+  COUNT_IF(movement_type_code IS NULL) AS null_movement_type_code_rows
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_goods_movements;
+
+SELECT
+  'vw_consumption_warehouse360_goods_movements' AS view_name,
+  COUNT(*) AS total_rows,
+  COUNT(DISTINCT struct(document_number, fiscal_year, line_item)) AS distinct_pk_rows,
+  COUNT(*) - COUNT(DISTINCT struct(document_number, fiscal_year, line_item)) AS duplicate_pk_rows
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_goods_movements;
+
+SELECT
+  'vw_consumption_warehouse360_goods_movements' AS view_name,
+  MAX(posting_date) AS max_freshness_ts
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_goods_movements;
+
+SELECT
+  plant_id,
+  COUNT(*) AS rows
+FROM connected_plant_prod.gold_io_reporting.vw_consumption_warehouse360_goods_movements
+GROUP BY plant_id
+ORDER BY rows DESC
+LIMIT 20;

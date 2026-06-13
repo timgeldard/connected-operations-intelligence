@@ -16,7 +16,6 @@ from check_app_migration_registry_guard import (
     _registered_adapter_dirs,
 )
 
-
 # --- None/non-dict entry guards -----------------------------------------------
 
 def test_allowed_apps_skips_none_entry():
