@@ -305,6 +305,31 @@ jobs:
 
       - name: Run silver stage-gate coverage guard
         run: python3 scripts/ci/check_silver_stage_gate_coverage.py
+  plant-seed-guard:
+    name: Plant Seed Guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # least-privilege: read-only static guard, no write to repo
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run plant seed guard tests
+        run: python3 -m pytest scripts/ci/test_check_site_config_plant_seed.py -q
+
+      - name: Run plant seed guard
+        run: python3 scripts/ci/check_site_config_plant_seed.py
 
   validate-bundle:
     name: Validate Databricks Bundle
