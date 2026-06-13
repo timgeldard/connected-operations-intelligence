@@ -9,6 +9,7 @@ from pyspark.sql.types import BooleanType, DateType, StringType, StructField, St
 
 from silver._plant_gate import apply_plant_gate
 from silver.helpers import (
+    ALLERGEN_ATINN,
     BRONZE,
     PROCESS_LINE_ATINN,
     bronze_columns_exist,
@@ -727,7 +728,87 @@ def recipe_process_line():
     )
 
 
-# ── 14. MATERIAL UOM CONVERSION ───────────────────────────────────────────────
+# ── 14. MATERIAL ALLERGEN ─────────────────────────────────────────────────────
+# Classification-derived allergen map (SAP class type 001, ATINN 0000000849).
+# For material classification (KLART='001') AUSP.OBJEK IS the zero-padded MATNR directly —
+# no INOB hop is needed (INOB is only required for object classes whose OBJEK differs from the
+# classified object key, e.g. 018/PLKO recipe class uses CUOBJ as the AUSP join key).
+# Verified UAT 2026-06-12: ~540,937 rows / ~268,532 materials (25.7% of 1.04M).
+# Coverage ≠ allergen-free: materials absent from this table are UNCLASSIFIED, NOT allergen-free.
+# Downstream joins MUST be LEFT; treat absence as "no recorded allergen classification".
+
+@dlt.table(
+    name="material_allergen",
+    comment=(
+        "SAP classification-derived allergen map. "
+        "Source: AUSP (KLART='001', ATINN=0000000849) joined to CAWNT (SPRAS='E') from "
+        "central_services (published catalog). "
+        "Grain: one row per material_code × allergen value (ATINN × ATZHL) — a material with "
+        "multiple allergens produces multiple rows; do NOT collapse. "
+        "AUSP.OBJEK for KLART='001' is the zero-padded MATNR directly (no INOB hop). "
+        "Ungated and estate-wide: material classification has no WERKS dimension. "
+        "Coverage caveat: ~25.7% of materials carry allergen classification (2026-06-12). "
+        "Absence of a row means UNCLASSIFIED, NOT allergen-free — downstream joins must be "
+        "LEFT and must NOT infer safety from silence."
+    ),
+    table_properties={"delta.enableChangeDataFeed": "true"},
+)
+def material_allergen():
+    spark = get_spark()
+    # Classification tables live in the PUBLISHED (central_services) source, NOT in the SAP source
+    # (same as recipe_process_line — verified live: central_services carries AUSP/CAWNT).
+    published = bronze_published()
+    # AUSP: material classification values. Filter to KLART='001' (material class) and the allergen
+    # characteristic. ATINN is the internal characteristic counter; ALLERGEN_ATINN='0000000849'
+    # is the "Allergens" characteristic (CABN.ATNAM verified UAT 2026-06-12).
+    # ATWRT is the characteristic value key (e.g. "WHEAT", "BARLEY").
+    # ATZHL is the value counter — part of the grain key with ATINN (a material can have N values).
+    # OBJEK for KLART='001' is the zero-padded MATNR; strip_zeros gives the natural material key.
+    ausp = (
+        spark.read.table(f"{published}.objectcharacteristics_ausp")
+        .filter((F.col("KLART") == "001") & (F.col("ATINN") == ALLERGEN_ATINN))
+        .select(
+            strip_zeros(F.col("OBJEK")).alias("material_code"),   # reference.py:754 pattern
+            F.col("OBJEK").alias("material_code_raw"),
+            F.col("ATINN").alias("allergen_atinn"),
+            F.col("ATZHL").alias("allergen_value_counter"),
+            F.col("ATWRT").alias("allergen_value"),
+        )
+        # Defensive dedup: AUSP can carry duplicate rows for the same (OBJEK, ATINN, ATZHL) key
+        # (observed in some Kerry replication snapshots). Drop before the join to keep grain clean.
+        .dropDuplicates(["material_code_raw", "allergen_atinn", "allergen_value_counter"])
+    )
+    # CAWNT: characteristic value descriptions in English.
+    # ATWTB is the English display text for the allergen value (e.g. "WHEAT", "Mustard Seeds / Derivat").
+    # Left join: if a CAWNT row is absent, allergen_name is NULL but the row is still present.
+    cawnt = (
+        spark.read.table(f"{published}.characteristicvaluedescription_cawnt")
+        .filter(F.col("SPRAS") == "E")
+        .select(
+            F.col("ATINN").alias("_c_atinn"),
+            F.col("ATZHL").alias("_c_atzhl"),
+            F.col("ATWTB").alias("allergen_name"),
+        )
+    )
+    return (
+        ausp.join(
+            cawnt,
+            (ausp["allergen_atinn"] == cawnt["_c_atinn"])
+            & (ausp["allergen_value_counter"] == cawnt["_c_atzhl"]),
+            "left",
+        )
+        .select(
+            F.col("material_code"),
+            F.col("material_code_raw"),
+            F.col("allergen_value"),
+            F.col("allergen_name"),
+            F.col("allergen_atinn"),
+            F.col("allergen_value_counter"),
+        )
+    )
+
+
+# ── 15. MATERIAL UOM CONVERSION ───────────────────────────────────────────────
 # MARM — alternate-unit conversion factors per material.
 # Verified ingested in UAT: `materialconversion_marm` (1.57M rows, 1.05M materials,
 # 76 alt UoMs, zero zero-denominators, 2026-06-02).
@@ -765,7 +846,7 @@ def material_uom_conversion():
     )
 
 
-# ── 15. WAREHOUSE STORAGE LOCATION MAPPING ────────────────────────────────────
+# ── 16. WAREHOUSE STORAGE LOCATION MAPPING ────────────────────────────────────
 # T320 — warehouse ↔ storage-location mapping from the published (central_services) catalog.
 # Every (plant, storage_location) maps to exactly one warehouse (verified UAT 2026-06-02:
 # 996 distinct plant/sloc combos, 0 with multiple warehouses).
@@ -821,7 +902,7 @@ def warehouse_master():
     )
 
 
-# ── 16. GOVERNED READINESS CONFIGURATION TABLES ────────────────────────────────
+# ── 17. GOVERNED READINESS CONFIGURATION TABLES ────────────────────────────────
 
 @dlt.table(
     name="site_config_plant",
@@ -1087,7 +1168,7 @@ def site_config_kpi_enablement():
     )
 
 
-# ── 17. SITE LIFECYCLE ────────────────────────────────────────────────────────
+# ── 18. SITE LIFECYCLE ────────────────────────────────────────────────────────
 # Estate-wide lifecycle dimension for the ~550-plant SAP estate (ADR 016).
 # Sourced from the governed `site_lifecycle_config` UC table (seeded from
 # resources/config/site_lifecycle_review.csv via scripts/generate_site_lifecycle_sql.py)
