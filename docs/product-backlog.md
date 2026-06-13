@@ -151,6 +151,13 @@ Order Journey stage-SLA overlays · Staging Pace bulk-drop-log upgrade (`ZWMA_BU
 
 ## 6. Recently shipped (context)
 
+**2026-06-13** (PRs #149–#165): arch-review Phase 0 (#149); route-model guard — spec 13 (#152);
+Lineside Monitor — spec 08 (#153); Trends baseline bands — spec 11 (#154); Planning Board — spec 09 (#155);
+silver `material_allergen` — spec 15 (#160); plant-onboarding tooling — spec 12 (#162); PI cycle-count
+analytics — spec 10 (#163); main CI green-up — silver stage-gate + approved-mapping guards, contract/
+validation-artefact regen, orphaned-test removal (#165). Specs 14 & 16–20 authored (push-despatch KPIs,
+Operational Intelligence Risk Suite). UC metadata-enrichment initiative: P0 mechanism + coverage guard built.
+
 **2026-06-12** (PRs #109–#126): T3 trace anchor MV + governed batch-search/trace-graph cutover;
 Yield & Loss view; QM Lab Board migrated to governed model (then: 5-year window, ALL/360/180/30
 day filter, plant picker); six legacy workspaces decommissioned (~18k LOC); single contract

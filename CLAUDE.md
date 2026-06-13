@@ -72,7 +72,7 @@ databricks bundle deploy -t prod --profile DEFAULT
 > `connected_plant_dev.sap` source and writes the governed serving layer to
 > `connected_plant_dev.gold_io_reporting`. `dev_uat_source` requires a workspace
 > where `connected_plant_uat` is bound (not the DEV workspace). See
-> `docs/architecture/adr-ioreporting-dev-deployment-baseline.md`.
+> `docs/adr/0006-ioreporting-dev-deployment-baseline.md`.
 
 All Silver pipelines and the Gold pipeline are triggered (batch) mode. The fast pipeline runs via the scheduled refresh-cadence job (`resources/refresh_cadence.job.yml`); slow, quality, and gold run via that same job in sequence.
 
@@ -92,7 +92,7 @@ If skills are not available, install them: `databricks aitools install`
 - `process_order` is always restricted to AUFK `AUTYP = '40'` (PP/PI process orders; verified against live `connected_plant_uat.sap` — AUART values ZI01/ZI02/ZI05/…, with `AUTYP = '10'` returning zero rows in Kerry's config). `PP_PI_ORDER_TYPES` can further narrow AUART values once plant teams confirm the allowlist.
 - Dev target writes to `connected_plant_dev` catalog, UAT to `connected_plant_uat`, and Prod to `connected_plant_prod`.
 - Email recipients are parameterized via `notification_email` variable in `databricks.yml`.
-- ADRs for key design decisions live in `docs/adr/`.
+- ADRs: product-level decisions live in `data-products/io-reporting/docs/adr/` (001–017); monorepo-level in `docs/adr/` (0001–0011).
 
 ## Knowledge & documentation
 
