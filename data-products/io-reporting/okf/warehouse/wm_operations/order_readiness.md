@@ -5,7 +5,7 @@ description: "Released process orders with derived TR coverage (component demand
 resource: connected_plant_uat.gold_io_reporting.vw_consumption_wm_operations_order_readiness
 tags: [warehouse, draft]
 contract_id: wm_operations.order_readiness
-contract_version: "0.1.0"
+contract_version: "0.2.0"
 ---
 
 # Order Readiness
@@ -37,6 +37,11 @@ contract_version: "0.1.0"
 | `readiness_status` | string | yes | SUPPLIED &#124; STAGING_PLANNED &#124; PARTIALLY_PLANNED &#124; NOT_STARTED &#124; NO_WM_DEMAND |
 | `days_to_start` | long | no | Days until scheduled start (query-time, _live view) |
 | `readiness_band` | string | no | red &#124; amber &#124; green &#124; grey (query-time traffic light) |
+| `qty_unrestricted` | double | no | Sum of unrestricted batch_stock across order component materials |
+| `quality_hold_qty` | double | no | Sum of quality-inspection + blocked stock across component materials |
+| `open_lot_count` | long | no | Open QM lots (no usage decision) across component materials |
+| `quality_release_status` | string | no | RELEASED &#124; PARTIAL_HOLD &#124; QUALITY_BLOCKED &#124; NO_QM_DATA |
+| `readiness_reason` | string | no | QUALITY_HOLD &#124; QUALITY_PARTIAL_HOLD &#124; QM_SOURCE_ABSENT when applicable |
 | `production_line` | string | no | Production line (AUFK CRVER) of the process order — 99.99% populated at C061/P817 (35 lines / 18-19 lines respectively, verified UAT 2026-06-11). |
 
 # Grain

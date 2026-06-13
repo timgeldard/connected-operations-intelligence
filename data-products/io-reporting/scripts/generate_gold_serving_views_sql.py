@@ -181,10 +181,17 @@ SERVING_VIEWS = {
          "CASE "
          "WHEN b.readiness_status = 'NO_WM_DEMAND' THEN 'grey' "
          f"WHEN {_DAYS_TO_START} IS NULL THEN 'grey' "
+         "WHEN b.supply_status = 'SUPPLIED' AND b.quality_release_status = 'QUALITY_BLOCKED' THEN 'amber' "
          "WHEN b.supply_status = 'SUPPLIED' THEN 'green' "
          f"WHEN b.readiness_status IN ('NOT_STARTED', 'PARTIALLY_PLANNED') AND {_DAYS_TO_START} <= 0 THEN 'red' "
          f"WHEN b.readiness_status <> 'SUPPLIED' AND {_DAYS_TO_START} <= 1 THEN 'amber' "
          "ELSE 'green' END"),
+        ("readiness_reason",
+         "CASE "
+         "WHEN b.supply_status = 'SUPPLIED' AND b.quality_release_status = 'QUALITY_BLOCKED' THEN 'QUALITY_HOLD' "
+         "WHEN b.quality_release_status = 'PARTIAL_HOLD' THEN 'QUALITY_PARTIAL_HOLD' "
+         "WHEN b.quality_release_status = 'NO_QM_DATA' THEN 'QM_SOURCE_ABSENT' "
+         "ELSE NULL END"),
     ],
     # WM Operations bin/stock explorer: expiry age served live (base MV stays deterministic).
     "gold_wm_bin_stock_detail": [
