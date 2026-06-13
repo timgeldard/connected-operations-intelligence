@@ -133,3 +133,43 @@ apps:
       - apps/api/adapters/envmon
     notes:
       - Partial coverage and placeholder handling must be resolved before scaffolding.
+
+  wm_operations:
+    display_name: WM Operations
+    status: dev_validation_pack_ready
+    runtime_migration_status: active_pilot_candidate
+    runtime_governed_contracts_allowed: true
+    contract_namespace: wm_operations
+    view_prefix: vw_consumption_wm_operations_
+    source_mode_env: WM_OPERATIONS_SOURCE_MODE
+    validation_status: dev_validation_pending
+    validation_pack_status: ready_for_dev_execution
+    live_dev_validation: pending
+    inventory_status: active_wave_1_routes_inventoried
+    adapters:
+      - apps/api/adapters/wm_operations
+    notes:
+      - Fully governed via resolve_contract_object; contracts defined in app_contract_manifest.yml.
+      - Consumption views live in resources/sql/wm_operations_consumption_views_*.sql.
+      - Live in UAT as of 2026-06-10; DEV validation evidence pending formal sign-off.
+
+  quality_lab:
+    display_name: Quality Lab Board
+    status: dev_validation_pack_ready
+    runtime_migration_status: active_pilot_candidate
+    runtime_governed_contracts_allowed: true
+    contract_namespace: quality_lab
+    view_prefix: vw_consumption_quality_lab_
+    source_mode_env: null
+    validation_status: dev_validation_pending
+    validation_pack_status: ready_for_dev_execution
+    live_dev_validation: pending
+    inventory_status: consumption_view_defined
+    adapters:
+      - apps/api/adapters/quality_lab
+    notes:
+      - Adapter uses resolve_domain_object (not yet resolve_contract_object) — pending Risk 4 remediation.
+      - Consumption view vw_consumption_quality_lab_fails is defined and live in UAT.
+      - runtime_governed_contracts_allowed set true because the domain already resolves a consumption view;
+        the guard's scan_adapters check would otherwise fire on legitimate existing usage.
+      - Full contract-resolver migration (resolve_contract_object) deferred until after Warehouse360 DEV validation accepted.

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { wmOperationsAdapter } from './wm-operations-adapter.js'
-import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmAdherenceRootCauseItem, WmOrderYieldItem, WmRecipeBenchmarkItem, WmComponentVarianceItem, WmSupplyDemandLedgerItem, WmShortageProjectionItem } from './wm-operations-adapter.js'
+import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmAdherenceRootCauseItem, WmOrderYieldItem, WmRecipeBenchmarkItem, WmComponentVarianceItem, WmSupplyDemandLedgerItem, WmShortageProjectionItem, WmLinesideRequest, WmPlanBoardRequest, WmPlanBoardBlock, WmPlanBoardKpis, WmPlanBoardBacklogItem, WmPlanBoardWmOverlayItem } from './wm-operations-adapter.js'
 
 export function useWmOrderComponents(request: WmDrillRequest, enabled = true) {
   return useQuery({
@@ -248,3 +248,147 @@ export function useWmBinStock(request: WmOperationsAdapterRequest) {
     staleTime: STALE,
   })
 }
+
+// ── Lineside Monitor (PEX-E-35) ──────────────────────────────────────────────
+// NOTE: live value of these hooks depends on the ADR-017 pilot cadence decision
+// (15-min triggered silver+gold, ideally sub-cadence for fast-silver tables that
+// carry operation confirmations / TR-TO).  Until that cadence is live the data
+// is refreshed at the standard daily gold cadence; the UI displays a STALE banner
+// when last_refresh_ts is > 2× the configured refreshInterval.
+
+export function useWmLinesideNow(request: WmLinesideRequest, refreshInterval?: number, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-lineside-now', request.plantId, request.lineId, request.limit ?? null],
+    queryFn: () => wmOperationsAdapter.getLinesideNow(request),
+    staleTime: refreshInterval ?? 60 * 1000,
+    refetchInterval: refreshInterval,
+    enabled: enabled && Boolean(request.plantId && request.lineId),
+  })
+}
+
+export function useWmLinesideNext(request: WmLinesideRequest, refreshInterval?: number, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-lineside-next', request.plantId, request.lineId, request.limit ?? null],
+    queryFn: () => wmOperationsAdapter.getLinesideNext(request),
+    staleTime: refreshInterval ?? 60 * 1000,
+    refetchInterval: refreshInterval,
+    enabled: enabled && Boolean(request.plantId && request.lineId),
+  })
+}
+
+export function useWmLinesideBlocked(request: WmLinesideRequest, refreshInterval?: number, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-lineside-blocked', request.plantId, request.lineId, request.limit ?? null],
+    queryFn: () => wmOperationsAdapter.getLinesideBlocked(request),
+    staleTime: refreshInterval ?? 60 * 1000,
+    refetchInterval: refreshInterval,
+    enabled: enabled && Boolean(request.plantId && request.lineId),
+  })
+}
+
+export function useWmLinesideStaging(request: WmLinesideRequest, refreshInterval?: number, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-lineside-staging', request.plantId, request.lineId, request.limit ?? null],
+    queryFn: () => wmOperationsAdapter.getLinesideStaging(request),
+    staleTime: refreshInterval ?? 60 * 1000,
+    refetchInterval: refreshInterval,
+    enabled: enabled && Boolean(request.plantId && request.lineId),
+  })
+}
+
+export function useWmLinesidePlanActual(request: WmLinesideRequest, refreshInterval?: number, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-lineside-plan-actual', request.plantId, request.lineId, request.limit ?? null],
+    queryFn: () => wmOperationsAdapter.getLinesidePlanActual(request),
+    staleTime: refreshInterval ?? 60 * 1000,
+    refetchInterval: refreshInterval,
+    enabled: enabled && Boolean(request.plantId && request.lineId),
+  })
+}
+
+export function useWmLinesideLines(plantId?: string, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-lineside-lines', plantId ?? null],
+    queryFn: () => wmOperationsAdapter.getLinesideLines(plantId),
+    staleTime: 5 * 60 * 1000,
+    enabled,
+  })
+}
+
+// ── Production Planning Board (PEX-E-36) ──────────────────────────────────
+// READ-ONLY hooks — no schedule/mutate/POST. Date window drives refetch.
+// Query-cadence policy: load once, serve cache across page/panel navigation, and
+// re-query only on a configurable interval — NOT on every page change. Tune here.
+const PLAN_BOARD_REFRESH_MS = 5 * 60 * 1000
+
+export function useWmPlanBoard(request: WmPlanBoardRequest, enabled = true) {
+  return useQuery({
+    queryKey: [
+      'wm-ops-plan-board',
+      request.plantId,
+      request.lineId ?? null,
+      request.fromDate ?? null,
+      request.toDate ?? null,
+      request.limit ?? null,
+    ],
+    queryFn: () => wmOperationsAdapter.getPlanBoard(request),
+    staleTime: PLAN_BOARD_REFRESH_MS,
+    refetchInterval: PLAN_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
+    enabled: enabled && Boolean(request.plantId),
+  })
+}
+
+export function useWmPlanBoardKpis(request: WmPlanBoardRequest, enabled = true) {
+  return useQuery({
+    queryKey: [
+      'wm-ops-plan-board-kpis',
+      request.plantId,
+      request.lineId ?? null,
+      request.fromDate ?? null,
+      request.toDate ?? null,
+    ],
+    queryFn: () => wmOperationsAdapter.getPlanBoardKpis(request),
+    staleTime: PLAN_BOARD_REFRESH_MS,
+    refetchInterval: PLAN_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
+    enabled: enabled && Boolean(request.plantId),
+  })
+}
+
+export function useWmPlanBoardBacklog(request: WmPlanBoardRequest, enabled = true) {
+  return useQuery({
+    queryKey: [
+      'wm-ops-plan-board-backlog',
+      request.plantId,
+      request.lineId ?? null,
+      request.limit ?? null,
+    ],
+    queryFn: () => wmOperationsAdapter.getPlanBoardBacklog(request),
+    staleTime: PLAN_BOARD_REFRESH_MS,
+    refetchInterval: PLAN_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
+    enabled: enabled && Boolean(request.plantId),
+  })
+}
+
+export function useWmPlanBoardWmOverlay(request: WmPlanBoardRequest, enabled = true) {
+  return useQuery({
+    queryKey: [
+      'wm-ops-plan-board-wm-overlay',
+      request.plantId,
+      request.lineId ?? null,
+      request.fromDate ?? null,
+      request.toDate ?? null,
+      request.limit ?? null,
+    ],
+    queryFn: () => wmOperationsAdapter.getPlanBoardWmOverlay(request),
+    staleTime: PLAN_BOARD_REFRESH_MS,
+    refetchInterval: PLAN_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
+    enabled: enabled && Boolean(request.plantId),
+  })
+}
+
+// Re-export plan board types for consumers of this module.
+export type { WmPlanBoardBlock, WmPlanBoardKpis, WmPlanBoardBacklogItem, WmPlanBoardWmOverlayItem }

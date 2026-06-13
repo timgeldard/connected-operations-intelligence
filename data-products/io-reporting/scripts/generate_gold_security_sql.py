@@ -142,6 +142,7 @@ GOLD_TABLES = [
     "gold_wm_queue_workload",
     "gold_wm_campaign_summary",
     "gold_wm_daily_activity",
+    "gold_wm_daily_activity_baseline",
     "gold_wm_slow_movers",
     "gold_wm_expiry_risk",
     "gold_wm_staging_pace_hourly",
@@ -162,6 +163,9 @@ GOLD_TABLES = [
     "gold_wm_supply_demand_ledger",
     "gold_wm_order_shortage_projection",
     "gold_wm_adherence_root_cause",
+    # wm_operations_gold.py — Lineside Monitor (PEX-E-35)
+    "gold_wm_lineside_now",
+    "gold_wm_lineside_lines",
     # spc_gold.py
     "gold_spc_quality_metric_subgroup",
     # trace_gold.py — anchor tier only (capability-tier edge MV uses trace_security_*.sql instead)

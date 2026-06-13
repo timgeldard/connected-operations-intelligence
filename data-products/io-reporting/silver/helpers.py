@@ -136,6 +136,12 @@ PP_PI_ORDER_TYPES = None
 # (single) characteristic present — confirm against live AUSP/CABN before relying on it.
 PROCESS_LINE_ATINN = None
 
+# Allergen characteristic ATINN for SAP material classification (KLART='001').
+# Verified UAT 2026-06-12: ATINN '0000000849' is the "Allergens" characteristic (CABN.ATNAM).
+# ~540,937 allergen records across ~268,532 materials (25.7% of 1.04M) at that date.
+# For KLART='001' (material class) AUSP.OBJEK is the zero-padded MATNR directly — no INOB hop needed.
+ALLERGEN_ATINN = "0000000849"
+
 # TODO: Review Aecorsoft functionality to apply rules directly to fields at replication
 # time (e.g. zero-stripping, date-casting). Shifting these transformations to the
 # replication layer can avoid post-ingestion Spark processing overhead and reduce

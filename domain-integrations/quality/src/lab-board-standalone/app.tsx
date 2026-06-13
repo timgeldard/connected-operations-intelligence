@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ConnectedQualityLabFailure } from '@connectio/data-contracts'
 import {
   useConnectedQualityLabFailures,
-  useConnectedQualityLabPlants,
+  useLabBoardPlants,
 } from '../adapters/connected-quality-lab-queries.js'
 import { LAB_BOARD_STANDALONE_CAVEATS } from './caveats.js'
 
@@ -267,16 +267,14 @@ export function ConnectedQualityLabBoardStandaloneApp() {
     plantId: effectivePlantId,
     lotType: effectiveLotType,
   })
-  const plantsQuery = useConnectedQualityLabPlants()
+  const { plants } = useLabBoardPlants()
 
   const failuresResult = failuresQuery.data
-  const plantsResult = plantsQuery.data
   const failures = failuresResult?.ok ? failuresResult.data.fails : []
   const dataAvailable = failuresResult?.ok ? failuresResult.data.dataAvailable : true
   const noDataReason = failuresResult?.ok && !failuresResult.data.dataAvailable
     ? failuresResult.data.reason
     : undefined
-  const plants = plantsResult?.ok ? plantsResult.data.plants : []
   const selectedPlant = plants.find(plant => plant.plantId === plantId)
   const sourceLabel = failuresResult?.source === 'databricks-api'
     ? 'Databricks API'
@@ -351,10 +349,10 @@ export function ConnectedQualityLabBoardStandaloneApp() {
             aria-label="Plant filter"
           />
           <datalist id="cq-lab-plant-options">
-            {plants.map(plant => <option key={plant.plantId} value={plant.plantId}>{plant.plantName}</option>)}
+            {Array.from(new Set(plants.map(p => p.plantId))).map(pId => <option key={pId} value={pId}>{pId}</option>)}
           </datalist>
         </div>
-        <div className="lab-ctx-field"><span className="lbl">Plant name</span><span className="val">{selectedPlant?.plantName ?? 'Manual entry'}</span></div>
+        <div className="lab-ctx-field"><span className="lbl">Warehouse</span><span className="val">{selectedPlant?.warehouseId ?? 'Manual entry'}</span></div>
         <div className="lab-ctx-field"><span className="lbl">Inspection lot type</span>
           <select className="lab-control small" value={lotType} onChange={event => setLotType(event.target.value)} aria-label="Inspection lot type filter">
             <option value="">All</option>

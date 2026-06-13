@@ -331,6 +331,32 @@ jobs:
       - name: Run plant seed guard
         run: python3 scripts/ci/check_site_config_plant_seed.py
 
+  route-response-model-guard:
+    name: Route Response-Model Guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run route response-model guard unit tests
+        run: PYTHONPATH=scripts/ci python3 -m pytest scripts/ci/test_check_route_response_models.py -q
+
+      - name: Run route response-model guard
+        run: python3 scripts/ci/check_route_response_models.py
+
   validate-bundle:
     name: Validate Databricks Bundle
     runs-on: ubuntu-latest
