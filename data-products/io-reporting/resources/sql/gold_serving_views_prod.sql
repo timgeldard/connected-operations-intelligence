@@ -108,7 +108,8 @@ CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_wm_order_read
 SELECT
   b.*,
   datediff(b.scheduled_start_date, current_date()) AS days_to_start,
-  CASE WHEN b.readiness_status = 'NO_WM_DEMAND' THEN 'grey' WHEN datediff(b.scheduled_start_date, current_date()) IS NULL THEN 'grey' WHEN b.supply_status = 'SUPPLIED' THEN 'green' WHEN b.readiness_status IN ('NOT_STARTED', 'PARTIALLY_PLANNED') AND datediff(b.scheduled_start_date, current_date()) <= 0 THEN 'red' WHEN b.readiness_status <> 'SUPPLIED' AND datediff(b.scheduled_start_date, current_date()) <= 1 THEN 'amber' ELSE 'green' END AS readiness_band
+  CASE WHEN b.readiness_status = 'NO_WM_DEMAND' THEN 'grey' WHEN datediff(b.scheduled_start_date, current_date()) IS NULL THEN 'grey' WHEN b.supply_status = 'SUPPLIED' AND b.quality_release_status = 'QUALITY_BLOCKED' THEN 'amber' WHEN b.supply_status = 'SUPPLIED' THEN 'green' WHEN b.readiness_status IN ('NOT_STARTED', 'PARTIALLY_PLANNED') AND datediff(b.scheduled_start_date, current_date()) <= 0 THEN 'red' WHEN b.readiness_status <> 'SUPPLIED' AND datediff(b.scheduled_start_date, current_date()) <= 1 THEN 'amber' ELSE 'green' END AS readiness_band,
+  CASE WHEN b.supply_status = 'SUPPLIED' AND b.quality_release_status = 'QUALITY_BLOCKED' THEN 'QUALITY_HOLD' WHEN b.quality_release_status = 'PARTIAL_HOLD' THEN 'QUALITY_PARTIAL_HOLD' WHEN b.quality_release_status = 'NO_QM_DATA' THEN 'QM_SOURCE_ABSENT' ELSE NULL END AS readiness_reason
 FROM connected_plant_prod.gold_io_reporting.gold_wm_order_readiness_secured AS b;
 GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_wm_order_readiness_live TO `users`;
 

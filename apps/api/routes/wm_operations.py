@@ -146,6 +146,11 @@ class WmOrderReadinessItem(BaseModel):
     days_to_start: Optional[int] = Field(None, alias='daysToStart')
     readiness_band: Optional[str] = Field(None, alias='readinessBand')
     production_line: Optional[str] = Field(None, alias='productionLine')
+    qty_unrestricted: Optional[float] = Field(None, alias='qtyUnrestricted')
+    quality_hold_qty: Optional[float] = Field(None, alias='qualityHoldQty')
+    open_lot_count: Optional[int] = Field(None, alias='openLotCount')
+    quality_release_status: Optional[str] = Field(None, alias='qualityReleaseStatus')
+    readiness_reason: Optional[str] = Field(None, alias='readinessReason')
 
 
 class WmBinStockItem(BaseModel):

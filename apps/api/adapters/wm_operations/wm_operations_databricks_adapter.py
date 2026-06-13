@@ -344,8 +344,13 @@ def get_wm_order_readiness_spec(request: WmOrderReadinessRequest) -> QuerySpec:
         psa_supplied_qty,
         supply_status,
         readiness_status,
+        qty_unrestricted,
+        quality_hold_qty,
+        open_lot_count,
+        quality_release_status,
         days_to_start,
         readiness_band,
+        readiness_reason,
         production_line
     FROM {view}
     {where_str}
@@ -391,6 +396,11 @@ def map_wm_order_readiness_rows(rows: list[dict]) -> list[dict]:
             "readinessStatus": _opt_str(row, "readiness_status"),
             "daysToStart": _safe_int(row.get("days_to_start")),
             "readinessBand": _opt_str(row, "readiness_band"),
+            "qtyUnrestricted": _safe_float(row.get("qty_unrestricted")),
+            "qualityHoldQty": _safe_float(row.get("quality_hold_qty")),
+            "openLotCount": _safe_int(row.get("open_lot_count")),
+            "qualityReleaseStatus": _opt_str(row, "quality_release_status"),
+            "readinessReason": _opt_str(row, "readiness_reason"),
             "productionLine": _opt_str(row, "production_line"),
         })
     return result

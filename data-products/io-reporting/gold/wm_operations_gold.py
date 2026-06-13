@@ -48,6 +48,124 @@ TR_ORDER_REFERENCE_TYPE = "P"
 _COVERAGE_FULL_FRACTION = 0.999
 
 
+def _build_order_quality_release(
+    spark,
+    ss: str,
+    classification: DataFrame,
+    reservations: DataFrame,
+) -> DataFrame:
+    """Per-order quality-release rollup from component-material stock and open QM lots.
+
+    NO_QM_DATA when either QM silver source (quality_inspection_lot or
+    quality_inspection_usage_decision) is absent, or when batch_stock is absent (holds
+    cannot be assessed without stock data). When QM is present and stock is available but
+    a material has no lots and no held stock, status is RELEASED (not NO_QM_DATA).
+    """
+    qm_source_available = (
+        table_exists(spark, f"{ss}.quality_inspection_lot")
+        and table_exists(spark, f"{ss}.quality_inspection_usage_decision")
+    )
+    stock_available = table_exists(spark, f"{ss}.batch_stock")
+
+    component_mats = (
+        reservations
+        .join(F.broadcast(classification), "movement_type_code", "inner")
+        .filter(
+            F.coalesce(F.col("is_production_consumption"), F.lit(False))
+            & (~F.coalesce(F.col("is_deletion_flagged"), F.lit(False)))
+            & (F.coalesce(F.col("required_quantity"), F.lit(0.0)) > 0)
+            & F.col("material_code").isNotNull()
+        )
+        .groupBy("plant_code", "order_number", "material_code")
+        .agg(F.sum("required_quantity").alias("material_required_qty"))
+    )
+
+    if not stock_available:
+        # Without batch_stock, holds cannot be assessed — always NO_QM_DATA regardless
+        # of whether the QM silver sources are present.
+        return component_mats.select(
+            "plant_code",
+            "order_number",
+            F.lit(0.0).alias("qty_unrestricted"),
+            F.lit(0.0).alias("quality_hold_qty"),
+            F.lit(0).alias("open_lot_count"),
+            F.lit("NO_QM_DATA").alias("quality_release_status"),
+        ).dropDuplicates(["plant_code", "order_number"])
+
+    stock_by_mat = (
+        spark.read.table(f"{ss}.batch_stock")
+        .groupBy("plant_code", "material_code")
+        .agg(
+            F.coalesce(F.sum("unrestricted_quantity"), F.lit(0.0)).alias("qty_unrestricted"),
+            F.coalesce(F.sum("quality_inspection_quantity"), F.lit(0.0)).alias("qty_in_qi"),
+            F.coalesce(F.sum("blocked_quantity"), F.lit(0.0)).alias("qty_blocked"),
+        )
+    )
+
+    open_lot_by_mat = spark.createDataFrame(
+        [],
+        "plant_code string, material_code string, open_lot_count long",
+    )
+    if qm_source_available:
+        open_lot_by_mat = (
+            dlt.read("gold_wm_qm_lot_status")
+            .filter(~F.coalesce(F.col("has_usage_decision"), F.lit(False)))
+            .groupBy("plant_code", "material_code")
+            .agg(F.count(F.lit(1)).alias("open_lot_count"))
+        )
+
+    enriched = (
+        component_mats
+        .join(stock_by_mat, ["plant_code", "material_code"], "left")
+        .join(open_lot_by_mat, ["plant_code", "material_code"], "left")
+        .withColumn("qty_unrestricted", F.coalesce(F.col("qty_unrestricted"), F.lit(0.0)))
+        .withColumn(
+            "held_qty",
+            F.coalesce(F.col("qty_in_qi"), F.lit(0.0)) + F.coalesce(F.col("qty_blocked"), F.lit(0.0)),
+        )
+        .withColumn("open_lot_count", F.coalesce(F.col("open_lot_count"), F.lit(0)))
+        .withColumn(
+            "is_material_blocked",
+            (F.col("held_qty") > 0)
+            & (F.col("qty_unrestricted") < F.col("material_required_qty")),
+        )
+    )
+
+    if not qm_source_available:
+        return (
+            enriched.groupBy("plant_code", "order_number")
+            .agg(
+                F.coalesce(F.sum("qty_unrestricted"), F.lit(0.0)).alias("qty_unrestricted"),
+                F.coalesce(F.sum("held_qty"), F.lit(0.0)).alias("quality_hold_qty"),
+                F.coalesce(F.sum("open_lot_count"), F.lit(0)).alias("open_lot_count"),
+            )
+            .withColumn("quality_release_status", F.lit("NO_QM_DATA"))
+        )
+
+    return (
+        enriched.groupBy("plant_code", "order_number")
+        .agg(
+            F.coalesce(F.sum("qty_unrestricted"), F.lit(0.0)).alias("qty_unrestricted"),
+            F.coalesce(F.sum("held_qty"), F.lit(0.0)).alias("quality_hold_qty"),
+            F.coalesce(F.sum("open_lot_count"), F.lit(0)).alias("open_lot_count"),
+            F.max(F.when(F.col("is_material_blocked"), F.lit(1)).otherwise(F.lit(0))).alias("_any_blocked"),
+            F.max(
+                F.when(
+                    (F.col("held_qty") > 0) | (F.col("open_lot_count") > 0),
+                    F.lit(1),
+                ).otherwise(F.lit(0))
+            ).alias("_any_hold_signal"),
+        )
+        .withColumn(
+            "quality_release_status",
+            F.when(F.col("_any_blocked") == 1, F.lit("QUALITY_BLOCKED"))
+            .when(F.col("_any_hold_signal") == 1, F.lit("PARTIAL_HOLD"))
+            .otherwise(F.lit("RELEASED")),
+        )
+        .drop("_any_blocked", "_any_hold_signal")
+    )
+
+
 def _storage_zone_mapping(spark, silver_schema: str) -> DataFrame:
     """storage_type_role_mapping + a derived storage_zone classification.
 
@@ -504,12 +622,14 @@ def gold_wm_order_readiness():
     )
 
     full_threshold = F.col("wm_component_required_qty") * F.lit(_COVERAGE_FULL_FRACTION)
+    quality_release = _build_order_quality_release(spark, ss, classification, reservations)
 
     return (
         active_orders
         .join(components, "order_number", "left")
         .join(tr_coverage, "order_number", "left")
         .join(psa_supply, ["plant_code", "order_number"], "left")
+        .join(quality_release, ["plant_code", "order_number"], "left")
         .join(F.broadcast(material), ["plant_code", "material_code"], "left")
         .withColumn("component_count", F.coalesce(F.col("component_count"), F.lit(0)))
         .withColumn("wm_component_count", F.coalesce(F.col("wm_component_count"), F.lit(0)))
@@ -524,6 +644,13 @@ def gold_wm_order_readiness():
         .withColumn("tr_open_qty", F.coalesce(F.col("tr_open_qty"), F.lit(0.0)))
         .withColumn("psa_supplied_qty", F.coalesce(F.col("psa_supplied_qty"), F.lit(0.0)))
         .withColumn("psa_quant_count", F.coalesce(F.col("psa_quant_count"), F.lit(0)))
+        .withColumn("qty_unrestricted", F.coalesce(F.col("qty_unrestricted"), F.lit(0.0)))
+        .withColumn("quality_hold_qty", F.coalesce(F.col("quality_hold_qty"), F.lit(0.0)))
+        .withColumn("open_lot_count", F.coalesce(F.col("open_lot_count"), F.lit(0)))
+        .withColumn(
+            "quality_release_status",
+            F.coalesce(F.col("quality_release_status"), F.lit("NO_QM_DATA")),
+        )
         .withColumn(
             "tr_coverage_status",
             F.when(F.col("tr_count") == 0, F.lit("NONE"))
@@ -578,6 +705,10 @@ def gold_wm_order_readiness():
             "psa_quant_count",
             "supply_status",
             "readiness_status",
+            "qty_unrestricted",
+            "quality_hold_qty",
+            "open_lot_count",
+            "quality_release_status",
             # Production line passthrough from process_order (verified UAT 2026-06-11:
             # 99.99% populated at C061/P817 — 35 lines / 18-19 lines respectively).
             "production_line",
