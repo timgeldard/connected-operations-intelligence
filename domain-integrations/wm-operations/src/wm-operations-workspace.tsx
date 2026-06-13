@@ -29,6 +29,7 @@ import { ProductionProgressView } from './views/production-progress-view.js'
 import { YieldLossView } from './views/yield-loss-view.js'
 import { ExpiryRiskView } from './views/expiry-risk-view.js'
 import { ShortageProjectionView } from './views/shortage-projection-view.js'
+import { LinesideMonitorView } from './views/lineside-monitor-view.js'
 import { EmptyNote, ViewHeader } from './components/kerry.js'
 import './theme/kerry-theme.css'
 
@@ -58,6 +59,7 @@ export type WmOperationsViewId =
   | 'yield-loss'
   | 'expiry-risk'
   | 'shortage-projection'
+  | 'lineside-monitor'
 
 export interface WmOperationsWorkspaceProps {
   readonly scope: ScopeContext
@@ -78,6 +80,7 @@ const VIEW_GROUPS: Array<{ label: string; views: Array<{ id: WmOperationsViewId;
       { id: 'dispensary', label: 'Dispensary' },
       { id: 'campaigns', label: 'Campaigns' },
       { id: 'order-journey', label: 'Order Journey' },
+      { id: 'lineside-monitor', label: 'Lineside Monitor' },
     ],
   },
   {
@@ -289,6 +292,8 @@ function resolveView(viewId: string, request: WmOperationsAdapterRequest, onNavi
       return <ExpiryRiskView request={request} onNavigateToView={onNavigateToView} />
     case 'shortage-projection':
       return <ShortageProjectionView request={request} onNavigateToView={onNavigateToView} />
+    case 'lineside-monitor':
+      return <LinesideMonitorView request={request} />
     case 'staging-worklist':
     default:
       return <StagingWorklistView request={request} onOpenProcessOrder={onOpenProcessOrder} onNavigateToView={onNavigateToView} />

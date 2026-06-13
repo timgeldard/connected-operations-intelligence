@@ -875,3 +875,46 @@ SELECT
   (actual_finish_date IS NULL AND scheduled_finish_date < CURRENT_DATE()) AS is_open_late
 FROM connected_plant_dev.gold_io_reporting.gold_wm_adherence_root_cause_secured
 WHERE plant_code IS NOT NULL;
+
+-- 40. Lineside Now (Lineside Monitor — running orders + current phase, PEX-E-35)
+-- Grain: 1 row per plant_id + line_id + order_id.
+-- Source: gold_wm_lineside_now_live (adds elapsed_minutes + projected_finish at query time).
+-- Wall-clock rule (ADR 012): elapsed_minutes and projected_finish computed in _live layer.
+-- pct_complete: yield_pct × 100 clamped [0, 100]; null when no GR evidence.
+-- planned_minutes: scheduled_finish − scheduled_start in minutes; null when undated.
+-- FRESHNESS CAVEAT: data age reflects the last gold pipeline run (daily/paused cadence).
+-- The STALE banner in the UI is driven by the freshness endpoint, not this view.
+-- Filter by plant_id AND line_id for wall-display isolation.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_lineside_now AS
+SELECT
+  plant_code AS plant_id,
+  production_line AS line_id,
+  order_number AS order_id,
+  material_code AS material_id,
+  material_name,
+  planned_qty,
+  uom,
+  pct_complete,
+  planned_minutes,
+  CAST(production_first_actual_start AS TIMESTAMP) AS production_first_actual_start,
+  current_operation_number,
+  current_operation_description,
+  current_activity_type,
+  elapsed_minutes,
+  CAST(projected_finish AS TIMESTAMP) AS projected_finish
+FROM connected_plant_dev.gold_io_reporting.gold_wm_lineside_now_live
+WHERE plant_code IS NOT NULL;
+
+-- 41. Lineside Lines (Lineside Monitor — line picker for config panel, PEX-E-35)
+-- Grain: 1 row per plant_id + line_id.
+-- Source: gold_wm_lineside_lines_secured (deterministic; no date-relative columns).
+-- active_order_count: released, not closed, not finished orders on that line right now.
+-- line_label: production_line_description where available; falls back to production_line code.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_lineside_lines AS
+SELECT
+  plant_code AS plant_id,
+  production_line AS line_id,
+  line_label,
+  CAST(active_order_count AS BIGINT) AS active_order_count
+FROM connected_plant_dev.gold_io_reporting.gold_wm_lineside_lines_secured
+WHERE plant_code IS NOT NULL;
