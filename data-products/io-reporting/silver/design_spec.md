@@ -64,7 +64,7 @@ Managed via Declarative Automation Bundle (DAB). See `docs/adr/001-dab-bundle-de
 | **prod** | `connected_plant_prod` | `silver` | `connected_plant_prod` | `sap` |
 
 > **Published (`central_services`) source per target.** The published-master readers (`plant`, `customer`,
-> `vendor`, `purchase_order`, `handling_unit`, `warehouse_plant_mapping`, `recipe_process_line`) read
+> `vendor`, `purchase_order`, `handling_unit`, `warehouse_plant_mapping`, `recipe_process_line`, `material_allergen`) read
 > `${var.published_catalog}.${var.published_schema}`. `uat`/`prod` use their own `central_services`;
 > `dev_uat_source` uses `published_uat.central_services` (live UAT master). **`dev_sample` is fully
 > isolated:** it reads a sampled `connected_plant_dev.central_services`, seeded once from
@@ -123,6 +123,7 @@ Current checks by table:
 | `work_centre` | 1 row / work centre × plant | CRHD + CRTX | All |
 | `capacity_utilisation` | 1 row / capacity × period | KAPA + KAKO | Plant Manager |
 | `movement_type_classification` | 1 row / SAP movement type | T156/T156T code inventory + conformed overlay from `silver/movement_types.py` | All |
+| `material_allergen` | 1 row / material × allergen value (ATINN × ATZHL) | AUSP (KLART='001', ATINN=0000000849) + CAWNT EN (central_services, ungated) | (internal reference — allergen segregation / scheduling) |
 
 > **Enrichment notes:**
 > - `process_order.production_line` (value) and `production_line_description` are derived via the SAP
@@ -159,6 +160,17 @@ Current checks by table:
 >     characteristic's `ATINN` to disambiguate; CAWNT English text is read with `SPRAS = 'E'` (the SAP
 >     code; the spec's `'EN'` is the language label).
 > - `material.old_material_number` (+ `_raw`) carries the legacy material number `MARA-BISMT`.
+> - `material_allergen` is a **classification-derived** allergen map, NOT a material-master column.
+>   Source: `AUSP` (`KLART='001'`, `ATINN='0000000849'`) joined to `CAWNT` (`SPRAS='E'`) from
+>   `central_services` (published catalog). Grain: one row per `material_code` × allergen value
+>   (`ATINN` × `ATZHL`) — a material with N allergens produces N rows. **No INOB hop:** for
+>   `KLART='001'` (material class), `AUSP.OBJEK` is the zero-padded MATNR directly. Ungated and
+>   estate-wide (material classification has no WERKS). Slow/reference tier — built in the slow
+>   pipeline alongside `recipe_process_line`. Dev schema: `silver_io_reporting`.
+>   **Coverage caveat:** ~25.7% of materials carry allergen classification (540,937 rows /
+>   268,532 materials, verified 2026-06-12). Absence of a row means *unclassified*, **NOT
+>   allergen-free** — all downstream joins must be LEFT; treat silence as "no recorded allergen
+>   classification", never as "safe".
 
 ---
 

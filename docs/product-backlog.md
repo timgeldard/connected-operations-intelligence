@@ -11,24 +11,76 @@
 > accompanied in the same PR by (a) updated documentation and (b) a regenerated OKF
 > bundle (`make generate-okf`); CI (`check_okf_bundle_fresh.py`) blocks drift.
 
-**Status date:** 2026-06-12 (evening)
+**Status date:** 2026-06-13
 
 ---
 
-## 1. Accepted development queue
+## 1. Accepted development queue — ALL SHIPPED 2026-06-13
 
-Items the product owner has explicitly accepted, in suggested execution order.
-Specs for coding agents live in `docs/specs/` (one file per item, same numbering).
+Items 1–7 (spec'd in `docs/specs/`) were built spec→agent→review→merge and rolled out to
+UAT 2026-06-13 (app live 09:23 UTC): data bundle deployed, reference+gold pipelines run,
+secured/serving/consumption/metadata SQL applied, app two-step deployed. Expiry confirmed
+on real MCH1 data (`gold_wm_expiry_risk` 99.5% expiry_date populated).
 
-| # | Item | Type | Status / notes |
-|---|------|------|----------------|
-| 1 | **Worklist: TO priority scoring** — rank worklist TOs by demand-wave urgency (staging-pace demand model computes the wave) instead of creation order | Extension | Ready — cheap, builds on staging-pace gold |
-| 2 | **Campaigns: recipe benchmarking** — duration/yield distribution across runs of the same recipe/process line | Extension | Ready — reuses `gold_wm_order_yield`; process-line axis on `process_order.production_line` |
-| 3 | **Expiry & shelf-life risk** — stock value at risk by expiry horizon, estate-wide FEFO-violation detection, write-off forecasting | New build | In review — `feature/expiry-shelf-life-risk` |
-| 4 | **Production Progress: adherence root-cause tagging** — classify misses (late release / material short / capacity) | Extension | **Prerequisite:** investigate why `gold_process_order_schedule_adherence` is empty at gold level (S-curve currently renders empty state) |
-| 5 | **Shortage projection board** — forward-looking readiness: open orders vs stock vs inbound, projecting *when* an order goes short | New build | Ready |
-| 6 | **Readiness: quality-release dimension** — component batch QM release status joined into readiness bands | Extension | Ready — QM lot/UD silver is estate-wide since ADR 016 §4 widening (2026-06-12) |
-| 7 | **QM Command Centre: characteristic-level drill** — MIC results Pareto + UD-code analytics from QAMR/QASR | Extension | **Gated:** QAMR replication stall limits data to C351 until resolved (see §4) |
+| # | Item | Status |
+|---|------|--------|
+| 1 | Worklist: TO priority scoring | SHIPPED (#133) |
+| 2 | Campaigns: recipe benchmarking | SHIPPED (#134) |
+| 3 | Expiry & shelf-life risk (MCH1 `batch_master`) | SHIPPED (#141) |
+| 4 | Production Progress: adherence repair + root-cause | SHIPPED (#136) |
+| 5 | Shortage projection board | SHIPPED (#139) — runtime `material_code` ambiguity fixed post-merge (#145) |
+| 6 | Readiness: quality-release dimension | SHIPPED (#138) |
+| 7 | QM Command Centre: characteristic drill | SHIPPED (#137) — data C351-only until QAMR stall clears |
+
+## 1b. Architecture-review remediation (from docs/review/architecture_review_report.md, assessed 2026-06-13)
+
+Orchestrator assessment of the external review: agreed items below; **rejected as stale**:
+R1 "missing `/cq/lab/plants` (P0)" — overstated, active picker uses the working
+`/api/wm-operations/plants`, only a dead legacy path hits 404 (→ Phase 0 cleanup); R8
+"envmon broken tab" — false, envmon-consumer is intentionally mock-only.
+
+- **Phase 0 (in flight, `chore/arch-review-phase0`):** R2 migration-registry guard → deny-by-default
+  (scan all `apps/api/adapters/*`, fail on unregistered) + register quality_lab/wm_operations;
+  R1 remove dead `useConnectedQualityLabPlants`/`/cq/lab/plants` path; R8 trim any dangling
+  di-envmon-*monitoring* build alias (leave envmon-consumer).
+- **Phase 1 — hardening:** R6 data-bundle deploy path is user-scoped (`/Workspace/Users/<me>/...`) —
+  move UAT/prod to a CI/CD service-principal `/Workspace/Deployments/` path; R5 integration-test
+  baseline (FastAPI route ↔ mocked Statement API) then incremental E2E; R7 verify+fix outbound
+  delivery header-delete anti-join (orphaned items).
+- **Phase 2 — product/governance:** R4a align `quality_lab` adapter to `resolve_contract_object`
+  (cheap — contract + consumption view already exist); R3 replace `RoleAwareHome` mock widgets with
+  live consumption-view-backed routes.
+- **Phase 3 — roadmap:** R4b contract-govern trace2/spc/poh/cq (large; per-domain sequencing).
+
+## 1c. Operational Intelligence Risk Suite (ACCEPTED 2026-06-13 — specs 16–20)
+
+A four-capability program for cross-domain operational risk, requested by the product owner.
+Specs in `docs/specs/`. **Largely a composition layer over existing gold** (readiness,
+adherence-root-cause, shortage-projection, QM lot/UD, journey, lineside, expiry, delivery) plus
+four genuinely-new shared primitives. All read-only/advisory; Unknown is a first-class state.
+
+| # | Spec | Capability | Reuses / overlaps |
+|---|------|-----------|-------------------|
+| 16 | `16-operational-risk-foundation` | **Foundation** (keystone — build first): `OperationalRiskItem` contract, reason taxonomy, evidence-confidence framework, per-domain freshness service (extends `gold/freshness.py`), read-only wording guard, UTC date util | all of the below |
+| 17 | `17-operational-risk-cockpit` | **ORC** — next-24h cross-domain risk worklist, severity, domain grouping, freshness, drill-through, shift handover | subsumes parked *exceptions-triage*; unions all domain producers |
+| 18 | `18-warehouse-production-impact` | **WPI** — staging readiness → production-start risk; candidate-warehouse-impact classifier; recurring-issue + time-to-stage analytics | extends spec 04 root-cause + readiness + staging-pace |
+| 19 | `19-plan-adherence-delay-reasons` | **PAD** — line plan-vs-actual, late-start/finish, delay-reason inference + Pareto, plan volatility, previous-order dependency | extends spec 09 planning board + spec 04 + `gold_process_order_schedule_adherence` |
+| 20 | `20-quality-release-ageing` | **QRS** — quality-hold ageing queue, block-reason, UD analytics, service/customer + production exposure, conservative language | extends spec 06 readiness-QM + spec 07 QM Command Centre + spec 03 expiry |
+
+**MVP phasing** (product owner's §6): MVP1 = ORC foundation (worklist/severity/domain/freshness/
+drill-through, no predictive scoring); MVP2 = WPI; MVP3 = PAD; MVP4 = QRS. Foundation (16) gates
+all four.
+
+**The 10 first epics** (product owner's §7) map to the specs as: E1 cross-domain risk object model
++ E2 reason taxonomy + E7 evidence-confidence + E8 freshness service + E10 read-only guardrails →
+**spec 16 (Foundation)**; E3 next-24h cockpit → **spec 17**; E4 staging-readiness contract →
+**spec 18**; E5 plan-adherence contract → **spec 19**; E6 quality-hold impact contract → **spec
+20**; E9 UAT golden scenario pack → per-capability `tests/golden/` deliverable in each spec.
+
+**Dependencies / sequencing:** 16 → then 17 (needs the union MV) → 18/19/20 can proceed in
+parallel after 16 (each is an independent domain producer + view). Blocked-data caveats inherited:
+QRS MIC-result depth limited by the QAMR stall (§4); WPI capacity/line-scheduling needs the KAPA
+gap closed (§4); PAD plan-volatility needs schedule-change history if source carries it.
 
 ## 2. Trace track (Final Trace migration, ADR 016)
 
@@ -56,10 +108,12 @@ Specs for coding agents live in `docs/specs/` (one file per item, same numbering
 
 KPI alerting service (email/Teams thresholds on gold KPIs) · master-data quality monitor ·
 governed Genie space · mock-recall drill mode (timed trace exercise for BRC/FSMA) ·
-pipeline observability dashboard (durations/freshness/cost) · PI & cycle-count analytics ·
-supplier quality scorecard · Order Journey stage-SLA overlays · exceptions triage workflow
-(ack/snooze, needs state store) · Staging Pace bulk-drop-log upgrade (`ZWMA_BULK_DROP_TO_LOG`)
-· Trends baseline bands · plant-onboarding tooling.
+pipeline observability dashboard (durations/freshness/cost) · supplier quality scorecard ·
+Order Journey stage-SLA overlays · Staging Pace bulk-drop-log upgrade (`ZWMA_BULK_DROP_TO_LOG`).
+
+> Promoted out of parked: PI & cycle-count analytics, Trends baseline bands, plant-onboarding
+> tooling (now specs 10–12, built). Exceptions-triage workflow's *read* side is subsumed by the
+> Operational Risk Cockpit (§1c spec 17); the ack/snooze state-store remains a separate future item.
 
 ## 4. Blocked on external parties
 
@@ -70,6 +124,8 @@ supplier quality scorecard · Order Journey stage-SLA overlays · exceptions tri
 | `users` group + corporate `security.model` entitlements | Consumer-agnostic access (Power BI / Genie / dashboards) to `_secured` views | Platform team |
 | Site lifecycle business review (`site_lifecycle_review.csv`) | Anchorable-plant scope for Final Trace; SOLD/DIVESTED exclusions only activate on explicit confirmation | Business / plant teams |
 | QM sources not replicated to DEV | DEV parity for quality features | Ingestion team |
+| KAPA replication gap — `shiftparametersavailablecapacity_kapa` missing DAFBI/DAFEI (review R9) | `silver.capacity_utilisation` disabled; adherence CAPACITY class + future line-scheduling have no data | Aecorsoft / ingestion team |
+| `warehouse360_app_users` group + prod `published_prod.security.model` entitlements (review R10) | Prod RLS verification / prod cutover | Platform team |
 
 ## 5. Strategic / scheduled items
 
@@ -81,6 +137,9 @@ supplier quality scorecard · Order Journey stage-SLA overlays · exceptions tri
 - `reservation_requirement` size investigation (4.33 GB ≈ 747 B/row across 25 cols;
   OPTIMIZE and REORG PURGE both no-ops — structural/encoding cause suspected; low priority,
   liquid clustering bounds per-query scans). See ADR 017 §6.
+- **Pipelines quiesced 2026-06-13:** Refresh Cadence job (`313093032786158`) PAUSED on
+  instruction; all pipelines manual-trigger-only, nothing scheduled incurs cost. The
+  cost-observation baseline window ended here. Re-unpause that job to resume the daily cadence.
 - **WH360 Gate C / prod cutover** (Gates A & B passed).
 - **SPC Phase 1 merge** — held until the cost-observation window completes. Data point
   2026-06-12: the lab-board 5-year QAMR materialisation ran in ~3 min wall-clock on the

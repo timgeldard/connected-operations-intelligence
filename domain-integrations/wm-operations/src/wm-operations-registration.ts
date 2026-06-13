@@ -112,7 +112,21 @@ export const wmOperationsRegistration: WorkspaceRegistration = {
     { viewId: 'yield-loss', displayName: 'Yield & Loss', lifecycle: 'pilot', sortOrder: 22, defaultPanels: [{ panelId: 'wm-yield-loss', defaultVisible: true, defaultOrder: 0 }] },
     { viewId: 'shortage-projection', displayName: 'Shortage Projection', lifecycle: 'pilot', sortOrder: 23, defaultPanels: [{ panelId: 'wm-shortage-projection', defaultVisible: true, defaultOrder: 0 }] },
     { viewId: 'expiry-risk', displayName: 'Expiry Risk', lifecycle: 'pilot', sortOrder: 24, defaultPanels: [{ panelId: 'wm-expiry-risk', defaultVisible: true, defaultOrder: 0 }] },
-    { viewId: 'inventory-accuracy', displayName: 'Inventory Accuracy', lifecycle: 'pilot', sortOrder: 25, defaultPanels: [{ panelId: 'wm-inventory-accuracy', defaultVisible: true, defaultOrder: 0 }] },
+    {
+      viewId: 'lineside-monitor',
+      displayName: 'Lineside Monitor',
+      lifecycle: 'pilot',
+      sortOrder: 25,
+      defaultPanels: [{ panelId: 'wm-lineside-monitor', defaultVisible: true, defaultOrder: 0 }],
+    },
+    {
+      viewId: 'planning-board',
+      displayName: 'Planning Board',
+      lifecycle: 'pilot',
+      sortOrder: 26,
+      defaultPanels: [{ panelId: 'wm-planning-board', defaultVisible: true, defaultOrder: 0 }],
+    },
+    { viewId: 'inventory-accuracy', displayName: 'Inventory Accuracy', lifecycle: 'pilot', sortOrder: 27, defaultPanels: [{ panelId: 'wm-inventory-accuracy', defaultVisible: true, defaultOrder: 0 }] },
   ],
   defaultPanels: [
     { panelId: 'wm-worklist-summary', defaultVisible: true, defaultOrder: 0 },

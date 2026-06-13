@@ -899,3 +899,165 @@ SELECT
   net_adjustment_qty
 FROM connected_plant_uat.gold_io_reporting.gold_wm_pi_accuracy_secured
 WHERE plant_code IS NOT NULL;
+-- 40. Daily activity baseline (DOW percentile bands — trend chart reference bands)
+-- Grain: 1 row per plant_id + metric_name + day_of_week.
+-- Partial-day exclusion: handled at gold source layer (gold_wm_daily_activity_baseline sources from
+-- gold_wm_daily_activity where SAP extracts are closed daily; no activity_date column in this view).
+-- Source: gold_wm_daily_activity_baseline_secured.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_daily_activity_baseline AS
+SELECT
+  plant_code AS plant_id,
+  metric_name,
+  day_of_week,
+  CAST(median_value AS DOUBLE) AS median_value,
+  CAST(p10_value AS DOUBLE) AS p10_value,
+  CAST(p90_value AS DOUBLE) AS p90_value,
+  CAST(sample_days AS BIGINT) AS sample_days
+FROM connected_plant_uat.gold_io_reporting.gold_wm_daily_activity_baseline_secured
+WHERE plant_code IS NOT NULL;
+
+-- 41. Lineside Now (Lineside Monitor — running orders + current phase, PEX-E-35)
+-- Grain: 1 row per plant_id + line_id + order_id.
+-- Source: gold_wm_lineside_now_live (adds elapsed_minutes + projected_finish at query time).
+-- Wall-clock rule (ADR 012): elapsed_minutes and projected_finish computed in _live layer.
+-- pct_complete: yield_pct × 100 clamped [0, 100]; null when no GR evidence.
+-- planned_minutes: scheduled_finish − scheduled_start in minutes; null when undated.
+-- FRESHNESS CAVEAT: data age reflects the last gold pipeline run (daily/paused cadence).
+-- The STALE banner in the UI is driven by the freshness endpoint, not this view.
+-- Filter by plant_id AND line_id for wall-display isolation.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_lineside_now AS
+SELECT
+  plant_code AS plant_id,
+  production_line AS line_id,
+  order_number AS order_id,
+  material_code AS material_id,
+  material_name,
+  planned_qty,
+  uom,
+  pct_complete,
+  planned_minutes,
+  CAST(production_first_actual_start AS TIMESTAMP) AS production_first_actual_start,
+  current_operation_number,
+  current_operation_description,
+  current_activity_type,
+  elapsed_minutes,
+  CAST(projected_finish AS TIMESTAMP) AS projected_finish
+FROM connected_plant_uat.gold_io_reporting.gold_wm_lineside_now_live
+WHERE plant_code IS NOT NULL;
+
+-- 42. Lineside Lines (Lineside Monitor — line picker for config panel, PEX-E-35)
+-- Grain: 1 row per plant_id + line_id.
+-- Source: gold_wm_lineside_lines_secured (deterministic; no date-relative columns).
+-- active_order_count: released, not closed, not finished orders on that line right now.
+-- line_label: production_line_description where available; falls back to production_line code.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_lineside_lines AS
+SELECT
+  plant_code AS plant_id,
+  production_line AS line_id,
+  line_label,
+  CAST(active_order_count AS BIGINT) AS active_order_count
+FROM connected_plant_uat.gold_io_reporting.gold_wm_lineside_lines_secured
+WHERE plant_code IS NOT NULL;
+
+-- 42. Plan Board (Production Planning Board — order-grain Gantt data, PEX-E-36)
+-- See wm_operations_consumption_views_dev.sql for full documentation.
+-- Wall-clock rule (ADR 012): projected_finish, is_overdue, status computed at query time.
+-- OMITTED: changeover/cleaning/maintenance — no governed SAP operation-type source.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_plan_board AS
+SELECT
+  j.plant_code                                           AS plant_id,
+  j.order_number                                         AS order_id,
+  j.production_line                                      AS line_id,
+  y.material_code                                        AS material_id,
+  y.material_name,
+  y.order_quantity                                       AS planned_qty,
+  y.order_quantity_uom                                   AS uom,
+  CAST(y.scheduled_start_date AS DATE)                   AS scheduled_start_date,
+  CAST(y.scheduled_finish_date AS DATE)                  AS scheduled_finish_date,
+  CAST(j.production_first_actual_start AS TIMESTAMP)     AS actual_start,
+  CAST(y.actual_finish_date AS DATE)                     AS actual_finish,
+  y.delivered_qty,
+  COALESCE(ln.pct_complete, y.yield_pct * 100.0)         AS pct_complete,
+  ln.planned_minutes,
+  ln.elapsed_minutes,
+  CASE
+    WHEN y.actual_finish_date IS NOT NULL THEN NULL
+    WHEN ln.pct_complete IS NOT NULL AND ln.pct_complete > 0
+         AND ln.planned_minutes IS NOT NULL AND ln.planned_minutes > 0
+    THEN CAST(
+           j.production_first_actual_start
+           + MAKE_INTERVAL(0, 0, 0, 0, 0,
+               CAST(ROUND(ln.planned_minutes / (ln.pct_complete / 100.0)) AS INT), 0)
+         AS TIMESTAMP)
+    ELSE NULL
+  END                                                    AS projected_finish,
+  CASE
+    WHEN y.actual_finish_date IS NOT NULL
+      THEN 'completed'
+    WHEN j.production_first_actual_start IS NOT NULL
+         AND y.actual_finish_date IS NULL
+         AND COALESCE(sh.has_shortage, FALSE)
+      THEN 'material-short'
+    WHEN j.production_first_actual_start IS NOT NULL
+         AND y.actual_finish_date IS NULL
+         AND (
+           COALESCE(arc.is_finish_late, FALSE)
+           OR (y.scheduled_finish_date IS NOT NULL
+               AND CAST(y.scheduled_finish_date AS DATE) < CURRENT_DATE())
+           OR (
+             ln.pct_complete IS NOT NULL AND ln.pct_complete > 0
+             AND ln.planned_minutes IS NOT NULL AND ln.planned_minutes > 0
+             AND CAST(
+                   j.production_first_actual_start
+                   + MAKE_INTERVAL(0, 0, 0, 0, 0,
+                       CAST(ROUND(ln.planned_minutes / (ln.pct_complete / 100.0)) AS INT), 0)
+                   AS DATE)
+                 > CAST(y.scheduled_finish_date AS DATE)
+           )
+         )
+      THEN 'atrisk'
+    WHEN j.production_first_actual_start IS NOT NULL AND y.actual_finish_date IS NULL
+      THEN 'running'
+    WHEN y.is_released
+      THEN 'firm'
+    ELSE 'open'
+  END                                                    AS status,
+  r.tr_coverage_status                                   AS staging_status,
+  r.supply_status,
+  (
+    y.scheduled_start_date IS NULL
+    OR (
+      y.scheduled_finish_date IS NOT NULL
+      AND CAST(y.scheduled_finish_date AS DATE) < CURRENT_DATE()
+      AND j.production_first_actual_start IS NULL
+    )
+  )                                                      AS is_backlog,
+  (
+    y.scheduled_finish_date IS NOT NULL
+    AND CAST(y.scheduled_finish_date AS DATE) < CURRENT_DATE()
+    AND y.actual_finish_date IS NULL
+  )                                                      AS is_overdue,
+  COALESCE(sh.has_shortage, FALSE)                       AS has_shortage,
+  y.is_released,
+  y.is_completed,
+  y.is_closed
+FROM connected_plant_uat.gold_io_reporting.gold_wm_order_journey_summary_secured j
+INNER JOIN connected_plant_uat.gold_io_reporting.gold_wm_order_yield_secured y
+  ON j.order_number = y.order_number
+  AND j.plant_code  = y.plant_code
+LEFT JOIN connected_plant_uat.gold_io_reporting.gold_wm_lineside_now_live ln
+  ON j.order_number = ln.order_number
+  AND j.plant_code  = ln.plant_code
+LEFT JOIN connected_plant_uat.gold_io_reporting.gold_wm_adherence_root_cause_secured arc
+  ON j.order_number = arc.order_number
+  AND j.plant_code  = arc.plant_code
+LEFT JOIN (
+  SELECT plant_code, order_number, BOOL_OR(is_projected_short) AS has_shortage
+  FROM connected_plant_uat.gold_io_reporting.gold_wm_order_shortage_projection_secured
+  GROUP BY plant_code, order_number
+) sh ON j.order_number = sh.order_number AND j.plant_code = sh.plant_code
+LEFT JOIN connected_plant_uat.gold_io_reporting.gold_wm_order_readiness_secured r
+  ON j.order_number = r.order_number
+  AND j.plant_code  = r.plant_code
+WHERE j.plant_code IS NOT NULL
+  AND j.production_line IS NOT NULL;

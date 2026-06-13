@@ -254,6 +254,30 @@ SERVING_VIEWS = {
             "ELSE TRUE END"
         ),
     },
+    # Lineside Monitor (PEX-E-35): wall-clock columns computed at query time (ADR 012).
+    # elapsed_minutes: minutes since production_first_actual_start (null when not started).
+    # projected_finish: production_first_actual_start + planned_minutes — if planned_minutes
+    #   IS NOT NULL and production_first_actual_start IS NOT NULL.
+    # data_age_minutes: minutes since the gold pipeline last refreshed (proxy via max GR
+    #   posting_date is NOT available here — left as null in the _live layer; the API
+    #   freshness endpoint computes it via DatabricksRepository.fetch_freshness).
+    "gold_wm_lineside_now": [
+        (
+            "elapsed_minutes",
+            "CASE WHEN b.production_first_actual_start IS NOT NULL "
+            "THEN CAST((unix_timestamp(current_timestamp()) "
+            "          - unix_timestamp(b.production_first_actual_start)) / 60 AS INTEGER) "
+            "END",
+        ),
+        (
+            "projected_finish",
+            "CASE WHEN b.production_first_actual_start IS NOT NULL "
+            "     AND b.planned_minutes IS NOT NULL AND b.planned_minutes > 0 "
+            "THEN from_unixtime(unix_timestamp(b.production_first_actual_start) "
+            "                   + CAST(b.planned_minutes * 60 AS BIGINT)) "
+            "END",
+        ),
+    ],
 }
 
 

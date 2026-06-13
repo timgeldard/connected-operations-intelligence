@@ -53,6 +53,7 @@ REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_operator_a
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_queue_workload FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_campaign_summary FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_daily_activity FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_daily_activity_baseline FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_slow_movers FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_expiry_risk FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_staging_pace_hourly FROM `users`;
@@ -74,6 +75,8 @@ REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_supply_dem
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_order_shortage_projection FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_adherence_root_cause FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_pi_accuracy FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_lineside_now FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_lineside_lines FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_spc_quality_metric_subgroup FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_trace_anchor FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_batch_stock_summary FROM `users`;

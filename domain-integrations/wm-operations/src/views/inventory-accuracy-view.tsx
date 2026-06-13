@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { WmOperationsAdapterRequest, WmPiAccuracyItem } from '../adapters/wm-operations-adapter.js'
 import { useWmPiAccuracy } from '../adapters/wm-operations-queries.js'
-import { EmptyNote, KpiTile, LoadingRows, ViewHeader, formatDate } from '../components/kerry.js'
+import { EmptyNote, KpiTile, LoadingRows, ViewHeader } from '../components/kerry.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

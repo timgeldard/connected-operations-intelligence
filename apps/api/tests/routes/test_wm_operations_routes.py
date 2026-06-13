@@ -1602,3 +1602,31 @@ class TestPiAccuracyRoute:
                 headers=_HEADERS_WITH_TOKEN,
             )
         assert response.status_code == 503
+class TestDailyActivityBaselineRoute:
+    async def test_returns_200_with_baseline_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061", "metric_name": "to_items_confirmed", "day_of_week": 2,
+            "median_value": 150.0, "p10_value": 80.0, "p90_value": 220.0, "sample_days": 12,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = [fake_row]
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/daily-activity-baseline",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert data[0]["metricName"] == "to_items_confirmed"
+        assert data[0]["dayOfWeek"] == 2
+        assert data[0]["medianValue"] == 150.0
+
+    async def test_baseline_returns_401_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/daily-activity-baseline",
+                params={"plant_id": "C061"},
+            )
+        assert response.status_code == 401
