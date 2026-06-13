@@ -10,6 +10,7 @@ This directory lists all `warehouse` contracts in the io-reporting data product.
 - [Campaigns](/warehouse/wm_operations/campaigns.md) -- Campaign-grouped picking progress (LTBK ZZ_CAMPAIGN).
 - [Component Variance](/warehouse/wm_operations/component_variance.md) -- Order + material grain material variance for the Yield & Loss waterfall.
 - [Daily Activity](/warehouse/wm_operations/daily_activity.md) -- Daily warehouse activity series (TO confirmations, TRs created, IM receipts/issues) for trend charts.
+- [Daily Activity Baseline](/warehouse/wm_operations/daily_activity_baseline.md) -- Day-of-week baseline bands (median, p10, p90) for daily warehouse activity metrics per plant.
 - [Dispensary Queue](/warehouse/warehouse360/dispensary_queue.md) -- Dispensary staging component weighing and preparation queue.
 - [Downtime Events](/warehouse/wm_operations/downtime_events.md) -- Production downtime events at event grain — passthrough from silver.downtime_event.
 - [Downtime Pareto](/warehouse/wm_operations/downtime_pareto.md) -- Weekly production downtime pareto aggregated by plant, week, reason code, sub-reason code, and work centre.

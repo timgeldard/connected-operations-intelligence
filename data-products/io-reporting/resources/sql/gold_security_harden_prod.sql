@@ -53,6 +53,7 @@ REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_operator_a
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_queue_workload FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_campaign_summary FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_daily_activity FROM `users`;
+REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_daily_activity_baseline FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_slow_movers FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_expiry_risk FROM `users`;
 REVOKE SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_wm_staging_pace_hourly FROM `users`;

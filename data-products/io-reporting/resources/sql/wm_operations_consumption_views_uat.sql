@@ -871,3 +871,19 @@ SELECT
   (actual_finish_date IS NULL AND scheduled_finish_date < CURRENT_DATE()) AS is_open_late
 FROM connected_plant_uat.gold_io_reporting.gold_wm_adherence_root_cause_secured
 WHERE plant_code IS NOT NULL;
+
+-- 40. Daily activity baseline (DOW percentile bands — trend chart reference bands)
+-- Grain: 1 row per plant_id + metric_name + day_of_week.
+-- Partial-day exclusion: apply WHERE activity_date < CURRENT_DATE() at query time.
+-- Source: gold_wm_daily_activity_baseline_secured.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_daily_activity_baseline AS
+SELECT
+  plant_code AS plant_id,
+  metric_name,
+  day_of_week,
+  CAST(median_value AS DOUBLE) AS median_value,
+  CAST(p10_value AS DOUBLE) AS p10_value,
+  CAST(p90_value AS DOUBLE) AS p90_value,
+  CAST(sample_days AS BIGINT) AS sample_days
+FROM connected_plant_uat.gold_io_reporting.gold_wm_daily_activity_baseline_secured
+WHERE plant_code IS NOT NULL;
