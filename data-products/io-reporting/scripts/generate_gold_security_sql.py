@@ -142,6 +142,7 @@ GOLD_TABLES = [
     "gold_wm_queue_workload",
     "gold_wm_campaign_summary",
     "gold_wm_daily_activity",
+    "gold_wm_daily_activity_baseline",
     "gold_wm_slow_movers",
     "gold_wm_expiry_risk",
     "gold_wm_staging_pace_hourly",

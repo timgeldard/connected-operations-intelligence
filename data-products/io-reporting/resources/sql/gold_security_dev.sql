@@ -205,6 +205,10 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_daily_activ
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_daily_activity;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_daily_activity_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_daily_activity_baseline_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_daily_activity_baseline;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_daily_activity_baseline_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_slow_movers_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_slow_movers;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_slow_movers_secured TO `users`;
