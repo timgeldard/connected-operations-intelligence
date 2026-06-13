@@ -982,7 +982,7 @@ export const WmOperationsWorklistSummaryContract = {
  * Released process orders with derived TR coverage (component demand converted to TRs — the WM Cockpit 'TR' status) and PSA supply status (stock in order-keyed Production Supply bins — the cockpit 'ST' status), plus a query-time readiness band. Coverage denominators use WM-managed components only; quantity comparisons assume base-UoM consistency. Candidate contract pending DEV profiling.
 
  * Source View: vw_consumption_wm_operations_order_readiness
- * Version: 0.1.0
+ * Version: 0.2.0
  */
 export interface WmOperationsOrderReadiness {
   /** SAP plant ID */
@@ -1031,6 +1031,16 @@ export interface WmOperationsOrderReadiness {
   days_to_start?: number;
   /** red | amber | green | grey (query-time traffic light) */
   readiness_band?: string;
+  /** Sum of unrestricted batch_stock across order component materials */
+  qty_unrestricted?: number;
+  /** Sum of quality-inspection + blocked stock across component materials */
+  quality_hold_qty?: number;
+  /** Open QM lots (no usage decision) across component materials */
+  open_lot_count?: number;
+  /** RELEASED | PARTIAL_HOLD | QUALITY_BLOCKED | NO_QM_DATA */
+  quality_release_status?: string;
+  /** QUALITY_HOLD | QUALITY_PARTIAL_HOLD | QM_SOURCE_ABSENT when applicable */
+  readiness_reason?: string;
   /** Production line (AUFK CRVER) of the process order — 99.99% populated at C061/P817 (35 lines / 18-19 lines respectively, verified UAT 2026-06-11).
  */
   production_line?: string;
@@ -1038,7 +1048,7 @@ export interface WmOperationsOrderReadiness {
 
 export const WmOperationsOrderReadinessContract = {
   id: "wm_operations.order_readiness",
-  version: "0.1.0",
+  version: "0.2.0",
   domain: "warehouse",
   owner: "warehouse-operations",
   lifecycle: "draft",
