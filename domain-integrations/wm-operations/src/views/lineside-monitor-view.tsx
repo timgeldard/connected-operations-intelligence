@@ -756,11 +756,17 @@ export function LinesideMonitorView({
   const linesideReq: WmLinesideRequest = { plantId, lineId, limit: 50 }
   const enabled = Boolean(plantId && lineId)
 
-  const nowQuery = useWmLinesideNow(linesideReq, refreshIntervalMs, enabled)
-  const nextQuery = useWmLinesideNext(linesideReq, refreshIntervalMs, enabled)
-  const blockedQuery = useWmLinesideBlocked(linesideReq, refreshIntervalMs, enabled)
-  const stagingQuery = useWmLinesideStaging(linesideReq, refreshIntervalMs, enabled)
-  const planActualQuery = useWmLinesidePlanActual(linesideReq, refreshIntervalMs, enabled)
+  // Wallboard optimisation: only enable the ACTIVE panel's query plus prefetch the
+  // NEXT panel so data is warm when it becomes visible.  Panels 0 and 1 share
+  // nowQuery, so nowQuery is enabled whenever either of those two is active or next.
+  const nextPanelIndex = (panelIndex + 1) % PANEL_COUNT
+  const isActiveOrNext = (panelIdx: number) => panelIndex === panelIdx || nextPanelIndex === panelIdx
+
+  const nowQuery = useWmLinesideNow(linesideReq, refreshIntervalMs, enabled && (isActiveOrNext(0) || isActiveOrNext(1)))
+  const nextQuery = useWmLinesideNext(linesideReq, refreshIntervalMs, enabled && isActiveOrNext(2))
+  const blockedQuery = useWmLinesideBlocked(linesideReq, refreshIntervalMs, enabled && isActiveOrNext(3))
+  const stagingQuery = useWmLinesideStaging(linesideReq, refreshIntervalMs, enabled && isActiveOrNext(4))
+  const planActualQuery = useWmLinesidePlanActual(linesideReq, refreshIntervalMs, enabled && isActiveOrNext(5))
 
   const nowItems: WmLinesideNowItem[] = nowQuery.data?.ok ? (nowQuery.data as { ok: true; data: WmLinesideNowItem[] }).data : []
   const nextItems: WmLinesideNextItem[] = nextQuery.data?.ok ? (nextQuery.data as { ok: true; data: WmLinesideNextItem[] }).data : []
