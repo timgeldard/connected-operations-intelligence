@@ -108,3 +108,19 @@ patterns; reviewers grep for these.
 2. A report containing: design deviations + reasons, column-verification evidence
    (file:line for each silver/gold column you relied on), validation output, anything the
    orchestrator must do post-merge (pipeline runs, SQL applications, scope caveats), SHA.
+
+## Wall-display query cadence (operational / wall-board routes)
+
+Do NOT let react-query refetch on every navigation for wall-display / operational read views. Define one
+configurable constant (e.g. `const PLAN_BOARD_REFRESH_MS = 5 * 60 * 1000`) and set it as BOTH `staleTime`
+and `refetchInterval`, with `refetchOnWindowFocus: false` — load once, serve cache across page/panel changes,
+auto-refresh only on the interval. A manual "Refresh now" button (`query.refetch()`) is the on-demand escape
+hatch. (Pattern from the planning-board / lineside / lab-board work.)
+
+## Worktree-agent dispatch discipline (orchestrator)
+
+When dispatching an `isolation: worktree` agent, do NOT put `git checkout`/`-b` in its prompt — its git then
+runs against the MAIN working tree and hijacks it (observed 2026-06-13), worst when the target branch is held
+by another worktree. Instead: read branch content via `git show origin/<branch>:<path>`, edit + commit in place
+on the provided worktree branch, and `git push origin HEAD:<named-branch>`. Prune agent worktrees as they
+complete — they are full checkouts and accumulate (filled the disk on 2026-06-13).

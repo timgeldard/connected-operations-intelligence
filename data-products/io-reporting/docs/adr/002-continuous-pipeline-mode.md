@@ -1,6 +1,6 @@
 # ADR-002: Run pipeline in Continuous mode
 
-**Status:** Accepted  
+**Status:** Superseded by ADR 017 (2026-06-12) — the fast silver pipeline runs in **triggered** mode via the refresh-cadence job, not continuous. This ADR's decision is retained for historical context.  
 **Date:** 2026-05-30
 
 ## Context

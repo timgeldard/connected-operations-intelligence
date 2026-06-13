@@ -3,6 +3,8 @@
 Status: Accepted (2026-06-12, Tim Geldard — converged with an independent external
 architecture review after three correction rounds)
 
+**Supersedes:** ADR 002 (continuous pipeline mode) — decision 3; the fast silver pipeline runs in triggered (batch) mode via the refresh-cadence job, not continuous.
+
 ## Context
 
 The product currently refreshes on a single daily cadence (silver fast → reference/quality

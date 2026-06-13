@@ -16,7 +16,7 @@ ${var.source_catalog}.${var.source_schema} (Bronze — Aecorsoft Delta replicati
          │  AEDATTM / RecordActivity watermarking
          ▼
   Delta Live Tables Pipeline (silver_pipeline)
-  Mode: Continuous (near real-time)
+  Mode: Triggered (batch) — refresh-cadence job (ADR 017; superseded continuous-mode ADR 002)
   Target catalog: ${var.catalog}
          │
          ├─ Staging views  (@dlt.view)
@@ -37,7 +37,7 @@ ${var.source_catalog}.${var.source_schema} (Bronze — Aecorsoft Delta replicati
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Pipeline mode | **Continuous** | Near real-time delivery; Aecorsoft replicates incrementally |
+| Pipeline mode | **Triggered (batch)** | Refresh-cadence job (ADR 017, supersedes ADR 002); Aecorsoft replicates incrementally |
 | Change strategy | **SCD Type 1** via `dlt.apply_changes` (exception: `storage_bin` uses `apply_changes_from_snapshot` over a full current-state snapshot, because its `LQUA` occupancy source is a current-state snapshot with no delete marker) | Operational state — current values matter, not history |
 | Clustering | **Liquid clustering** on `plant_code` + date | Auto-compacts; no manual tuning at 100+ plant scale |
 | CDC source | `RecordActivity` / `OPFLAG` where present; `AEDATTM`, `AERUNID`, `AERECNO` sequence otherwise | Handles deletes from SAP where flagged and preserves deterministic event ordering |
@@ -144,11 +144,11 @@ Current checks by table:
 >   links via the recipe key `OBJEK = PLNTY + rpad(PLNNR,8) + lpad(PLNAL,2)` — kept byte-identical to
 >   the map key; no match → `NULL` (never an error). Verified live (uat): 99.6% of `AUTYP='40'` orders
 >   resolve a non-NULL line; map ≈ 85k rows.
->   - **Read unconditionally + deploy order:** the fast pipeline is continuous, so `stg_process_order`
+>   - **Read unconditionally + deploy order:** the fast pipeline reads the map at graph time, so `stg_process_order`
 >     is built once at graph time. It therefore reads the map **without** a `tableExists` guard (a guard
 >     would bake an empty fallback into the plan for the life of the update, silently NULL-ing every line
 >     until restart). Consequence: the **slow pipeline must build `recipe_process_line` before the
->     continuous fast pipeline first starts** (DABs deploy both but cannot order their runs) — on first
+>     fast pipeline first starts** (DABs deploy both but cannot order their runs) — on first
 >     deploy, run the slow pipeline once, then start fast. Steady-state map updates propagate to the
 >     running fast pipeline per microbatch (stream-static join).
 >   - **Freshness trade-off:** an order is enriched only when *that order* changes (SCD1), using the
