@@ -4486,3 +4486,138 @@ contracts:
         type: boolean
         required: false
         description: True when unfinished and scheduled_finish_date is before today (query-time)
+
+  # ── Lineside Monitor (PEX-E-35) ──────────────────────────────────────────────
+
+  - id: wm_operations.lineside_now
+    version: 0.1.0
+    domain: production
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Running orders + current-phase surface for the Lineside Monitor wall display (PEX-E-35).
+      Grain: plant_id × line_id × order_id — one row per order currently in execution on a
+      production line (released, not finished, not closed). current_operation_* fields derived
+      from the latest confirmed process_order_operation (OPERATION_CONFIRMED logic, same as
+      order journey). elapsed_minutes and projected_finish are computed at query time in the
+      _live serving view (wall-clock rule ADR 012 — no timestamps in the base MV).
+      FRESHNESS CAVEAT: data age reflects the last gold pipeline run; monitor shows a STALE
+      banner when data_age exceeds 2× the configured refresh interval. Full operational value
+      requires ADR 017 pilot cadence (15-min triggered); at daily/paused cadence this is
+      demonstrable but not live-accurate.
+      Source: gold_wm_lineside_now_live.
+    source_view: vw_consumption_wm_operations_lineside_now
+    grain: one row per plant_id, line_id, and order_id
+    primary_key:
+      - plant_id
+      - line_id
+      - order_id
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: line_id
+        type: string
+        required: true
+        description: Production line code (CRVER via recipe_process_line classification)
+      - name: order_id
+        type: string
+        required: true
+        description: Process order number (AUFNR)
+      - name: material_id
+        type: string
+        required: false
+        description: Header material code (AFKO PLNBEZ)
+      - name: material_name
+        type: string
+        required: false
+        description: Material description from material master
+      - name: planned_qty
+        type: double
+        required: false
+        description: Planned order quantity (AFKO GAMNG)
+      - name: uom
+        type: string
+        required: false
+        description: Order quantity unit of measure (AFKO GMEIN)
+      - name: pct_complete
+        type: double
+        required: false
+        description: Percentage complete (yield_pct × 100, clamped 0–100); null when no GR evidence
+      - name: planned_minutes
+        type: integer
+        required: false
+        description: Planned production duration in minutes (scheduled_finish − scheduled_start); null when undated
+      - name: production_first_actual_start
+        type: timestamp
+        required: false
+        description: First actual start timestamp (actual_start_date cast to timestamp)
+      - name: current_operation_number
+        type: string
+        required: false
+        description: Operation number (AFVC VORNR) of the latest confirmed operation; null when no confirmation yet
+      - name: current_operation_description
+        type: string
+        required: false
+        description: Operation description text (AFVC LTXA1); falls back to "Op <number>"
+      - name: current_activity_type
+        type: string
+        required: false
+        description: Activity type label derived from control_key (AFVC STEUS) — Setup / Processing / Teardown / Cleaning / Inspection
+      - name: elapsed_minutes
+        type: integer
+        required: false
+        description: Minutes elapsed since production_first_actual_start (query-time, _live layer)
+      - name: projected_finish
+        type: timestamp
+        required: false
+        description: Projected finish = production_first_actual_start + planned_minutes (query-time, _live layer); null when undated
+
+  - id: wm_operations.lineside_lines
+    version: 0.1.0
+    domain: production
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Distinct production lines with active order count — line picker for the Lineside Monitor
+      config panel (PEX-E-35). Grain: plant_id × line_id. active_order_count counts currently
+      running orders (released, not closed, not finished). line_label is the human-readable
+      line description (production_line_description) or falls back to the production_line code.
+      Source: gold_wm_lineside_lines_secured.
+    source_view: vw_consumption_wm_operations_lineside_lines
+    grain: one row per plant_id and line_id
+    primary_key:
+      - plant_id
+      - line_id
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant ID
+      - name: line_id
+        type: string
+        required: true
+        description: Production line code (CRVER via recipe_process_line classification)
+      - name: line_label
+        type: string
+        required: true
+        description: Human-readable line description; falls back to line_id when no description available
+      - name: active_order_count
+        type: long
+        required: true
+        description: Count of running orders (released, not closed, not finished) on this line right now

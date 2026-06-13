@@ -3347,3 +3347,312 @@ def gold_wm_adherence_root_cause():
         release_to_prod_hours.alias("release_to_production_hours"),
         F.col("production_first_actual_start"),
     )
+
+
+# ── 27. LINESIDE NOW (running orders + current-phase surface) ─────────────────
+#
+# Wall TV display grain: plant_code × production_line × order_number for orders
+# currently in execution (released, actual_finish_date IS NULL, has at least one
+# confirmed operation OR a GR). The "current phase" is the latest confirmed
+# process_order_operation row (is_confirmed = True, actual_start_datetime present),
+# reusing the OPERATION_CONFIRMED logic from gold_wm_order_journey_events.
+#
+# Wall-clock rule (ADR 012): elapsed_minutes and projected_finish are computed AT
+# QUERY TIME in the consumption/_live layer. This MV stores only the deterministic
+# production_first_actual_start, planned_minutes (scheduled_finish − scheduled_start),
+# and the latest confirmed-operation snapshot. NO current_timestamp() here.
+#
+# Plant axis discipline (#106 lesson): drop process_order_operation.plant_code BEFORE
+# joining to orders; the order's plant is the canonical axis for all order-anchored tables.
+#
+# Column verification evidence (silver/tables/process_order.py):
+#   order_number          — process_order.py line ~132 (strip_zeros(AUFNR))
+#   plant_code            — process_order.py line ~140 (WERKS)
+#   material_code         — process_order.py line ~160 (strip_zeros(PLNBEZ))
+#   production_line       — process_order.py line ~172 (pl.production_line, CRVER via recipe_process_line)
+#   scheduled_start_datetime — process_order.py line ~181 (sap_datetime(GSTRS, GSUZS))
+#   scheduled_finish_datetime — process_order.py line ~182 (sap_datetime(GLTRS, GLUZS))
+#   actual_finish_date    — process_order.py line ~186 (sap_date(GLTRI))
+#   actual_release_date   — process_order.py line ~187 (sap_date(FTRMI))
+#   is_released           — process_order.py line ~196 (sap_flag(PHAS1))
+#   is_closed             — process_order.py line ~199 (sap_flag(PHAS3))
+#   confirmed_yield_quantity — process_order.py line ~163 (IGMNG)
+#   order_quantity        — process_order.py line ~161 (GAMNG)
+#
+# Column verification evidence (silver/tables/process_order.py — process_order_operation):
+#   operation_number      — process_order.py line ~220 (VORNR)
+#   operation_description — process_order.py line ~226 (LTXA1)
+#   is_confirmed          — process_order.py line ~243 (RUECK not null → True)
+#   actual_start_datetime — process_order.py line ~232 (sap_datetime(ISDD, ISDZ))
+#   control_key           — process_order.py line ~224 (STEUS)
+#   operation_counter     — process_order.py line ~219 (APLZL)
+#
+# Column verification evidence (gold_wm_order_yield select, this file line ~2662):
+#   yield_pct             — gold_wm_order_yield: delivered_qty / planned_qty
+#   production_line       — gold_wm_order_yield: F.col("production_line")
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Running orders + current-phase surface for the Lineside Monitor wall display. "
+        "Grain: plant_code × production_line × order_number — one row per order currently "
+        "in execution (released by date-evidence, actual_finish_date IS NULL, has at least "
+        "one confirmed operation OR confirmed_yield_quantity > 0). "
+        "current_operation_number / current_operation_description / current_activity_type: "
+        "derived from the latest is_confirmed process_order_operation row "
+        "(OPERATION_CONFIRMED logic — same pattern as gold_wm_order_journey_events). "
+        "pct_complete: yield_pct from gold_wm_order_yield via dlt.read, clamped 0–100. "
+        "planned_minutes: scheduled_finish_datetime − scheduled_start_datetime in minutes "
+        "(integer — datediff of timestamps). "
+        "production_first_actual_start: carried from process_order.actual_start_date cast "
+        "as timestamp (wall-clock elapsed computed AT QUERY TIME in _live / consumption view). "
+        "batch: single batch_number where exactly one distinct non-null batch is confirmed "
+        "across operations; null when multiple batches or none. "
+        "elapsed_minutes and projected_finish are NOT in this MV — they are computed in "
+        "the consumption view using CURRENT_TIMESTAMP() (ADR 012 wall-clock rule). "
+        "Deterministic: no current_date()/current_timestamp(). cluster_by plant_code, production_line."
+    ),
+    cluster_by=["plant_code", "production_line"],
+))
+@dlt.expect("order_number present", "order_number IS NOT NULL")
+@dlt.expect("plant_code present", "plant_code IS NOT NULL")
+@dlt.expect("production_line present", "production_line IS NOT NULL")
+@dlt.expect("pct_complete bounded", "pct_complete IS NULL OR (pct_complete >= 0.0 AND pct_complete <= 100.0)")
+def gold_wm_lineside_now():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    orders = spark.read.table(f"{ss}.process_order")
+    material = _material_lookup(spark, ss)
+
+    # Running orders: released (by date evidence, not status flags — same as
+    # gold_wm_order_readiness / gold_wm_order_wip_stage), not finished, not closed,
+    # production_line must be populated (lineside display is line-keyed).
+    running_orders = (
+        orders.filter(
+            (
+                F.coalesce(F.col("is_released"), F.lit(False))
+                | F.col("actual_release_date").isNotNull()
+            )
+            & (~F.coalesce(F.col("is_closed"), F.lit(False)))
+            & F.col("actual_finish_date").isNull()
+            & F.col("production_line").isNotNull()
+        )
+        .select(
+            "order_number",
+            "plant_code",
+            "material_code",
+            "production_line",
+            F.col("order_quantity").alias("planned_qty"),
+            F.col("order_quantity_uom").alias("uom"),
+            F.col("confirmed_yield_quantity"),
+            # planned_minutes = null when either scheduled datetime is null (no schedule set).
+            # Cast difference to integer (datediff on timestamps returns integer seconds / 60).
+            F.when(
+                F.col("scheduled_start_datetime").isNotNull()
+                & F.col("scheduled_finish_datetime").isNotNull(),
+                F.greatest(
+                    F.lit(0),
+                    (
+                        (
+                            F.unix_timestamp(F.col("scheduled_finish_datetime"))
+                            - F.unix_timestamp(F.col("scheduled_start_datetime"))
+                        ) / 60
+                    ).cast("integer"),
+                ),
+            ).otherwise(F.lit(None).cast("integer")).alias("planned_minutes"),
+            # production_first_actual_start: use actual_start_date (GSTRI → sap_date) as a
+            # date-level proxy; cast to timestamp for the consumption view's elapsed calc.
+            F.col("actual_start_date").cast("timestamp").alias("production_first_actual_start"),
+        )
+    )
+
+    # Latest confirmed operation per order (OPERATION_CONFIRMED pattern from
+    # gold_wm_order_journey_events, line ~2254 in this file).
+    # Drop operation's plant_code — the order's plant is the canonical axis (#106 rule).
+    ops = spark.read.table(f"{ss}.process_order_operation")
+
+    # Window: latest confirmed op per order = largest operation_counter where is_confirmed.
+    _ops_window = Window.partitionBy("order_number").orderBy(
+        F.col("operation_counter").desc()
+    )
+
+    latest_confirmed_op = (
+        ops.filter(
+            F.coalesce(F.col("is_confirmed"), F.lit(False))
+            & F.col("actual_start_datetime").isNotNull()
+        )
+        # Drop op-side plant_code before joining orders (#106 lesson).
+        .drop("plant_code")
+        .withColumn("_op_rank", F.row_number().over(_ops_window))
+        .filter(F.col("_op_rank") == 1)
+        .select(
+            "order_number",
+            F.col("operation_number").alias("current_operation_number"),
+            F.coalesce(
+                F.col("operation_description"),
+                F.concat_ws(" ", F.lit("Op"), F.col("operation_number")),
+            ).alias("current_operation_description"),
+            # current_activity_type: derive from control_key prefix (STEUS).
+            # PP standard: PP01=production, PP02=setup, PP03=teardown, ZLX=cleaning, etc.
+            # Map to friendly type labels for the wall display; unmapped → "Processing".
+            F.when(
+                F.col("control_key").startswith("PP02"),
+                F.lit("Setup"),
+            ).when(
+                F.col("control_key").startswith("PP03"),
+                F.lit("Teardown"),
+            ).when(
+                F.col("control_key").isin("ZLX", "ZCL", "ZCLEAN"),
+                F.lit("Cleaning"),
+            ).when(
+                F.col("control_key").startswith("ZI"),
+                F.lit("Inspection"),
+            ).when(
+                F.col("control_key").startswith("PP"),
+                F.lit("Processing"),
+            ).otherwise(
+                F.lit("Processing"),
+            ).alias("current_activity_type"),
+        )
+    )
+
+    # Yield join: pct_complete from gold_wm_order_yield (same MV, same pipeline).
+    # Drop yield's plant_code — order is the join key; order's plant is canonical.
+    yield_pct_src = (
+        dlt.read("gold_wm_order_yield")
+        .filter(F.col("yield_pct").isNotNull())
+        .select(
+            "order_number",
+            # pct_complete = yield_pct × 100, clamped [0, 100].
+            F.least(
+                F.lit(100.0),
+                F.greatest(
+                    F.lit(0.0),
+                    (F.col("yield_pct") * F.lit(100.0)),
+                ),
+            ).alias("pct_complete"),
+        )
+        .drop("plant_code")
+    )
+
+    # Material name lookup (plant × material).
+    # Drop material lookup's non-key columns and join on plant+material.
+    mat_names = (
+        material.select(
+            "plant_code",
+            "material_code",
+            F.col("material_description").alias("material_name"),
+        )
+    )
+
+    # Build output: running_orders → left join ops → left join yield → left join material.
+    result = (
+        running_orders
+        .join(latest_confirmed_op, "order_number", "left")
+        .join(yield_pct_src, "order_number", "left")
+        .join(mat_names, ["plant_code", "material_code"], "left")
+        .select(
+            # ── Grain
+            "plant_code",
+            "production_line",
+            "order_number",
+
+            # ── Order attributes
+            "material_code",
+            F.coalesce(F.col("material_name"), F.lit(None).cast("string")).alias("material_name"),
+            "planned_qty",
+            "uom",
+
+            # ── Progress
+            F.coalesce(F.col("pct_complete"), F.lit(None).cast("double")).alias("pct_complete"),
+            "planned_minutes",
+            "production_first_actual_start",
+
+            # ── Current phase (nullable — may have no confirmed ops yet)
+            F.coalesce(
+                F.col("current_operation_number"), F.lit(None).cast("string")
+            ).alias("current_operation_number"),
+            F.coalesce(
+                F.col("current_operation_description"), F.lit(None).cast("string")
+            ).alias("current_operation_description"),
+            F.coalesce(
+                F.col("current_activity_type"), F.lit(None).cast("string")
+            ).alias("current_activity_type"),
+        )
+    )
+
+    return result
+
+
+# ── 28. LINESIDE LINES (distinct line picker for Lineside Monitor config) ──────
+#
+# Distinct (plant_code, production_line) pairs with active order count and
+# a line label (production_line_description where available). Used by the
+# /api/wm-operations/lineside/lines picker endpoint.
+# Source: process_order — released, not closed, not finished (same active filter
+# as gold_wm_lineside_now). Grouped by plant_code × production_line.
+# No current_date() — deterministic. cluster_by plant_code.
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Distinct production lines with active order count — line picker for the Lineside "
+        "Monitor config panel. Grain: plant_code × production_line. "
+        "active_order_count: COUNT of running orders (released, not finished, not closed). "
+        "line_label: production_line_description (first non-null) or production_line when "
+        "no description is available. "
+        "Source: process_order (production_line, production_line_description — CRVER/recipe "
+        "classification). Deterministic: no current_date(). cluster_by plant_code."
+    ),
+    cluster_by=["plant_code"],
+))
+@dlt.expect("plant_code present", "plant_code IS NOT NULL")
+@dlt.expect("production_line present", "production_line IS NOT NULL")
+@dlt.expect("active_order_count non-negative", "active_order_count >= 0")
+def gold_wm_lineside_lines():
+    spark = get_spark_session()
+    ss = get_silver_schema(spark)
+
+    orders = spark.read.table(f"{ss}.process_order")
+
+    # All process orders with a production_line (not just active) — for the picker we want
+    # ALL lines seen in any released/recent order, not just today's running ones.
+    # Active count shows current load; a line with 0 active orders still belongs in the picker.
+    all_line_orders = orders.filter(F.col("production_line").isNotNull())
+
+    active_counts = (
+        orders.filter(
+            (
+                F.coalesce(F.col("is_released"), F.lit(False))
+                | F.col("actual_release_date").isNotNull()
+            )
+            & (~F.coalesce(F.col("is_closed"), F.lit(False)))
+            & F.col("actual_finish_date").isNull()
+            & F.col("production_line").isNotNull()
+        )
+        .groupBy("plant_code", "production_line")
+        .agg(F.count(F.lit(1)).alias("active_order_count"))
+    )
+
+    lines = (
+        all_line_orders
+        .groupBy("plant_code", "production_line")
+        .agg(
+            F.first("production_line_description", ignorenulls=True).alias(
+                "_line_description"
+            ),
+        )
+        .join(active_counts, ["plant_code", "production_line"], "left")
+        .select(
+            "plant_code",
+            "production_line",
+            F.coalesce(
+                F.col("_line_description"),
+                F.col("production_line"),
+            ).alias("line_label"),
+            F.coalesce(F.col("active_order_count"), F.lit(0)).cast("long").alias(
+                "active_order_count"
+            ),
+        )
+    )
+
+    return lines

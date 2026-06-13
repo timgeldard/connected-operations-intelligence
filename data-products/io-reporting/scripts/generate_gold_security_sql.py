@@ -163,6 +163,9 @@ GOLD_TABLES = [
     "gold_wm_supply_demand_ledger",
     "gold_wm_order_shortage_projection",
     "gold_wm_adherence_root_cause",
+    # wm_operations_gold.py — Lineside Monitor (PEX-E-35)
+    "gold_wm_lineside_now",
+    "gold_wm_lineside_lines",
     # spc_gold.py
     "gold_spc_quality_metric_subgroup",
     # trace_gold.py — anchor tier only (capability-tier edge MV uses trace_security_*.sql instead)
