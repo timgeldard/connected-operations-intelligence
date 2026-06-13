@@ -27,6 +27,7 @@ import { QmDispositionQueueView } from './views/qm-disposition-queue-view.js'
 import { OrderJourneyView } from './views/order-journey-view.js'
 import { ProductionProgressView } from './views/production-progress-view.js'
 import { YieldLossView } from './views/yield-loss-view.js'
+import { ShortageProjectionView } from './views/shortage-projection-view.js'
 import { EmptyNote, ViewHeader } from './components/kerry.js'
 import './theme/kerry-theme.css'
 
@@ -54,6 +55,7 @@ export type WmOperationsViewId =
   | 'order-journey'
   | 'production-progress'
   | 'yield-loss'
+  | 'shortage-projection'
 
 export interface WmOperationsWorkspaceProps {
   readonly scope: ScopeContext
@@ -80,6 +82,7 @@ const VIEW_GROUPS: Array<{ label: string; views: Array<{ id: WmOperationsViewId;
     label: 'Plan',
     views: [
       { id: 'order-readiness', label: 'Order Readiness' },
+      { id: 'shortage-projection', label: 'Shortage Projection' },
       { id: 'staging-pace', label: 'Staging Pace' },
       { id: 'inbound', label: 'Inbound' },
     ],
@@ -279,6 +282,8 @@ function resolveView(viewId: string, request: WmOperationsAdapterRequest, onNavi
       return <ProductionProgressView request={request} onOpenProcessOrder={onOpenProcessOrder} onNavigateToView={onNavigateToView} />
     case 'yield-loss':
       return <YieldLossView request={request} onNavigateToView={onNavigateToView} />
+    case 'shortage-projection':
+      return <ShortageProjectionView request={request} onNavigateToView={onNavigateToView} />
     case 'staging-worklist':
     default:
       return <StagingWorklistView request={request} onOpenProcessOrder={onOpenProcessOrder} onNavigateToView={onNavigateToView} />

@@ -689,6 +689,40 @@ export interface WmComponentVarianceItem {
   readonly isFinalIssue: boolean | null
 }
 
+export interface WmSupplyDemandLedgerItem {
+  readonly plantId: string
+  readonly materialId: string
+  readonly materialName: string | null
+  readonly eventType: string
+  readonly eventSubtype: string
+  readonly eventDate: string | null
+  readonly quantity: number
+  readonly signedQty: number
+  readonly balanceBefore: number
+  readonly runningBalance: number
+  readonly sourceDocumentId: string
+  readonly orderId: string | null
+  readonly sortSeq: number
+  readonly uom: string | null
+}
+
+export interface WmShortageProjectionItem {
+  readonly plantId: string
+  readonly orderId: string
+  readonly materialId: string
+  readonly materialName: string | null
+  readonly openQty: number
+  readonly uom: string | null
+  readonly requirementDate: string | null
+  readonly reservationRef: string
+  readonly projectedBalanceAtDemand: number | null
+  readonly isProjectedShort: boolean
+  readonly firstShortDate: string | null
+  readonly scheduledStartDate: string | null
+  readonly scheduledFinishDate: string | null
+  readonly productionLine: string | null
+}
+
 export interface WmDrillRequest {
   readonly plantId?: string
   readonly warehouseId?: string

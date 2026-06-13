@@ -1204,6 +1204,42 @@ CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_compo
   );
 GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_component_variance_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_supply_demand_ledger_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_supply_demand_ledger
+  WHERE EXISTS (
+    SELECT 1 FROM connected_plant_uat.gold_io_reporting.security_model_fixture
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+      AND COALESCE(enabled, true)
+    UNION ALL
+    SELECT 1 FROM connected_plant_uat.gold_io_reporting.security_model_fixture
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+      AND COALESCE(enabled, true)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_supply_demand_ledger_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_shortage_projection_secured AS
+  SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_order_shortage_projection
+  WHERE EXISTS (
+    SELECT 1 FROM connected_plant_uat.gold_io_reporting.security_model_fixture
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+      AND COALESCE(enabled, true)
+    UNION ALL
+    SELECT 1 FROM connected_plant_uat.gold_io_reporting.security_model_fixture
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+      AND COALESCE(enabled, true)
+  );
+GRANT SELECT ON VIEW connected_plant_uat.gold_io_reporting.gold_wm_order_shortage_projection_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_uat.gold_io_reporting.gold_wm_adherence_root_cause_secured AS
   SELECT * FROM connected_plant_uat.gold_io_reporting.gold_wm_adherence_root_cause
   WHERE EXISTS (

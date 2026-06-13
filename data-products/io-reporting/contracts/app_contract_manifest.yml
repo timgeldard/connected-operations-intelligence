@@ -4147,6 +4147,151 @@ contracts:
         required: false
         description: True when the reservation carries the final-issue flag (RESB KZEAR)
 
+  - id: wm_operations.supply_demand_ledger
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Dated supply/demand ledger per plant×material for shortage projection arithmetic.
+      SUPPLY: ON_HAND (batch_stock unrestricted) + INBOUND_DELIVERY (open EL/ELST lines, base UOM).
+      DEMAND: open reservation_requirement (261 family). running_balance is cumulative signed qty.
+      v1 excludes PO lines (deliveries only) to avoid double-count. Source: gold_wm_supply_demand_ledger.
+    source_view: vw_consumption_wm_operations_supply_demand_ledger
+    grain: one row per plant_id, material_id, and ledger event
+    primary_key:
+      - plant_id
+      - material_id
+      - source_document_id
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: material_id
+        type: string
+        required: true
+      - name: material_name
+        type: string
+        required: false
+      - name: event_type
+        type: string
+        required: true
+        description: SUPPLY or DEMAND
+      - name: event_subtype
+        type: string
+        required: true
+        description: ON_HAND | INBOUND_DELIVERY | RESERVATION
+      - name: event_date
+        type: date
+        required: false
+        description: Null for current on-hand snapshot row
+      - name: quantity
+        type: double
+        required: true
+        description: Absolute event quantity in base UOM
+      - name: signed_qty
+        type: double
+        required: true
+        description: Positive for supply, negative for demand
+      - name: balance_before
+        type: double
+        required: true
+        description: Running balance immediately before this event
+      - name: running_balance
+        type: double
+        required: true
+        description: Cumulative balance after this event
+      - name: source_document_id
+        type: string
+        required: true
+      - name: order_id
+        type: string
+        required: false
+        description: Process order for DEMAND events
+      - name: sort_seq
+        type: integer
+        required: true
+        description: Tiebreaker ordering within event_date
+      - name: uom
+        type: string
+        required: false
+
+  - id: wm_operations.shortage_projection
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Open order-component shortage projection. projected_balance_at_demand is the ledger
+      balance before the component requirement_date; is_projected_short when balance < open_qty.
+      Scope: released unfinished orders only. Source: gold_wm_order_shortage_projection.
+    source_view: vw_consumption_wm_operations_shortage_projection
+    grain: one row per plant_id, order_id, material_id, and reservation_ref
+    primary_key:
+      - plant_id
+      - order_id
+      - material_id
+      - reservation_ref
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+      - name: order_id
+        type: string
+        required: true
+      - name: material_id
+        type: string
+        required: true
+      - name: material_name
+        type: string
+        required: false
+      - name: open_qty
+        type: double
+        required: true
+      - name: uom
+        type: string
+        required: false
+      - name: requirement_date
+        type: date
+        required: false
+        description: Component requirement date (RESB BDTER)
+      - name: reservation_ref
+        type: string
+        required: true
+      - name: projected_balance_at_demand
+        type: double
+        required: false
+      - name: is_projected_short
+        type: boolean
+        required: true
+      - name: first_short_date
+        type: date
+        required: false
+        description: Earliest date running balance went negative for this material
+      - name: scheduled_start_date
+        type: date
+        required: false
+      - name: scheduled_finish_date
+        type: date
+        required: false
+      - name: production_line
+        type: string
+        required: false
+
   - id: wm_operations.adherence_root_cause
     version: 0.1.0
     domain: warehouse

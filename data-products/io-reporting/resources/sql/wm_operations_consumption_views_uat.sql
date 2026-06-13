@@ -788,7 +788,47 @@ SELECT
 FROM connected_plant_uat.gold_io_reporting.gold_wm_order_component_variance_secured
 WHERE plant_code IS NOT NULL;
 
--- 37. Adherence root cause (Production Progress — late-order classification)
+-- 37. Supply/demand ledger (Shortage Projection — dated events with running balance)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_supply_demand_ledger AS
+SELECT
+  plant_code AS plant_id,
+  material_code AS material_id,
+  material_name,
+  event_type,
+  event_subtype,
+  CAST(event_date AS DATE) AS event_date,
+  quantity,
+  signed_qty,
+  balance_before,
+  running_balance,
+  source_document_id,
+  order_number AS order_id,
+  sort_seq,
+  base_uom AS uom
+FROM connected_plant_uat.gold_io_reporting.gold_wm_supply_demand_ledger_secured
+WHERE plant_code IS NOT NULL;
+
+-- 38. Order shortage projection (Shortage Projection — at-risk components)
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_shortage_projection AS
+SELECT
+  plant_code AS plant_id,
+  order_number AS order_id,
+  material_code AS material_id,
+  material_name,
+  open_qty,
+  uom,
+  CAST(requirement_date AS DATE) AS requirement_date,
+  reservation_ref,
+  projected_balance_at_demand,
+  is_projected_short,
+  CAST(first_short_date AS DATE) AS first_short_date,
+  CAST(scheduled_start_date AS DATE) AS scheduled_start_date,
+  CAST(scheduled_finish_date AS DATE) AS scheduled_finish_date,
+  production_line
+FROM connected_plant_uat.gold_io_reporting.gold_wm_order_shortage_projection_secured
+WHERE plant_code IS NOT NULL;
+
+-- 39. Adherence root cause (Production Progress — late-order classification)
 -- Grain: 1 row per plant_id + order_id (miss candidates only).
 -- Source: gold_wm_adherence_root_cause_secured.
 -- is_open_late uses CURRENT_DATE (query-time) for unfinished orders past schedule;

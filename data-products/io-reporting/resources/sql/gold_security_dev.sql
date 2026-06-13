@@ -269,6 +269,14 @@ CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_compo
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_order_component_variance;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_component_variance_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_supply_demand_ledger_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_supply_demand_ledger;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_supply_demand_ledger_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_shortage_projection_secured AS
+  SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_order_shortage_projection;
+GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_order_shortage_projection_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_dev.gold_io_reporting.gold_wm_adherence_root_cause_secured AS
   SELECT * FROM connected_plant_dev.gold_io_reporting.gold_wm_adherence_root_cause;
 GRANT SELECT ON VIEW connected_plant_dev.gold_io_reporting.gold_wm_adherence_root_cause_secured TO `users`;
