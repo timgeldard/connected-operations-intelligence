@@ -112,3 +112,111 @@ def gold_table_args(comment: str, cluster_by: list) -> dict:
         "table_properties": {"delta.enableChangeDataFeed": "false"},
         "cluster_by": cluster_by,
     }
+
+
+def convert_uom(
+    df: DataFrame,
+    material_col: str,
+    qty_col: str,
+    from_uom_col: str,
+    to_uom_col: str,
+    output_col: str = "converted_qty",
+) -> DataFrame:
+    """Convert quantities between units of measure using the silver.material_uom_conversion table.
+
+    Formula:
+        converted_qty = qty * (from_factor / to_factor)
+        where factors are the conversion factors to base UoM.
+        If a factor is missing (i.e. not in MARM, which means it is already base UoM or unmapped),
+        we default the factor to 1.0.
+
+    Args:
+        df: Input DataFrame.
+        material_col: Name of column containing material codes.
+        qty_col: Name of column containing source quantities to convert.
+        from_uom_col: Name of column containing source UoM codes (e.g., 'CAR').
+        to_uom_col: Name of column containing target UoM codes (e.g., 'KG').
+        output_col: Name of the resulting converted quantity column.
+    """
+    from pyspark.sql import functions as F
+
+    spark = df.sparkSession
+    ss = get_silver_schema(spark)
+
+    # Load conversion lookup table
+    conv = spark.read.table(f"{ss}.material_uom_conversion")
+
+    # 1. Join for "From UoM" conversion factor
+    conv_from = conv.select(
+        F.col("material_code").alias("_from_mat"),
+        F.col("alternate_uom").alias("_from_uom"),
+        F.col("conversion_factor_to_base").alias("from_factor"),
+    )
+
+    df_from = df.join(
+        conv_from,
+        (F.col(material_col) == F.col("_from_mat"))
+        & (F.upper(F.trim(F.col(from_uom_col))) == F.col("_from_uom")),
+        "left",
+    ).drop("_from_mat", "_from_uom")
+
+    # 2. Join for "To UoM" conversion factor
+    conv_to = conv.select(
+        F.col("material_code").alias("_to_mat"),
+        F.col("alternate_uom").alias("_to_uom"),
+        F.col("conversion_factor_to_base").alias("to_factor"),
+    )
+
+    df_to = df_from.join(
+        conv_to,
+        (F.col(material_col) == F.col("_to_mat"))
+        & (F.upper(F.trim(F.col(to_uom_col))) == F.col("_to_uom")),
+        "left",
+    ).drop("_to_mat", "_to_uom")
+
+    # 3. Load base UoM reference to identify unverified conversions
+    # Material table is plant-scoped, so select distinct material_code/base_uom pairs
+    mat_base = spark.read.table(f"{ss}.material").select(
+        F.col("material_code").alias("_base_mat"), "base_uom"
+    ).distinct()
+
+    df_base = df_to.join(
+        mat_base, F.col(material_col) == F.col("_base_mat"), "left"
+    ).drop("_base_mat")
+
+    # 4. Perform conversion logic with fallback safety
+    # If factors are missing (left-join returns NULL), default to 1.0 to prevent null multiplication.
+    # We flag unconvertible rows with a warning flag instead of nulling.
+    result = (
+        df_base.withColumn(
+            output_col,
+            F.col(qty_col)
+            * (
+                F.coalesce(F.col("from_factor"), F.lit(1.0))
+                / F.coalesce(F.col("to_factor"), F.lit(1.0))
+            ),
+        )
+        .withColumn(
+            "is_uom_conversion_unverified",
+            # A conversion is unverified if:
+            # - The from_uom is not the base_uom, and its conversion factor is missing (NULL)
+            # - OR the to_uom is not the base_uom, and its conversion factor is missing (NULL)
+            # We also check if from_uom is equal to to_uom (which is always 1:1, so verified).
+            F.when(
+                F.upper(F.trim(F.col(from_uom_col))) == F.upper(F.trim(F.col(to_uom_col))),
+                F.lit(False),
+            ).otherwise(
+                (
+                    (~F.upper(F.trim(F.col(from_uom_col))).eqNullSafe(F.upper(F.trim(F.col("base_uom")))))
+                    & F.col("from_factor").isNull()
+                )
+                | (
+                    (~F.upper(F.trim(F.col(to_uom_col))).eqNullSafe(F.upper(F.trim(F.col("base_uom")))))
+                    & F.col("to_factor").isNull()
+                )
+            ),
+        )
+        .drop("from_factor", "to_factor", "base_uom")
+    )
+
+    return result
