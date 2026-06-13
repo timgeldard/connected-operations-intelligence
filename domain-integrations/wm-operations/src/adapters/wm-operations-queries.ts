@@ -279,6 +279,7 @@ export function useWmLinesideNow(request: WmLinesideRequest, refreshInterval?: n
     queryFn: () => wmOperationsAdapter.getLinesideNow(request),
     staleTime: refreshInterval ?? 60 * 1000,
     refetchInterval: refreshInterval,
+    refetchOnWindowFocus: false,
     enabled: enabled && Boolean(request.plantId && request.lineId),
   })
 }
@@ -289,6 +290,7 @@ export function useWmLinesideNext(request: WmLinesideRequest, refreshInterval?: 
     queryFn: () => wmOperationsAdapter.getLinesideNext(request),
     staleTime: refreshInterval ?? 60 * 1000,
     refetchInterval: refreshInterval,
+    refetchOnWindowFocus: false,
     enabled: enabled && Boolean(request.plantId && request.lineId),
   })
 }
@@ -299,6 +301,7 @@ export function useWmLinesideBlocked(request: WmLinesideRequest, refreshInterval
     queryFn: () => wmOperationsAdapter.getLinesideBlocked(request),
     staleTime: refreshInterval ?? 60 * 1000,
     refetchInterval: refreshInterval,
+    refetchOnWindowFocus: false,
     enabled: enabled && Boolean(request.plantId && request.lineId),
   })
 }
@@ -309,6 +312,7 @@ export function useWmLinesideStaging(request: WmLinesideRequest, refreshInterval
     queryFn: () => wmOperationsAdapter.getLinesideStaging(request),
     staleTime: refreshInterval ?? 60 * 1000,
     refetchInterval: refreshInterval,
+    refetchOnWindowFocus: false,
     enabled: enabled && Boolean(request.plantId && request.lineId),
   })
 }
@@ -319,6 +323,7 @@ export function useWmLinesidePlanActual(request: WmLinesideRequest, refreshInter
     queryFn: () => wmOperationsAdapter.getLinesidePlanActual(request),
     staleTime: refreshInterval ?? 60 * 1000,
     refetchInterval: refreshInterval,
+    refetchOnWindowFocus: false,
     enabled: enabled && Boolean(request.plantId && request.lineId),
   })
 }

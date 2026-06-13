@@ -21,7 +21,7 @@ type BaselineLookup = Record<string, Record<number, DowBand>>
 /** Parse ISO date string (YYYY-MM-DD) → Spark day_of_week (1=Sun … 7=Sat) */
 function dateToDow(isoDate: string): number {
   // Parse parts explicitly to avoid off-by-one in positive timezones
-  const [y, m, d] = isoDate.split('-').map(Number)
+  const [y, m, d] = isoDate.slice(0, 10).split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 1  // 0→1(Sun) … 6→7(Sat)
 }
 
