@@ -22,7 +22,7 @@ business standardising the QAMR grain. Every result-grain-dependent item below i
 - **A1 — Flip live mode for the core loop.** Enable `databricks-api` for subgroups + chart-data
   (governed serving views + adapters already exist), capture browser-UAT evidence. Moves the
   default off `mock`.
-- **A2 — Fix the Genie truthfulness issue.** `spc-consumer-workspace.tsx:42` `cleanGenieText`
+- **A2 — Fix the Genie truthfulness issue.** `domain-integrations/spc/src/spc-consumer-workspace.tsx:42` `cleanGenieText`
   rewrites "mock"→"Databricks API", presenting a LOCAL rule engine as a Databricks Genie call.
   Relabel the "Conversational Insights" tab honestly as a local heuristic (or gate it off) until a
   real Genie Space is wired. (Repo honesty convention — no faked source provenance.)
@@ -42,7 +42,7 @@ Each is a route + contract + UI over an MV confirmed present in UAT:
 - **C1 — All-MIC capability scorecard** ← `spc_quality_metrics` (ooc_rate / sigma_within); Cp/Cpk
   client-computed (the absent `spc_capability_detail_mv` is NOT needed — client path is the advantage).
 - **C2 — Attribute charts P/nP/C/U** ← `spc_attribute_subgroup_mv` (point-logic scaffolding already
-  in `calculations.ts`). ⚠ Coverage limited by the QAMR grain where attribute/result data is thin —
+  in `domain-integrations/spc/src/utils/calculations.ts`). ⚠ Coverage limited by the QAMR grain where attribute/result data is thin —
   surface per-plant, `Unknown` where absent (ties to the parked blocker).
 - **C3 — Process-flow DAG ("the graph")** ← `spc_lineage_graph_mv` + `spc_process_flow_source_mv`
   (replace the current mock "Process Context" tab with the real lineage DAG).
@@ -52,9 +52,9 @@ Each is a route + contract + UI over an MV confirmed present in UAT:
 
 ## Phase D — Governance (move beyond `inventory_only`)
 
-- **D1 — Govern the SPC surface.** SPC is absent from `app_contract_manifest.yml`. Add
+- **D1 — Govern the SPC surface.** SPC is absent from `data-products/io-reporting/contracts/app_contract_manifest.yml`. Add
   `vw_consumption_spc_*` consumption views + manifest namespace + OKF, and advance
-  `app_migration_registry.yml` status. (Serving views + migrated state tables already exist in
+  `data-products/io-reporting/contracts/app_migration_registry.yml` status. (Serving views + migrated state tables already exist in
   `gold_io_reporting` — this formalises the contract.)
 - **D2 — SPC UAT validation pack + RLS verification** (golden plant/material/MIC; per-user RLS
   through the governed views).
