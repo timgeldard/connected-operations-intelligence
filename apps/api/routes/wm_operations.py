@@ -954,7 +954,7 @@ _MAX_PLAN_BOARD_LIMIT = 1000
 _PLAN_BOARD_DATE_LEN = 10  # "YYYY-MM-DD"
 
 
-def _parse_plan_board_date(value: str | None, param_name: str) -> Optional[str]:
+def _parse_plan_board_date(value: str | None, param_name: str) -> str | None:
     """Validate an ISO date string YYYY-MM-DD; raise 422 on malformed; return stripped or None."""
     if not value:
         return None

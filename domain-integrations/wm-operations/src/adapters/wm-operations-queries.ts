@@ -317,6 +317,9 @@ export function useWmLinesideLines(plantId?: string, enabled = true) {
 
 // ── Production Planning Board (PEX-E-36) ──────────────────────────────────
 // READ-ONLY hooks — no schedule/mutate/POST. Date window drives refetch.
+// Query-cadence policy: load once, serve cache across page/panel navigation, and
+// re-query only on a configurable interval — NOT on every page change. Tune here.
+const PLAN_BOARD_REFRESH_MS = 5 * 60 * 1000
 
 export function useWmPlanBoard(request: WmPlanBoardRequest, enabled = true) {
   return useQuery({
@@ -329,7 +332,9 @@ export function useWmPlanBoard(request: WmPlanBoardRequest, enabled = true) {
       request.limit ?? null,
     ],
     queryFn: () => wmOperationsAdapter.getPlanBoard(request),
-    staleTime: 60 * 1000,
+    staleTime: PLAN_BOARD_REFRESH_MS,
+    refetchInterval: PLAN_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
     enabled: enabled && Boolean(request.plantId),
   })
 }
@@ -344,7 +349,9 @@ export function useWmPlanBoardKpis(request: WmPlanBoardRequest, enabled = true) 
       request.toDate ?? null,
     ],
     queryFn: () => wmOperationsAdapter.getPlanBoardKpis(request),
-    staleTime: 60 * 1000,
+    staleTime: PLAN_BOARD_REFRESH_MS,
+    refetchInterval: PLAN_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
     enabled: enabled && Boolean(request.plantId),
   })
 }
@@ -358,7 +365,9 @@ export function useWmPlanBoardBacklog(request: WmPlanBoardRequest, enabled = tru
       request.limit ?? null,
     ],
     queryFn: () => wmOperationsAdapter.getPlanBoardBacklog(request),
-    staleTime: 60 * 1000,
+    staleTime: PLAN_BOARD_REFRESH_MS,
+    refetchInterval: PLAN_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
     enabled: enabled && Boolean(request.plantId),
   })
 }
@@ -374,7 +383,9 @@ export function useWmPlanBoardWmOverlay(request: WmPlanBoardRequest, enabled = t
       request.limit ?? null,
     ],
     queryFn: () => wmOperationsAdapter.getPlanBoardWmOverlay(request),
-    staleTime: 60 * 1000,
+    staleTime: PLAN_BOARD_REFRESH_MS,
+    refetchInterval: PLAN_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
     enabled: enabled && Boolean(request.plantId),
   })
 }

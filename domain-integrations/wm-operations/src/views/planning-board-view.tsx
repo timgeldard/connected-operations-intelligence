@@ -67,8 +67,10 @@ function toIso(d: Date): string {
 }
 
 function addDays(iso: string, n: number): string {
-  const d = new Date(iso + 'T00:00:00')
-  d.setDate(d.getDate() + n)
+  // Parse + mutate + format strictly in UTC — parsing as local midnight then formatting via
+  // toISOString() (UTC) shifts the day by one for non-UTC (esp. positive-offset) timezones.
+  const d = new Date(iso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + n)
   return toIso(d)
 }
 
@@ -77,11 +79,12 @@ function todayIso(): string {
 }
 
 function isoToDate(iso: string): Date {
-  return new Date(iso + 'T00:00:00')
+  return new Date(iso + 'T00:00:00Z')
 }
 
 function formatDateDisplay(iso: string): string {
-  return isoToDate(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  // Format in UTC so the displayed weekday/day matches the UTC-parsed date (no off-by-one).
+  return isoToDate(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
 }
 
 /** Generate array of ISO date strings for [from, to] inclusive. */
@@ -97,8 +100,11 @@ function dateRange(from: string, to: string): string[] {
 
 /** Hours in a date string relative to window start. */
 function hoursFromStart(isoDatetime: string, windowStartIso: string): number {
-  const start = new Date(windowStartIso + 'T00:00:00').getTime()
-  const ts = new Date(isoDatetime).getTime()
+  const start = new Date(windowStartIso + 'T00:00:00Z').getTime()
+  // isoDatetime is a naive (UTC-basis) timestamp from gold — interpret as UTC for a consistent
+  // offset against the UTC window start (mixing local + UTC shifted the NOW line in non-UTC tz).
+  const tsIso = /(Z|[+-]\d\d:?\d\d)$/.test(isoDatetime) ? isoDatetime : isoDatetime + 'Z'
+  const ts = new Date(tsIso).getTime()
   return (ts - start) / 3_600_000
 }
 

@@ -984,8 +984,8 @@ SELECT
                    j.production_first_actual_start
                    + MAKE_INTERVAL(0, 0, 0, 0, 0,
                        CAST(ROUND(ln.planned_minutes / (ln.pct_complete / 100.0)) AS INT), 0)
-                   AS TIMESTAMP)
-                 > CAST(y.scheduled_finish_date AS TIMESTAMP)
+                   AS DATE)
+                 > CAST(y.scheduled_finish_date AS DATE)
            )
          )
       THEN 'atrisk'

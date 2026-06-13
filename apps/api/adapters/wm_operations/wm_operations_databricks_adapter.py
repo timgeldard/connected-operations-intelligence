@@ -1211,7 +1211,7 @@ class WmOperationsRepository:
         )
 
     async def fetch_lineside_lines(
-        self, plant_id: Optional[str]
+        self, plant_id: str | None
     ) -> tuple[list[dict], QuerySpec]:
         return await self._repository.fetch(
             spec_factory=lambda: get_wm_lineside_lines_spec(plant_id),
