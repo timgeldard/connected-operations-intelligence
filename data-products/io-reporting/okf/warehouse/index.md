@@ -47,6 +47,7 @@ This directory lists all `warehouse` contracts in the io-reporting data product.
 - [Recon Exceptions](/warehouse/wm_operations/recon_exceptions.md) -- IM-WM stock reconciliation exceptions at batch/category grain (workbench detail).
 - [Recon Value Summary](/warehouse/wm_operations/recon_value_summary.md) -- Value-control rollup of reconciliation exceptions by reason and severity.
 - [Schedule Adherence Daily](/warehouse/wm_operations/schedule_adherence_daily.md) -- Schedule adherence aggregated to plant x scheduled_finish_date (day) grain.
+- [Shortage Projection](/warehouse/wm_operations/shortage_projection.md) -- Open order-component shortage projection.
 - [Shortfalls](/warehouse/warehouse360/shortfalls.md) -- Material shortfalls — open transfer-requirement backlog aggregated to plant x material (ADR-0004 D2; upstream lineage: the transfer-requirement material-backlog gold MV over the silver warehouse transfer requirements).
 - [Slow Movers](/warehouse/wm_operations/slow_movers.md) -- Value-weighted stock aging by material and batch with query-time age buckets.
 - [Staging Demand](/warehouse/wm_operations/staging_demand.md) -- Planned staging demand wave: open TR quantity by planned execution hour and work area.
@@ -56,6 +57,7 @@ This directory lists all `warehouse` contracts in the io-reporting data product.
 - [Stock Exceptions](/warehouse/warehouse360/stock_exceptions.md) -- Warehouse stock exceptions including expiry, shelf life breach, and status blocks.
 - [Stock Holds](/warehouse/wm_operations/stock_holds.md) -- Quant-level QI/blocked/restricted holds with query-time age.
 - [Stock Zones](/warehouse/warehouse360/stock_zones.md) -- Warehouse stock zone capacities and bin counts.
+- [Supply Demand Ledger](/warehouse/wm_operations/supply_demand_ledger.md) -- Dated supply/demand ledger per plant×material for shortage projection arithmetic.
 - [Wip Stages](/warehouse/wm_operations/wip_stages.md) -- Active process order WIP funnel — one row per plant_id x order_id for released, not-finished orders.
 - [Worklist](/warehouse/wm_operations/worklist.md) -- Supervisor staging/picking worklist at transfer-requirement (job) grain for the WM Operations workspace — read-only mirror of the SAP WM Cockpit (WMA-E-19) Job Assignment grid: work area, RF pick status, assigned operator, queue, campaign and pick progress from linked transfer orders.
 - [Worklist Summary](/warehouse/wm_operations/worklist_summary.md) -- WM worklist rolled up by plant, warehouse, work area and status — the WM Operations manager KPI strip.
