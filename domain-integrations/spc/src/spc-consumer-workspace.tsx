@@ -39,27 +39,6 @@ import {
 } from './spc-consumer/bindings.js'
 import { buildSPCGenieReply } from './spc-consumer/spc-genie-pilot-engine.js'
 
-function cleanGenieText(text: string): string {
-  if (!text) return ''
-  let cleaned = text
-    .replace(/\((mock|legacy-api|unknown-source)\)/g, '(databricks-api)')
-    .replace(/mock/gi, 'Databricks')
-    .replace(/legacy-api/gi, 'Databricks')
-    .replace(/unknown-source/gi, 'Databricks')
-  
-  const lines = cleaned.split('\n')
-  const filteredLines = lines.filter(line => {
-    const l = line.toLowerCase()
-    if (l.startsWith('citations:')) return false
-    if (l.includes('scope note:') && l.includes('pilot')) return false
-    if (l.includes('this is a pilot') || l.includes('mock data') || l.includes('simulated')) return false
-    if (l.includes('evidence-assistant-caveat') || l.includes('sandbox mode')) return false
-    if (l.startsWith('warning:')) return false
-    return true
-  })
-  return filteredLines.join('\n').trim()
-}
-
 type SPCTab = 'charts' | 'capability' | 'alarms' | 'context' | 'insights' | 'correlation' | 'multivariate'
 
 export function SPCConsumerWorkspace() {
@@ -164,13 +143,13 @@ export function SPCConsumerWorkspace() {
       const reply = buildSPCGenieReply(
         'Summarize overall process behaviour.',
         {
-          summary: { data: summaryQuery.data.data, source: 'databricks-api' },
-          chart: { data: chartQuery.data.data, source: 'databricks-api' },
-          capability: { data: capabilityQuery.data.data, source: 'databricks-api' },
-          signals: { data: signalsQuery.data.data, source: 'databricks-api' },
+          summary: { data: summaryQuery.data.data, source: summaryQuery.data.source },
+          chart: { data: chartQuery.data.data, source: chartQuery.data.source },
+          capability: { data: capabilityQuery.data.data, source: capabilityQuery.data.source },
+          signals: { data: signalsQuery.data.data, source: signalsQuery.data.source },
         }
       )
-      setChatMessages([{ sender: 'genie', text: cleanGenieText(reply.text) }])
+      setChatMessages([{ sender: 'genie', text: reply.text }])
     } else {
       setChatMessages([])
     }
@@ -187,13 +166,13 @@ export function SPCConsumerWorkspace() {
     const reply = buildSPCGenieReply(
       query,
       {
-        summary: { data: summaryQuery.data.data, source: 'databricks-api' },
-        chart: { data: chartQuery.data.data, source: 'databricks-api' },
-        capability: { data: capabilityQuery.data.data, source: 'databricks-api' },
-        signals: { data: signalsQuery.data.data, source: 'databricks-api' },
+        summary: { data: summaryQuery.data.data, source: summaryQuery.data.source },
+        chart: { data: chartQuery.data.data, source: chartQuery.data.source },
+        capability: { data: capabilityQuery.data.data, source: capabilityQuery.data.source },
+        signals: { data: signalsQuery.data.data, source: signalsQuery.data.source },
       }
     )
-    setChatMessages(prev => [...prev, { sender: 'genie', text: cleanGenieText(reply.text) }])
+    setChatMessages(prev => [...prev, { sender: 'genie', text: reply.text }])
   }
 
   const loadCharsForPlant = async (materialId: string, plantId: string) => {
