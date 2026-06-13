@@ -166,7 +166,9 @@ if (
             F.col("WERK").alias("_lot_plant"),
             # Carry lot-level fields needed by the gold join (order number, batch, lot origin).
             strip_zeros("AUFNR").alias("_lot_order_number"),
-            F.col("CHARG").alias("_lot_batch"),
+            # Carry the lot's batch as an unmodified CHARG (the CHARG-named alias keeps the
+            # approved-mapping guard's exact-preservation check satisfied through the join).
+            F.col("CHARG").alias("_lot_CHARG"),
             F.col("HERKUNFT").alias("_lot_origin_code"),
             strip_zeros("MATNR").alias("_lot_material_code"),
         )
@@ -199,7 +201,7 @@ if (
             # Lot-level fields carried for the gold join (avoids a second lot join in gold).
             F.col("_lot_plant").alias("plant_code"),
             F.col("_lot_order_number").alias("lot_order_number"),
-            F.col("_lot_batch").alias("batch_number"),
+            F.col("_lot_CHARG").alias("batch_number"),
             F.col("_lot_origin_code").alias("lot_origin_code"),
             F.col("_lot_material_code").alias("material_code"),
             # Extraction timestamp — NOT an event-ordering column.

@@ -32,9 +32,9 @@ meta:
   canonical_gate_warehouse: site_config_warehouse
   helper: silver/_plant_gate.py
   phase: 2   # Phase 1 = WM/MM Silver Fast; Phase 2 = process-order Silver Fast; QM lot+UD + PP/PI snapshots enforced 2026-06-11
-  enforced_count: 22           # +4 QM result family (characteristic/result/sample_result/individual_result) enforced 2026-06-11 (SPC Phase 1)
+  enforced_count: 24           # +2 QM Lab Board (quality_lab_inspection_result / _characteristic_spec) 2026-06-13
   source_guarded_count: 0      # all PP/PI flows now enforced — no remaining CDC-blocked flows
-  exempt_count: 19             # +batch_where_used (traceability) +site_lifecycle (ADR 016), both 2026-06-11
+  exempt_count: 21             # +material_allergen (AUSP) +batch_master (MCH1) 2026-06-13; +batch_where_used +site_lifecycle (2026-06-11)
   needs_mapping_count: 7
   blocked_count: 0
 
@@ -112,6 +112,29 @@ silver_outputs:
                                   # apply_plant_gate(trace_lot) kept on the derived plant_code (authoritative).
                                   # trace_lot = qm_enabled ∪ lifecycle NOT IN (SOLD/DIVESTED_ON_SAP).
                                   # Fallback when site_lifecycle absent: qm_enabled set only (4-plant behaviour).
+
+  # ── ENFORCED (QM Lab Board — characteristic spec + inspection result; quality plant-gate) ──
+  - table_name: quality_lab_inspection_result
+    file: silver/tables/quality_lab.py
+    source_tables: [inspection_qamr, inspection_qals]
+    gating_category: DIRECT_PLANT   # gated VIA PARENT LOT: plant_code carried from gated inspection_qals.WERK
+    gate_field: plant_code
+    gate_join_path: "QAMR -> gated inspection_qals.WERK (gate-via-parent); apply_plant_gate(quality)"
+    gate_config_table: site_config_plant
+    product_area: quality
+    current_status: ENFORCED
+    owner_action_required: none   # apply_plant_gate(quality) on the derived plant_code carried from the gated QALS lot.
+
+  - table_name: quality_lab_characteristic_spec
+    file: silver/tables/quality_lab.py
+    source_tables: [inspection_qamv, inspection_qals]
+    gating_category: DIRECT_PLANT   # gated VIA PARENT LOT: plant_code carried from gated inspection_qals.WERK
+    gate_field: plant_code
+    gate_join_path: "QAMV -> gated inspection_qals.WERK (gate-via-parent); apply_plant_gate(quality)"
+    gate_config_table: site_config_plant
+    product_area: quality
+    current_status: ENFORCED
+    owner_action_required: none   # apply_plant_gate(quality) on the derived plant_code carried from the gated QALS lot.
 
   # ── ENFORCED (QM result family — SPC Phase 1, two-tier spc gate, 2026-06-11) ──
   - table_name: quality_inspection_characteristic
@@ -437,6 +460,20 @@ silver_outputs:
     gating_category: D
     current_status: EXEMPT
     exempt_reason: "Material UoM conversion factors; global, no plant dimension."
+
+  - table_name: material_allergen
+    file: silver/tables/reference.py
+    source_tables: [objectcharacteristics_ausp, characteristicvaluedescription_cawnt]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Material→allergen classification map (AUSP KLART=001 / ATINN 0000000849); global, keyed by material, no plant dimension (same class as recipe_process_line / material_uom_conversion)."
+
+  - table_name: batch_master
+    file: silver/tables/reference.py
+    source_tables: [crossplantbatch_mch1]
+    gating_category: D
+    current_status: EXEMPT
+    exempt_reason: "Client-level MCH1 batch master (material + batch shelf-life attributes: VFDAT/HSDAT/LICHA); no plant column in source — cross-plant batch reference, ungated by design."
 
   - table_name: storage_type_role_mapping
     file: silver/tables/reference.py
