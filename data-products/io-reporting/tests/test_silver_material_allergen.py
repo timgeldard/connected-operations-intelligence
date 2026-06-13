@@ -59,7 +59,8 @@ def apply_material_allergen_transform(
     )
     cawnt = (
         spark.createDataFrame(cawnt_rows, _CAWNT_SCHEMA)
-        .filter(F.col("SPRAS") == "E")
+        # Mirror production: pre-filter to English AND the allergen characteristic before the join.
+        .filter((F.col("SPRAS") == "E") & (F.col("ATINN") == ALLERGEN_ATINN))
         .select(
             F.col("ATINN").alias("_c_atinn"),
             F.col("ATZHL").alias("_c_atzhl"),

@@ -768,7 +768,7 @@ def material_allergen():
         spark.read.table(f"{published}.objectcharacteristics_ausp")
         .filter((F.col("KLART") == "001") & (F.col("ATINN") == ALLERGEN_ATINN))
         .select(
-            strip_zeros(F.col("OBJEK")).alias("material_code"),   # reference.py:754 pattern
+            strip_zeros(F.col("OBJEK")).alias("material_code"),
             F.col("OBJEK").alias("material_code_raw"),
             F.col("ATINN").alias("allergen_atinn"),
             F.col("ATZHL").alias("allergen_value_counter"),
@@ -783,7 +783,10 @@ def material_allergen():
     # Left join: if a CAWNT row is absent, allergen_name is NULL but the row is still present.
     cawnt = (
         spark.read.table(f"{published}.characteristicvaluedescription_cawnt")
-        .filter(F.col("SPRAS") == "E")
+        # Pre-filter to English AND the allergen characteristic before the join: CAWNT holds
+        # descriptions for ALL characteristics and is very large; restricting to ALLERGEN_ATINN
+        # shrinks the scanned/joined volume to just the allergen value texts.
+        .filter((F.col("SPRAS") == "E") & (F.col("ATINN") == ALLERGEN_ATINN))
         .select(
             F.col("ATINN").alias("_c_atinn"),
             F.col("ATZHL").alias("_c_atzhl"),
