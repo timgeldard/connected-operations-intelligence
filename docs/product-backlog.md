@@ -11,24 +11,46 @@
 > accompanied in the same PR by (a) updated documentation and (b) a regenerated OKF
 > bundle (`make generate-okf`); CI (`check_okf_bundle_fresh.py`) blocks drift.
 
-**Status date:** 2026-06-12 (evening)
+**Status date:** 2026-06-13
 
 ---
 
-## 1. Accepted development queue
+## 1. Accepted development queue — ALL SHIPPED 2026-06-13
 
-Items the product owner has explicitly accepted, in suggested execution order.
-Specs for coding agents live in `docs/specs/` (one file per item, same numbering).
+Items 1–7 (spec'd in `docs/specs/`) were built spec→agent→review→merge and rolled out to
+UAT 2026-06-13 (app live 09:23 UTC): data bundle deployed, reference+gold pipelines run,
+secured/serving/consumption/metadata SQL applied, app two-step deployed. Expiry confirmed
+on real MCH1 data (`gold_wm_expiry_risk` 99.5% expiry_date populated).
 
-| # | Item | Type | Status / notes |
-|---|------|------|----------------|
-| 1 | **Worklist: TO priority scoring** — rank worklist TOs by demand-wave urgency (staging-pace demand model computes the wave) instead of creation order | Extension | Ready — cheap, builds on staging-pace gold |
-| 2 | **Campaigns: recipe benchmarking** — duration/yield distribution across runs of the same recipe/process line | Extension | Ready — reuses `gold_wm_order_yield`; process-line axis on `process_order.production_line` |
-| 3 | **Expiry & shelf-life risk** — stock value at risk by expiry horizon, estate-wide FEFO-violation detection, write-off forecasting | New build | In review — `feature/expiry-shelf-life-risk` |
-| 4 | **Production Progress: adherence root-cause tagging** — classify misses (late release / material short / capacity) | Extension | **Prerequisite:** investigate why `gold_process_order_schedule_adherence` is empty at gold level (S-curve currently renders empty state) |
-| 5 | **Shortage projection board** — forward-looking readiness: open orders vs stock vs inbound, projecting *when* an order goes short | New build | Ready |
-| 6 | **Readiness: quality-release dimension** — component batch QM release status joined into readiness bands | Extension | Ready — QM lot/UD silver is estate-wide since ADR 016 §4 widening (2026-06-12) |
-| 7 | **QM Command Centre: characteristic-level drill** — MIC results Pareto + UD-code analytics from QAMR/QASR | Extension | **Gated:** QAMR replication stall limits data to C351 until resolved (see §4) |
+| # | Item | Status |
+|---|------|--------|
+| 1 | Worklist: TO priority scoring | SHIPPED (#133) |
+| 2 | Campaigns: recipe benchmarking | SHIPPED (#134) |
+| 3 | Expiry & shelf-life risk (MCH1 `batch_master`) | SHIPPED (#141) |
+| 4 | Production Progress: adherence repair + root-cause | SHIPPED (#136) |
+| 5 | Shortage projection board | SHIPPED (#139) — runtime `material_code` ambiguity fixed post-merge (#145) |
+| 6 | Readiness: quality-release dimension | SHIPPED (#138) |
+| 7 | QM Command Centre: characteristic drill | SHIPPED (#137) — data C351-only until QAMR stall clears |
+
+## 1b. Architecture-review remediation (from docs/review/architecture_review_report.md, assessed 2026-06-13)
+
+Orchestrator assessment of the external review: agreed items below; **rejected as stale**:
+R1 "missing `/cq/lab/plants` (P0)" — overstated, active picker uses the working
+`/api/wm-operations/plants`, only a dead legacy path hits 404 (→ Phase 0 cleanup); R8
+"envmon broken tab" — false, envmon-consumer is intentionally mock-only.
+
+- **Phase 0 (in flight, `chore/arch-review-phase0`):** R2 migration-registry guard → deny-by-default
+  (scan all `apps/api/adapters/*`, fail on unregistered) + register quality_lab/wm_operations;
+  R1 remove dead `useConnectedQualityLabPlants`/`/cq/lab/plants` path; R8 trim any dangling
+  di-envmon-*monitoring* build alias (leave envmon-consumer).
+- **Phase 1 — hardening:** R6 data-bundle deploy path is user-scoped (`/Workspace/Users/<me>/...`) —
+  move UAT/prod to a CI/CD service-principal `/Workspace/Deployments/` path; R5 integration-test
+  baseline (FastAPI route ↔ mocked Statement API) then incremental E2E; R7 verify+fix outbound
+  delivery header-delete anti-join (orphaned items).
+- **Phase 2 — product/governance:** R4a align `quality_lab` adapter to `resolve_contract_object`
+  (cheap — contract + consumption view already exist); R3 replace `RoleAwareHome` mock widgets with
+  live consumption-view-backed routes.
+- **Phase 3 — roadmap:** R4b contract-govern trace2/spc/poh/cq (large; per-domain sequencing).
 
 ## 2. Trace track (Final Trace migration, ADR 016)
 
@@ -70,6 +92,8 @@ supplier quality scorecard · Order Journey stage-SLA overlays · exceptions tri
 | `users` group + corporate `security.model` entitlements | Consumer-agnostic access (Power BI / Genie / dashboards) to `_secured` views | Platform team |
 | Site lifecycle business review (`site_lifecycle_review.csv`) | Anchorable-plant scope for Final Trace; SOLD/DIVESTED exclusions only activate on explicit confirmation | Business / plant teams |
 | QM sources not replicated to DEV | DEV parity for quality features | Ingestion team |
+| KAPA replication gap — `shiftparametersavailablecapacity_kapa` missing DAFBI/DAFEI (review R9) | `silver.capacity_utilisation` disabled; adherence CAPACITY class + future line-scheduling have no data | Aecorsoft / ingestion team |
+| `warehouse360_app_users` group + prod `published_prod.security.model` entitlements (review R10) | Prod RLS verification / prod cutover | Platform team |
 
 ## 5. Strategic / scheduled items
 
@@ -81,6 +105,9 @@ supplier quality scorecard · Order Journey stage-SLA overlays · exceptions tri
 - `reservation_requirement` size investigation (4.33 GB ≈ 747 B/row across 25 cols;
   OPTIMIZE and REORG PURGE both no-ops — structural/encoding cause suspected; low priority,
   liquid clustering bounds per-query scans). See ADR 017 §6.
+- **Pipelines quiesced 2026-06-13:** Refresh Cadence job (`313093032786158`) PAUSED on
+  instruction; all pipelines manual-trigger-only, nothing scheduled incurs cost. The
+  cost-observation baseline window ended here. Re-unpause that job to resume the daily cadence.
 - **WH360 Gate C / prod cutover** (Gates A & B passed).
 - **SPC Phase 1 merge** — held until the cost-observation window completes. Data point
   2026-06-12: the lab-board 5-year QAMR materialisation ran in ~3 min wall-clock on the
