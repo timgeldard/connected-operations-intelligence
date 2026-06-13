@@ -349,7 +349,7 @@ export function ConnectedQualityLabBoardStandaloneApp() {
             aria-label="Plant filter"
           />
           <datalist id="cq-lab-plant-options">
-            {plants.map(plant => <option key={plant.plantId} value={plant.plantId}>{plant.plantId}</option>)}
+            {Array.from(new Set(plants.map(p => p.plantId))).map(pId => <option key={pId} value={pId}>{pId}</option>)}
           </datalist>
         </div>
         <div className="lab-ctx-field"><span className="lbl">Warehouse</span><span className="val">{selectedPlant?.warehouseId ?? 'Manual entry'}</span></div>

@@ -66,16 +66,20 @@ def _registry_apps() -> dict[str, Any]:
 
 
 def _allowed_apps(apps: dict[str, Any]) -> set[str]:
-    return {
-        app_key
-        for app_key, config in apps.items()
-        if bool(config.get("runtime_governed_contracts_allowed"))
-    }
+    allowed: set[str] = set()
+    for app_key, config in apps.items():
+        if not isinstance(config, dict):
+            continue
+        if bool(config.get("runtime_governed_contracts_allowed")):
+            allowed.add(app_key)
+    return allowed
 
 
 def _app_adapter_dirs(apps: dict[str, Any]) -> dict[str, list[Path]]:
     result: dict[str, list[Path]] = {}
     for app_key, config in apps.items():
+        if not isinstance(config, dict):
+            continue
         result[app_key] = [REPO_ROOT / adapter for adapter in (config.get("adapters") or [])]
     return result
 
@@ -83,6 +87,8 @@ def _app_adapter_dirs(apps: dict[str, Any]) -> dict[str, list[Path]]:
 def _namespace_to_app(apps: dict[str, Any]) -> dict[str, str]:
     result: dict[str, str] = {}
     for app_key, config in apps.items():
+        if not isinstance(config, dict):
+            continue
         namespaces = [config.get("contract_namespace")]
         namespaces.extend(config.get("alternate_contract_namespaces") or [])
         for namespace in namespaces:
@@ -112,6 +118,8 @@ def _registered_adapter_dirs(apps: dict[str, Any]) -> set[Path]:
     """Return the resolved set of all adapter paths declared in the registry."""
     dirs: set[Path] = set()
     for config in apps.values():
+        if not isinstance(config, dict):
+            continue
         for adapter in config.get("adapters") or []:
             dirs.add((REPO_ROOT / adapter).resolve())
     return dirs
@@ -120,7 +128,7 @@ def _registered_adapter_dirs(apps: dict[str, Any]) -> set[Path]:
 def _check_unregistered_adapters(apps: dict[str, Any]) -> list[str]:
     """Deny-by-default: fail if any adapter subdir with data access is not in the registry."""
     errors: list[str] = []
-    if not ADAPTERS_ROOT.exists():
+    if not ADAPTERS_ROOT.is_dir():
         return errors
 
     registered = _registered_adapter_dirs(apps)
