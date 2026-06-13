@@ -1168,6 +1168,56 @@ class WmOperationsRepository:
             mapper=lambda rows: rows,
         )
 
+    # ── Lineside Monitor (PEX-E-35) ───────────────────────────────────────────
+
+    async def fetch_lineside_now(
+        self, request: "WmLinesideRequest"
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_lineside_now_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_lineside_next(
+        self, request: "WmLinesideRequest"
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_lineside_next_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_lineside_blocked(
+        self, request: "WmLinesideRequest"
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_lineside_blocked_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_lineside_staging(
+        self, request: "WmLinesideRequest"
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_lineside_staging_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_lineside_plan_actual(
+        self, request: "WmLinesideRequest"
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_lineside_plan_actual_spec(request),
+            mapper=lambda rows: rows,
+        )
+
+    async def fetch_lineside_lines(
+        self, plant_id: Optional[str]
+    ) -> tuple[list[dict], QuerySpec]:
+        return await self._repository.fetch(
+            spec_factory=lambda: get_wm_lineside_lines_spec(plant_id),
+            mapper=lambda rows: rows,
+        )
+
 
 # ── Generic simple-list datasets (screens 5-9 of the second wave) ─────────────
 # One declarative entry per dataset; specs/mappers are generated. Numeric/integer/
@@ -1652,3 +1702,291 @@ def get_wm_simple_spec(dataset: str, request: WmSimpleRequest) -> QuerySpec:
 def map_wm_simple_rows(dataset: str, rows: list[dict]) -> list[dict]:
     cfg = SIMPLE_DATASETS[dataset]
     return map_rows_generic(rows, numeric=cfg["numeric"], integer=cfg["integer"], boolean=cfg["boolean"])
+
+
+# ── Lineside Monitor (PEX-E-35) ───────────────────────────────────────────────
+# Parameterised by plant_id + line_id (both required for wall-display isolation).
+# Mirror the lab board's days/plant param handling: strip, validate, bind safely.
+
+
+@dataclass
+class WmLinesideRequest:
+    plant_id: str
+    line_id: str
+    limit: int = 100
+
+
+def get_wm_lineside_now_spec(request: WmLinesideRequest) -> QuerySpec:
+    """Running orders + current phase for the Lineside Monitor wall display."""
+    view = resolve_contract_object("wm_operations.lineside_now", "wh360")
+    sql = f"""
+    SELECT
+        plant_id,
+        line_id,
+        order_id,
+        material_id,
+        material_name,
+        planned_qty,
+        uom,
+        pct_complete,
+        planned_minutes,
+        production_first_actual_start,
+        current_operation_number,
+        current_operation_description,
+        current_activity_type,
+        elapsed_minutes,
+        projected_finish
+    FROM {view}
+    WHERE plant_id = :plant_id
+      AND line_id = :line_id
+    ORDER BY order_id ASC
+    LIMIT {int(request.limit)}
+    """
+    return QuerySpec(
+        name="wm_operations.get_lineside_now",
+        module="wh360",
+        endpoint="/api/wm-operations/lineside/now",
+        sql=sql,
+        params={"plant_id": request.plant_id, "line_id": request.line_id},
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "lineside", "now"],
+        contract_id="wm_operations.lineside_now",
+    )
+
+
+def map_wm_lineside_now_rows(rows: list[dict]) -> list[dict]:
+    return map_rows_generic(
+        rows,
+        numeric=("planned_qty", "pct_complete"),
+        integer=("planned_minutes", "elapsed_minutes"),
+        boolean=(),
+    )
+
+
+def get_wm_lineside_next_spec(request: WmLinesideRequest) -> QuerySpec:
+    """Upcoming orders for this line — sourced from gold_wm_order_readiness."""
+    view = resolve_contract_object("wm_operations.order_readiness", "wh360")
+    sql = f"""
+    SELECT
+        plant_id,
+        order_id,
+        material_id,
+        material_name,
+        order_qty,
+        uom,
+        scheduled_start_date,
+        scheduled_finish_date,
+        tr_coverage_status,
+        supply_status,
+        readiness_status,
+        readiness_band,
+        days_to_start,
+        production_line AS line_id
+    FROM {view}
+    WHERE plant_id = :plant_id
+      AND production_line = :line_id
+      AND readiness_status NOT IN ('GR_COMPLETE')
+    ORDER BY scheduled_start_date ASC NULLS LAST
+    LIMIT {int(request.limit)}
+    """
+    return QuerySpec(
+        name="wm_operations.get_lineside_next",
+        module="wh360",
+        endpoint="/api/wm-operations/lineside/next",
+        sql=sql,
+        params={"plant_id": request.plant_id, "line_id": request.line_id},
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "lineside", "next"],
+        contract_id="wm_operations.order_readiness",
+    )
+
+
+def map_wm_lineside_next_rows(rows: list[dict]) -> list[dict]:
+    return map_rows_generic(
+        rows,
+        numeric=("order_qty",),
+        integer=("days_to_start",),
+        boolean=(),
+    )
+
+
+def get_wm_lineside_blocked_spec(request: WmLinesideRequest) -> QuerySpec:
+    """Blocked / at-risk orders for this line — sourced from gold_wm_adherence_root_cause.
+    Also pulls from shortage_projection for material-blocked orders."""
+    view = resolve_contract_object("wm_operations.adherence_root_cause", "wh360")
+    sql = f"""
+    SELECT
+        plant_id,
+        order_id,
+        material_id,
+        material_name,
+        order_qty,
+        uom,
+        scheduled_start_date,
+        scheduled_finish_date,
+        root_cause_class,
+        is_late_release,
+        has_material_short,
+        shortfall_component_count,
+        is_finish_late,
+        is_open_late,
+        production_line AS line_id
+    FROM {view}
+    WHERE plant_id = :plant_id
+      AND production_line = :line_id
+      AND (is_finish_late OR is_open_late OR has_material_short OR is_late_release)
+    ORDER BY scheduled_finish_date ASC NULLS LAST
+    LIMIT {int(request.limit)}
+    """
+    return QuerySpec(
+        name="wm_operations.get_lineside_blocked",
+        module="wh360",
+        endpoint="/api/wm-operations/lineside/blocked",
+        sql=sql,
+        params={"plant_id": request.plant_id, "line_id": request.line_id},
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "lineside", "blocked"],
+        contract_id="wm_operations.adherence_root_cause",
+    )
+
+
+def map_wm_lineside_blocked_rows(rows: list[dict]) -> list[dict]:
+    return map_rows_generic(
+        rows,
+        numeric=("order_qty",),
+        integer=("shortfall_component_count",),
+        boolean=("is_late_release", "has_material_short", "is_finish_late", "is_open_late"),
+    )
+
+
+def get_wm_lineside_staging_spec(request: WmLinesideRequest) -> QuerySpec:
+    """Staging readiness for this line — sourced from gold_wm_order_readiness."""
+    view = resolve_contract_object("wm_operations.order_readiness", "wh360")
+    sql = f"""
+    SELECT
+        plant_id,
+        order_id,
+        material_id,
+        material_name,
+        order_qty,
+        uom,
+        scheduled_start_date,
+        tr_coverage_status,
+        supply_status,
+        readiness_status,
+        component_count,
+        wm_component_count,
+        tr_count,
+        tr_coverage_status AS staging_status,
+        production_line AS line_id
+    FROM {view}
+    WHERE plant_id = :plant_id
+      AND production_line = :line_id
+    ORDER BY scheduled_start_date ASC NULLS LAST
+    LIMIT {int(request.limit)}
+    """
+    return QuerySpec(
+        name="wm_operations.get_lineside_staging",
+        module="wh360",
+        endpoint="/api/wm-operations/lineside/staging",
+        sql=sql,
+        params={"plant_id": request.plant_id, "line_id": request.line_id},
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "lineside", "staging"],
+        contract_id="wm_operations.order_readiness",
+    )
+
+
+def map_wm_lineside_staging_rows(rows: list[dict]) -> list[dict]:
+    return map_rows_generic(
+        rows,
+        numeric=("order_qty",),
+        integer=("component_count", "wm_component_count", "tr_count"),
+        boolean=(),
+    )
+
+
+def get_wm_lineside_plan_actual_spec(request: WmLinesideRequest) -> QuerySpec:
+    """Plan vs actual for this line — sourced from gold_wm_order_yield."""
+    view = resolve_contract_object("wm_operations.order_yield", "wh360")
+    sql = f"""
+    SELECT
+        plant_id,
+        order_id,
+        material_id,
+        material_name,
+        planned_qty,
+        delivered_qty,
+        uom,
+        yield_pct,
+        has_goods_receipt,
+        is_complete,
+        scheduled_start_date,
+        scheduled_finish_date,
+        actual_finish_date,
+        production_line AS line_id
+    FROM {view}
+    WHERE plant_id = :plant_id
+      AND production_line = :line_id
+    ORDER BY scheduled_finish_date DESC NULLS LAST
+    LIMIT {int(request.limit)}
+    """
+    return QuerySpec(
+        name="wm_operations.get_lineside_plan_actual",
+        module="wh360",
+        endpoint="/api/wm-operations/lineside/plan-actual",
+        sql=sql,
+        params={"plant_id": request.plant_id, "line_id": request.line_id},
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "lineside", "plan_actual"],
+        contract_id="wm_operations.order_yield",
+    )
+
+
+def map_wm_lineside_plan_actual_rows(rows: list[dict]) -> list[dict]:
+    return map_rows_generic(
+        rows,
+        numeric=("planned_qty", "delivered_qty", "yield_pct"),
+        integer=(),
+        boolean=("has_goods_receipt", "is_complete"),
+    )
+
+
+def get_wm_lineside_lines_spec(plant_id: Optional[str]) -> QuerySpec:
+    """Distinct production lines (line picker) for the Lineside Monitor config panel."""
+    view = resolve_contract_object("wm_operations.lineside_lines", "wh360")
+    params: dict[str, object] = {}
+    where_str = ""
+    if plant_id:
+        where_str = "WHERE plant_id = :plant_id"
+        params["plant_id"] = plant_id
+    sql = f"""
+    SELECT
+        plant_id,
+        line_id,
+        line_label,
+        active_order_count
+    FROM {view}
+    {where_str}
+    ORDER BY plant_id ASC, line_label ASC
+    LIMIT 500
+    """
+    return QuerySpec(
+        name="wm_operations.get_lineside_lines",
+        module="wh360",
+        endpoint="/api/wm-operations/lineside/lines",
+        sql=sql,
+        params=params,
+        cache_policy=CacheTier.PER_USER_60S,
+        tags=["wm_operations", "lineside", "lines"],
+        contract_id="wm_operations.lineside_lines",
+    )
+
+
+def map_wm_lineside_lines_rows(rows: list[dict]) -> list[dict]:
+    return map_rows_generic(
+        rows,
+        numeric=(),
+        integer=("active_order_count",),
+        boolean=(),
+    )

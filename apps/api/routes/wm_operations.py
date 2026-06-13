@@ -15,6 +15,7 @@ from adapters.wm_operations.wm_operations_databricks_adapter import (
     WmBatchMovementsRequest,
     WmBinStockRequest,
     WmDeliveryPicksRequest,
+    WmLinesideRequest,
     WmMovementsRequest,
     WmOperationsRepository,
     WmOperatorActivityRequest,
@@ -31,6 +32,12 @@ from adapters.wm_operations.wm_operations_databricks_adapter import (
     map_wm_batch_movements_rows,
     map_wm_bin_stock_rows,
     map_wm_delivery_picks_rows,
+    map_wm_lineside_blocked_rows,
+    map_wm_lineside_lines_rows,
+    map_wm_lineside_next_rows,
+    map_wm_lineside_now_rows,
+    map_wm_lineside_plan_actual_rows,
+    map_wm_lineside_staging_rows,
     map_wm_movements_rows,
     map_wm_operator_activity_rows,
     map_wm_order_components_rows,
@@ -774,3 +781,160 @@ async def wm_operations_movements(
     rows, spec = await run_repository_fetch(lambda: repo.fetch_movements(req))
     set_databricks_response_headers(response, spec)
     return map_wm_movements_rows(rows)
+
+
+# ── Lineside Monitor routes (PEX-E-35) ─────────────────────────────────────────
+# Parameterized by plant_id + line_id (both required for wall-display isolation).
+# pattern: strip/validate params, bind safely — mirror lab board's days/plant handling.
+
+_MAX_LINESIDE_LIMIT = 200
+_LINESIDE_LINE_ID_MAX_LEN = 64
+
+
+def _require_lineside_params(plant_id: str | None, line_id: str | None) -> tuple[str, str]:
+    """Validate and strip plant_id + line_id; raise 422 on missing or invalid values."""
+    if not plant_id or not plant_id.strip():
+        raise HTTPException(status_code=422, detail="plant_id is required for lineside endpoints")
+    if not line_id or not line_id.strip():
+        raise HTTPException(status_code=422, detail="line_id is required for lineside endpoints")
+    plant = plant_id.strip()
+    line = line_id.strip()
+    if len(line) > _LINESIDE_LINE_ID_MAX_LEN:
+        raise HTTPException(
+            status_code=422,
+            detail=f"line_id must be at most {_LINESIDE_LINE_ID_MAX_LEN} characters",
+        )
+    return plant, line
+
+
+@router.get("/wm-operations/lineside/now")
+async def wm_lineside_now(
+    response: Response,
+    plant_id: str | None = None,
+    line_id: str | None = None,
+    limit: int = 100,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[dict]:
+    """Running orders + current phase for the Lineside Monitor (PEX-E-35) — databricks-api only.
+
+    Returns one row per order currently in execution on the specified production line.
+    elapsed_minutes and projected_finish are computed at query time by the _live serving view
+    (wall-clock columns, ADR 012). Data age reflects last gold pipeline run — monitor shows
+    a STALE banner when data is stale per client config. Operational value requires ADR 017
+    pilot cadence (15-min triggered; currently paused/daily).
+    """
+    _require_databricks_mode("WM Operations lineside now")
+    _validate_limit(limit, _MAX_LINESIDE_LIMIT)
+    plant, line = _require_lineside_params(plant_id, line_id)
+    req = WmLinesideRequest(plant_id=plant, line_id=line, limit=limit)
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_lineside_now(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_lineside_now_rows(rows)
+
+
+@router.get("/wm-operations/lineside/next")
+async def wm_lineside_next(
+    response: Response,
+    plant_id: str | None = None,
+    line_id: str | None = None,
+    limit: int = 50,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[dict]:
+    """Upcoming orders for this line (What's Next panel) — databricks-api only."""
+    _require_databricks_mode("WM Operations lineside next")
+    _validate_limit(limit, _MAX_LINESIDE_LIMIT)
+    plant, line = _require_lineside_params(plant_id, line_id)
+    req = WmLinesideRequest(plant_id=plant, line_id=line, limit=limit)
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_lineside_next(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_lineside_next_rows(rows)
+
+
+@router.get("/wm-operations/lineside/blocked")
+async def wm_lineside_blocked(
+    response: Response,
+    plant_id: str | None = None,
+    line_id: str | None = None,
+    limit: int = 50,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[dict]:
+    """Blocked / at-risk orders for this line — databricks-api only."""
+    _require_databricks_mode("WM Operations lineside blocked")
+    _validate_limit(limit, _MAX_LINESIDE_LIMIT)
+    plant, line = _require_lineside_params(plant_id, line_id)
+    req = WmLinesideRequest(plant_id=plant, line_id=line, limit=limit)
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_lineside_blocked(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_lineside_blocked_rows(rows)
+
+
+@router.get("/wm-operations/lineside/staging")
+async def wm_lineside_staging(
+    response: Response,
+    plant_id: str | None = None,
+    line_id: str | None = None,
+    limit: int = 50,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[dict]:
+    """Staging readiness for this line — databricks-api only."""
+    _require_databricks_mode("WM Operations lineside staging")
+    _validate_limit(limit, _MAX_LINESIDE_LIMIT)
+    plant, line = _require_lineside_params(plant_id, line_id)
+    req = WmLinesideRequest(plant_id=plant, line_id=line, limit=limit)
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_lineside_staging(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_lineside_staging_rows(rows)
+
+
+@router.get("/wm-operations/lineside/plan-actual")
+async def wm_lineside_plan_actual(
+    response: Response,
+    plant_id: str | None = None,
+    line_id: str | None = None,
+    limit: int = 50,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[dict]:
+    """Plan vs actual for this line (Plan vs Actual panel) — databricks-api only."""
+    _require_databricks_mode("WM Operations lineside plan-actual")
+    _validate_limit(limit, _MAX_LINESIDE_LIMIT)
+    plant, line = _require_lineside_params(plant_id, line_id)
+    req = WmLinesideRequest(plant_id=plant, line_id=line, limit=limit)
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_lineside_plan_actual(req))
+    set_databricks_response_headers(response, spec)
+    return map_wm_lineside_plan_actual_rows(rows)
+
+
+@router.get("/wm-operations/lineside/lines")
+async def wm_lineside_lines(
+    response: Response,
+    plant_id: str | None = None,
+    x_forwarded_access_token: str | None = Header(default=None),
+    x_forwarded_user: str | None = Header(default=None),
+    x_forwarded_email: str | None = Header(default=None),
+) -> list[dict]:
+    """Distinct production lines for the Lineside Monitor config panel — databricks-api only.
+
+    Returns (plant_id, line_id, line_label, active_order_count). plant_id is optional;
+    when omitted, all lines across all accessible plants are returned (RLS still applies).
+    """
+    _require_databricks_mode("WM Operations lineside lines")
+    plant = plant_id.strip() if plant_id else None
+    repo = _build_repository(x_forwarded_access_token, x_forwarded_user, x_forwarded_email)
+    rows, spec = await run_repository_fetch(lambda: repo.fetch_lineside_lines(plant))
+    set_databricks_response_headers(response, spec)
+    return map_wm_lineside_lines_rows(rows)
