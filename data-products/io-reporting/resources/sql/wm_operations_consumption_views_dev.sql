@@ -35,6 +35,15 @@ SELECT
   created_by_user,
   CAST(created_datetime AS TIMESTAMP) AS created_ts,
   CAST(planned_execution_datetime AS TIMESTAMP) AS planned_execution_ts,
+  CAST(demand_due_ts AS TIMESTAMP) AS demand_due_ts,
+  CASE
+    WHEN demand_due_ts IS NULL THEN 10
+    WHEN demand_due_ts < current_timestamp() THEN 100
+    WHEN demand_due_ts <= current_timestamp() + INTERVAL 2 HOURS THEN 80
+    WHEN demand_due_ts <= current_timestamp() + INTERVAL 8 HOURS THEN 60
+    WHEN demand_due_ts <= current_timestamp() + INTERVAL 24 HOURS THEN 40
+    ELSE 20
+  END + COALESCE(priority_intervention_bump, 0) AS priority_score,
   item_count,
   open_item_count,
   material_count,

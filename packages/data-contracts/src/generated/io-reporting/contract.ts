@@ -816,7 +816,7 @@ export const Warehouse360GoodsMovementsContract = {
  * Supervisor staging/picking worklist at transfer-requirement (job) grain for the WM Operations workspace — read-only mirror of the SAP WM Cockpit (WMA-E-19) Job Assignment grid: work area, RF pick status, assigned operator, queue, campaign and pick progress from linked transfer orders. Candidate contract pending DEV profiling.
 
  * Source View: vw_consumption_wm_operations_worklist
- * Version: 0.1.0
+ * Version: 0.2.0
  */
 export interface WmOperationsWorklist {
   /** SAP plant ID */
@@ -863,6 +863,12 @@ export interface WmOperationsWorklist {
   created_ts?: string;
   /** Planned execution timestamp (PDATU/PZEIT) */
   planned_execution_ts?: string;
+  /** Demand-wave due timestamp used for worklist urgency ranking. For order-linked TRs (BETYP='P') this is the linked process order scheduled start; otherwise it falls back to the TR planned execution timestamp.
+ */
+  demand_due_ts?: string;
+  /** Query-time urgency score for default worklist ranking: overdue demand=100, due within 2h=80, within 8h=60, within 24h=40, later=20, no demand date=10, plus +10 for PARKED or NO_STOCK intervention statuses.
+ */
+  priority_score?: number;
   /** TR item count */
   item_count?: number;
   /** Items still open (not ELIKZ, open qty > 0) */
@@ -911,7 +917,7 @@ export interface WmOperationsWorklist {
 
 export const WmOperationsWorklistContract = {
   id: "wm_operations.worklist",
-  version: "0.1.0",
+  version: "0.2.0",
   domain: "warehouse",
   owner: "warehouse-operations",
   lifecycle: "draft",

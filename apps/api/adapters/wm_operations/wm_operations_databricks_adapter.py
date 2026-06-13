@@ -161,6 +161,8 @@ def get_wm_worklist_spec(request: WmWorklistRequest) -> QuerySpec:
         transfer_priority,
         created_ts,
         planned_execution_ts,
+        demand_due_ts,
+        priority_score,
         item_count,
         open_item_count,
         material_count,
@@ -183,7 +185,7 @@ def get_wm_worklist_spec(request: WmWorklistRequest) -> QuerySpec:
         order_production_line
     FROM {view}
     {where_str}
-    ORDER BY planned_execution_ts ASC NULLS LAST, created_ts ASC
+    ORDER BY priority_score DESC NULLS LAST, demand_due_ts ASC NULLS LAST, planned_execution_ts ASC NULLS LAST, created_ts ASC
     LIMIT {int(request.limit)} OFFSET {int(request.offset)}
     """
     return QuerySpec(
@@ -223,6 +225,8 @@ def map_wm_worklist_rows(rows: list[dict]) -> list[dict]:
             "transferPriority": _opt_str(row, "transfer_priority"),
             "createdTs": _opt_str(row, "created_ts"),
             "plannedExecutionTs": _opt_str(row, "planned_execution_ts"),
+            "demandDueTs": _opt_str(row, "demand_due_ts"),
+            "priorityScore": _safe_int(row.get("priority_score")),
             "itemCount": _safe_int(row.get("item_count")),
             "openItemCount": _safe_int(row.get("open_item_count")),
             "materialCount": _safe_int(row.get("material_count")),
