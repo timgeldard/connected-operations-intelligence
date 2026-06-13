@@ -332,6 +332,14 @@ export function ConnectedQualityLabBoardStandaloneApp() {
           <span className="title">Lab Board</span>
         </div>
         <div className="lab-head-right">
+          <button
+            className="lab-iconbtn"
+            title="Refresh now"
+            aria-label="Refresh now"
+            type="button"
+            onClick={() => { void failuresQuery.refetch() }}
+            disabled={failuresQuery.isFetching}
+          >⟳</button>
           <button className="lab-iconbtn" title="Home" type="button">H</button>
           <button className="lab-iconbtn" title="Theme" type="button">D</button>
           <div className="lab-avatar">SK</div>

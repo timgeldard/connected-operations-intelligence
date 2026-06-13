@@ -24,10 +24,10 @@ const registration: EvidencePanelRegistration = {
   allowedConsumerWorkspaces: ['quality-batch-release'],
   requiredContext: [],
   freshnessPolicy: {
-    staleAfterSeconds: 120,
-    errorAfterSeconds: 600,
-    refreshOnFocus: true,
-    pollIntervalSeconds: 60,
+    staleAfterSeconds: 300,
+    errorAfterSeconds: 900,
+    refreshOnFocus: false,
+    pollIntervalSeconds: 300,
   },
   confidencePolicy: { level: null, hidden: false },
   requiredPermissions: [

@@ -7,7 +7,13 @@ import {
 } from './connected-quality-lab-databricks-adapter.js'
 import type { ConnectedQualityLabAdapterRequest } from './connected-quality-lab-databricks-adapter.js'
 
-const LAB_FAILURES_STALE_TIME_MS = 60 * 1000
+/**
+ * How often the lab board data hooks re-query Databricks.
+ * Applied as both staleTime and refetchInterval so cached data is served across
+ * page/panel navigation and a background re-fetch fires on this cadence only —
+ * not on every window focus. Tune this single constant to adjust board freshness.
+ */
+const LAB_BOARD_REFRESH_MS = 5 * 60 * 1000
 const LAB_PLANTS_STALE_TIME_MS = 10 * 60 * 1000
 
 /** Shape of a plant row returned by /api/wm-operations/plants. */
@@ -60,7 +66,9 @@ export function useConnectedQualityLabFailures(request: ConnectedQualityLabAdapt
         return toConnectedQualityLabAdapterError<ConnectedQualityLabFailuresResponse>(e)
       }
     },
-    staleTime: LAB_FAILURES_STALE_TIME_MS,
+    staleTime: LAB_BOARD_REFRESH_MS,
+    refetchInterval: LAB_BOARD_REFRESH_MS,
+    refetchOnWindowFocus: false,
   })
 }
 
