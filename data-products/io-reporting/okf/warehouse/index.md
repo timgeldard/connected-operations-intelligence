@@ -14,7 +14,7 @@ This directory lists all `warehouse` contracts in the io-reporting data product.
 - [Downtime Events](/warehouse/wm_operations/downtime_events.md) -- Production downtime events at event grain — passthrough from silver.downtime_event.
 - [Downtime Pareto](/warehouse/wm_operations/downtime_pareto.md) -- Weekly production downtime pareto aggregated by plant, week, reason code, sub-reason code, and work centre.
 - [Exceptions](/warehouse/wm_operations/exceptions.md) -- Aged warehouse exceptions (expired-with-stock, aged QI/blocked, aged open TOs).
-- [Expiry Risk](/warehouse/wm_operations/expiry_risk.md) -- Batch-level shelf-life risk with query-time expiry buckets.
+- [Expiry Risk](/warehouse/wm_operations/expiry_risk.md) -- Batch-level shelf-life value at risk with query-time expiry buckets and FEFO issue signals.
 - [Goods Movements](/warehouse/warehouse360/goods_movements.md) -- Goods-movement activity feed at material-document-line (MSEG) grain with movement-type classification flags.
 - [Handling Units](/warehouse/wm_operations/handling_units.md) -- Handling-unit (SSCC) counts by status for the inbound/putaway board.
 - [Im Wm Reconciliation](/warehouse/warehouse360/im_wm_reconciliation.md) -- IM/WM stock discrepancies summarised per material and exception type (first-wave AGGREGATE contract — ADR-0004 D6).
