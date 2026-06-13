@@ -26,11 +26,15 @@ def _save(spark, rows, table):
 
 
 def test_severity_helper_shared_with_signal_module():
+    import inspect
+
     import gold.quality_lab as ql
 
     assert callable(ql._lab_result_severity_column)
-    src = ql.gold_qm_lab_result_signal.__code__.co_names
-    assert "_lab_result_severity_column" in src or True  # helper used in same module body
+    signal_src = inspect.getsource(ql.gold_qm_lab_result_signal)
+    pareto_src = inspect.getsource(ql.gold_qm_characteristic_pareto)
+    assert "_lab_result_severity_column()" in signal_src
+    assert "_lab_result_severity_column()" in pareto_src
 
 
 def test_characteristic_pareto_counts(spark: SparkSession):

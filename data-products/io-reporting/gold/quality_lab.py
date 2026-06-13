@@ -97,7 +97,11 @@ def _read_or_empty(spark, fq_table: str, ddl_schema: str) -> DataFrame:
 
 
 def _lab_result_severity_column():
-    """Shared fail/warn severity rule for lab-board result rows (see module docstring)."""
+    """Shared fail/warn severity rule for lab-board and Pareto gold tables.
+
+    Used by gold_qm_lab_result_signal and gold_qm_characteristic_pareto so severity
+    classification stays identical across signal and drill views.
+    """
     r = F.col("quantitative_result")
     lsl = F.col("lsl_spec")
     usl = F.col("usl_spec")
@@ -351,6 +355,7 @@ def gold_qm_characteristic_pareto():
         )
         .withColumn(
             "fail_rate",
+            # Denominator is result_count (all severities at the group grain), not fail_count.
             F.when(
                 F.col("result_count") > 0,
                 F.col("fail_count").cast("double") / F.col("result_count").cast("double"),
