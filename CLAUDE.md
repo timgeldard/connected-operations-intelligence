@@ -93,3 +93,15 @@ If skills are not available, install them: `databricks aitools install`
 - Dev target writes to `connected_plant_dev` catalog, UAT to `connected_plant_uat`, and Prod to `connected_plant_prod`.
 - Email recipients are parameterized via `notification_email` variable in `databricks.yml`.
 - ADRs for key design decisions live in `docs/adr/`.
+
+## Knowledge & documentation
+
+Any change to the data contracts (`app_contract_manifest.yml`) or the data product's
+governed surface MUST be accompanied in the same PR by (a) updated documentation and
+(b) a regenerated OKF bundle (`make generate-okf`); CI (`check_okf_bundle_fresh.py`)
+blocks drift.
+
+The OKF bundle lives at `data-products/io-reporting/okf/` and is generated from
+`data-products/io-reporting/contracts/app_contract_manifest.yml` by
+`data-products/io-reporting/scripts/generate_okf_bundle.py`.  Do not hand-edit the
+bundle; it is a pure downstream artefact.

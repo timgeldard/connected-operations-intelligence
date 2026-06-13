@@ -96,6 +96,57 @@ def _read_or_empty(spark, fq_table: str, ddl_schema: str) -> DataFrame:
     return spark.createDataFrame([], ddl_schema)
 
 
+def _lab_result_severity_column():
+    """Shared fail/warn severity rule for lab-board and Pareto gold tables.
+
+    Used by gold_qm_lab_result_signal and gold_qm_characteristic_pareto so severity
+    classification stays identical across signal and drill views.
+    """
+    r = F.col("quantitative_result")
+    lsl = F.col("lsl_spec")
+    usl = F.col("usl_spec")
+    lsl_warn = F.col("lsl_warn")
+    usl_warn = F.col("usl_warn")
+
+    span = usl - lsl
+    warn_band = span * 0.05
+    lsl_warn_fallback = lsl + warn_band
+    usl_warn_fallback = usl - warn_band
+
+    eff_lsl_warn = F.when(lsl_warn.isNotNull(), lsl_warn).otherwise(lsl_warn_fallback)
+    eff_usl_warn = F.when(usl_warn.isNotNull(), usl_warn).otherwise(usl_warn_fallback)
+
+    has_spec = lsl.isNotNull() & usl.isNotNull()
+    is_outside_spec = has_spec & ((r < lsl) | (r > usl))
+    is_in_warn_band = (
+        has_spec
+        & r.isNotNull()
+        & ~is_outside_spec
+        & ((r < eff_lsl_warn) | (r > eff_usl_warn))
+    )
+    is_non_accepted_no_spec = (
+        ~has_spec
+        & (
+            (F.trim(F.col("inspection_result_valuation")) != "A")
+            | F.col("inspection_result_valuation").isNull()
+        )
+    )
+
+    return (
+        F.when(is_outside_spec | is_non_accepted_no_spec, F.lit("fail"))
+        .when(is_in_warn_band, F.lit("warn"))
+        .otherwise(F.lit(None))
+    )
+
+
+def _join_lab_results_with_specs(results: DataFrame, specs: DataFrame) -> DataFrame:
+    return results.join(
+        specs,
+        on=["inspection_lot_number", "operation_id", "mic_id", "plant_code"],
+        how="left",
+    )
+
+
 def _material_lookup(spark, silver_schema: str) -> DataFrame:
     """(plant_code, material_code) -> material_description, deduplicated.
 
@@ -159,11 +210,7 @@ def gold_qm_lab_result_signal():
     material = _material_lookup(spark, silver_schema)
 
     # Join spec onto result (left — results without spec still surface as 'fail').
-    joined = results.join(
-        specs,
-        on=["inspection_lot_number", "operation_id", "mic_id", "plant_code"],
-        how="left",
-    )
+    joined = _join_lab_results_with_specs(results, specs)
 
     # Join lot metadata for lot_origin_code (lot type 89/04 = QALS.HERKUNFT).
     # Results already carry lot_origin_code from the silver table (carried via _gated_qals_for_lab).
@@ -191,57 +238,14 @@ def gold_qm_lab_result_signal():
         "left",
     ).drop("_mat_plant", "_mat_code")
 
-    # ── Severity rule ─────────────────────────────────────────────────────────────────────
-    # R = quantitative_result, LSL/USL = spec limits, lsl_warn/usl_warn = optional warn limits.
-    r = F.col("quantitative_result")
-    lsl = F.col("lsl_spec")
-    usl = F.col("usl_spec")
-    lsl_warn = F.col("lsl_warn")
-    usl_warn = F.col("usl_warn")
-
-    # Span-based 5%-of-span warn band (fallback when explicit warning limits are NULL).
-    # Approximates SAP's standard "warn = within 5% of span from either limit" concept.
-    span = usl - lsl
+    has_spec = F.col("lsl_spec").isNotNull() & F.col("usl_spec").isNotNull()
+    span = F.col("usl_spec") - F.col("lsl_spec")
     warn_band = span * 0.05
-    lsl_warn_fallback = lsl + warn_band
-    usl_warn_fallback = usl - warn_band
-
-    # Effective warning limits: use explicit QAMV warn limits when present, else 5%-of-span.
-    eff_lsl_warn = F.when(lsl_warn.isNotNull(), lsl_warn).otherwise(lsl_warn_fallback)
-    eff_usl_warn = F.when(usl_warn.isNotNull(), usl_warn).otherwise(usl_warn_fallback)
-
-    # Spec limits present?
-    has_spec = lsl.isNotNull() & usl.isNotNull()
-
-    # Outside spec = FAIL (regardless of valuation code)
-    is_outside_spec = has_spec & ((r < lsl) | (r > usl))
-
-    # Within warning band (only meaningful when within spec)
-    # 'warn': within spec AND (R < lsl_warn_eff OR R > usl_warn_eff)
-    is_in_warn_band = (
-        has_spec
-        & r.isNotNull()
-        & ~is_outside_spec
-        & ((r < eff_lsl_warn) | (r > eff_usl_warn))
-    )
-
-    # Non-accepted result without spec limits → fail (valuation-based)
-    is_non_accepted_no_spec = (
-        ~has_spec
-        & (
-            (F.trim(F.col("inspection_result_valuation")) != "A")
-            | F.col("inspection_result_valuation").isNull()
-        )
-    )
-
-    severity = (
-        F.when(is_outside_spec | is_non_accepted_no_spec, F.lit("fail"))
-        .when(is_in_warn_band, F.lit("warn"))
-        .otherwise(F.lit(None))
-    )
+    lsl_warn_fallback = F.col("lsl_spec") + warn_band
+    usl_warn_fallback = F.col("usl_spec") - warn_band
 
     # Keep only rows with a non-NULL severity (i.e. failed or warned results).
-    filtered = joined.withColumn("_severity", severity).filter(
+    filtered = joined.withColumn("_severity", _lab_result_severity_column()).filter(
         F.col("_severity").isNotNull()
     )
 
@@ -287,4 +291,112 @@ def gold_qm_lab_result_signal():
         F.col("lot_origin_code").alias("lot_type"),
         # QAMR result valuation (raw, for audit transparency).
         F.col("inspection_result_valuation"),
+    )
+
+
+_CHARACTERISTIC_PARETO_SCHEMA = (
+    "plant_code string, material_code string, characteristic_id string, characteristic_text string, "
+    "unit string, result_count long, fail_count long, warn_count long, fail_rate double, "
+    "last_result_date date"
+)
+
+_UD_PARETO_SCHEMA = (
+    "plant_code string, usage_decision_code string, usage_decision string, "
+    "usage_decision_valuation string, lot_count long, last_decision_date date"
+)
+
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "QM characteristic (MIC) Pareto for the QM Command Centre drill view. "
+        "Grain: plant_code × material_code × characteristic_id. Counts ALL lab results "
+        "(not fails-only) from quality_lab_inspection_result over the qm_lookback_years "
+        "silver window. Severity uses the shared _lab_result_severity_column rule with "
+        "gold_qm_lab_result_signal. last_result_date is the per-plant×material freshness "
+        "signal (max result_recording_start_date). Source-guarded when QM lab silver absent."
+    ),
+    cluster_by=["plant_code", "material_code"],
+))
+@dlt.expect("result_count positive", "result_count > 0")
+def gold_qm_characteristic_pareto():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+
+    results = _read_or_empty(
+        spark,
+        f"{silver_schema}.quality_lab_inspection_result",
+        _QUALITY_LAB_RESULT_SCHEMA,
+    )
+    specs = _read_or_empty(
+        spark,
+        f"{silver_schema}.quality_lab_characteristic_spec",
+        _QUALITY_LAB_SPEC_SCHEMA,
+    )
+    if not table_exists(spark, f"{silver_schema}.quality_lab_inspection_result"):
+        return spark.createDataFrame([], _CHARACTERISTIC_PARETO_SCHEMA)
+
+    joined = _join_lab_results_with_specs(results, specs).withColumn(
+        "severity", _lab_result_severity_column()
+    )
+
+    return (
+        joined.groupBy(
+            "plant_code",
+            "material_code",
+            F.col("mic_id").alias("characteristic_id"),
+            F.coalesce(F.col("mic_name"), F.col("mic_id")).alias("characteristic_text"),
+            F.col("uom").alias("unit"),
+        )
+        .agg(
+            F.count(F.lit(1)).alias("result_count"),
+            F.sum(F.when(F.col("severity") == "fail", F.lit(1)).otherwise(F.lit(0))).alias("fail_count"),
+            F.sum(F.when(F.col("severity") == "warn", F.lit(1)).otherwise(F.lit(0))).alias("warn_count"),
+            F.max("result_recording_start_date").alias("last_result_date"),
+        )
+        .withColumn(
+            "fail_rate",
+            # Denominator is result_count (all severities at the group grain), not fail_count.
+            F.when(
+                F.col("result_count") > 0,
+                F.col("fail_count").cast("double") / F.col("result_count").cast("double"),
+            ).otherwise(F.lit(None).cast("double")),
+        )
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "QM usage-decision code Pareto for the QM Command Centre drill view. "
+        "Grain: plant_code × usage_decision_code. Plant attribution uses the parent lot "
+        "plant (quality_inspection_usage_decision.plant_code from QALS.WERK gate — NOT "
+        "QAVE.VWERKS). lot_count = distinct inspection lots per code; last_decision_date "
+        "is the freshness signal. Source-guarded when QM UD silver absent."
+    ),
+    cluster_by=["plant_code", "usage_decision_code"],
+))
+@dlt.expect("lot_count positive", "lot_count > 0")
+def gold_qm_ud_code_pareto():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+
+    uds = _read_or_empty(
+        spark,
+        f"{silver_schema}.quality_inspection_usage_decision",
+        "plant_code string, inspection_lot_number string, usage_decision_code string, "
+        "usage_decision string, usage_decision_valuation string, usage_decision_date date",
+    )
+    if not table_exists(spark, f"{silver_schema}.quality_inspection_usage_decision"):
+        return spark.createDataFrame([], _UD_PARETO_SCHEMA)
+
+    return (
+        uds.groupBy(
+            "plant_code",
+            "usage_decision_code",
+            "usage_decision",
+            "usage_decision_valuation",
+        )
+        .agg(
+            F.count_distinct("inspection_lot_number").alias("lot_count"),
+            F.max("usage_decision_date").alias("last_decision_date"),
+        )
     )

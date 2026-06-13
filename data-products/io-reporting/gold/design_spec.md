@@ -266,6 +266,70 @@ Managed via Declarative Automation Bundle (DAB).
   in `resources/sql/trace_security_{env}.sql` (tolerated failure if group absent).
 - **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
 
+### T4 Phase 3 — governed trace2 enrichment lookups
+
+> Phase 3 builds the plant-independent lookup MVs that trace2 API fan-out adapters need,
+> and switches every `gold_material` / `gold_plant` / `gold_batch_material` legacy read to
+> these governed equivalents. After this PR the ONLY remaining legacy TRACE_SCHEMA reference
+> in `apps/api` is `gold_batch_quality_result_v` (CoA panel — see decision note below).
+
+#### `gold_trace_material`  *(T4 — capability tier)*
+- **Granularity:** 1 row per `material_code` (plant-independent).
+- **Source:** `silver.material` (MARA + MARC + MAKT, plant-scoped). `silver.material` is one row
+  per `(plant_code, material_code)` because MARA attributes live on MARC/plant rows. This MV
+  aggregates across plants using `F.max()` — deterministic because `material_description` is the
+  same for a given material_code regardless of plant; max() is a stable tiebreak.
+- **LANGUAGE:** `silver.material` is pre-filtered to `MAKT.SPRAS='E'` (English). A `LANGUAGE_ID='E'`
+  literal column is added to preserve the legacy JOIN contract (`m.LANGUAGE_ID = 'E'`).
+- **Columns:** `MATERIAL_ID` (material_code), `MATERIAL_NAME`, `material_type`, `material_group`,
+  `BASE_UNIT_OF_MEASURE`, `LANGUAGE_ID`.
+- **Legacy contract target:** `gold_material` — keyed on `MATERIAL_ID` only (plant-independent).
+- **Security:** Capability tier — NOT in `GOLD_TABLES`; `GRANT SELECT` to `traceability-readers`
+  in `resources/sql/trace_security_{env}.sql` (tolerated failure if group absent).
+- **Determinism guard:** No `current_date` / `current_timestamp` — fully deterministic.
+- **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
+
+#### `gold_trace_plant`  *(T4 — capability tier)*
+- **Granularity:** 1 row per `PLANT_ID` (plant_code).
+- **Source:** `silver.plant` (T001W via central_services) UNION ALL `silver.site_lifecycle`
+  (estate-wide ~550-plant dimension, ADR 016). `silver.site_lifecycle` covers SOLD/CLOSED/divested
+  plants that have edges in `gold_batch_lineage` but may not be in `silver.plant` (which only covers
+  actively-replicated T001W plants). `silver.site_lifecycle.country` is aliased to `country_key`
+  to match `silver.plant.country_key` naming. After UNION ALL, a `groupBy(plant_code).agg(F.max)`
+  tiebreak produces a single row per plant.
+- **Columns:** `PLANT_ID` (plant_code), `PLANT_NAME`, `country_key`.
+- **Legacy contract target:** `gold_plant` — `PLANT_ID`, `PLANT_NAME`.
+- **Security:** Capability tier — same as above.
+- **Determinism guard:** No `current_date` / `current_timestamp` — fully deterministic.
+- **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
+
+#### `gold_trace_batch_material`  *(T4 — capability tier)*
+- **Granularity:** 1 row per `(MATERIAL_ID, BATCH_ID)` — deduplicated `SUPPLIER_BATCH_ID`.
+- **Source:** `silver.batch_where_used` (CHVW.LICHA → `vendor_batch_number`). Filtered to
+  non-null / non-blank `vendor_batch_number`. `F.max()` tiebreak on `vendor_batch_number` per
+  `(material_code, batch_number)`.
+- **MCH1/MCHA decision:** MCH1 and MCHA (SAP batch master tables carrying `LICHA`/`MFRGR`/`VFDAT`
+  for manufacture date and expiry date) are NOT replicated in bronze (confirmed: no MCH1/MCHA
+  reference in pipeline code outside `generate_data_dictionary.py`). An ingestion request for MCH1
+  would unlock `manufacture_date` (MFRGR) and `expiry_date` (VFDAT) on this MV, which would also
+  address the recall-date gap in the batch header adapter. CHVW.LICHA (`vendor_batch_number`) is
+  already available in `silver.batch_where_used` and is used here.
+- **Columns:** `MATERIAL_ID` (material_code), `BATCH_ID` (batch_number), `SUPPLIER_BATCH_ID`.
+- **Legacy contract target:** `gold_batch_material` — `SUPPLIER_BATCH_ID` per (material, batch).
+- **Security:** Capability tier — same as above.
+- **Determinism guard:** No `current_date` / `current_timestamp` — fully deterministic.
+- **Freshness:** Full recompute on each Gold pipeline run (triggered batch mode).
+
+#### CoA decision — `gold_batch_quality_result_v` (deferred)
+> The legacy `gold_batch_quality_result_v` (CoA panel in the quality passport adapter) is NOT
+> replaced in this PR. Reason: the governed equivalent (`gold_qm_usage_decision` + result-grain)
+> is gated to 4 QM pilot plants (lab-confirmed). The legacy view is estate-wide (138 plants).
+> Building a governed CoA would narrow scope, which is a product decision not a technical one.
+> Options: (a) accept gated scope and ship governed CoA for 4 plants; (b) widen QM result grain
+> to all 138 plants (requires QM silver onboarding); (c) retire the CoA panel. Decision pending.
+> The legacy `resolve_domain_object("trace2", "gold_batch_quality_result_v")` read remains in
+> `quality_passport_adapter.py` as the only surviving TRACE_SCHEMA reference in `apps/api`.
+
 ---
 
 ### Access-tier foundation

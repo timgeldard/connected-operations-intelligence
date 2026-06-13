@@ -41,3 +41,16 @@ GRANT SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_batch_event_le
 
 GRANT SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_trace_vendor
   TO `traceability-readers`;
+
+-- T4 (Phase 3 enrichment lookups): gold_trace_material, gold_trace_plant, gold_trace_batch_material.
+-- Same capability-tier pattern as gold_batch_lineage above.
+-- TOLERATED FAILURE: if the traceability-readers group is absent, these GRANTs will fail
+-- gracefully — expected; re-run after provisioning.
+GRANT SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_trace_material
+  TO `traceability-readers`;
+
+GRANT SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_trace_plant
+  TO `traceability-readers`;
+
+GRANT SELECT ON TABLE connected_plant_prod.gold_io_reporting.gold_trace_batch_material
+  TO `traceability-readers`;

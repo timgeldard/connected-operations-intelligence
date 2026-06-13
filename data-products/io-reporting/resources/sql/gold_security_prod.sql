@@ -1067,6 +1067,22 @@ CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_wm_order_comp
   );
 GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_wm_order_component_variance_secured TO `users`;
 
+CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_wm_adherence_root_cause_secured AS
+  SELECT * FROM connected_plant_prod.gold_io_reporting.gold_wm_adherence_root_cause
+  WHERE EXISTS (
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_wm_adherence_root_cause_secured TO `users`;
+
 CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_spc_quality_metric_subgroup_secured AS
   SELECT * FROM connected_plant_prod.gold_io_reporting.gold_spc_quality_metric_subgroup
   WHERE EXISTS (
@@ -1130,6 +1146,38 @@ CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_qm_lab_result
       AND array_contains(filter_plant, plant_code)
   );
 GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_qm_lab_result_signal_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_qm_characteristic_pareto_secured AS
+  SELECT * FROM connected_plant_prod.gold_io_reporting.gold_qm_characteristic_pareto
+  WHERE EXISTS (
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_qm_characteristic_pareto_secured TO `users`;
+
+CREATE OR REPLACE VIEW connected_plant_prod.gold_io_reporting.gold_qm_ud_code_pareto_secured AS
+  SELECT * FROM connected_plant_prod.gold_io_reporting.gold_qm_ud_code_pareto
+  WHERE EXISTS (
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'full view'
+    UNION ALL
+    SELECT 1 FROM published_prod.security.model
+    WHERE current_user() = email
+      AND application_key = 'io_reporting'
+      AND LOWER(access_type) = 'filter'
+      AND array_contains(filter_plant, plant_code)
+  );
+GRANT SELECT ON VIEW connected_plant_prod.gold_io_reporting.gold_qm_ud_code_pareto_secured TO `users`;
 
 -- ── Base-table access hardening ──
 -- The actual REVOKE statements are generated as a SEPARATE admin script

@@ -5,6 +5,11 @@
 > as any change that ships, parks, or reprioritises an item. Status date is below; if the
 > status date is stale relative to recent merges, treat git history as authoritative and
 > update this file.
+>
+> **Knowledge & documentation mandate:** any change to the data contracts
+> (`app_contract_manifest.yml`) or the data product's governed surface MUST be
+> accompanied in the same PR by (a) updated documentation and (b) a regenerated OKF
+> bundle (`make generate-okf`); CI (`check_okf_bundle_fresh.py`) blocks drift.
 
 **Status date:** 2026-06-12 (evening)
 
@@ -27,14 +32,21 @@ Specs for coding agents live in `docs/specs/` (one file per item, same numbering
 
 ## 2. Trace track (Final Trace migration, ADR 016)
 
-- **Phase 2 — governed fan-out switchover** (in flight): mass-balance, timeline, supplier,
-  recall-readiness, holds, quality-passport routes + batch-header summary move from legacy
-  `gold` views to `gold_batch_event_ledger` / `gold_batch_stock_summary` / `gold_trace_vendor`
-  / estate QM gold. Response contracts byte-identical.
-- Governed `gold_material` / `gold_plant` equivalents — the last legacy enrichment dependency.
-- **Legacy `gold` schema retirement** — after Phase 2 + confirmation that no external consumer
-  (Power BI etc.) reads the legacy views. Legacy 168M-edge `gold.gold_batch_lineage` is already
-  unread by the app.
+- ~~Phase 2 — governed fan-out switchover~~ **SHIPPED 2026-06-12** (PR #129).
+- **Phase 3 — governed lookups** (PR open: `feature/trace-governed-lookups`):
+  `gold_trace_material` / `gold_trace_plant` / `gold_trace_batch_material` + adapter
+  switchover. Post-merge: deploy + gold run + capability grants.
+- **Phase 4 — remaining legacy views (corrected inventory, 3 not 1):**
+  `gold_batch_delivery_v` (customer panel) and `gold_batch_production_history_v`
+  (production history) need governed derivations (plausibly from the event ledger);
+  `gold_batch_quality_result_v` (CoA panel, 345M-row legacy estate view) awaits a product
+  decision — governed result-grain is plant-gated, so options are: accept gated scope /
+  widen result grain / retire the panel.
+- **Legacy `gold` schema retirement** — after Phase 4 + confirmation that no external
+  consumer (Power BI etc.) reads the legacy views. Legacy 168M-edge
+  `gold.gold_batch_lineage` is already unread by the app.
+- MCH1 (batch master) NOT replicated to bronze — ingestion request needed; supplies
+  manufacture/expiry dates for recall-readiness gaps AND queue item 3 (expiry risk).
 - ADR 016 rename: Final Trace mount (`traceability-workspace`) → workspace id `trace`
   (unblocked by the legacy `trace` workspace decommission).
 - Batch passport surface; i18n phases; trace2 parity leftovers (B1 customer/delivery tables,
@@ -61,6 +73,14 @@ supplier quality scorecard · Order Journey stage-SLA overlays · exceptions tri
 
 ## 5. Strategic / scheduled items
 
+- **Refresh cadence / factory-floor latency path — see ADR 017** (decided 2026-06-12 after
+  external-review convergence): Enzyme-managed MVs, silver/gold cadence coupled, pilot
+  cutover = 15-min triggered + chained gold; sequencing gates: quiet-day Enzyme fallback
+  report → pilot SLA definition → cadence change. Maintenance regime: Predictive
+  Optimization (pending enablement approval).
+- `reservation_requirement` size investigation (4.33 GB ≈ 747 B/row across 25 cols;
+  OPTIMIZE and REORG PURGE both no-ops — structural/encoding cause suspected; low priority,
+  liquid clustering bounds per-query scans). See ADR 017 §6.
 - **WH360 Gate C / prod cutover** (Gates A & B passed).
 - **SPC Phase 1 merge** — held until the cost-observation window completes. Data point
   2026-06-12: the lab-board 5-year QAMR materialisation ran in ~3 min wall-clock on the
