@@ -8,9 +8,10 @@ module.exports = {
   extends: [
     'eslint:recommended',
     'plugin:@typescript-eslint/recommended',
+    'plugin:react-compiler/recommended',
   ],
   parser: '@typescript-eslint/parser',
-  plugins: ['@typescript-eslint'],
+  plugins: ['@typescript-eslint', 'react-compiler'],
   parserOptions: {
     ecmaVersion: 'latest',
     sourceType: 'module',
@@ -18,6 +19,7 @@ module.exports = {
   rules: {
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     '@typescript-eslint/no-explicit-any': 'warn',
+    'react-compiler/react-compiler': 'error',
   },
   ignorePatterns: [
     'dist',

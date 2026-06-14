@@ -5,3 +5,11 @@ packages:
 
 allowBuilds:
   esbuild: true
+
+# Catalog pins the React 19 baseline; combined with pnpm.overrides in package.json
+# this guarantees a single React resolution across the workspace.
+catalog:
+  react: ^19.0.0
+  react-dom: ^19.0.0
+  '@types/react': ^19.0.0
+  '@types/react-dom': ^19.0.0

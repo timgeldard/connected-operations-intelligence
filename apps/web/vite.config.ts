@@ -28,8 +28,19 @@ const workspaceAliases = {
   '@connectio/di-envmon': r('domain-integrations/envmon/src/index.ts'),
 }
 
+// React Compiler — Phase 2 enablement. memo-removal (Phase 2 step 3) and Phase 3
+// feature leverage (forwardRef retirement, useTransition, document metadata) are
+// deferred to follow-up PRs so this migration PR stays reviewable.
+const reactCompilerConfig = { target: '19' }
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react({
+      babel: {
+        plugins: [['babel-plugin-react-compiler', reactCompilerConfig]],
+      },
+    }),
+  ],
   resolve: {
     alias: workspaceAliases,
   },

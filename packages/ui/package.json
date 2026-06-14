@@ -22,11 +22,11 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.511.0",
     "tailwind-merge": "^3.3.0",
-    "react": "^18.3.1"
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.17",
-    "@types/react": "^18.3.1",
+    "@types/react": "^19.0.0",
     "storybook": "^8.5.8",
     "@storybook/react-vite": "^8.5.8"
   }

@@ -11,6 +11,15 @@
     "@connectio/design-system": "workspace:*",
     "@connectio/product-model": "workspace:*",
     "@connectio/data-contracts": "workspace:*",
-    "react": "^18.3.1"
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.6.3",
+    "@testing-library/react": "16.3.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "4.3.4",
+    "jsdom": "26.1.0",
+    "vitest": "3.2.4"
   }
 }

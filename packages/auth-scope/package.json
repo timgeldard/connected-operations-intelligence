@@ -10,6 +10,6 @@
   "dependencies": {
     "@connectio/product-model": "workspace:*",
     "@connectio/data-contracts": "workspace:*",
-    "react": "^18.3.1"
+    "react": "^19.0.0"
   }
 }
