@@ -242,3 +242,89 @@ ORDER BY abs_delta_value_total DESC;
 Use the pipeline notification configured in `resources/gold_pipeline.pipeline.yml` for failure
 alerts. Treat `FAIL` health rows as immediate triage; `WARN` rows require operational review
 before consumers use the affected KPI for plant action.
+
+---
+
+## ADR 017 — Cadence and Maintenance
+
+### Table maintenance regime (ADR 017 decision 6)
+
+The preferred maintenance mechanism is **Predictive Optimization** on the silver and gold schemas:
+
+```sql
+-- Run once per environment as a Unity Catalog admin (DBR 13.3+, workspace opt-in required)
+ALTER SCHEMA connected_plant_uat.silver_io_reporting ENABLE PREDICTIVE OPTIMIZATION;
+ALTER SCHEMA connected_plant_uat.gold_io_reporting   ENABLE PREDICTIVE OPTIMIZATION;
+```
+
+When Predictive Optimization is enabled the platform handles compaction and deletion-vector
+purging automatically. The scheduled maintenance job (`resources/maintenance.job.yml`) is a
+**PAUSED fallback** — it runs OPTIMIZE + REORG TABLE ... APPLY (PURGE) weekly (Sunday 02:00 UTC)
+if Predictive Optimization is not available in the workspace.
+
+**To arm the maintenance job** (after verifying Predictive Optimization is not active):
+1. In `databricks.yml`, add per-target variable:
+   ```yaml
+   maintenance_pause_status: UNPAUSED
+   ```
+   Or directly edit `resources/maintenance.job.yml` and change `pause_status: PAUSED` to `UNPAUSED`
+   for the relevant target.
+2. Deploy: `databricks bundle deploy -t <target> --profile <profile>`
+3. Verify the job appears in the Databricks Jobs UI with a weekly Sunday trigger.
+
+**VACUUM is NOT included in the maintenance job.** Silver tables serve CDF to downstream
+incremental consumers. Aggressive VACUUM retention (e.g. `RETAIN 24 HOURS`) destroys
+unconsumed change history and is prohibited without a specific reviewed reason (ADR 017
+decision 6). The CI guard `scripts/ci/check_vacuum_retention.py` enforces the 168 h (7-day)
+minimum. If a specific table genuinely requires shorter retention, add an entry to the
+ALLOWLIST in that guard with a reviewed reason and an ADR/design-doc reference.
+
+### Enzyme fallback report (ADR 017 gate 5a)
+
+The quiet-day Enzyme fallback report is a standing observability artefact required before
+any cadence change. See `docs/runbooks/enzyme-fallback-report.md` for the full procedure.
+
+Summary: run the report after the cost-observation baseline is complete, on a day with
+no estate-gate expansions or first-ever materialisations (those inflate COMPLETE_RECOMPUTE
+share). The report queries the gold pipeline event log for per-flow planning modes
+(NO_OP / ROW_BASED / COMPLETE_RECOMPUTE) and the Enzyme-emitted fallback reason.
+
+```bash
+# Print SQL for manual execution in the Databricks SQL editor:
+python data-products/io-reporting/scripts/enzyme_fallback_report.py \
+    --pipeline-id <gold-pipeline-uuid> \
+    --catalog connected_plant_uat \
+    --gold-schema gold_io_reporting
+```
+
+### Arming the 15-minute triggered cadence (ADR 017 decision 3)
+
+The 15-minute cadence is staged in `resources/refresh_cadence.job.yml` but **INERT** (commented
+out). Both gates must clear before arming:
+
+| Gate | Condition | Status |
+|---|---|---|
+| A | Cost-observation baseline complete; quiet-day Enzyme report pulled | Not yet cleared |
+| B | Per-surface latency SLAs defined with named pilot floor users | Not yet cleared |
+
+**Arming procedure** (when both gates are cleared):
+
+1. In `databricks.yml`, add a per-pilot-target variable override for the cron expression,
+   or edit the `quartz_cron_expression` in `resources/refresh_cadence.job.yml` directly:
+   ```yaml
+   # Replace the daily cron with:
+   quartz_cron_expression: "0 */15 * * * ?"   # Every 15 minutes
+   ```
+2. Ensure `cadence_pause_status: UNPAUSED` for the pilot target (UAT already has this).
+3. Deploy: `databricks bundle deploy -t uat --profile DEFAULT`
+4. Monitor cost for the first 24 h before declaring the pilot cadence active.
+5. If measured latency requires sub-5-minute updates, escalate to continuous pipeline mode
+   (ADR 017 decision 3 — continuous is the escalation path, not the default).
+
+**Do NOT arm the 15-minute cadence while pipelines are paused for the cost-observation
+baseline** (memory: cost-observation-period). Doing so would defeat the baseline and
+pre-empt gate B.
+
+**No pipeline is started by deploying this configuration.** The `pause_status` variable
+controls whether the job schedule is active; the job definition itself does not trigger
+a pipeline run at deploy time.

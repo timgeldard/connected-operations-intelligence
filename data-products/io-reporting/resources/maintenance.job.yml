@@ -1,0 +1,65 @@
+resources:
+  jobs:
+    maintenance:
+      name: "[${bundle.target}] Connected Plant — Table Maintenance"
+
+      # ADR 017 decision 6: systematic table maintenance regime.
+      #
+      # Preferred path: enable Predictive Optimization on the silver/gold schemas via
+      # ALTER SCHEMA ... ENABLE PREDICTIVE OPTIMIZATION (Unity Catalog, requires DBR 13.3+
+      # and workspace-level opt-in). When Predictive Optimization is enabled this job
+      # becomes a no-op safety net (the platform handles compaction automatically).
+      #
+      # Fallback path (if Predictive Optimization is not enabled for the workspace): this
+      # job runs OPTIMIZE + REORG TABLE ... APPLY (PURGE) weekly at an off-peak time to:
+      #   - Compact small files from DLT streaming table CDC ingestion
+      #   - Purge soft-deleted rows (deletion vectors) accumulated between cadence runs
+      #
+      # The job is PAUSED by default in ALL targets. Arm per-target where cost policy allows
+      # (mirror the refresh_cadence job's `cadence_pause_status` posture). See the runbook:
+      #   data-products/io-reporting/docs/runbook.md — §ADR 017 — Cadence and Maintenance
+      #
+      # VACUUM is NOT run here. Silver tables serve CDF to downstream incremental consumers;
+      # aggressive VACUUM retention destroys unconsumed change history and is prohibited
+      # without a specific reviewed reason (ADR 017 decision 6; enforced by
+      # scripts/ci/check_vacuum_retention.py).
+      #
+      # The maintenance_task.py script emits Predictive Optimization status at runtime:
+      # if PO is already enabled, it logs and exits without running OPTIMIZE/REORG.
+
+      tags:
+        owner: connected-plant-team
+        cost-center: connected-plant
+        project: ops-reporting
+
+      tasks:
+        - task_key: maintenance
+          environment_key: default
+          spark_python_task:
+            python_file: ../scripts/maintenance_task.py
+            parameters:
+              - "--catalog=${var.catalog}"
+              - "--silver-schema=${var.schema}"
+              - "--gold-schema=${var.gold_schema}"
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - --editable ${workspace.file_path}
+
+      schedule:
+        # Weekly Sunday 02:00 UTC — off-peak, after the Friday/Saturday cadence runs,
+        # before the Monday operational start.
+        quartz_cron_expression: "0 0 2 ? * SUN"
+        timezone_id: UTC
+        pause_status: PAUSED
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      permissions:
+        - level: CAN_VIEW
+          group_name: users
