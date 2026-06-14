@@ -43,7 +43,7 @@ export function ActiveInvestigationContextProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )
-  const storeRef = useRef<ActiveInvestigationStore>()
+  const storeRef = useRef<ActiveInvestigationStore | undefined>(undefined)
 
   if (!storeRef.current) {
     storeRef.current = createActiveInvestigationStore({ workspaceId, initialContext })
