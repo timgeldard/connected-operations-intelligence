@@ -1,0 +1,19 @@
+reason_code,domain,label,default_responsible_function,default_severity_hint
+MATERIAL_SHORTFALL,production,Material shortfall — insufficient stock to meet order requirement,Warehouse,High
+STAGING_INCOMPLETE,production,Staging incomplete — components not fully staged for the order,Warehouse,High
+TR_AGEING,warehouse,Transfer requirement ageing — open TR not converted to TO within threshold,Warehouse,Medium
+TO_UNCONFIRMED,warehouse,Transfer order unconfirmed — TO created but not confirmed by operator,Warehouse,Medium
+ORDER_NOT_STARTED,production,Order not started — production has not commenced by scheduled start,Production,High
+PRODUCTION_BEHIND_PLAN,production,Production behind plan — yield or completion significantly behind schedule,Production,High
+QUALITY_HOLD,quality,Quality hold — batch under quality inspection block,Quality,Critical
+INSPECTION_LOT_OPEN,quality,Inspection lot open — lot created but inspection not yet started,Quality,Medium
+UD_MISSING,quality,Usage decision missing — inspection completed but no UD recorded,Quality,High
+MIC_RESULT_MISSING,quality,MIC result missing — inspection characteristic result not recorded,Quality,Medium
+MIC_RESULT_FAILED,quality,MIC result failed — inspection characteristic outside specification,Quality,Critical
+OUTBOUND_PICK_INCOMPLETE,logistics,Outbound pick incomplete — delivery not fully picked before GI cutoff,Warehouse,High
+DELIVERY_PAST_GI,logistics,Delivery past GI date — planned goods issue date passed without shipment,Logistics,Critical
+PREVIOUS_ORDER_OVERRUN,production,Previous order overrun — preceding order on same line running over,Production,Medium
+SCHEDULE_CHANGED,production,Schedule changed — order rescheduled within the planning horizon,Planning,Low
+STALE_SOURCE,data_trust,Stale source — Silver replication lag exceeds critical threshold,Data Engineering,High
+MISSING_MAPPING,data_trust,Missing mapping — required reference or config mapping absent,Data Engineering,Medium
+UNKNOWN,data_trust,Unknown — reason code not determined,Data Engineering,Unknown

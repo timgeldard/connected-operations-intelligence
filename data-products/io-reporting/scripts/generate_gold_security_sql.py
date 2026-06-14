@@ -177,6 +177,10 @@ GOLD_TABLES = [
     "gold_qm_lab_result_signal",
     "gold_qm_characteristic_pareto",
     "gold_qm_ud_code_pareto",
+    # op_risk_gold.py — Operational Risk Foundation (spec 16)
+    "gold_risk_reason_taxonomy",
+    "gold_operational_risk_item",
+    "gold_domain_freshness_watermark",
 ]
 
 TEMPLATE = """-- Unity Catalog Gold row-level security — secured serving views ({env_upper}).

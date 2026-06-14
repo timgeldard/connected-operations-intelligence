@@ -1,5 +1,5 @@
 """
-Gold data-freshness monitoring (hardening Sprint 3).
+Gold data-freshness monitoring (hardening Sprint 3) + domain watermark extension (Spec 16).
 
 The original `gold_freshness_gate` (dlt_gold_pipeline.py) only checked `silver.goods_movement`. The
 Gold layer now depends on many more Silver tables, so a silent failure of any of them would leave
@@ -33,6 +33,38 @@ from pyspark.sql.types import (
 )
 
 from gold._shared import get_silver_schema, get_spark_session, table_exists
+
+# ---------------------------------------------------------------------------
+# Spec 16: domain freshness thresholds (warning / critical in minutes).
+# Used by gold_domain_freshness_watermark and the consumption view
+# vw_consumption_data_freshness (query-time age status).
+# ---------------------------------------------------------------------------
+DOMAIN_FRESHNESS_THRESHOLDS: dict[str, dict] = {
+    "warehouse_tr_to": {"warning_minutes": 120, "critical_minutes": 480},
+    "process_orders": {"warning_minutes": 120, "critical_minutes": 480},
+    "production_quality": {"warning_minutes": 240, "critical_minutes": 720},
+    "stock": {"warning_minutes": 240, "critical_minutes": 720},
+    "deliveries": {"warning_minutes": 240, "critical_minutes": 720},
+    "inbound": {"warning_minutes": 720, "critical_minutes": 1440},
+    "reference": {"warning_minutes": 720, "critical_minutes": 2880},
+    "stock_counting": {"warning_minutes": 720, "critical_minutes": 2880},
+}
+
+# Mapping from FRESHNESS_CONTRACTS domain strings to canonical SHD-003 domain keys.
+_DOMAIN_MAP: dict[str, str] = {
+    "warehouse": "warehouse_tr_to",
+    "production": "process_orders",
+    "production/quality": "production_quality",
+    "production/warehouse": "process_orders",
+    "stock": "stock",
+    "stock/warehouse": "stock",
+    "stock/counting": "stock_counting",
+    "outbound": "deliveries",
+    "inbound": "inbound",
+    "inbound/HU": "inbound",
+    "reference": "reference",
+    "reference/config": "reference",
+}
 
 # has_watermark=False → a seed/config table with no _replicated_at (reported STATIC, never STALE).
 FRESHNESS_CONTRACTS = [
@@ -379,4 +411,79 @@ def gold_data_health_summary():
         .unionByName(reconciliation_summary)
         .unionByName(reconciliation_alerts_summary)
         .unionByName(expectation_summary)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Spec 16: domain-level freshness watermarks (deterministic — no current_timestamp()).
+# Reads from gold_data_freshness_status (exempt) and aggregates to one row per
+# canonical domain. Stores only the watermark timestamp; age is computed at query time
+# in vw_consumption_data_freshness (consumption view).
+# ---------------------------------------------------------------------------
+
+_THRESHOLD_ROWS = [
+    (domain, thresholds["warning_minutes"], thresholds["critical_minutes"])
+    for domain, thresholds in DOMAIN_FRESHNESS_THRESHOLDS.items()
+]
+
+_THRESHOLD_SCHEMA = StructType([
+    StructField("domain", StringType()),
+    StructField("warning_minutes", IntegerType()),
+    StructField("critical_minutes", IntegerType()),
+])
+
+
+@dlt.table(
+    name="gold_domain_freshness_watermark",
+    comment=(
+        "Per-canonical-domain freshness watermark: latest_replicated_at aggregated across "
+        "all Silver contracts in the domain. Deterministic — no wall-clock. Age is computed "
+        "at query time in vw_consumption_data_freshness."
+    ),
+    table_properties={"delta.enableChangeDataFeed": "false"},
+    cluster_by=["domain"],
+)
+def gold_domain_freshness_watermark():
+    """Aggregate silver watermarks to canonical domain level.
+
+    Reads gold_data_freshness_status (which IS exempt, stamped at pipeline run time) but
+    only extracts the latest_replicated_at column — no current_timestamp() call here.
+    Result is deterministic for a given pipeline run snapshot.
+    """
+    spark = get_spark_session()
+
+    freshness = dlt.read("gold_data_freshness_status")
+    thresholds = spark.createDataFrame(_THRESHOLD_ROWS, _THRESHOLD_SCHEMA)
+
+    # Map raw FRESHNESS_CONTRACTS domains to canonical domain keys.
+    domain_mapping_rows = [
+        (raw_domain, canonical)
+        for raw_domain, canonical in _DOMAIN_MAP.items()
+    ]
+    domain_map_schema = StructType([
+        StructField("raw_domain", StringType()),
+        StructField("canonical_domain", StringType()),
+    ])
+    domain_map = spark.createDataFrame(domain_mapping_rows, domain_map_schema)
+
+    return (
+        freshness
+        .join(F.broadcast(domain_map), freshness["domain"] == domain_map["raw_domain"], "left")
+        .withColumn(
+            "domain",
+            F.coalesce(F.col("canonical_domain"), F.col("domain")),
+        )
+        .groupBy("domain")
+        .agg(
+            F.min("latest_replicated_at").alias("last_refresh_at"),
+            F.count(F.lit(1)).cast("long").alias("source_table_count"),
+        )
+        .join(thresholds, "domain", "left")
+        .select(
+            "domain",
+            "last_refresh_at",
+            "source_table_count",
+            F.coalesce(F.col("warning_minutes"), F.lit(480)).alias("warning_minutes"),
+            F.coalesce(F.col("critical_minutes"), F.lit(1440)).alias("critical_minutes"),
+        )
     )

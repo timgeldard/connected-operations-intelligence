@@ -4906,3 +4906,172 @@ contracts:
         type: double
         required: false
         description: On-time completion % — completed orders in last 48h where actual_finish <= scheduled_finish_date
+
+  - id: op_risk.risk_item
+    version: 0.1.0
+    domain: operational-risk
+    owner: data-products/io-reporting
+    lifecycle: draft
+    description: >
+      Operational risk items — live UNION of domain arms (production, warehouse, quality,
+      logistics, data_trust) with query-time effective_severity and time_horizon.
+      Base severity is evidence-only (deterministic); Unknown = missing evidence linkage.
+      Frontend deferred to spec 17 (ORC).
+    source_view: vw_consumption_op_risk_operational_risk_live
+    grain: one row per risk_id (SHA-256 of domain + plant + key fields + primary_reason_code)
+    primary_key:
+      - risk_id
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 480
+    access_policy:
+      row_level_key: plant_code
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: risk_id
+        type: string
+        required: true
+        description: SHA-256 deterministic risk item identifier
+      - name: risk_domain
+        type: string
+        required: true
+        description: production | warehouse | quality | logistics | data_trust
+      - name: plant_code
+        type: string
+        required: false
+        description: SAP plant code (null for data_trust items)
+      - name: process_line
+        type: string
+        required: false
+        description: Production line identifier
+      - name: order_number
+        type: string
+        required: false
+        description: Process order number (AUFNR)
+      - name: material_code
+        type: string
+        required: false
+        description: Material code
+      - name: batch_number
+        type: string
+        required: false
+        description: Batch number
+      - name: delivery_number
+        type: string
+        required: false
+        description: Delivery number
+      - name: customer_id
+        type: string
+        required: false
+        description: Ship-to customer
+      - name: planned_event_at
+        type: timestamp
+        required: false
+        description: Planned deadline timestamp (scheduled start, GI date, lot creation)
+      - name: current_status
+        type: string
+        required: false
+        description: OPEN | CLOSED
+      - name: primary_reason_code
+        type: string
+        required: true
+        description: Primary risk reason code from risk_reason_taxonomy
+      - name: secondary_reason_codes
+        type: array<string>
+        required: false
+        description: Additional contributing reason codes
+      - name: responsible_function
+        type: string
+        required: false
+        description: Function accountable for resolution
+      - name: evidence_confidence
+        type: string
+        required: true
+        description: High | Medium | Low | Unknown (Unknown = missing evidence linkage)
+      - name: base_severity
+        type: string
+        required: true
+        description: Critical | High | Medium | Low | Unknown (evidence-only, deterministic)
+      - name: minutes_to_event
+        type: long
+        required: false
+        description: Minutes until planned_event_at (negative = overdue; query-time)
+      - name: time_horizon
+        type: string
+        required: false
+        description: overdue | imminent | today | upcoming | future | unknown (query-time)
+      - name: effective_severity
+        type: string
+        required: false
+        description: Escalated severity when overdue (query-time)
+      - name: stock_qty_affected
+        type: double
+        required: false
+        description: Quantity of stock affected
+      - name: orders_affected
+        type: long
+        required: false
+        description: Number of orders affected
+      - name: deliveries_affected
+        type: long
+        required: false
+        description: Number of deliveries affected
+      - name: customer_impact_flag
+        type: boolean
+        required: true
+        description: True when the risk item has direct customer delivery impact
+      - name: food_safety_flag
+        type: boolean
+        required: true
+        description: True when the risk item has food safety relevance
+
+  - id: op_risk.data_freshness
+    version: 0.1.0
+    domain: operational-risk
+    owner: data-products/io-reporting
+    lifecycle: draft
+    description: >
+      Per-canonical-domain data freshness watermarks with query-time age and status
+      classification (fresh/warning/critical/no_data). Used for the data trust panel
+      in the Operational Risk Centre.
+    source_view: vw_consumption_data_freshness
+    grain: one row per domain
+    primary_key:
+      - domain
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 480
+    access_policy:
+      row_level_key: null
+      entitlement_source: null
+    fields:
+      - name: domain
+        type: string
+        required: true
+        description: Canonical domain key (warehouse_tr_to / process_orders / quality / etc.)
+      - name: last_refresh_at
+        type: timestamp
+        required: false
+        description: Minimum latest_replicated_at across all Silver contracts in the domain
+      - name: source_table_count
+        type: long
+        required: false
+        description: Number of Silver tables contributing to this domain
+      - name: warning_minutes
+        type: integer
+        required: true
+        description: Warning freshness threshold in minutes
+      - name: critical_minutes
+        type: integer
+        required: true
+        description: Critical freshness threshold in minutes
+      - name: age_minutes
+        type: long
+        required: false
+        description: Minutes since last_refresh_at (query-time)
+      - name: status
+        type: string
+        required: true
+        description: fresh | warning | critical | no_data (query-time)
