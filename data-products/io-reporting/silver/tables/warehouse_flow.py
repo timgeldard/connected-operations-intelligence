@@ -12,7 +12,15 @@ import dlt
 from pyspark.sql import functions as F
 
 from silver._plant_gate import apply_plant_gate
-from silver.helpers import BRONZE, get_spark, sap_date, sap_datetime, sap_flag, strip_zeros
+from silver.helpers import (
+    BRONZE,
+    col_or_null,
+    get_spark,
+    sap_date,
+    sap_datetime,
+    sap_flag,
+    strip_zeros,
+)
 
 # ── 1. RESERVATION REQUIREMENT ────────────────────────────────────────────────
 # RESB — component reservations for production orders. Single streaming source
@@ -114,6 +122,15 @@ def stg_outbound_delivery():
 
     changed_keys = likp_changes.unionByName(lips_changes)
     likp = spark.read.table(f"{BRONZE}.deliveryobjects_likp")
+    # ── Push Despatch marker columns (additive, header-only, guarded for dev).
+    # SDABW/TRAID/TRATY confirmed present on deliveryobjects_likp in UAT (recon 2026-06-13).
+    # col_or_null degrades to typed NULL if the column is absent in dev — self-healing once replicated.
+    likp = likp.select(
+        "*",
+        col_or_null(likp, "SDABW", "string").alias("_SDABW"),
+        col_or_null(likp, "TRAID", "string").alias("_TRAID"),
+        col_or_null(likp, "TRATY", "string").alias("_TRATY"),
+    )
     lips = spark.read.table(f"{BRONZE}.deliveryobjects_lips")
     # Pre-gate pushdown: shrink the wide static LIPS to onboarded plants (same plant axis as the final
     # apply_plant_gate) BEFORE the changed-keys fan-out join. Filter-only (plant gate adds no columns);
@@ -196,6 +213,16 @@ def stg_outbound_delivery():
             # ── Reference
             strip_zeros("i.VGBEL").alias("source_document_number"),
             F.col("i.VGPOS").alias("source_document_item"),
+
+            # ── Push Despatch marker (additive — NULL on pre-existing rows until churn/full-refresh).
+            # SDABW='ZPUS' identifies Push Despatch deliveries (WMA-E-23 header marker, UAT-recon 2026-06-13).
+            # SDABW is ABSENT on LIPS — it is a header-grain field ONLY. Add to item-grain rows via the
+            # LIKP join; treat NULL as non-push in Gold (COALESCE to FALSE on the boolean flag).
+            # TRAID/TRATY: vehicle/transport — 28,634 / 28,760 ZPUS deliveries populated.
+            # All three columns are guarded via col_or_null above (dev LIKP may lack these fields).
+            F.col("h._SDABW").alias("special_processing_code"),
+            F.col("h._TRAID").alias("container_vehicle_id"),
+            F.col("h._TRATY").alias("transport_type"),
 
             # ── Delivery direction (additive — NULL on pre-existing rows until churn/full-refresh).
             # Source: LIKP.VBTYP (delivery document category). Verified UAT 2026-06-11:

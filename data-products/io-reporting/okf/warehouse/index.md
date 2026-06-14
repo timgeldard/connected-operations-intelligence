@@ -38,6 +38,8 @@ This directory lists all `warehouse` contracts in the io-reporting data product.
 - [Pi Accuracy](/warehouse/wm_operations/pi_accuracy.md) -- Physical-inventory count accuracy KPIs aggregated to plant × storage_location × ABC cycle-count class × currency × month grain.
 - [Pick Tasks](/warehouse/warehouse360/pick_tasks.md) -- Open transfer-order items (item_status != 'Fully Confirmed') as staging pick tasks, with source/destination locations, quantities, status, and process-order linkage (BETYP/BENUM).
 - [Plants](/warehouse/wm_operations/plants.md) -- Onboarded WM Operations plants — one row per plant_id and warehouse_id, derived from vw_consumption_wm_operations_worklist_summary (RLS inherited).
+- [Push Despatch Daily](/warehouse/wm_operations/push_despatch_daily.md) -- Push Despatch daily KPI aggregate (WMA-E-23, Spec 14).
+- [Push Despatch Delivery](/warehouse/wm_operations/push_despatch_delivery.md) -- Push Despatch outbound delivery grain (WMA-E-23, Spec 14).
 - [Qm Characteristic Pareto](/warehouse/wm_operations/qm_characteristic_pareto.md) -- QM characteristic (MIC) Pareto for the Command Centre drill view.
 - [Qm Disposition Queue](/warehouse/wm_operations/qm_disposition_queue.md) -- QM disposition queue — open lots only (no usage decision), enriched with blocked stock quantity (MCHB.CINSM) and estimated blocked value (blocked_qty × standard_price / price_unit).
 - [Qm Lot Status](/warehouse/wm_operations/qm_lot_status.md) -- QM inspection lot status — one row per plant_id and lot_id (all lots in the silver lookback window).

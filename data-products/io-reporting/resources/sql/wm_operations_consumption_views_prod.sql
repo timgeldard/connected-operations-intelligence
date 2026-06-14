@@ -1061,3 +1061,58 @@ LEFT JOIN connected_plant_prod.gold_io_reporting.gold_wm_order_readiness_secured
   AND j.plant_code  = r.plant_code
 WHERE j.plant_code IS NOT NULL
   AND j.production_line IS NOT NULL;
+
+-- ── Push Despatch — delivery grain (Spec 14, WMA-E-23) ──────────────────────
+-- Query-time exception columns: is_overdue (vs CURRENT_DATE) and open_push flag live here,
+-- NOT in gold (gold MVs must be deterministic — conventions §4 / ADR 012).
+-- push_vs_normal_share: ratio of push deliveries to total outbound deliveries per plant/day,
+-- computed at query time from a self-contained subquery (no separate aggregate MV needed for v1).
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_push_despatch_delivery AS
+SELECT
+  d.plant_code                                           AS plant_id,
+  d.delivery_number                                      AS delivery_id,
+  d.destination_customer,
+  d.destination_plant_code,
+  d.container_vehicle_id,
+  d.transport_type,
+  d.planned_goods_issue_date,
+  d.actual_goods_issue_date,
+  d.is_pgi_complete,
+  d.pgi_on_time,
+  d.line_count,
+  d.pallet_count,
+  d.weight_unit,
+  d.total_net_weight,
+  d.total_gross_weight,
+  -- Query-time: is_overdue requires wall-clock (cannot be in the deterministic gold MV)
+  (
+    d.is_pgi_complete = FALSE
+    AND d.planned_goods_issue_date IS NOT NULL
+    AND CAST(d.planned_goods_issue_date AS DATE) < CURRENT_DATE()
+  )                                                      AS is_overdue,
+  CASE
+    WHEN d.is_pgi_complete = FALSE AND d.planned_goods_issue_date IS NOT NULL
+    THEN DATEDIFF(CURRENT_DATE(), CAST(d.planned_goods_issue_date AS DATE))
+    ELSE NULL
+  END                                                    AS days_overdue
+FROM connected_plant_prod.gold_io_reporting.gold_wm_push_despatch_delivery_secured d
+WHERE d.plant_code IS NOT NULL;
+
+-- ── Push Despatch — daily KPI aggregate (Spec 14, WMA-E-23) ─────────────────
+-- Feeds the throughput trend panel and KPI tiles (push_delivery_count, pallets_pushed,
+-- on_time_pgi_pct). weight_unit is in the grain — do NOT sum across mixed units downstream.
+CREATE OR REPLACE VIEW vw_consumption_wm_operations_push_despatch_daily AS
+SELECT
+  agg.plant_code                                         AS plant_id,
+  agg.destination_customer,
+  agg.goods_issue_day,
+  agg.weight_unit,
+  agg.push_delivery_count,
+  agg.pallets_pushed,
+  agg.line_count,
+  agg.total_net_weight,
+  agg.pgi_complete_count,
+  agg.on_time_pgi_count,
+  agg.on_time_pgi_pct
+FROM connected_plant_prod.gold_io_reporting.gold_wm_push_despatch_daily_secured agg
+WHERE agg.plant_code IS NOT NULL;

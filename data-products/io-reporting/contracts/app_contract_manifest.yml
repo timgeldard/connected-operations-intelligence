@@ -4906,3 +4906,168 @@ contracts:
         type: double
         required: false
         description: On-time completion % — completed orders in last 48h where actual_finish <= scheduled_finish_date
+
+  - id: wm_operations.push_despatch_delivery
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Push Despatch outbound delivery grain (WMA-E-23, Spec 14). One row per push outbound delivery
+      identified by TRIM(SDABW)='ZPUS' on the LIKP delivery header. Includes deterministic timing
+      (pgi_on_time), volume (line_count always; pallet_count nullable — HU count when handling_unit
+      table exists), and weight (double, segregated by weight_unit). Overdue flag is computed at
+      query time in vw_consumption_wm_operations_push_despatch_delivery (wall-clock).
+      Data scope in UAT bronze <= 2023-12-05 (UAT snapshot artefact; prod data is current).
+    source_view: vw_consumption_wm_operations_push_despatch_delivery
+    grain: one row per delivery_id
+    primary_key:
+      - plant_id
+      - delivery_id
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant code — shipping (source) plant; canonical axis for Push Despatch
+      - name: delivery_id
+        type: string
+        required: true
+        description: SAP outbound delivery number (LIKP VBELN, zero-stripped)
+      - name: destination_customer
+        type: string
+        required: false
+        description: Ship-to customer code (LIKP KUNNR, zero-stripped). Receiving party for ZPUS deliveries (sales-order-referenced)
+      - name: destination_plant_code
+        type: string
+        required: false
+        description: Destination plant — NULL in v1; no customer→plant mapping available without additional reference data
+      - name: container_vehicle_id
+        type: string
+        required: false
+        description: Vehicle/container identification (LIKP TRAID); 28,634 / 28,760 ZPUS deliveries populated in UAT
+      - name: transport_type
+        type: string
+        required: false
+        description: Means of transport code (LIKP TRATY)
+      - name: planned_goods_issue_date
+        type: date
+        required: false
+        description: Planned goods issue date (LIKP WADAT)
+      - name: actual_goods_issue_date
+        type: date
+        required: false
+        description: Actual goods issue date (LIKP WADAT_IST); null when PGI not yet posted
+      - name: is_pgi_complete
+        type: boolean
+        required: true
+        description: True when actual_goods_issue_date is not null (PGI posted)
+      - name: pgi_on_time
+        type: boolean
+        required: true
+        description: True when PGI complete AND actual_goods_issue_date <= planned_goods_issue_date; deterministic (historical dates, no wall-clock)
+      - name: line_count
+        type: long
+        required: true
+        description: Count of delivery item lines; always populated
+      - name: pallet_count
+        type: long
+        required: false
+        description: Distinct handling unit count per delivery; nullable — populated when silver.handling_unit table exists, else NULL (ZPUSH_DISPATCH not replicated — see docs/ingestion_requests.md)
+      - name: weight_unit
+        type: string
+        required: false
+        description: Weight unit of measure (item-grain GEWEI); grain key — do not sum across mixed units
+      - name: total_net_weight
+        type: double
+        required: false
+        description: Sum of item net weights (NTGEW) in weight_unit; double (not long — weight truncation)
+      - name: total_gross_weight
+        type: double
+        required: false
+        description: Sum of item gross weights (BRGEW) in weight_unit; double
+      - name: is_overdue
+        type: boolean
+        required: false
+        description: Query-time overdue flag — is_pgi_complete=false AND planned_goods_issue_date < CURRENT_DATE(); computed in consumption view
+      - name: days_overdue
+        type: integer
+        required: false
+        description: Days since planned_goods_issue_date (query-time DATEDIFF); null when PGI complete or no planned date
+
+  - id: wm_operations.push_despatch_daily
+    version: 0.1.0
+    domain: warehouse
+    owner: warehouse-operations
+    lifecycle: draft
+    description: >
+      Push Despatch daily KPI aggregate (WMA-E-23, Spec 14). Grain: plant_code × destination_customer
+      × goods_issue_day × weight_unit. Feeds the throughput trend panel and KPI tiles
+      (push_delivery_count, pallets_pushed, on_time_pgi_pct). Weight sums are double and segregated
+      by weight_unit — never sum across mixed units. on_time_pgi_pct is NULL when pgi_complete_count=0.
+      Rows only include days where actual_goods_issue_date is not null (open/pending rows excluded).
+    source_view: vw_consumption_wm_operations_push_despatch_daily
+    grain: one row per plant_id × destination_customer × goods_issue_day × weight_unit
+    primary_key:
+      - plant_id
+      - destination_customer
+      - goods_issue_day
+      - weight_unit
+    freshness:
+      expected_minutes: 60
+      warning_minutes: 120
+      critical_minutes: 240
+    access_policy:
+      row_level_key: plant_id
+      entitlement_source: published.central_services.user_plant_access
+    fields:
+      - name: plant_id
+        type: string
+        required: true
+        description: SAP plant code — shipping (source) plant; canonical axis
+      - name: destination_customer
+        type: string
+        required: false
+        description: Ship-to customer code; receiving party for ZPUS deliveries
+      - name: goods_issue_day
+        type: date
+        required: false
+        description: Day of goods issue (date_trunc('day', actual_goods_issue_date)); grain key
+      - name: weight_unit
+        type: string
+        required: false
+        description: Weight unit of measure; grain key — do not aggregate across mixed units
+      - name: push_delivery_count
+        type: long
+        required: true
+        description: Count of push despatch deliveries goods-issued on this day
+      - name: pallets_pushed
+        type: long
+        required: false
+        description: Sum of pallet_count; nullable — NULL-propagated from delivery grain where HU table absent
+      - name: line_count
+        type: long
+        required: true
+        description: Sum of delivery item line counts
+      - name: total_net_weight
+        type: double
+        required: false
+        description: Sum of net weights in weight_unit; double
+      - name: pgi_complete_count
+        type: long
+        required: true
+        description: Count of deliveries with PGI complete on this day
+      - name: on_time_pgi_count
+        type: long
+        required: true
+        description: Count of deliveries with PGI on-time (actual <= planned) on this day
+      - name: on_time_pgi_pct
+        type: double
+        required: false
+        description: On-time PGI fraction (on_time_pgi_count / pgi_complete_count); NULL when pgi_complete_count = 0 (zero-denominator guard)

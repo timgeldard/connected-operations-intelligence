@@ -32,6 +32,7 @@ import { ShortageProjectionView } from './views/shortage-projection-view.js'
 import { InventoryAccuracyView } from './views/inventory-accuracy-view.js'
 import { LinesideMonitorView } from './views/lineside-monitor-view.js'
 import { PlanningBoardView } from './views/planning-board-view.js'
+import { PushDespatchView } from './views/push-despatch-view.js'
 import { EmptyNote, ViewHeader } from './components/kerry.js'
 import './theme/kerry-theme.css'
 
@@ -64,6 +65,7 @@ export type WmOperationsViewId =
   | 'inventory-accuracy'
   | 'lineside-monitor'
   | 'planning-board'
+  | 'push-despatch'
 
 export interface WmOperationsWorkspaceProps {
   readonly scope: ScopeContext
@@ -127,6 +129,7 @@ const VIEW_GROUPS: Array<{ label: string; views: Array<{ id: WmOperationsViewId;
       { id: 'yield-loss', label: 'Yield & Loss' },
       { id: 'expiry-risk', label: 'Expiry Risk' },
       { id: 'inventory-accuracy', label: 'Inventory Accuracy' },
+      { id: 'push-despatch', label: 'Push Despatch' },
     ],
   },
 ]
@@ -304,6 +307,8 @@ function resolveView(viewId: string, request: WmOperationsAdapterRequest, onNavi
       return <LinesideMonitorView request={request} />
     case 'planning-board':
       return <PlanningBoardView plantId={request.plantId ?? ''} onNavigateToView={onNavigateToView} onOpenProcessOrder={onOpenProcessOrder} />
+    case 'push-despatch':
+      return <PushDespatchView request={request} />
     case 'staging-worklist':
     default:
       return <StagingWorklistView request={request} onOpenProcessOrder={onOpenProcessOrder} onNavigateToView={onNavigateToView} />

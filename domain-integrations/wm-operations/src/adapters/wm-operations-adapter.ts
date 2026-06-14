@@ -1059,3 +1059,52 @@ export interface WmPlanBoardWmOverlayItem {
   readonly supplyStatus: string | null
   readonly hasShortage: boolean | null
 }
+
+// ── Push Despatch (Spec 14 — WMA-E-23) ───────────────────────────────────────
+// ZPUS-marked outbound deliveries: supply-driven plant→DC repositioning moves.
+// Data scope in UAT bronze <= 2023-12-05 (UAT snapshot artefact; prod data is current).
+
+/** Delivery grain row — from vw_consumption_wm_operations_push_despatch_delivery. */
+export interface WmPushDespatchDeliveryItem {
+  readonly plantId: string
+  readonly deliveryId: string
+  readonly destinationCustomer: string | null
+  /** NULL in v1 — no customer→plant mapping available. */
+  readonly destinationPlantCode: string | null
+  /** Vehicle/container id (LIKP TRAID); populated on ~99.6% of ZPUS deliveries. */
+  readonly containerVehicleId: string | null
+  readonly transportType: string | null
+  readonly plannedGoodsIssueDate: string | null
+  readonly actualGoodsIssueDate: string | null
+  readonly isPgiComplete: boolean
+  /** True when PGI confirmed AND actual <= planned; deterministic (no wall-clock). */
+  readonly pgiOnTime: boolean
+  readonly lineCount: number
+  /** Distinct HU count; null when handling_unit table absent (ZPUSH_DISPATCH not replicated). */
+  readonly palletCount: number | null
+  readonly weightUnit: string | null
+  readonly totalNetWeight: number | null
+  readonly totalGrossWeight: number | null
+  /** Query-time: is_pgi_complete=false AND planned_goods_issue_date < today. */
+  readonly isOverdue: boolean | null
+  /** Days since planned GI date (query-time); null when PGI complete or no planned date. */
+  readonly daysOverdue: number | null
+}
+
+/** Daily aggregate row — from vw_consumption_wm_operations_push_despatch_daily. */
+export interface WmPushDespatchDailyItem {
+  readonly plantId: string
+  readonly destinationCustomer: string | null
+  readonly goodsIssueDay: string | null
+  /** Weight unit — grain key; do NOT aggregate across mixed units. */
+  readonly weightUnit: string | null
+  readonly pushDeliveryCount: number
+  /** Sum of pallet_count; null when HU table absent. */
+  readonly palletsPushed: number | null
+  readonly lineCount: number
+  readonly totalNetWeight: number | null
+  readonly pgiCompleteCount: number
+  readonly onTimePgiCount: number
+  /** on_time_pgi_count / pgi_complete_count; null when pgi_complete_count = 0. */
+  readonly onTimePgiPct: number | null
+}

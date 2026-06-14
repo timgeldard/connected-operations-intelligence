@@ -18,6 +18,8 @@ Tables:
   gold_stock_reconciliation_exceptions_v2  — filter of v2 where is_reconciled=false, with material description
   gold_stock_reconciliation_summary_v2     — v2 rolled up by plant×warehouse×mismatch_reason×severity
   gold_stock_reconciliation_summary        — canonical v2 summary alias for consumption
+  gold_wm_push_despatch_delivery           — Push Despatch outbound delivery grain (SDABW='ZPUS')
+  gold_wm_push_despatch_daily              — Push Despatch daily KPI aggregate (plant × destination × day × weight_unit)
 """
 
 import dlt
@@ -1578,5 +1580,179 @@ def gold_goods_movement_activity():
             "sales_order_number",
             "posted_by_user",
             "transaction_code",
+        )
+    )
+
+
+# ── PUSH DESPATCH ─────────────────────────────────────────────────────────────
+# WMA-E-23: unplanned RF-driven plant→DC stock repositioning moves. Identified by
+# TRIM(SDABW)='ZPUS' on the delivery header (anchor confirmed via UAT recon 2026-06-13;
+# 28,760 deliveries). ZPUS data on LIKP stops 2023-12-05 in UAT bronze — this is a
+# UAT-snapshot artefact; prod data is current (Phase 0 decision: accepted).
+#
+# ⚠️ NULL-until-backfill: special_processing_code is an additive silver column. Gold treats
+# NULL as non-push via COALESCE. Orchestrator MUST full-refresh outbound_delivery before
+# these KPIs are trustworthy (documents the post-merge chore).
+#
+# Deferred: pallet/SSCC grain (ZPUSH_DISPATCH not replicated — see docs/ingestion_requests.md).
+# pallet_count is nullable: populated from handling_unit when that table exists, else NULL.
+# line_count is always populated (delivery item count).
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Push Despatch outbound delivery grain. One row per push delivery — TRIM(special_processing_code)='ZPUS' "
+        "AND delivery_direction='OUTBOUND'. Identification: SDABW='ZPUS' on LIKP header (UAT recon "
+        "2026-06-13; 28,760 deliveries). Data scope ≤ 2023-12-05 in UAT bronze (UAT-snapshot artefact; "
+        "prod data is current — Phase 0 accepted). "
+        "pgi_on_time is deterministic (historical dates only — no wall-clock). "
+        "Overdue (vs today) lives in the consumption view, NOT here. "
+        "pallet_count nullable: HU count when handling_unit table exists, else NULL "
+        "(ZPUSH_DISPATCH not replicated — see docs/ingestion_requests.md). "
+        "⚠️ special_processing_code is NULL on pre-existing SCD1 rows until full-refresh/churn "
+        "backfills it; orchestrator must run a full-refresh of outbound_delivery post-merge."
+    ),
+    cluster_by=["plant_code", "planned_goods_issue_date"],
+))
+def gold_wm_push_despatch_delivery():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)
+
+    deliveries = anti_join_optional_deleted_headers(
+        spark.read.table(f"{silver_schema}.outbound_delivery"),
+        silver_schema,
+        "outbound_delivery_header_delete",
+        ["delivery_number"],
+    )
+
+    # Scope: OUTBOUND direction AND Push Despatch marker.
+    # COALESCE(TRIM(special_processing_code)='ZPUS', FALSE): NULL marker = non-push (pre-backfill rows).
+    # delivery_direction='OUTBOUND' uses VBTYP='J' materialised in silver — also an additive col,
+    # same NULL-until-backfill caveat; gold_delivery_pick_status uses LFART as interim proxy but
+    # push despatch uses ZD04 (LFART) overwhelmingly — delivery_direction is the cleaner gate once backfilled.
+    outbound_push = deliveries.filter(
+        (F.coalesce(F.col("delivery_direction"), F.lit("")) == "OUTBOUND")
+        & F.coalesce(F.trim(F.col("special_processing_code")) == "ZPUS", F.lit(False))
+    )
+
+    # ── Volume: pallet_count from handling_unit when table exists, else NULL
+    fq_hu = f"{silver_schema}.handling_unit"
+    if table_exists(spark, fq_hu):
+        hu = (
+            spark.read.table(fq_hu)
+            .groupBy("delivery_number")
+            .agg(F.count_distinct("handling_unit_number").cast("long").alias("pallet_count"))
+        )
+        deliveries_with_hu = outbound_push.join(hu, "delivery_number", "left")
+    else:
+        deliveries_with_hu = outbound_push.withColumn("pallet_count", F.lit(None).cast("long"))
+
+    return (
+        deliveries_with_hu.groupBy(
+            "delivery_number", "plant_code", "warehouse_number",
+            "ship_to_customer", "container_vehicle_id", "transport_type",
+            "weight_unit",
+            "planned_goods_issue_date", "actual_goods_issue_date",
+        )
+        .agg(
+            F.count(F.lit(1)).cast("long").alias("line_count"),
+            F.first("pallet_count", ignorenulls=True).alias("pallet_count"),
+            F.sum(F.col("net_weight").cast("double")).alias("total_net_weight"),
+            F.sum(F.col("gross_weight").cast("double")).alias("total_gross_weight"),
+        )
+        .select(
+            # ── Grain / axis
+            "delivery_number",
+            "plant_code",
+            "warehouse_number",
+            # ── Push Despatch flag — always TRUE here (filter above), explicit for downstream consumers
+            F.lit(True).alias("is_push_despatch"),
+            # ── Destination: ZPUS deliveries are sales-order-referenced (VGTYP='C'), NOT STO.
+            # Receiving party is the ship-to customer. No destination_plant_code available
+            # without a customer→plant mapping — NULL in v1 (flagged in spec §2a).
+            F.col("ship_to_customer").alias("destination_customer"),
+            F.lit(None).cast("string").alias("destination_plant_code"),
+            # ── Vehicle
+            "container_vehicle_id",
+            "transport_type",
+            # ── Timing
+            "planned_goods_issue_date",
+            "actual_goods_issue_date",
+            (F.col("actual_goods_issue_date").isNotNull()).alias("is_pgi_complete"),
+            # pgi_on_time: deterministic — both are historical dates, no wall-clock (conventions §4).
+            # True when GI confirmed AND actual ≤ planned. False when late or not yet done.
+            F.when(
+                F.col("actual_goods_issue_date").isNotNull()
+                & F.col("planned_goods_issue_date").isNotNull()
+                & (F.col("actual_goods_issue_date") <= F.col("planned_goods_issue_date")),
+                F.lit(True),
+            ).when(
+                F.col("actual_goods_issue_date").isNotNull(),
+                F.lit(False),
+            ).otherwise(
+                F.lit(False)
+            ).alias("pgi_on_time"),
+            # ── Volume
+            "line_count",
+            "pallet_count",
+            # ── Weights — double (never cast to long; weight truncation). Segregated by weight_unit.
+            "weight_unit",
+            "total_net_weight",
+            "total_gross_weight",
+        )
+    )
+
+
+@dlt.table(**gold_table_args(
+    comment=(
+        "Push Despatch daily KPI aggregate. Grain: plant_code × destination_customer × goods_issue_day × weight_unit. "
+        "goods_issue_day = date_trunc('day', actual_goods_issue_date) — NULL-safe (no-PGI rows excluded from day grain). "
+        "Weight sums are double and segregated by weight_unit — never summed across mixed units. "
+        "on_time_pgi_pct is NULL when pgi_complete_count=0 (zero-denominator guard). "
+        "Feeds: 'shipments today / pallets pushed / on-time %' KPI tiles and daily throughput trend. "
+        "Overdue (vs today) computed at query time in the consumption view."
+    ),
+    cluster_by=["plant_code", "goods_issue_day"],
+))
+def gold_wm_push_despatch_daily():
+    spark = get_spark_session()
+    silver_schema = get_silver_schema(spark)  # noqa: F841 — accessed via dlt.read below
+
+    delivery_grain = dlt.read("gold_wm_push_despatch_delivery")
+
+    # Exclude rows where no goods issue day can be determined (not-yet-PGI'd).
+    # Those rows are aggregated into the exceptions/overdue view at query time.
+    with_day = delivery_grain.withColumn(
+        "goods_issue_day",
+        F.date_trunc("day", F.col("actual_goods_issue_date")).cast("date"),
+    ).filter(F.col("goods_issue_day").isNotNull())
+
+    return (
+        with_day.groupBy(
+            "plant_code", "destination_customer", "goods_issue_day", "weight_unit",
+        )
+        .agg(
+            F.count(F.lit(1)).cast("long").alias("push_delivery_count"),
+            F.sum(F.col("pallet_count")).cast("long").alias("pallets_pushed"),
+            F.sum(F.col("line_count")).cast("long").alias("line_count"),
+            F.sum(F.col("total_net_weight").cast("double")).alias("total_net_weight"),
+            F.sum(F.when(F.col("is_pgi_complete"), F.lit(1)).otherwise(F.lit(0))).cast("long").alias("pgi_complete_count"),
+            F.sum(F.when(F.col("pgi_on_time"), F.lit(1)).otherwise(F.lit(0))).cast("long").alias("on_time_pgi_count"),
+        )
+        .select(
+            "plant_code",
+            "destination_customer",
+            "goods_issue_day",
+            "weight_unit",
+            "push_delivery_count",
+            "pallets_pushed",
+            "line_count",
+            "total_net_weight",
+            "pgi_complete_count",
+            "on_time_pgi_count",
+            # on_time_pgi_pct: zero-denominator guarded → NULL when no PGI-complete rows.
+            F.when(
+                F.col("pgi_complete_count") > 0,
+                F.col("on_time_pgi_count").cast("double") / F.col("pgi_complete_count").cast("double"),
+            ).otherwise(F.lit(None).cast("double")).alias("on_time_pgi_pct"),
         )
     )

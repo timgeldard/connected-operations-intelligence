@@ -127,6 +127,7 @@ export const wmOperationsRegistration: WorkspaceRegistration = {
       defaultPanels: [{ panelId: 'wm-planning-board', defaultVisible: true, defaultOrder: 0 }],
     },
     { viewId: 'inventory-accuracy', displayName: 'Inventory Accuracy', lifecycle: 'pilot', sortOrder: 27, defaultPanels: [{ panelId: 'wm-inventory-accuracy', defaultVisible: true, defaultOrder: 0 }] },
+    { viewId: 'push-despatch', displayName: 'Push Despatch', lifecycle: 'pilot', sortOrder: 28, defaultPanels: [{ panelId: 'wm-push-despatch', defaultVisible: true, defaultOrder: 0 }] },
   ],
   defaultPanels: [
     { panelId: 'wm-worklist-summary', defaultVisible: true, defaultOrder: 0 },

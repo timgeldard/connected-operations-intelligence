@@ -1717,6 +1717,39 @@ SIMPLE_DATASETS: dict[str, dict] = {
         has_warehouse=False,
         days_col="count_month",
     ),
+    "push_despatch_delivery": dict(
+        contract="wm_operations.push_despatch_delivery",
+        endpoint="/api/wm-operations/push-despatch-delivery",
+        columns=(
+            "plant_id, delivery_id, destination_customer, destination_plant_code, "
+            "container_vehicle_id, transport_type, "
+            "planned_goods_issue_date, actual_goods_issue_date, "
+            "is_pgi_complete, pgi_on_time, "
+            "line_count, pallet_count, weight_unit, total_net_weight, total_gross_weight, "
+            "is_overdue, days_overdue"
+        ),
+        order_by="planned_goods_issue_date ASC NULLS LAST, delivery_id ASC",
+        numeric=("total_net_weight", "total_gross_weight"),
+        integer=("line_count", "days_overdue"),
+        boolean=("is_pgi_complete", "pgi_on_time", "is_overdue"),
+        has_warehouse=False,
+    ),
+    "push_despatch_daily": dict(
+        contract="wm_operations.push_despatch_daily",
+        endpoint="/api/wm-operations/push-despatch-daily",
+        columns=(
+            "plant_id, destination_customer, goods_issue_day, weight_unit, "
+            "push_delivery_count, pallets_pushed, line_count, total_net_weight, "
+            "pgi_complete_count, on_time_pgi_count, on_time_pgi_pct"
+        ),
+        order_by="goods_issue_day ASC NULLS LAST, destination_customer ASC",
+        numeric=("total_net_weight", "on_time_pgi_pct"),
+        integer=("push_delivery_count", "pallets_pushed", "line_count",
+                 "pgi_complete_count", "on_time_pgi_count"),
+        boolean=(),
+        has_warehouse=False,
+        days_col="goods_issue_day",
+    ),
 }
 
 

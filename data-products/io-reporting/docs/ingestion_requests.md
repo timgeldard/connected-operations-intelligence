@@ -50,7 +50,22 @@ name-collision with the shared platform `silver` / `gold` schemas (which already
   `system.access.column_lineage` for the principal running the dictionary generator.
 - **Aecorsoft Field Rules Review (Cost Optimization):** Review Aecorsoft's functionality to apply rules/transformations directly to fields at replication/ingestion time. Applying basic filters, type casting, or zero-stripping at the replication level could reduce the storage and compute costs of raw bronze staging (mitigating hidden costs of reproducing full SAP columns/rows before filtering in Silver).
 
-## 5. CI secrets (for the bundle-validate job)
+## 5. Push Despatch pallet/SSCC live log (ZPUSH_DISPATCH) — Spec 14 deferred KPI
+
+ZPUSH_DISPATCH (the Push Despatch RF log table) is **not replicated** to any bronze catalog.
+Until it lands, pallet-level (SSCC-grain) KPIs for Push Despatch are unavailable; the gold
+model falls back to HU count from `handling_unit` (where available) or NULL.
+
+| SAP object | Needed for |
+|---|---|
+| `ZPUSH_DISPATCH` | Pallet / SSCC grain for Push Despatch throughput (scanned SSCCs, pallet IDs) |
+
+**Impact:** `gold_wm_push_despatch_delivery.pallet_count` is nullable — NULL when the HU table
+is absent or has no matching HU. The KPI strip falls back to `line_count` with a UI label.
+**Request:** replicate `ZPUSH_DISPATCH` into `connected_plant_<env>.sap` for all envs.
+**Tracking:** Spec 14 (WMA-E-23). Product owner aware; accepted for v1.
+
+## 6. CI secrets (for the bundle-validate job)
 `.github/workflows/ci.yml` needs repository secrets `DATABRICKS_HOST` and `DATABRICKS_TOKEN`
 (Settings → Secrets → Actions). The `notification_email` variable is now supplied to the
 validate steps by the workflow itself.

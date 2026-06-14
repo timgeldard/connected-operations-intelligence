@@ -177,6 +177,9 @@ GOLD_TABLES = [
     "gold_qm_lab_result_signal",
     "gold_qm_characteristic_pareto",
     "gold_qm_ud_code_pareto",
+    # warehouse_flow_gold.py — Push Despatch KPIs (Spec 14)
+    "gold_wm_push_despatch_delivery",
+    "gold_wm_push_despatch_daily",
 ]
 
 TEMPLATE = """-- Unity Catalog Gold row-level security — secured serving views ({env_upper}).

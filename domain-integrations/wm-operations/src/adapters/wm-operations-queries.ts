@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { wmOperationsAdapter } from './wm-operations-adapter.js'
-import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmAdherenceRootCauseItem, WmOrderYieldItem, WmRecipeBenchmarkItem, WmComponentVarianceItem, WmSupplyDemandLedgerItem, WmShortageProjectionItem, WmPiAccuracyItem, WmLinesideRequest, WmPlanBoardRequest, WmPlanBoardBlock, WmPlanBoardKpis, WmPlanBoardBacklogItem, WmPlanBoardWmOverlayItem } from './wm-operations-adapter.js'
+import type { WmDrillRequest, WmOperationsAdapterRequest, WmWipStageItem, WmScheduleAdherenceDailyItem, WmAdherenceRootCauseItem, WmOrderYieldItem, WmRecipeBenchmarkItem, WmComponentVarianceItem, WmSupplyDemandLedgerItem, WmShortageProjectionItem, WmPiAccuracyItem, WmLinesideRequest, WmPlanBoardRequest, WmPlanBoardBlock, WmPlanBoardKpis, WmPlanBoardBacklogItem, WmPlanBoardWmOverlayItem, WmPushDespatchDeliveryItem, WmPushDespatchDailyItem } from './wm-operations-adapter.js'
 
 export function useWmOrderComponents(request: WmDrillRequest, enabled = true) {
   return useQuery({
@@ -414,3 +414,39 @@ export function useWmPlanBoardWmOverlay(request: WmPlanBoardRequest, enabled = t
 
 // Re-export plan board types for consumers of this module.
 export type { WmPlanBoardBlock, WmPlanBoardKpis, WmPlanBoardBacklogItem, WmPlanBoardWmOverlayItem }
+
+// ── Push Despatch (Spec 14 — WMA-E-23) ───────────────────────────────────────
+// Wall-display query cadence: load once, serve from cache, auto-refresh on interval.
+// Data scope in UAT bronze <= 2023-12-05 (UAT snapshot artefact; prod data is current).
+const PUSH_DESPATCH_REFRESH_MS = 5 * 60 * 1000
+
+export function useWmPushDespatchDelivery(plantId: string | null | undefined, limit = 500, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-push-despatch-delivery', plantId ?? null, limit],
+    queryFn: () => wmOperationsAdapter.getList<WmPushDespatchDeliveryItem>(
+      '/api/wm-operations/push-despatch-delivery',
+      { plant_id: plantId ?? undefined, limit },
+    ),
+    staleTime: PUSH_DESPATCH_REFRESH_MS,
+    refetchInterval: PUSH_DESPATCH_REFRESH_MS,
+    refetchOnWindowFocus: false,
+    enabled: enabled && Boolean(plantId),
+  })
+}
+
+export function useWmPushDespatchDaily(plantId: string | null | undefined, limit = 500, enabled = true) {
+  return useQuery({
+    queryKey: ['wm-ops-push-despatch-daily', plantId ?? null, limit],
+    queryFn: () => wmOperationsAdapter.getList<WmPushDespatchDailyItem>(
+      '/api/wm-operations/push-despatch-daily',
+      { plant_id: plantId ?? undefined, limit },
+    ),
+    staleTime: PUSH_DESPATCH_REFRESH_MS,
+    refetchInterval: PUSH_DESPATCH_REFRESH_MS,
+    refetchOnWindowFocus: false,
+    enabled: enabled && Boolean(plantId),
+  })
+}
+
+// Re-export push despatch types for consumers of this module.
+export type { WmPushDespatchDeliveryItem, WmPushDespatchDailyItem }
