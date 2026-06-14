@@ -354,6 +354,32 @@ jobs:
       - name: Run plant seed guard
         run: python3 scripts/ci/check_site_config_plant_seed.py
 
+  vacuum-retention-guard:
+    name: VACUUM Retention Guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # least-privilege: read-only static guard, no write to repo
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run VACUUM retention guard unit tests
+        run: PYTHONPATH=scripts/ci python3 -m pytest scripts/ci/test_check_vacuum_retention.py -q
+
+      - name: Run VACUUM retention guard
+        run: python3 scripts/ci/check_vacuum_retention.py
+
   route-response-model-guard:
     name: Route Response-Model Guard
     runs-on: ubuntu-latest
