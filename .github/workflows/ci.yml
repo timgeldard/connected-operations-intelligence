@@ -286,6 +286,61 @@ jobs:
       - name: Check generated artefacts are fresh (contracts / contract-metadata / wh360 validation SQL)
         run: python3 scripts/ci/check_generated_artefacts_fresh.py
 
+  rls-matrix-guard:
+    name: RLS Matrix CI Suite (Spec 21 — Item 1)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pytest
+
+      - name: Run RLS matrix unit tests (predicate-matrix + coverage + fixture + plant-leak)
+        run: python -m pytest scripts/ci/test_rls_matrix.py -v
+
+      - name: Run RLS matrix standalone runner (report mode)
+        run: python3 scripts/ci/test_rls_matrix.py
+
+  cdc-gap-detector-offline:
+    name: CDC Gap Detector Offline Tests (Spec 21 — Item 2)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pytest
+
+      - name: Lint CDC gap detector script
+        run: |
+          pip install ruff
+          ruff check data-products/io-reporting/scripts/check_cdc_replication_gaps.py
+
+      - name: Run CDC gap detector offline unit tests (pure Python — no Spark)
+        working-directory: data-products/io-reporting
+        run: python -m pytest tests/test_cdc_gap_detector.py -v --noconftest
+
   silver-fast-mapping-check:
     name: Silver Fast Approved-Mapping Guard
     runs-on: ubuntu-latest
