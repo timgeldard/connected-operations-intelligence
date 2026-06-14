@@ -1630,3 +1630,120 @@ class TestDailyActivityBaselineRoute:
                 params={"plant_id": "C061"},
             )
         assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Push Despatch (Spec 14 — WMA-E-23)
+# ---------------------------------------------------------------------------
+
+class TestPushDespatchDeliveryRoute:
+    """push_despatch_delivery SIMPLE_DATASET endpoint — rows / 401 / 503."""
+
+    async def test_returns_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "delivery_id": "PD001",
+            "destination_customer": "DEST1",
+            "destination_plant_code": None,
+            "container_vehicle_id": "VH001",
+            "transport_type": "03",
+            "planned_goods_issue_date": "2023-11-01",
+            "actual_goods_issue_date": "2023-11-01",
+            "is_pgi_complete": True,
+            "pgi_on_time": True,
+            "line_count": 2,
+            "pallet_count": None,
+            "weight_unit": "KG",
+            "total_net_weight": 150.0,
+            "total_gross_weight": 165.0,
+            "is_overdue": False,
+            "days_overdue": None,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/push-despatch-delivery",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert data[0]["plantId"] == "C061"
+        assert data[0]["deliveryId"] == "PD001"
+        assert data[0]["isPgiComplete"] is True
+        assert data[0]["pgiOnTime"] is True
+        assert data[0]["lineCount"] == 2
+        assert data[0]["totalNetWeight"] == 150.0
+        assert response.headers.get("x-contract-id") == "wm_operations.push_despatch_delivery"
+
+    async def test_returns_401_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/push-despatch-delivery",
+                params={"plant_id": "C061"},
+            )
+        assert response.status_code == 401
+
+    async def test_returns_503_in_legacy_mode(self, monkeypatch) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/push-despatch-delivery",
+                params={"plant_id": "C061"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 503
+
+
+class TestPushDespatchDailyRoute:
+    """push_despatch_daily SIMPLE_DATASET endpoint — rows / 401 / 503."""
+
+    async def test_returns_rows(self, wm_ops_databricks_env) -> None:
+        fake_row = {
+            "plant_id": "C061",
+            "destination_customer": "DEST1",
+            "goods_issue_day": "2023-11-01",
+            "weight_unit": "KG",
+            "push_delivery_count": 3,
+            "pallets_pushed": None,
+            "line_count": 6,
+            "total_net_weight": 450.0,
+            "pgi_complete_count": 3,
+            "on_time_pgi_count": 2,
+            "on_time_pgi_pct": 0.6667,
+        }
+        with patch(_EXECUTE_PATCH, new_callable=AsyncMock, return_value=[fake_row]):
+            async with _make_client() as client:
+                response = await client.get(
+                    "/api/wm-operations/push-despatch-daily",
+                    params={"plant_id": "C061"},
+                    headers=_HEADERS_WITH_TOKEN,
+                )
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert data[0]["plantId"] == "C061"
+        assert data[0]["pushDeliveryCount"] == 3
+        assert data[0]["pgiCompleteCount"] == 3
+        assert data[0]["onTimePgiCount"] == 2
+        assert data[0]["onTimePgiPct"] == pytest.approx(0.6667, abs=1e-3)
+        assert response.headers.get("x-contract-id") == "wm_operations.push_despatch_daily"
+
+    async def test_returns_401_unauthenticated(self, wm_ops_databricks_env) -> None:
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/push-despatch-daily",
+                params={"plant_id": "C061"},
+            )
+        assert response.status_code == 401
+
+    async def test_returns_503_in_legacy_mode(self, monkeypatch) -> None:
+        monkeypatch.setenv("BACKEND_ADAPTER_MODE", "legacy-api")
+        async with _make_client() as client:
+            response = await client.get(
+                "/api/wm-operations/push-despatch-daily",
+                params={"plant_id": "C061"},
+                headers=_HEADERS_WITH_TOKEN,
+            )
+        assert response.status_code == 503
