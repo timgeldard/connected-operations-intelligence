@@ -17,6 +17,47 @@ resources:
       #     pipeline because gold tables such as gold_order_downtime_summary and
       #     gold_process_order_operations read quality-inspection and downtime Silver tables
       #     produced by silver_quality_pipeline.
+      #
+      # ADR 017 — staged 15-minute cadence (INERT — DO NOT ARM without clearing both gates):
+      #
+      #   Gate A: cost-observation baseline complete (memory: cost-observation-period).
+      #           Pull the quiet-day Enzyme fallback report first
+      #           (docs/runbooks/enzyme-fallback-report.md) to understand COMPLETE_RECOMPUTE
+      #           flows before increasing run frequency.
+      #   Gate B: per-surface latency SLAs defined with pilot floor users.
+      #           "Faster is better" is not an SLA — measure the actual latency requirement
+      #           with named pilot users before committing to sub-daily cost.
+      #
+      #   Arming procedure (when BOTH gates are cleared):
+      #     1. In databricks.yml, add a per-pilot-target variable override:
+      #           cadence_pause_status: UNPAUSED           # already exists for UAT
+      #           cadence_cron_expression: "0 */15 * * * ?"  # override the schedule below
+      #        (or directly edit the quartz_cron_expression below for the target environment)
+      #     2. Deploy the target: databricks bundle deploy -t <target> --profile <profile>
+      #     3. Verify the job appears in the Databricks Jobs UI with the new trigger interval.
+      #     4. Monitor cost for the first 24 h before declaring the pilot cadence active.
+      #
+      #   Continuous mode (ADR 017 decision 3): the escalation path ONLY if measured SLA
+      #   demands sub-5-minute latency. Triggered serverless costs nothing between runs;
+      #   continuous pays an always-on cluster. Do not switch to continuous without
+      #   measurement evidence.
+      #
+      #   Single-table streaming-table conversion (ADR 017 decision 1): requires all three
+      #   of — (a) persistently COMPLETE_RECOMPUTE on quiet days AND (b) material in cost
+      #   AND (c) genuine sub-15-min SLA agreed with pilot users. All three must hold.
+      #
+      # STAGED 15-MINUTE SCHEDULE — currently commented out.
+      # Replace the daily `quartz_cron_expression` below with this expression to arm:
+      #
+      #   quartz_cron_expression: "0 */15 * * * ?"   # Every 15 minutes
+      #
+      # The task graph is intentionally unchanged: gold is already chained after both
+      # slow and quality Silver tiers (see depends_on below). For the 15-min pilot path,
+      # gold runs after silver_fast only (slow/quality remain daily — they are not
+      # time-critical for floor-facing SLAs). To implement the pilot fast-path, add a
+      # separate `refresh_gold_fast` task that depends on `refresh_silver_fast` only and
+      # deploy it alongside this job when Gate B is cleared. Until then, the current
+      # full-chain graph is correct and unchanged.
 
       tags:
         owner: connected-plant-team
@@ -51,9 +92,12 @@ resources:
             pipeline_id: ${resources.pipelines.gold_pipeline.id}
 
       schedule:
-        # 05:30 Europe/London daily (06:30 BST / 05:30 GMT depending on DST).
+        # CURRENT LIVE CADENCE: 05:30 Europe/London daily (06:30 BST / 05:30 GMT).
         # Runs after the Aecorsoft overnight replication window; produces a fresh snapshot
         # before the operational day begins.
+        #
+        # DO NOT CHANGE this expression without clearing ADR 017 gates A and B.
+        # See the staged 15-minute schedule comment block above for the arming procedure.
         quartz_cron_expression: "0 30 5 * * ?"
         timezone_id: "Europe/London"
         pause_status: ${var.cadence_pause_status}
